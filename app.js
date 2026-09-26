@@ -1,3 +1,4 @@
+(() => {
 const {app,configured,sb,S,esc,nl,token,dateLong,dateShort,diffLabel,statusLabel,statusClass,toast,fail,copyText,modal,cleanupAll,cleanupBoard,cleanupLive,studentLink,configScreen,avg,shuffle}=window.MR;
 const {mountBoard,mountSnapshot}=window.MathroomBoard;
 
@@ -232,3 +233,4 @@ async function openStudentAssignment(kind,id){
 }
 
 boot().catch(e=>{console.error(e);app.innerHTML=`<div class="center-page"><div class="auth-card"><h1>Ошибка запуска</h1><p>${esc(e.message)}</p></div></div>`});
+})();
