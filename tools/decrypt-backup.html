@@ -1,0 +1,8 @@
+<!doctype html><meta charset="utf-8"><title>Mathroom Backup Decryptor</title>
+<style>body{font:16px system-ui;max-width:760px;margin:40px auto;padding:20px}input,button{font:inherit;padding:10px;margin:6px 0;width:100%}pre{white-space:pre-wrap;background:#f4f4f4;padding:12px;border-radius:8px}</style>
+<h1>Mathroom Backup Decryptor</h1><p>Локальная утилита: файл и ключ никуда не отправляются.</p>
+<input id="file" type="file" accept=".enc"><input id="key" placeholder="BACKUP_ENCRYPTION_KEY_B64"><button id="go">Расшифровать и скачать JSON</button><pre id="status"></pre>
+<script>
+const bytes=s=>Uint8Array.from(atob(s),c=>c.charCodeAt(0));
+go.onclick=async()=>{try{status.textContent='Расшифровываем…';const b=new Uint8Array(await file.files[0].arrayBuffer());const magic=new TextDecoder().decode(b.slice(0,9));if(magic!=='MATHROOM1')throw Error('Неверный формат');const iv=b.slice(9,21),cipher=b.slice(21),raw=bytes(key.value.trim());if(raw.length!==32)throw Error('Ключ должен декодироваться в 32 байта');const k=await crypto.subtle.importKey('raw',raw,'AES-GCM',false,['decrypt']);const gz=await crypto.subtle.decrypt({name:'AES-GCM',iv},k,cipher);const stream=new Blob([gz]).stream().pipeThrough(new DecompressionStream('gzip'));const json=await new Response(stream).text();JSON.parse(json);const u=URL.createObjectURL(new Blob([json],{type:'application/json'}));const a=document.createElement('a');a.href=u;a.download='mathroom-backup.json';a.click();setTimeout(()=>URL.revokeObjectURL(u),1000);status.textContent='Готово.'}catch(e){status.textContent=e.message}}
+</script>
