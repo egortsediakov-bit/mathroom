@@ -4,8 +4,8 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
   <meta name="theme-color" content="#17191c" />
-  <title>Mathroom</title>
-  <link rel="stylesheet" href="./styles.css" />
+  <title>Mathroom Web v3.2</title>
+  <link rel="stylesheet" href="./styles.css?v=3.2.0" />
   <style>
     .cloud-badge{display:inline-flex;align-items:center;gap:6px;padding:6px 9px;border-radius:999px;background:#edf7f1;color:#18794e;font-size:12px;font-weight:800}
     .config-card{max-width:760px}.config-code{background:#111317;color:#f7f7f7;border-radius:12px;padding:14px;white-space:pre-wrap;overflow:auto;font:13px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace}
@@ -13,18 +13,18 @@
     .board-stage{height:650px;position:relative;overflow:hidden;background:#fff;touch-action:none}.board-stage svg{display:block;width:100%;height:100%;touch-action:none}
     .board-status{font-size:12px;color:var(--muted);margin-left:auto}.board-floating{position:absolute;right:12px;bottom:12px;display:flex;gap:6px;background:#fff;border:1px solid var(--line);border-radius:12px;padding:6px;box-shadow:0 8px 30px #0001}
     .lesson-cloud-layout{display:grid;grid-template-columns:minmax(300px,.8fr) minmax(520px,1.4fr);gap:16px}.lesson-cloud-material{max-height:calc(100vh - 120px);overflow:auto}
-    .token-link{word-break:break-all;font-size:12px;background:#f6f7f8;padding:9px;border-radius:10px}
-    .student-home{max-width:1050px;margin:0 auto;padding:24px}.student-top{display:flex;justify-content:space-between;gap:16px;align-items:center;margin-bottom:18px}
+    .token-link{word-break:break-all;font-size:12px;background:#f6f7f8;padding:9px;border-radius:10px}.student-home{max-width:1050px;margin:0 auto;padding:24px}.student-top{display:flex;justify-content:space-between;gap:16px;align-items:center;margin-bottom:18px}
     @media(max-width:900px){.lesson-cloud-layout{grid-template-columns:1fr}.board-stage{height:60vh}.student-top{flex-direction:column;align-items:flex-start}}
   </style>
 </head>
 <body>
-  <div id="app"></div>
-  <div id="toast" class="toast"></div>
+  <div id="app"></div><div id="toast" class="toast"></div>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mathjs@13.2.3/lib/browser/math.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
   <script src="./config.js"></script>
-  <script src="./js/core.js"></script>
-  <script src="./js/board.js"></script>
-  <script src="./app-v312.js?v=3.1.2"></script>
+  <script src="./js/core.js?v=3.2.0"></script>
+  <script src="./js/board-v320.js?v=3.2.0"></script>
+  <script src="./app-v320.js?v=3.2.0"></script>
 </body>
 </html>
