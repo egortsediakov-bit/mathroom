@@ -177,12 +177,3 @@ button{cursor:pointer} a{color:inherit}.hidden{display:none!important}.muted{col
 .lesson-report-preview{border:1px solid #dbe4ea;background:#f8fafc;border-radius:13px;padding:12px;margin:8px 0 14px;display:grid;gap:8px}
 .report-stats{display:flex;gap:7px;flex-wrap:wrap}.report-stats span{background:#fff;border:1px solid var(--line);border-radius:999px;padding:4px 8px;font-size:12px}
 @media(max-width:700px){.lesson-task-status-actions{display:grid;grid-template-columns:1fr 1fr}.lesson-task-status-actions>.small{grid-column:1/-1}.queue-select small{max-width:210px}.lesson-queue-list{max-height:220px}}
-
-/* Mathroom Web v3.1 — cloud lesson workflow */
-.board-sep{width:1px;height:28px;background:var(--line);margin:0 2px}.board-card:fullscreen{background:#fff;width:100vw;height:100vh;border-radius:0}.board-card:fullscreen .board-stage{height:calc(100vh - 110px)}
-.wide-modal{width:min(980px,100%)}.snapshot-modal{width:min(1200px,100%)}.snapshot-modal .board-stage{height:66vh}.modal-default-close{justify-content:flex-end}
-.lesson-cloud-layout{align-items:start}.lesson-live-card{margin-bottom:12px}.lesson-queue-row .queue-select{font:inherit}.lesson-queue-row .icon-btn{flex:0 0 auto}
-.student-live-mount{margin-bottom:14px}.student-focus{max-width:1500px;margin:0 auto;padding:12px}.student-focus #focusBoard .board-stage{height:calc(100vh - 250px);min-height:480px}
-.student-profile-head h2{margin:8px 0 0}.profile-metrics{margin-top:14px}.assignment .pill{margin-top:6px}
-.answer-item b{display:block;margin-bottom:8px}.answer-item .field{margin-bottom:0}.answers .btn.primary{justify-self:start}
-@media(max-width:700px){.board-sep{display:none}.student-focus #focusBoard .board-stage{height:64vh;min-height:400px}.lesson-cloud-layout{display:block}.lesson-cloud-material{max-height:none}.lesson-live-actions{grid-template-columns:1fr 1fr}.wide-modal,.snapshot-modal{width:100%}}
