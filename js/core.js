@@ -44,7 +44,7 @@ function cleanupLive(){ if(S.liveCleanup){ S.liveCleanup(); S.liveCleanup=null; 
 function cleanupAll(){ cleanupBoard(); cleanupLive(); }
 function studentLink(st){ return `${location.origin}${location.pathname}?access=${encodeURIComponent(st.access_token)}`; }
 function configScreen(){
-  app.innerHTML=`<div class="center-page"><div class="auth-card config-card"><div class="brand">Mathroom Web v3.2</div><h1>Подключи Supabase</h1><p>В репозитории должен остаться твой существующий <b>config.js</b> с Project URL и Publishable key.</p><div class="config-code">window.MATHROOM_CONFIG = {\n  SUPABASE_URL: 'https://PROJECT.supabase.co',\n  SUPABASE_ANON_KEY: 'sb_publishable_...',\n  APP_NAME: 'Mathroom'\n};</div></div></div>`;
+  app.innerHTML=`<div class="center-page"><div class="auth-card config-card"><div class="brand">Mathroom Web v3.4</div><h1>Подключи Supabase</h1><p>В репозитории должен остаться твой существующий <b>config.js</b> с Project URL и Publishable key.</p><div class="config-code">window.MATHROOM_CONFIG = {\n  SUPABASE_URL: 'https://PROJECT.supabase.co',\n  SUPABASE_ANON_KEY: 'sb_publishable_...',\n  APP_NAME: 'Mathroom'\n};</div></div></div>`;
 }
 function avg(nums){ const a=nums.filter(x=>Number.isFinite(Number(x))).map(Number); return a.length ? Math.round(a.reduce((s,x)=>s+x,0)/a.length) : null; }
 function shuffle(arr){ const a=[...arr]; for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];} return a; }
