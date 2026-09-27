@@ -49,6 +49,18 @@
       ];
       this.turnReady = false;
       this.candidateTypes = new Set();
+      this.route = '';
+      this.rttMs = null;
+      this.statsTimer = null;
+      this.userCompact = localStorage.getItem(`mathroom.video.compact.${this.role}`) === '1';
+      this.onOnline = () => {
+        if (!this.destroyed && this.localStream && this.remoteReady && this.pc?.connectionState !== 'connected') {
+          this.status = 'Сеть восстановлена · переподключение…';
+          this.paintStatus();
+          if (this.role === 'teacher') this.makeOffer(true).catch(() => {});
+        }
+      };
+      window.addEventListener('online', this.onOnline);
       this.prepareIceServers();
       this.join();
     }
@@ -204,11 +216,13 @@
         const state = pc.connectionState;
         if (state === 'connected') {
           clearTimeout(this.connectTimer); clearTimeout(this.offerTimer);
-          this.status = this.turnReady ? 'Соединено · TURN доступен' : 'Соединено';
+          this.status = 'Соединено';
           this.bindMedia();
+          this.startStats();
         } else if (state === 'connecting') this.status = 'Подключение…';
-        else if (state === 'failed') this.status = this.turnReady ? 'Соединение не установлено' : 'P2P не установлено — подключи TURN';
-        else if (state === 'disconnected') this.status = 'Связь прервана';
+        else if (state === 'failed') { this.stopStats(); this.status = this.turnReady ? 'Соединение не установлено' : 'P2P не установлено — подключи TURN'; }
+        else if (state === 'disconnected') { this.stopStats(); this.status = 'Связь прервана'; }
+        else if (state === 'closed') this.stopStats();
         this.paintStatus();
       };
 
@@ -220,6 +234,45 @@
       if (!this.pc?.remoteDescription) return;
       const items = this.pendingIce.splice(0);
       for (const c of items) await this.pc.addIceCandidate(c).catch(() => {});
+    }
+
+    startStats() {
+      this.stopStats();
+      const tick = () => this.updateStats().catch(() => {});
+      tick();
+      this.statsTimer = setInterval(tick, 4000);
+    }
+
+    stopStats() {
+      clearInterval(this.statsTimer);
+      this.statsTimer = null;
+      this.rttMs = null;
+      this.route = '';
+    }
+
+    async updateStats() {
+      const pc = this.pc;
+      if (!pc || pc.connectionState !== 'connected') return;
+      const stats = await pc.getStats();
+      let pair = null;
+      stats.forEach(r => {
+        if (r.type === 'transport' && r.selectedCandidatePairId) pair = stats.get(r.selectedCandidatePairId) || pair;
+      });
+      if (!pair) stats.forEach(r => { if (r.type === 'candidate-pair' && r.state === 'succeeded' && (r.nominated || r.selected)) pair = r; });
+      if (pair) {
+        const local = stats.get(pair.localCandidateId), remote = stats.get(pair.remoteCandidateId);
+        const relay = local?.candidateType === 'relay' || remote?.candidateType === 'relay';
+        this.route = relay ? 'TURN' : 'P2P';
+        this.rttMs = Number.isFinite(pair.currentRoundTripTime) ? Math.round(pair.currentRoundTripTime * 1000) : null;
+      }
+      this.paintStatus();
+    }
+
+    toggleCompact() {
+      this.userCompact = !this.userCompact;
+      localStorage.setItem(`mathroom.video.compact.${this.role}`, this.userCompact ? '1' : '0');
+      const target = this.panel?.parentElement;
+      if (target) this.renderPanel(target, false);
     }
 
     scheduleConnectWatch() {
@@ -334,6 +387,7 @@
     closePeer(notify = true, resetRemoteReady = false) {
       if (notify) this.send('hangup', {});
       clearTimeout(this.connectTimer); clearTimeout(this.offerTimer);
+      this.stopStats();
       try { this.pc?.close(); } catch {}
       this.pc = null; this.pendingIce = []; this.remoteStream = new MediaStream();
       if (resetRemoteReady) this.remoteReady = false;
@@ -374,11 +428,12 @@
 
     paintStatus() {
       const el = this.panel?.querySelector('#mrVideoStatus') || document.querySelector('#mrVideoStatus');
-      const transport = this.turnReady ? 'TURN' : 'STUN';
-      const text = `${this.status}${this.localStream ? ` · ${transport}` : ''}${this.subscribed ? '' : ' · сигналинг…'}`;
+      const route = this.route || (this.turnReady ? 'TURN готов' : 'P2P');
+      const quality = this.rttMs != null ? ` · ${this.rttMs} мс` : '';
+      const text = `${this.status}${this.localStream ? ` · ${route}${quality}` : ''}${this.subscribed ? '' : ' · сигналинг…'}`;
       if (el && el.textContent !== text) el.textContent = text;
       const badge = this.panel?.querySelector('#mrTransportBadge');
-      if (badge) badge.textContent = this.turnReady ? 'TURN · WebRTC' : 'P2P · WebRTC';
+      if (badge) badge.textContent = `${this.route || (this.turnReady ? 'TURN' : 'P2P')} · WebRTC`;
     }
 
     renderButtons() {
@@ -400,7 +455,7 @@
         host = document.createElement('section'); host.id = 'mrVideoPanel';
         target.appendChild(host);
         host.innerHTML = `
-          <div class="mr-video-head"><div><b>Видеоурок</b><div class="small muted" id="mrVideoStatus">${esc(this.status)}</div></div><span class="pill" id="mrTransportBadge">P2P · WebRTC</span></div>
+          <div class="mr-video-head"><div><b>Видеоурок</b><div class="small muted" id="mrVideoStatus">${esc(this.status)}</div></div><div class="actions"><button class="btn sm ghost" id="mrVideoCompact" title="Уменьшить видеоблок и освободить место для доски">↕ Компактно</button><span class="pill" id="mrTransportBadge">P2P · WebRTC</span></div></div>
           <div class="mr-video-grid">
             <div class="mr-video-frame remote"><video id="mrRemoteVideo" autoplay playsinline></video><span>${this.role === 'teacher' ? 'Ученик' : 'Преподаватель'}</span></div>
             <div class="mr-video-frame local"><video id="mrLocalVideo" autoplay muted playsinline></video><span>Вы</span></div>
@@ -413,8 +468,9 @@
             ${this.role === 'teacher' ? '<button class="btn sm" id="mrVideoScreen">🖥 Экран</button>' : ''}
             <button class="btn sm danger" id="mrVideoEnd">Отключиться</button>
           </div>
-          <div class="small muted">Если оба видят свою камеру, но не видят друг друга и появляется «нужен TURN», подключи TURN-функцию из hotfix — это обход NAT/фаерволов.</div>`;
+          <div class="small muted">Горячие клавиши во время урока: Alt+M — микрофон, Alt+V — камера${this.role === 'teacher' ? ', Alt+S — экран' : ''}. Режим «Компактно» освобождает место для доски.</div>`;
         host.querySelector('#mrVideoStart').onclick = () => this.startMedia(!!this.localStream);
+        host.querySelector('#mrVideoCompact').onclick = () => this.toggleCompact();
         host.querySelector('#mrVideoMic').onclick = () => this.toggleMic();
         host.querySelector('#mrVideoCam').onclick = () => this.toggleCamera();
         host.querySelector('#mrVideoSound').onclick = () => this.enableSound();
@@ -422,13 +478,17 @@
         host.querySelector('#mrVideoEnd').onclick = () => this.end();
       }
       this.panel = host;
-      host.className = `mr-video-card ${compact ? 'compact' : ''}`;
+      const isCompact = compact || this.userCompact;
+      host.className = `mr-video-card ${isCompact ? 'compact' : ''}`;
+      const compactBtn = host.querySelector('#mrVideoCompact'); if (compactBtn) compactBtn.textContent = this.userCompact ? '↕ Развернуть' : '↕ Компактно';
       const start = host.querySelector('#mrVideoStart'); const startText = this.localStream ? 'Переподключить' : 'Включить камеру'; if (start && start.textContent !== startText) start.textContent = startText;
       this.bindMedia(); this.renderButtons(); this.paintStatus();
     }
 
     destroy() {
       this.destroyed = true; this.end();
+      this.stopStats();
+      window.removeEventListener('online', this.onOnline);
       if (this.channel) sb.removeChannel(this.channel);
       this.channel = null;
     }
@@ -554,6 +614,16 @@
     if (scheduled) return; scheduled = true;
     requestAnimationFrame(async () => { scheduled = false; await syncContext(); });
   }
+
+  window.addEventListener('keydown', e => {
+    if (!call || !e.altKey || e.ctrlKey || e.metaKey) return;
+    const tag = document.activeElement?.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+    const key = String(e.key || '').toLowerCase();
+    if (key === 'm') { e.preventDefault(); call.toggleMic(); }
+    if (key === 'v') { e.preventDefault(); call.toggleCamera(); }
+    if (key === 's' && call.role === 'teacher') { e.preventDefault(); call.shareScreen(); }
+  });
 
   observer = new MutationObserver(scheduleSync);
   observer.observe(document.getElementById('app'), { childList: true, subtree: true });

@@ -12,7 +12,7 @@ const S = {
   view: 'dashboard', selectedStudent: '', topic: null, activeLesson: null,
   boardCleanup: null, boardController: null, liveCleanup: null,
   access: new URLSearchParams(location.search).get('access') || '',
-  student: null, studentTab: 'board', studentLive: null
+  student: null, studentTab: 'today', studentLive: null
 };
 
 const esc = (v='') => String(v).replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
