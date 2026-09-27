@@ -275,8 +275,12 @@ async function completeLesson(lesson,queue,live){
 }
 
 function renderBoardPage(){
-  if(!S.students.length){app.innerHTML=shell('<div class="empty">Сначала добавь ученика.</div>','Доска');bindShell();return}const st=S.students.find(x=>x.id===S.selectedStudent)||S.students[0];S.selectedStudent=st.id;
-  app.innerHTML=shell(`<div class="actions" style="margin-bottom:12px"><select id="boardStudent" class="search">${S.students.map(s=>`<option value="${s.id}" ${s.id===st.id?'selected':''}>${esc(s.name)} · ${s.grade} кл.</option>`).join('')}</select></div><div id="boardRoot"></div>`,'Общая доска',`${st.name} · realtime через Supabase`);bindShell();document.getElementById('boardStudent').onchange=()=>{S.selectedStudent=document.getElementById('boardStudent').value;renderBoardPage()};mountBoard(document.getElementById('boardRoot'),st.id,true).then(c=>S.boardController=c);
+  const scratch=S.selectedStudent==='__scratch__'||!S.students.length;const st=scratch?null:(S.students.find(x=>x.id===S.selectedStudent)||S.students[0]);if(st)S.selectedStudent=st.id;else S.selectedStudent='__scratch__';
+  const studentOptions=S.students.map(s=>`<option value="${s.id}" ${st?.id===s.id?'selected':''}>${esc(s.name)} · ${s.grade} кл.</option>`).join('');
+  app.innerHTML=shell(`<div class="actions board-mode-switch" style="margin-bottom:12px"><select id="boardStudent" class="search"><option value="__scratch__" ${scratch?'selected':''}>Моя доска-черновик</option>${studentOptions}</select><span class="small muted">${scratch?'Черновик виден только в этом браузере преподавателя.':'Доска ученика синхронизируется в реальном времени.'}</span></div><div id="boardRoot"></div>`,'Доска',scratch?'Личный черновик преподавателя':`${st.name} · совместная доска урока`);bindShell();
+  document.getElementById('boardStudent').onchange=()=>{S.selectedStudent=document.getElementById('boardStudent').value;renderBoardPage()};
+  if(scratch)mountBoard(document.getElementById('boardRoot'),'teacher-scratch',true,{localOnly:true,localKey:`mathroom.teacher.scratch.${S.user.id}`}).then(c=>S.boardController=c);
+  else mountBoard(document.getElementById('boardRoot'),st.id,true).then(c=>S.boardController=c);
 }
 
 async function bootStudent(){

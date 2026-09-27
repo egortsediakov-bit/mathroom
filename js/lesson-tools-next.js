@@ -31,7 +31,6 @@
       this.ctx = ctx;
       this.role = ctx.role;
       this.lessonId = ctx.lessonId;
-      this.peerId = (crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2));
       this.channel = null;
       this.subscribed = false;
       this.localStream = null;
@@ -40,63 +39,52 @@
       this.pendingOffer = null;
       this.pendingIce = [];
       this.remoteReady = false;
-      this.remotePeerId = '';
       this.makingOffer = false;
       this.screenTrack = null;
       this.status = 'Видео выключено';
       this.destroyed = false;
-      this.offerTimer = null;
-      this.connectTimer = null;
-      this.iceServersList = [
-        { urls: 'stun:stun.cloudflare.com:3478' },
-        { urls: 'stun:stun.l.google.com:19302' }
-      ];
-      this.turnReady = false;
-      this.candidateTypes = new Set();
-      this.route = '';
-      this.rttMs = null;
-      this.statsTimer = null;
+      this.panel = null;
+      this.retryTimer = null;
+      this.iceServersList = Array.isArray(CFG?.WEBRTC_ICE_SERVERS) && CFG.WEBRTC_ICE_SERVERS.length
+        ? CFG.WEBRTC_ICE_SERVERS
+        : [{ urls:'stun:stun.cloudflare.com:3478' }, { urls:'stun:stun.l.google.com:19302' }];
+      this.turnReady = this.iceServersList.some(x=>String(Array.isArray(x.urls)?x.urls.join(' '):x.urls||'').includes('turn'));
       this.userCompact = localStorage.getItem(`mathroom.video.compact.${this.role}`) === '1';
       this.onOnline = () => {
-        if (!this.destroyed && this.localStream && this.remoteReady && this.pc?.connectionState !== 'connected') {
-          this.status = 'Сеть восстановлена · переподключение…';
-          this.paintStatus();
-          if (this.role === 'teacher') this.makeOffer(true).catch(() => {});
+        if (!this.destroyed && this.localStream && this.remoteReady && this.role === 'teacher' && this.pc?.connectionState !== 'connected') {
+          this.makeOffer(true).catch(()=>{});
         }
       };
       window.addEventListener('online', this.onOnline);
-      this.prepareIceServers();
       this.join();
+      this.prepareTurn();
     }
 
-    async prepareIceServers() {
-      const custom = CFG?.WEBRTC_ICE_SERVERS;
-      if (Array.isArray(custom) && custom.length) {
-        this.iceServersList = custom;
-        this.turnReady = custom.some(x => String(Array.isArray(x.urls) ? x.urls.join(' ') : x.urls || '').includes('turn'));
-        return;
-      }
+    async prepareTurn() {
+      if (this.turnReady || CFG?.WEBRTC_ICE_SERVERS?.length) return;
       try {
-        const { data, error } = await sb.functions.invoke('turn-credentials', { body: { lesson_id: this.lessonId } });
+        const { data, error } = await sb.functions.invoke('turn-credentials', { body:{ lesson_id:this.lessonId } });
         if (!error && Array.isArray(data?.iceServers) && data.iceServers.length) {
-          this.iceServersList = data.iceServers.map(x => ({ ...x, urls: Array.isArray(x.urls) ? x.urls.filter(u => !String(u).includes(':53')) : x.urls }));
-          this.turnReady = this.iceServersList.some(x => String(Array.isArray(x.urls) ? x.urls.join(' ') : x.urls || '').includes('turn'));
-          if (this.pc && this.pc.signalingState !== 'closed') this.pc.setConfiguration({ iceServers: this.iceServersList });
+          this.iceServersList = data.iceServers
+            .map(x=>({...x,urls:Array.isArray(x.urls)?x.urls.filter(u=>!String(u).includes(':53')):x.urls}))
+            .filter(x=>x.urls && (!Array.isArray(x.urls) || x.urls.length));
+          this.turnReady = this.iceServersList.some(x=>String(Array.isArray(x.urls)?x.urls.join(' '):x.urls||'').includes('turn'));
+          if (this.pc && this.pc.signalingState !== 'closed') this.pc.setConfiguration({ iceServers:this.iceServersList });
           this.paintStatus();
         }
       } catch (e) {
-        console.info('[Mathroom video] TURN credentials unavailable; using STUN only');
+        console.info('[Mathroom video] TURN credentials unavailable; STUN fallback remains active');
       }
     }
 
     async join() {
-      this.channel = sb.channel(signalTopic(this.lessonId), { config: { private: true } })
-        .on('broadcast', { event: 'signal' }, ({ payload }) => this.onSignal(payload))
+      this.channel = sb.channel(signalTopic(this.lessonId), { config:{ private:true } })
+        .on('broadcast', { event:'signal' }, ({ payload }) => this.onSignal(payload))
         .subscribe(status => {
           this.subscribed = status === 'SUBSCRIBED';
           if (this.subscribed) {
             this.send('hello', {});
-            if (this.localStream) this.announceReady();
+            if (this.localStream) this.send(this.role === 'teacher' ? 'teacher-ready' : 'ready', {});
           }
           this.paintStatus();
         });
@@ -104,29 +92,23 @@
 
     send(kind, data = {}, to = '') {
       if (!this.channel || !this.subscribed) return;
-      this.channel.send({
-        type: 'broadcast', event: 'signal',
-        payload: { kind, data, from: this.role, peerId: this.peerId, to, at: Date.now() }
-      }).catch?.(e => console.warn('[Mathroom video] signal send failed', e));
-    }
-
-    announceReady() {
-      this.send(this.role === 'teacher' ? 'teacher-ready' : 'ready', {}, this.role === 'teacher' ? 'student' : 'teacher');
+      Promise.resolve(this.channel.send({
+        type:'broadcast', event:'signal',
+        payload:{ kind, data, from:this.role, to, at:Date.now() }
+      })).catch(e=>console.warn('[Mathroom video] signal send failed', e));
     }
 
     async onSignal(msg = {}) {
-      if (this.destroyed || msg.peerId === this.peerId || (msg.to && msg.to !== this.role)) return;
+      if (this.destroyed || msg.from === this.role || (msg.to && msg.to !== this.role)) return;
       try {
-        if (msg.peerId) this.remotePeerId = msg.peerId;
         if (msg.kind === 'hello') {
-          if (this.localStream) this.announceReady();
+          if (this.localStream) this.send(this.role === 'teacher' ? 'teacher-ready' : 'ready', {});
           return;
         }
         if (msg.kind === 'ready' || msg.kind === 'teacher-ready') {
           this.remoteReady = true;
           this.status = 'Собеседник готов';
           this.paintStatus();
-          if (this.role === 'student' && msg.kind === 'teacher-ready' && this.localStream) this.send('ready', {}, 'teacher');
           if (this.role === 'teacher' && this.localStream) await this.makeOffer(false);
           return;
         }
@@ -141,13 +123,10 @@
           return;
         }
         if (msg.kind === 'answer' && this.role === 'teacher') {
-          const pc = this.pc;
-          if (!pc || pc.signalingState === 'closed') return;
+          const pc = this.ensurePeer();
           if (pc.signalingState === 'have-local-offer') {
             await pc.setRemoteDescription(new RTCSessionDescription(msg.data));
             await this.flushIce();
-            this.status = 'Подключение…';
-            this.paintStatus();
           }
           return;
         }
@@ -155,7 +134,7 @@
           const cand = msg.data ? new RTCIceCandidate(msg.data) : null;
           if (!cand) return;
           const pc = this.ensurePeer();
-          if (pc.remoteDescription) await pc.addIceCandidate(cand).catch(() => {});
+          if (pc.remoteDescription) await pc.addIceCandidate(cand).catch(()=>{});
           else this.pendingIce.push(cand);
           return;
         }
@@ -166,7 +145,7 @@
         }
       } catch (e) {
         console.error('[Mathroom video] signal error', e);
-        this.status = 'Ошибка соединения';
+        this.status = 'Ошибка соединения — нажми «Переподключить»';
         this.paintStatus();
       }
     }
@@ -174,9 +153,9 @@
     attachLocalTracks(pc = this.pc) {
       if (!pc || !this.localStream) return;
       for (const track of this.localStream.getTracks()) {
-        const sender = pc.getSenders().find(s => s.track?.kind === track.kind);
+        const sender = pc.getSenders().find(s=>s.track?.kind===track.kind);
         if (!sender) pc.addTrack(track, this.localStream);
-        else if (sender.track !== track && !(track.kind === 'video' && this.screenTrack)) sender.replaceTrack(track).catch(() => {});
+        else if (sender.track !== track && !(track.kind === 'video' && this.screenTrack)) sender.replaceTrack(track).catch(()=>{});
       }
     }
 
@@ -185,147 +164,79 @@
         this.attachLocalTracks(this.pc);
         return this.pc;
       }
-      const pc = new RTCPeerConnection({ iceServers: this.iceServersList });
+      const pc = new RTCPeerConnection({ iceServers:this.iceServersList });
       this.pc = pc;
       this.pendingIce = [];
-      this.candidateTypes = new Set();
+      this.remoteStream = new MediaStream();
       this.attachLocalTracks(pc);
-
       pc.ontrack = e => {
         const tracks = e.streams?.[0]?.getTracks?.() || [e.track];
-        for (const track of tracks) {
-          if (!this.remoteStream.getTracks().some(t => t.id === track.id)) this.remoteStream.addTrack(track);
-        }
+        for (const track of tracks) if (!this.remoteStream.getTracks().some(t=>t.id===track.id)) this.remoteStream.addTrack(track);
         this.bindMedia();
       };
-
-      pc.onicecandidate = e => {
-        if (!e.candidate) return;
-        const raw = e.candidate.candidate || '';
-        const m = raw.match(/ typ ([a-z]+)/i); if (m) this.candidateTypes.add(m[1]);
-        this.send('ice', e.candidate.toJSON());
-        this.paintStatus();
-      };
-
-      pc.oniceconnectionstatechange = () => {
-        const st = pc.iceConnectionState;
-        if (st === 'checking') this.status = 'Проверяем сеть…';
-        if (st === 'connected' || st === 'completed') this.status = this.turnReady ? 'Соединено · TURN доступен' : 'Соединено';
-        if (st === 'failed') this.status = this.turnReady ? 'Не удалось подключить видео' : 'Прямое P2P не прошло — нужен TURN';
-        if (st === 'disconnected') this.status = 'Связь прервана';
-        this.paintStatus();
-      };
-
+      pc.onicecandidate = e => { if (e.candidate) this.send('ice', e.candidate.toJSON()); };
       pc.onconnectionstatechange = () => {
-        const state = pc.connectionState;
-        if (state === 'connected') {
-          clearTimeout(this.connectTimer); clearTimeout(this.offerTimer);
+        const st = pc.connectionState;
+        if (st === 'connected') {
+          clearTimeout(this.retryTimer);
           this.status = 'Соединено';
           this.bindMedia();
-          this.startStats();
-        } else if (state === 'connecting') this.status = 'Подключение…';
-        else if (state === 'failed') { this.stopStats(); this.status = this.turnReady ? 'Соединение не установлено' : 'P2P не установлено — подключи TURN'; }
-        else if (state === 'disconnected') { this.stopStats(); this.status = 'Связь прервана'; }
-        else if (state === 'closed') this.stopStats();
+        } else if (st === 'connecting') this.status = 'Подключение…';
+        else if (st === 'disconnected') this.status = 'Связь прервана';
+        else if (st === 'failed') {
+          this.status = this.turnReady ? 'Соединение не установлено — переподключись' : 'P2P не установлено — проверь TURN';
+          if (this.role === 'teacher' && this.localStream && this.remoteReady) {
+            clearTimeout(this.retryTimer);
+            this.retryTimer = setTimeout(()=>this.makeOffer(true).catch(()=>{}), 1200);
+          }
+        }
         this.paintStatus();
       };
-
-      pc.onicecandidateerror = e => console.warn('[Mathroom video] ICE candidate error', e);
+      pc.oniceconnectionstatechange = () => {
+        if (pc.iceConnectionState === 'checking') { this.status='Проверяем сеть…'; this.paintStatus(); }
+      };
       return pc;
     }
 
     async flushIce() {
       if (!this.pc?.remoteDescription) return;
       const items = this.pendingIce.splice(0);
-      for (const c of items) await this.pc.addIceCandidate(c).catch(() => {});
+      for (const c of items) await this.pc.addIceCandidate(c).catch(()=>{});
     }
 
-    startStats() {
-      this.stopStats();
-      const tick = () => this.updateStats().catch(() => {});
-      tick();
-      this.statsTimer = setInterval(tick, 4000);
-    }
-
-    stopStats() {
-      clearInterval(this.statsTimer);
-      this.statsTimer = null;
-      this.rttMs = null;
-      this.route = '';
-    }
-
-    async updateStats() {
-      const pc = this.pc;
-      if (!pc || pc.connectionState !== 'connected') return;
-      const stats = await pc.getStats();
-      let pair = null;
-      stats.forEach(r => {
-        if (r.type === 'transport' && r.selectedCandidatePairId) pair = stats.get(r.selectedCandidatePairId) || pair;
-      });
-      if (!pair) stats.forEach(r => { if (r.type === 'candidate-pair' && r.state === 'succeeded' && (r.nominated || r.selected)) pair = r; });
-      if (pair) {
-        const local = stats.get(pair.localCandidateId), remote = stats.get(pair.remoteCandidateId);
-        const relay = local?.candidateType === 'relay' || remote?.candidateType === 'relay';
-        this.route = relay ? 'TURN' : 'P2P';
-        this.rttMs = Number.isFinite(pair.currentRoundTripTime) ? Math.round(pair.currentRoundTripTime * 1000) : null;
-      }
-      this.paintStatus();
-    }
-
-    toggleCompact() {
-      this.userCompact = !this.userCompact;
-      localStorage.setItem(`mathroom.video.compact.${this.role}`, this.userCompact ? '1' : '0');
-      const target = this.panel?.parentElement;
-      if (target) this.renderPanel(target, false);
-    }
-
-    scheduleConnectWatch() {
-      clearTimeout(this.connectTimer);
-      this.connectTimer = setTimeout(async () => {
-        if (this.destroyed || !this.pc || this.pc.connectionState === 'connected') return;
-        if (this.role === 'teacher' && this.localStream && this.remoteReady) {
-          try { await this.makeOffer(true); } catch {}
-        }
-        if (!this.turnReady && this.pc?.connectionState !== 'connected') {
-          this.status = 'P2P не установлено — нужен TURN';
-          this.paintStatus();
-        }
-      }, 9000);
-    }
-
-    async makeOffer(forceIceRestart = false) {
+    async makeOffer(iceRestart = false) {
       if (this.role !== 'teacher' || !this.localStream || this.makingOffer) return;
       this.makingOffer = true;
       try {
         let pc = this.ensurePeer();
         if (pc.signalingState !== 'stable') {
-          if (!forceIceRestart) return;
+          if (!iceRestart) return;
           this.closePeer(false, false);
           pc = this.ensurePeer();
         }
-        const offer = await pc.createOffer(forceIceRestart ? { iceRestart: true } : undefined);
+        const offer = await pc.createOffer(iceRestart ? { iceRestart:true } : undefined);
         await pc.setLocalDescription(offer);
-        this.send('offer', { type: pc.localDescription.type, sdp: pc.localDescription.sdp }, 'student');
-        this.status = forceIceRestart ? 'Повторное подключение…' : 'Ожидаем ученика…';
+        this.send('offer', pc.localDescription.toJSON(), 'student');
+        this.status = iceRestart ? 'Переподключение…' : 'Ожидаем ученика…';
         this.paintStatus();
-        this.scheduleConnectWatch();
-      } finally { this.makingOffer = false; }
+      } finally {
+        this.makingOffer = false;
+      }
     }
 
     async acceptOffer(data) {
       let pc = this.ensurePeer();
       if (pc.signalingState !== 'stable') {
-        try { await pc.setLocalDescription({ type: 'rollback' }); }
+        try { await pc.setLocalDescription({ type:'rollback' }); }
         catch { this.closePeer(false, false); pc = this.ensurePeer(); }
       }
       await pc.setRemoteDescription(new RTCSessionDescription(data));
       await this.flushIce();
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
-      this.send('answer', { type: pc.localDescription.type, sdp: pc.localDescription.sdp }, 'teacher');
+      this.send('answer', pc.localDescription.toJSON(), 'teacher');
       this.status = 'Подключение…';
       this.paintStatus();
-      this.scheduleConnectWatch();
     }
 
     async startMedia(reconnect = false) {
@@ -334,167 +245,131 @@
         if (!window.isSecureContext) throw new Error('Для камеры нужен HTTPS');
         if (!this.localStream) {
           this.localStream = await navigator.mediaDevices.getUserMedia({
-            video: { width: { ideal: 1280 }, height: { ideal: 720 } },
-            audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+            video:{ width:{ ideal:1280 }, height:{ ideal:720 } },
+            audio:{ echoCancellation:true, noiseSuppression:true, autoGainControl:true }
           });
         }
         if (reconnect) this.closePeer(false, false);
-        const pc = this.ensurePeer();
-        this.attachLocalTracks(pc);
+        this.ensurePeer();
         this.bindMedia();
-        this.status = this.turnReady ? 'Камера включена · TURN готов' : 'Камера и микрофон включены';
+        this.status = 'Камера и микрофон включены';
         this.paintStatus();
-        this.announceReady();
+        this.send(this.role === 'teacher' ? 'teacher-ready' : 'ready', {});
         this.send('hello', {});
         if (this.role === 'student' && this.pendingOffer) {
-          const offer = this.pendingOffer; this.pendingOffer = null; await this.acceptOffer(offer);
+          const offer=this.pendingOffer; this.pendingOffer=null; await this.acceptOffer(offer);
         }
         if (this.role === 'teacher' && this.remoteReady) await this.makeOffer(reconnect);
       } catch (e) { fail(e); }
     }
 
     toggleMic() {
-      const track = this.localStream?.getAudioTracks?.()[0];
+      const track=this.localStream?.getAudioTracks?.()[0];
       if (!track) return toast('Сначала включи камеру и микрофон');
-      track.enabled = !track.enabled; this.renderButtons();
+      track.enabled=!track.enabled; this.renderButtons();
     }
 
     toggleCamera() {
-      const track = this.localStream?.getVideoTracks?.()[0];
+      const track=this.localStream?.getVideoTracks?.()[0];
       if (!track) return toast('Сначала включи камеру');
-      track.enabled = !track.enabled; this.renderButtons();
+      track.enabled=!track.enabled; this.renderButtons();
     }
 
     async shareScreen() {
       if (this.role !== 'teacher') return;
       try {
         if (!this.localStream) await this.startMedia();
-        if (!navigator.mediaDevices?.getDisplayMedia) throw new Error('Демонстрация экрана недоступна в этом браузере');
-        const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
-        const track = stream.getVideoTracks()[0];
-        const pc = this.ensurePeer();
+        const stream=await navigator.mediaDevices.getDisplayMedia({ video:true, audio:false });
+        const track=stream.getVideoTracks()[0], pc=this.ensurePeer();
         this.attachLocalTracks(pc);
-        let sender = pc.getSenders().find(s => s.track?.kind === 'video');
-        if (sender) await sender.replaceTrack(track); else sender = pc.addTrack(track, stream);
-        this.screenTrack = track;
-        const local = this.panel?.querySelector('#mrLocalVideo');
-        if (local) { local.srcObject = stream; local.muted = true; local.play().catch(() => {}); }
-        track.onended = async () => {
-          const cam = this.localStream?.getVideoTracks?.()[0];
-          if (sender) await sender.replaceTrack(cam || null).catch(() => {});
-          this.screenTrack = null; this.bindMedia(); this.renderButtons();
-        };
+        let sender=pc.getSenders().find(s=>s.track?.kind==='video');
+        if (sender) await sender.replaceTrack(track); else sender=pc.addTrack(track,stream);
+        this.screenTrack=track;
+        const local=this.panel?.querySelector('#mrLocalVideo');if(local){local.srcObject=stream;local.muted=true;local.play().catch(()=>{})}
+        track.onended=async()=>{const cam=this.localStream?.getVideoTracks?.()[0];if(sender)await sender.replaceTrack(cam||null).catch(()=>{});this.screenTrack=null;this.bindMedia();this.renderButtons()};
         this.renderButtons();
       } catch (e) { if (e?.name !== 'NotAllowedError') fail(e); }
     }
 
-    closePeer(notify = true, resetRemoteReady = false) {
+    closePeer(notify = true, resetRemoteReady = true) {
       if (notify) this.send('hangup', {});
-      clearTimeout(this.connectTimer); clearTimeout(this.offerTimer);
-      this.stopStats();
+      clearTimeout(this.retryTimer);
       try { this.pc?.close(); } catch {}
-      this.pc = null; this.pendingIce = []; this.remoteStream = new MediaStream();
-      if (resetRemoteReady) this.remoteReady = false;
+      this.pc=null;this.pendingIce=[];this.remoteStream=new MediaStream();
+      if (resetRemoteReady) this.remoteReady=false;
       this.bindMedia();
     }
 
     end() {
       this.closePeer(true, true);
-      this.localStream?.getTracks?.().forEach(t => t.stop());
-      this.localStream = null;
-      this.screenTrack?.stop?.(); this.screenTrack = null;
-      this.status = 'Видео выключено'; this.bindMedia(); this.renderButtons(); this.paintStatus();
+      this.localStream?.getTracks?.().forEach(t=>t.stop());
+      this.localStream=null;
+      this.screenTrack?.stop?.();this.screenTrack=null;
+      this.status='Видео выключено';this.bindMedia();this.renderButtons();this.paintStatus();
     }
 
     bindMedia() {
-      const root = this.panel || document;
-      const local = root.querySelector?.('#mrLocalVideo');
-      const remote = root.querySelector?.('#mrRemoteVideo');
-      if (local && !this.screenTrack) {
-        if (local.srcObject !== (this.localStream || null)) local.srcObject = this.localStream || null;
-        local.muted = true;
-        if (this.localStream) local.play().catch(() => {});
-      }
-      if (remote) {
-        if (remote.srcObject !== (this.remoteStream || null)) remote.srcObject = this.remoteStream || null;
-        remote.muted = false;
-        remote.volume = 1;
-        if (this.remoteStream.getTracks().length) remote.play().catch(() => {});
-      }
+      const root=this.panel||document,local=root.querySelector?.('#mrLocalVideo'),remote=root.querySelector?.('#mrRemoteVideo');
+      if(local&&!this.screenTrack){if(local.srcObject!==(this.localStream||null))local.srcObject=this.localStream||null;local.muted=true;if(this.localStream)local.play().catch(()=>{})}
+      if(remote){if(remote.srcObject!==(this.remoteStream||null))remote.srcObject=this.remoteStream||null;remote.muted=false;remote.volume=1;if(this.remoteStream.getTracks().length)remote.play().catch(()=>{})}
     }
 
     async enableSound() {
-      const remote = this.panel?.querySelector('#mrRemoteVideo');
-      if (!remote) return;
-      try { remote.muted = false; remote.volume = 1; await remote.play(); toast('Звук включён'); }
-      catch { toast('Браузер пока блокирует звук — нажми ещё раз после подключения'); }
+      const remote=this.panel?.querySelector('#mrRemoteVideo');if(!remote)return;
+      try{remote.muted=false;remote.volume=1;await remote.play();toast('Звук включён')}catch{toast('Нажми ещё раз после подключения — браузер пока блокирует звук')}
+    }
+
+    toggleCompact() {
+      this.userCompact=!this.userCompact;localStorage.setItem(`mathroom.video.compact.${this.role}`,this.userCompact?'1':'0');
+      const target=this.panel?.parentElement;if(target)this.renderPanel(target,false);
     }
 
     paintStatus() {
-      const el = this.panel?.querySelector('#mrVideoStatus') || document.querySelector('#mrVideoStatus');
-      const route = this.route || (this.turnReady ? 'TURN готов' : 'P2P');
-      const quality = this.rttMs != null ? ` · ${this.rttMs} мс` : '';
-      const text = `${this.status}${this.localStream ? ` · ${route}${quality}` : ''}${this.subscribed ? '' : ' · сигналинг…'}`;
-      if (el && el.textContent !== text) el.textContent = text;
-      const badge = this.panel?.querySelector('#mrTransportBadge');
-      if (badge) badge.textContent = `${this.route || (this.turnReady ? 'TURN' : 'P2P')} · WebRTC`;
+      const el=this.panel?.querySelector('#mrVideoStatus')||document.querySelector('#mrVideoStatus');
+      const text=`${this.status}${this.localStream?(this.turnReady?' · TURN доступен':' · WebRTC'):''}${this.subscribed?'':' · сигналинг…'}`;
+      if(el)el.textContent=text;
+      const badge=this.panel?.querySelector('#mrTransportBadge');if(badge)badge.textContent=`${this.turnReady?'TURN / P2P':'P2P'} · WebRTC`;
     }
 
     renderButtons() {
-      const root = this.panel || document;
-      const mic = root.querySelector?.('#mrVideoMic'), cam = root.querySelector?.('#mrVideoCam'), screen = root.querySelector?.('#mrVideoScreen');
-      const at = this.localStream?.getAudioTracks?.()[0], vt = this.localStream?.getVideoTracks?.()[0];
-      const micText = at?.enabled === false ? '🔇 Микрофон выкл' : '🎙 Микрофон вкл';
-      const camText = vt?.enabled === false ? '🚫 Камера выкл' : '📹 Камера вкл';
-      const screenText = this.screenTrack ? '🖥 Экран включён' : '🖥 Экран';
-      if (mic && mic.textContent !== micText) mic.textContent = micText;
-      if (cam && cam.textContent !== camText) cam.textContent = camText;
-      if (screen && screen.textContent !== screenText) screen.textContent = screenText;
+      const root=this.panel||document,mic=root.querySelector?.('#mrVideoMic'),cam=root.querySelector?.('#mrVideoCam'),screen=root.querySelector?.('#mrVideoScreen');
+      const at=this.localStream?.getAudioTracks?.()[0],vt=this.localStream?.getVideoTracks?.()[0];
+      if(mic)mic.textContent=at?.enabled===false?'🔇 Микрофон выкл':'🎙 Микрофон вкл';
+      if(cam)cam.textContent=vt?.enabled===false?'🚫 Камера выкл':'📹 Камера вкл';
+      if(screen)screen.textContent=this.screenTrack?'🖥 Экран включён':'🖥 Экран';
     }
 
     renderPanel(target, compact = false) {
       if (!target) return;
-      let host = target.querySelector(':scope > #mrVideoPanel');
-      if (!host) {
-        host = document.createElement('section'); host.id = 'mrVideoPanel';
-        target.appendChild(host);
-        host.innerHTML = `
-          <div class="mr-video-head"><div><b>Видеоурок</b><div class="small muted" id="mrVideoStatus">${esc(this.status)}</div></div><div class="actions"><button class="btn sm ghost" id="mrVideoCompact" title="Уменьшить видеоблок и освободить место для доски">↕ Компактно</button><span class="pill" id="mrTransportBadge">P2P · WebRTC</span></div></div>
-          <div class="mr-video-grid">
-            <div class="mr-video-frame remote"><video id="mrRemoteVideo" autoplay playsinline></video><span>${this.role === 'teacher' ? 'Ученик' : 'Преподаватель'}</span></div>
-            <div class="mr-video-frame local"><video id="mrLocalVideo" autoplay muted playsinline></video><span>Вы</span></div>
-          </div>
-          <div class="actions mr-video-actions">
-            <button class="btn sm primary" id="mrVideoStart">Включить камеру</button>
-            <button class="btn sm" id="mrVideoMic">🎙 Микрофон</button>
-            <button class="btn sm" id="mrVideoCam">📹 Камера</button>
-            <button class="btn sm" id="mrVideoSound">🔊 Звук</button>
-            ${this.role === 'teacher' ? '<button class="btn sm" id="mrVideoScreen">🖥 Экран</button>' : ''}
-            <button class="btn sm danger" id="mrVideoEnd">Отключиться</button>
-          </div>
-          <div class="small muted">Горячие клавиши во время урока: Alt+M — микрофон, Alt+V — камера${this.role === 'teacher' ? ', Alt+S — экран' : ''}. Режим «Компактно» освобождает место для доски.</div>`;
-        host.querySelector('#mrVideoStart').onclick = () => this.startMedia(!!this.localStream);
-        host.querySelector('#mrVideoCompact').onclick = () => this.toggleCompact();
-        host.querySelector('#mrVideoMic').onclick = () => this.toggleMic();
-        host.querySelector('#mrVideoCam').onclick = () => this.toggleCamera();
-        host.querySelector('#mrVideoSound').onclick = () => this.enableSound();
-        const scr = host.querySelector('#mrVideoScreen'); if (scr) scr.onclick = () => this.shareScreen();
-        host.querySelector('#mrVideoEnd').onclick = () => this.end();
+      let host=target.querySelector(':scope > #mrVideoPanel');
+      if(!host){
+        host=document.createElement('section');host.id='mrVideoPanel';target.appendChild(host);
+        host.innerHTML=`
+          <div class="mr-video-head"><div><b>Видеоурок</b><div class="small muted" id="mrVideoStatus">${esc(this.status)}</div></div><div class="actions"><button class="btn sm ghost" id="mrVideoCompact">↕ Компактно</button><span class="pill" id="mrTransportBadge">WebRTC</span></div></div>
+          <div class="mr-video-grid"><div class="mr-video-frame remote"><video id="mrRemoteVideo" autoplay playsinline></video><span>${this.role==='teacher'?'Ученик':'Преподаватель'}</span></div><div class="mr-video-frame local"><video id="mrLocalVideo" autoplay muted playsinline></video><span>Вы</span></div></div>
+          <div class="actions mr-video-actions"><button class="btn sm primary" id="mrVideoStart">Включить камеру</button><button class="btn sm" id="mrVideoMic">🎙 Микрофон</button><button class="btn sm" id="mrVideoCam">📹 Камера</button><button class="btn sm" id="mrVideoSound">🔊 Звук</button>${this.role==='teacher'?'<button class="btn sm" id="mrVideoScreen">🖥 Экран</button>':''}<button class="btn sm danger" id="mrVideoEnd">Отключиться</button></div>
+          <div class="small muted">Alt+M — микрофон · Alt+V — камера${this.role==='teacher'?' · Alt+S — экран':''}. Если второй участник не появился, нажми «Переподключить» один раз на обеих сторонах.</div>`;
+        host.querySelector('#mrVideoStart').onclick=()=>this.startMedia(!!this.localStream);
+        host.querySelector('#mrVideoCompact').onclick=()=>this.toggleCompact();
+        host.querySelector('#mrVideoMic').onclick=()=>this.toggleMic();
+        host.querySelector('#mrVideoCam').onclick=()=>this.toggleCamera();
+        host.querySelector('#mrVideoSound').onclick=()=>this.enableSound();
+        const scr=host.querySelector('#mrVideoScreen');if(scr)scr.onclick=()=>this.shareScreen();
+        host.querySelector('#mrVideoEnd').onclick=()=>this.end();
       }
-      this.panel = host;
-      const isCompact = compact || this.userCompact;
-      host.className = `mr-video-card ${isCompact ? 'compact' : ''}`;
-      const compactBtn = host.querySelector('#mrVideoCompact'); if (compactBtn) compactBtn.textContent = this.userCompact ? '↕ Развернуть' : '↕ Компактно';
-      const start = host.querySelector('#mrVideoStart'); const startText = this.localStream ? 'Переподключить' : 'Включить камеру'; if (start && start.textContent !== startText) start.textContent = startText;
-      this.bindMedia(); this.renderButtons(); this.paintStatus();
+      this.panel=host;
+      host.className=`mr-video-card ${(compact||this.userCompact)?'compact':''}`;
+      const compactBtn=host.querySelector('#mrVideoCompact');if(compactBtn)compactBtn.textContent=this.userCompact?'↕ Развернуть':'↕ Компактно';
+      const start=host.querySelector('#mrVideoStart');if(start)start.textContent=this.localStream?'Переподключить':'Включить камеру';
+      this.bindMedia();this.renderButtons();this.paintStatus();
     }
 
     destroy() {
-      this.destroyed = true; this.end();
-      this.stopStats();
-      window.removeEventListener('online', this.onOnline);
-      if (this.channel) sb.removeChannel(this.channel);
-      this.channel = null;
+      this.destroyed=true;
+      this.end();
+      window.removeEventListener('online',this.onOnline);
+      if(this.channel)sb.removeChannel(this.channel);
+      this.channel=null;
     }
   }
 
@@ -1402,21 +1277,66 @@
 
   async function openReviewPlanner(studentId) {
     try {
-      const draw = async () => {
-        const items = await getReviewQueue(studentId, true); const today = todayDay(); const due = items.filter(x => effectiveReviewDate(x) <= today); const upcoming = items.filter(x => effectiveReviewDate(x) > today);
-        const row = x => `<div class="mr-review-row" data-review-id="${x.id}"><div><b>${x.kind==='tag'?'#':''}${esc(x.label)}</b><small>${x.kind==='category'?'категория':'тег'} · ${x.evidence_count} наблюд. · последнее ${Math.round(Number(x.last_result || 0))}%${x.priority?` · приоритет +${x.priority}`:''}</small>${x.teacher_note?`<em>${esc(x.teacher_note)}</em>`:''}</div><div class="mr-review-mastery"><span>${x.mastery}%</span><div class="mr-goal-progress"><i style="width:${clampPct(x.mastery)}%"></i></div></div><div class="mr-review-due"><span class="pill ${effectiveReviewDate(x)<=today?'warn':''}">${esc(reviewDueLabel(x))}</span><div class="actions"><button class="btn xs" data-review-today="${x.id}">Сегодня</button><button class="btn xs" data-review-week="${x.id}">+7</button><button class="btn xs ${x.priority?'primary':''}" data-review-priority="${x.id}">★</button><button class="btn xs" data-review-hide="${x.id}">Скрыть</button></div></div></div>`;
-        return { items, html:`<div class="mr-card-head"><div><h2>План повторения</h2><p class="muted">Автоинтервалы можно вручную скорректировать. Ручная дата сохраняется при следующем пересчёте.</p></div><span class="pill">${due.length} нужно повторить</span></div><div class="notice"><b>Как читать:</b> Mathroom считает освоение по урокам, ДЗ и тестам. «Сегодня» возвращает тему в ближайшее повторение, «+7» откладывает, ★ повышает приоритет.</div><h3>Сейчас</h3><div class="mr-review-list">${due.length?due.sort((a,b)=>reviewPriority(b)-reviewPriority(a)).map(row).join(''):'<div class="empty">На сегодня ничего не просрочено.</div>'}</div><div class="hr"></div><h3>Дальше</h3><div class="mr-review-list">${upcoming.length?upcoming.slice(0,16).map(row).join(''):'<div class="empty">Следующие интервалы появятся после новых результатов.</div>'}</div>` };
+      let items = await getReviewQueue(studentId, false);
+      if (!items.length) items = await getReviewQueue(studentId, true);
+
+      const backdrop = modal(`<div id="mrReviewPlannerBody"></div>`, 'wide-modal');
+      const body = backdrop.querySelector('#mrReviewPlannerBody');
+      let busy = false;
+
+      const loadFresh = async (rebuild=false) => {
+        items = await getReviewQueue(studentId, rebuild);
       };
-      const first=await draw(); const m=modal(first.html,'wide-modal');
-      const rerender=async()=>{const d=await draw();m.innerHTML=`<button class="modal-x" aria-label="Закрыть">×</button>${d.html}<button class="btn modal-default-close">Закрыть</button>`;bind();};
-      const update=async(id,patch,msg)=>{const {error}=await sb.from('student_review_items').update({...patch,updated_at:new Date().toISOString()}).eq('id',id);if(error)throw error;toast(msg);await rerender()};
-      const bind=()=>{
-        m.querySelector('.modal-x')?.addEventListener('click',()=>m.parentElement?.remove());m.querySelector('.modal-default-close')?.addEventListener('click',()=>m.parentElement?.remove());
-        m.querySelectorAll('[data-review-today]').forEach(b=>b.onclick=()=>update(b.dataset.reviewToday,{manual_next_review_at:todayDay(),is_archived:false},'Поставлено на сегодня').catch(fail));
-        m.querySelectorAll('[data-review-week]').forEach(b=>b.onclick=()=>update(b.dataset.reviewWeek,{manual_next_review_at:isoDay(addDays(new Date(),7)),is_archived:false},'Повторение отложено на 7 дней').catch(fail));
-        m.querySelectorAll('[data-review-priority]').forEach(b=>b.onclick=()=>{const on=b.classList.contains('primary');update(b.dataset.reviewPriority,{priority:on?0:40},on?'Приоритет снят':'Приоритет повышен').catch(fail)});
-        m.querySelectorAll('[data-review-hide]').forEach(b=>b.onclick=()=>update(b.dataset.reviewHide,{is_archived:true},'Тема скрыта из плана').catch(fail));
-      };bind();
+
+      const render = () => {
+        if (!document.body.contains(backdrop) || !body) return;
+        const today = todayDay();
+        const due = items.filter(x => effectiveReviewDate(x) <= today);
+        const upcoming = items.filter(x => effectiveReviewDate(x) > today);
+        const row = x => `<div class="mr-review-row" data-review-id="${x.id}">
+          <div><b>${x.kind==='tag'?'#':''}${esc(x.label)}</b><small>${x.kind==='category'?'категория':'тег'} · ${x.evidence_count} наблюд. · последнее ${Math.round(Number(x.last_result || 0))}%${x.priority?` · приоритет +${x.priority}`:''}</small>${x.teacher_note?`<em>${esc(x.teacher_note)}</em>`:''}</div>
+          <div class="mr-review-mastery"><span>${x.mastery}%</span><div class="mr-goal-progress"><i style="width:${clampPct(x.mastery)}%"></i></div></div>
+          <div class="mr-review-due"><span class="pill ${effectiveReviewDate(x)<=today?'warn':''}">${esc(reviewDueLabel(x))}</span><div class="actions"><button class="btn xs" data-review-today="${x.id}">Сегодня</button><button class="btn xs" data-review-week="${x.id}">+7</button><button class="btn xs ${x.priority?'primary':''}" data-review-priority="${x.id}">★</button><button class="btn xs" data-review-hide="${x.id}">Скрыть</button></div></div>
+        </div>`;
+        body.innerHTML = `<div class="mr-card-head"><div><h2>План повторения</h2><p class="muted">Автоинтервалы можно вручную скорректировать. Пересчёт запускается только по кнопке и больше не блокирует профиль.</p></div><div class="actions"><span class="pill">${due.length} нужно повторить</span><button class="btn sm" id="mrReviewRebuild">Пересчитать</button></div></div>
+          <div class="notice"><b>Как читать:</b> Mathroom считает освоение по урокам, ДЗ и тестам. «Сегодня» возвращает тему в ближайшее повторение, «+7» откладывает, ★ повышает приоритет.</div>
+          <h3>Сейчас</h3><div class="mr-review-list">${due.length?due.sort((a,b)=>reviewPriority(b)-reviewPriority(a)).map(row).join(''):'<div class="empty">На сегодня ничего не просрочено.</div>'}</div>
+          <div class="hr"></div><h3>Дальше</h3><div class="mr-review-list">${upcoming.length?upcoming.slice(0,16).map(row).join(''):'<div class="empty">Следующие интервалы появятся после новых результатов.</div>'}</div>`;
+        bind();
+      };
+
+      const update = async (id, patch, msg) => {
+        if (busy) return;
+        busy = true;
+        try {
+          const { error } = await sb.from('student_review_items').update({...patch,updated_at:new Date().toISOString()}).eq('id',id);
+          if (error) throw error;
+          await loadFresh(false);
+          render();
+          toast(msg);
+        } finally { busy = false; }
+      };
+
+      const bind = () => {
+        body.querySelector('#mrReviewRebuild')?.addEventListener('click', async () => {
+          if (busy) return;
+          busy = true;
+          const btn = body.querySelector('#mrReviewRebuild');
+          if (btn) { btn.disabled = true; btn.textContent = 'Считаем…'; }
+          try {
+            await loadFresh(true);
+            render();
+            toast('План повторения пересчитан');
+          } catch (e) { fail(e); }
+          finally { busy = false; }
+        });
+        body.querySelectorAll('[data-review-today]').forEach(b=>b.onclick=()=>update(b.dataset.reviewToday,{manual_next_review_at:todayDay(),is_archived:false},'Поставлено на сегодня').catch(fail));
+        body.querySelectorAll('[data-review-week]').forEach(b=>b.onclick=()=>update(b.dataset.reviewWeek,{manual_next_review_at:isoDay(addDays(new Date(),7)),is_archived:false},'Повторение отложено на 7 дней').catch(fail));
+        body.querySelectorAll('[data-review-priority]').forEach(b=>b.onclick=()=>{const on=b.classList.contains('primary');update(b.dataset.reviewPriority,{priority:on?0:40},on?'Приоритет снят':'Приоритет повышен').catch(fail)});
+        body.querySelectorAll('[data-review-hide]').forEach(b=>b.onclick=()=>update(b.dataset.reviewHide,{is_archived:true},'Тема скрыта из плана').catch(fail));
+      };
+
+      render();
     } catch (e) { fail(e); }
   }
 
@@ -1424,7 +1344,9 @@
     if (S.access || S.view !== 'profile' || !S.selectedStudent || document.querySelector('#mrSmartPrep')) return;
     const content = document.querySelector('.content'); if (!content) return;
     try {
-      const review = await getReviewQueue(S.selectedStudent, true); if (S.view !== 'profile' || document.querySelector('#mrSmartPrep')) return;
+      let review = await getReviewQueue(S.selectedStudent, false);
+      if (!review.length) review = await getReviewQueue(S.selectedStudent, true);
+      if (S.view !== 'profile' || document.querySelector('#mrSmartPrep')) return;
       const today = todayDay(), due = review.filter(x => effectiveReviewDate(x) <= today).sort((a,b)=>reviewPriority(b)-reviewPriority(a));
       const assigned = (S.homeworks || []).filter(x => x.student_id === S.selectedStudent && x.status === 'assigned'); const submitted = (S.homeworks || []).filter(x => x.student_id === S.selectedStudent && x.status === 'submitted');
       const next = (S.lessons || []).filter(x=>x.student_id===S.selectedStudent&&x.status==='assigned'&&x.scheduled_at&&new Date(x.scheduled_at)>new Date()).sort((a,b)=>new Date(a.scheduled_at)-new Date(b.scheduled_at))[0];
@@ -2410,10 +2332,10 @@
 
 
 
-  // Iteration 13 — weekly schedule, recurring lessons, rescheduling and cancellation workflow.
+  // Iteration 13/21 — weekly schedule, direct deletion and open-ended recurring lessons.
   let scheduleWeekCursor = null;
   let scheduleStudentFilter = 'all';
-  let scheduleShowCancelled = true;
+  let scheduleRuleMap = new Map();
 
   function startOfLocalWeek(value = new Date()) {
     const d = new Date(value); d.setHours(0,0,0,0);
@@ -2432,7 +2354,6 @@
   function compactClock(value) { return value ? new Date(value).toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'}) : '—'; }
   function shortDay(value) { return new Date(value).toLocaleDateString('ru-RU',{day:'2-digit',month:'2-digit'}); }
   function scheduleLessonLabel(l) {
-    if (l.status === 'cancelled') return ['Отменён','bad'];
     if (l.status === 'completed') return ['Завершён','ok'];
     if (l.status === 'in_progress') return ['Идёт урок','warn'];
     if (l.rescheduled_from && Math.abs(new Date(l.rescheduled_from)-new Date(l.scheduled_at))>60000) return ['Перенесён','warn'];
@@ -2440,8 +2361,32 @@
   }
   function lessonStudentName(l) { return l.students?.name || S.students.find(x=>x.id===l.student_id)?.name || 'Ученик'; }
   function lessonTopicName(l) { return l.topics?.title || S.topics.find(x=>x.id===l.topic_id)?.title || 'Без темы'; }
+  function scheduleRuleFor(l){ return l?.recurrence_series_id ? scheduleRuleMap.get(l.recurrence_series_id) || null : null; }
+  function isInfiniteSeries(l){ return !!scheduleRuleFor(l); }
+
+  async function loadScheduleRules(){
+    scheduleRuleMap = new Map();
+    if(!S.user) return;
+    const {data,error}=await sb.from('lesson_recurrence_rules').select('*').eq('teacher_id',S.user.id);
+    if(error){
+      console.warn('[Mathroom recurring rules]',error);
+      return;
+    }
+    for(const row of data||[]) scheduleRuleMap.set(row.id,row);
+  }
+
+  async function materializeRecurringLessons(){
+    try{
+      const {error}=await sb.rpc('materialize_my_recurring_lessons',{p_horizon_weeks:104});
+      if(error) throw error;
+    }catch(e){
+      console.warn('[Mathroom recurring materializer]',e);
+    }
+  }
 
   async function reloadScheduleLessons() {
+    await materializeRecurringLessons();
+    await loadScheduleRules();
     const { data, error } = await sb.from('lessons').select('*,students(name,grade),topics(title)').order('scheduled_at',{ascending:true});
     if (error) throw error;
     S.lessons = data || [];
@@ -2463,20 +2408,20 @@
   function scheduleCardHtml(l) {
     const [label,cls] = scheduleLessonLabel(l);
     const moved = l.rescheduled_from && Math.abs(new Date(l.rescheduled_from)-new Date(l.scheduled_at))>60000;
+    const rule = scheduleRuleFor(l);
     const series = !!l.recurrence_series_id;
     const canStart = l.status==='assigned' || l.status==='in_progress';
     const canEdit = l.status==='assigned';
-    return `<article class="mr-calendar-lesson ${l.status==='cancelled'?'cancelled':''} ${l.status==='completed'?'completed':''}" draggable="${canEdit?'true':'false'}" data-cal-lesson="${l.id}">
+    const seriesText = rule ? `↻ каждые ${Number(rule.interval_weeks||1)===1?'неделю':rule.interval_weeks+' нед.'}` : (series ? `↻ серия${l.recurrence_position?` ${l.recurrence_position}/${l.recurrence_total||'?'}`:''}` : '');
+    return `<article class="mr-calendar-lesson ${l.status==='completed'?'completed':''}" draggable="${canEdit?'true':'false'}" data-cal-lesson="${l.id}">
       <div class="mr-calendar-lesson-top"><b>${compactClock(l.scheduled_at)} · ${Number(l.duration_minutes||60)} мин</b><span class="pill ${cls}">${label}</span></div>
       <strong>${esc(lessonStudentName(l))}</strong>
       <span class="mr-calendar-topic">${esc(lessonTopicName(l))}</span>
-      <div class="mr-calendar-tags">${series?`<span class="pill">↻ серия${l.recurrence_position?` ${l.recurrence_position}/${l.recurrence_total||'?'}`:''}</span>`:''}${moved?`<span class="pill warn">было ${esc(shortDay(l.rescheduled_from))} ${esc(compactClock(l.rescheduled_from))}</span>`:''}</div>
+      <div class="mr-calendar-tags">${seriesText?`<span class="pill">${esc(seriesText)}</span>`:''}${moved?`<span class="pill warn">было ${esc(shortDay(l.rescheduled_from))} ${esc(compactClock(l.rescheduled_from))}</span>`:''}</div>
       ${l.schedule_note?`<small class="mr-calendar-note">${esc(l.schedule_note)}</small>`:''}
-      ${l.status==='cancelled'&&l.cancellation_reason?`<small class="mr-calendar-note warn">${esc(l.cancellation_reason)}</small>`:''}
       <div class="mr-calendar-actions">
         ${canStart?`<button class="btn sm primary" data-cal-start="${l.id}">${l.status==='in_progress'?'Продолжить':'Начать'}</button>`:''}
-        ${canEdit?`<button class="btn sm" data-cal-move="${l.id}">Перенести</button><button class="btn sm" data-cal-cancel="${l.id}">Отменить</button>`:''}
-        ${l.status==='cancelled'?`<button class="btn sm" data-cal-restore="${l.id}">Вернуть</button>`:''}
+        ${canEdit?`<button class="btn sm" data-cal-move="${l.id}">Перенести</button><button class="btn sm danger" data-cal-delete="${l.id}">Удалить</button>`:''}
       </div>
     </article>`;
   }
@@ -2486,6 +2431,14 @@
     const mins=days.map(day=>active.filter(l=>sameLocalDay(new Date(l.scheduled_at),day)).reduce((s,l)=>s+Number(l.duration_minutes||0),0));
     const max=Math.max(60,...mins);
     return `<div class="mr-week-load">${days.map((d,i)=>`<div class="mr-week-load-day"><span>${d.toLocaleDateString('ru-RU',{weekday:'short'})}</span><div><i style="width:${Math.round(mins[i]/max*100)}%"></i></div><b>${mins[i]?`${Math.floor(mins[i]/60)}ч ${mins[i]%60?mins[i]%60+'м':''}`:'—'}</b></div>`).join('')}</div><div class="small muted">Всего на неделе: ${Math.floor(total/60)} ч ${total%60} мин чистого учебного времени.</div>`;
+  }
+
+  async function recordRecurrenceException(l){
+    const rule=scheduleRuleFor(l);
+    if(!rule)return;
+    const occurrence=l.rescheduled_from||l.scheduled_at;
+    const {error}=await sb.from('lesson_recurrence_exceptions').upsert({series_id:rule.id,occurrence_at:occurrence},{onConflict:'series_id,occurrence_at'});
+    if(error)throw error;
   }
 
   function bindScheduleDrag(root) {
@@ -2503,8 +2456,12 @@
         const target=new Date(day.dataset.calDay+'T00:00:00'); const old=new Date(l.scheduled_at); target.setHours(old.getHours(),old.getMinutes(),0,0);
         if(sameLocalDay(target,old))return;
         if(!confirm(`Перенести ${lessonStudentName(l)} на ${target.toLocaleDateString('ru-RU')} в ${compactClock(target)}?`))return;
-        const {error}=await sb.from('lessons').update({scheduled_at:target.toISOString(),rescheduled_from:l.rescheduled_from||l.scheduled_at,schedule_updated_at:new Date().toISOString()}).eq('id',l.id);
-        if(error)return fail(error); await rerenderScheduleFromServer('Урок перенесён');
+        try{
+          if(isInfiniteSeries(l))await recordRecurrenceException(l);
+          const {error}=await sb.from('lessons').update({scheduled_at:target.toISOString(),rescheduled_from:l.rescheduled_from||l.scheduled_at,schedule_updated_at:new Date().toISOString()}).eq('id',l.id);
+          if(error)throw error;
+          await rerenderScheduleFromServer('Урок перенесён');
+        }catch(err){fail(err)}
       });
     });
   }
@@ -2514,31 +2471,40 @@
     root.querySelector('#mrWeekToday').onclick=()=>{scheduleWeekCursor=startOfLocalWeek(new Date());renderEnhancedSchedule(root)};
     root.querySelector('#mrWeekNext').onclick=()=>{const d=startOfLocalWeek(scheduleWeekCursor||new Date());d.setDate(d.getDate()+7);scheduleWeekCursor=d;renderEnhancedSchedule(root)};
     root.querySelector('#mrScheduleStudentFilter').onchange=e=>{scheduleStudentFilter=e.target.value;renderEnhancedSchedule(root)};
-    root.querySelector('#mrScheduleCancelled').onchange=e=>{scheduleShowCancelled=e.target.checked;renderEnhancedSchedule(root)};
     root.querySelector('#mrScheduleCreate').onsubmit=async e=>{
       e.preventDefault();
       const student=root.querySelector('#mrScStudent').value, topic=root.querySelector('#mrScTopic').value, when=root.querySelector('#mrScWhen').value;
       const duration=Math.max(15,Number(root.querySelector('#mrScDuration').value||60));
-      const count=Math.max(1,Number(root.querySelector('#mrScRepeat').value||1));
+      const repeatValue=root.querySelector('#mrScRepeat').value;
       const interval=Math.max(1,Number(root.querySelector('#mrScInterval').value||1));
       if(!student||!topic||!when)return toast('Выбери ученика, тему и время');
       const first=new Date(when);if(Number.isNaN(first.getTime()))return toast('Проверь дату и время');
-      const series=count>1?(crypto.randomUUID?crypto.randomUUID():uid()):null;
-      const rows=[];
-      for(let i=0;i<count;i++){
-        const d=new Date(first);d.setDate(d.getDate()+i*interval*7);
-        rows.push({teacher_id:S.user.id,student_id:student,topic_id:topic,scheduled_at:d.toISOString(),duration_minutes:duration,recurrence_series_id:series,recurrence_position:series?i+1:null,recurrence_total:series?count:null,recurrence_interval_weeks:series?interval:null});
-      }
-      const {error}=await sb.from('lessons').insert(rows);if(error)return fail(error);
-      await rerenderScheduleFromServer(count>1?`Создано ${count} занятий`:'Урок добавлен');
+      try{
+        if(repeatValue==='forever'){
+          const {error}=await sb.from('lesson_recurrence_rules').insert({
+            teacher_id:S.user.id,student_id:student,topic_id:topic,starts_at:first.toISOString(),duration_minutes:duration,interval_weeks:interval,active:true
+          });
+          if(error)throw error;
+          await rerenderScheduleFromServer('Бессрочное расписание создано');
+          return;
+        }
+        const count=Math.max(1,Number(repeatValue||1));
+        const series=count>1?(crypto.randomUUID?crypto.randomUUID():uid()):null;
+        const rows=[];
+        for(let i=0;i<count;i++){
+          const d=new Date(first);d.setDate(d.getDate()+i*interval*7);
+          rows.push({teacher_id:S.user.id,student_id:student,topic_id:topic,scheduled_at:d.toISOString(),duration_minutes:duration,recurrence_series_id:series,recurrence_position:series?i+1:null,recurrence_total:series?count:null,recurrence_interval_weeks:series?interval:null});
+        }
+        const {error}=await sb.from('lessons').insert(rows);if(error)throw error;
+        await rerenderScheduleFromServer(count>1?`Создано ${count} занятий`:'Урок добавлен');
+      }catch(err){fail(err)}
     };
     root.querySelectorAll('[data-cal-start]').forEach(b=>b.onclick=()=>{
       const legacy=document.querySelector(`.mr-schedule-legacy [data-open-lesson="${CSS.escape(b.dataset.calStart)}"]`);
       if(legacy)legacy.click();else toast('Обнови расписание и попробуй ещё раз');
     });
     root.querySelectorAll('[data-cal-move]').forEach(b=>b.onclick=()=>openRescheduleLesson(b.dataset.calMove));
-    root.querySelectorAll('[data-cal-cancel]').forEach(b=>b.onclick=()=>openCancelLesson(b.dataset.calCancel));
-    root.querySelectorAll('[data-cal-restore]').forEach(b=>b.onclick=async()=>{const {error}=await sb.from('lessons').update({status:'assigned',cancelled_at:null,cancellation_reason:'',schedule_updated_at:new Date().toISOString()}).eq('id',b.dataset.calRestore);if(error)return fail(error);await rerenderScheduleFromServer('Урок возвращён в расписание')});
+    root.querySelectorAll('[data-cal-delete]').forEach(b=>b.onclick=()=>openDeleteLesson(b.dataset.calDelete));
     bindScheduleDrag(root);
   }
 
@@ -2546,43 +2512,80 @@
     if(!scheduleWeekCursor)scheduleWeekCursor=startOfLocalWeek(new Date());
     const start=startOfLocalWeek(scheduleWeekCursor), end=endOfLocalWeek(start);
     const days=Array.from({length:7},(_,i)=>{const d=new Date(start);d.setDate(d.getDate()+i);return d});
-    const lessons=[...S.lessons].filter(x=>x.scheduled_at).sort((a,b)=>new Date(a.scheduled_at)-new Date(b.scheduled_at));
+    const lessons=[...S.lessons].filter(x=>x.scheduled_at&&x.status!=='cancelled').sort((a,b)=>new Date(a.scheduled_at)-new Date(b.scheduled_at));
     const weekAll=lessons.filter(x=>{const t=new Date(x.scheduled_at);return t>=start&&t<end});
-    const filtered=weekAll.filter(x=>(scheduleStudentFilter==='all'||x.student_id===scheduleStudentFilter)&&(scheduleShowCancelled||x.status!=='cancelled'));
-    const active=weekAll.filter(x=>x.status!=='cancelled'), cancelled=weekAll.filter(x=>x.status==='cancelled').length, moved=weekAll.filter(x=>x.rescheduled_from&&Math.abs(new Date(x.rescheduled_from)-new Date(x.scheduled_at))>60000).length;
-    const totalMins=active.reduce((s,x)=>s+Number(x.duration_minutes||0),0);
+    const filtered=weekAll.filter(x=>(scheduleStudentFilter==='all'||x.student_id===scheduleStudentFilter));
+    const moved=weekAll.filter(x=>x.rescheduled_from&&Math.abs(new Date(x.rescheduled_from)-new Date(x.scheduled_at))>60000).length;
+    const totalMins=weekAll.reduce((s,x)=>s+Number(x.duration_minutes||0),0);
+    const activeRules=[...scheduleRuleMap.values()].filter(x=>x.active!==false).length;
     const studentOpts=S.students.map(x=>`<option value="${x.id}" ${scheduleStudentFilter===x.id?'selected':''}>${esc(x.name)} · ${x.grade} кл.</option>`).join('');
     const topicOpts=S.topics.map(x=>`<option value="${x.id}">${x.grade} кл. · ${esc(x.title)}</option>`).join('');
     root.innerHTML=`<div class="mr-schedule-toolbar card"><div><h2>Неделя</h2><p class="muted">${esc(scheduleWeekTitle(start))}</p></div><div class="actions"><button class="btn sm" id="mrWeekPrev">←</button><button class="btn sm" id="mrWeekToday">Сегодня</button><button class="btn sm" id="mrWeekNext">→</button></div></div>
-      <div class="grid cols4 mr-schedule-metrics"><div class="card"><div class="muted">Занятий</div><div class="metric">${active.length}</div></div><div class="card"><div class="muted">Нагрузка</div><div class="metric">${(totalMins/60).toFixed(totalMins%60?1:0)} ч</div></div><div class="card"><div class="muted">Переносов</div><div class="metric">${moved}</div></div><div class="card"><div class="muted">Отменено</div><div class="metric">${cancelled}</div></div></div>
-      <div class="card mr-week-load-card"><div class="mr-card-head"><div><h2>Загрузка недели</h2><p class="small muted">Считаются только неотменённые занятия.</p></div><div class="actions"><select id="mrScheduleStudentFilter"><option value="all">Все ученики</option>${studentOpts}</select><label class="mr-inline-check"><input type="checkbox" id="mrScheduleCancelled" ${scheduleShowCancelled?'checked':''}> отменённые</label></div></div>${scheduleLoadHtml(weekAll,days)}</div>
-      <div class="card mr-schedule-create"><div class="mr-card-head"><div><h2>Добавить занятие</h2><p class="small muted">Можно сразу создать еженедельную серию.</p></div></div><form id="mrScheduleCreate" class="mr-schedule-form"><div class="field"><label>Ученик</label><select id="mrScStudent">${studentOpts.replaceAll(' selected','')}</select></div><div class="field"><label>Тема</label><select id="mrScTopic">${topicOpts}</select></div><div class="field"><label>Дата и время</label><input id="mrScWhen" type="datetime-local" required></div><div class="field"><label>Минут</label><input id="mrScDuration" type="number" min="15" step="5" value="60"></div><div class="field"><label>Повтор</label><select id="mrScRepeat"><option value="1">Один урок</option><option value="4">4 занятия</option><option value="8">8 занятий</option><option value="12">12 занятий</option><option value="16">16 занятий</option></select></div><div class="field"><label>Каждые</label><select id="mrScInterval"><option value="1">1 неделю</option><option value="2">2 недели</option></select></div><button class="btn primary">Добавить</button></form></div>
+      <div class="grid cols4 mr-schedule-metrics"><div class="card"><div class="muted">Занятий</div><div class="metric">${weekAll.length}</div></div><div class="card"><div class="muted">Нагрузка</div><div class="metric">${(totalMins/60).toFixed(totalMins%60?1:0)} ч</div></div><div class="card"><div class="muted">Переносов</div><div class="metric">${moved}</div></div><div class="card"><div class="muted">Бессрочных серий</div><div class="metric">${activeRules}</div></div></div>
+      <div class="card mr-week-load-card"><div class="mr-card-head"><div><h2>Загрузка недели</h2><p class="small muted">Удалённые занятия исчезают полностью из расписания.</p></div><div class="actions"><select id="mrScheduleStudentFilter"><option value="all">Все ученики</option>${studentOpts}</select></div></div>${scheduleLoadHtml(weekAll,days)}</div>
+      <div class="card mr-schedule-create"><div class="mr-card-head"><div><h2>Добавить занятие</h2><p class="small muted">Можно создать одно занятие, конечную серию или расписание «каждую неделю, пока не остановлю».</p></div></div><form id="mrScheduleCreate" class="mr-schedule-form"><div class="field"><label>Ученик</label><select id="mrScStudent">${studentOpts.replaceAll(' selected','')}</select></div><div class="field"><label>Тема</label><select id="mrScTopic">${topicOpts}</select></div><div class="field"><label>Дата и время</label><input id="mrScWhen" type="datetime-local" required></div><div class="field"><label>Минут</label><input id="mrScDuration" type="number" min="15" step="5" value="60"></div><div class="field"><label>Повтор</label><select id="mrScRepeat"><option value="1">Один урок</option><option value="4">4 занятия</option><option value="8">8 занятий</option><option value="12">12 занятий</option><option value="16">16 занятий</option><option value="forever">Каждую неделю, пока не остановлю</option></select></div><div class="field"><label>Каждые</label><select id="mrScInterval"><option value="1">1 неделю</option><option value="2">2 недели</option></select></div><button class="btn primary">Добавить</button></form></div>
       <div class="mr-calendar-week">${days.map(day=>{const dayItems=filtered.filter(l=>sameLocalDay(new Date(l.scheduled_at),day));const today=sameLocalDay(day,new Date());return `<section class="mr-calendar-day ${today?'today':''}" data-cal-day="${day.getFullYear()}-${String(day.getMonth()+1).padStart(2,'0')}-${String(day.getDate()).padStart(2,'0')}"><header><span>${day.toLocaleDateString('ru-RU',{weekday:'short'})}</span><b>${day.getDate()}</b><small>${day.toLocaleDateString('ru-RU',{month:'short'})}</small></header><div class="mr-calendar-day-body">${dayItems.length?dayItems.map(scheduleCardHtml).join(''):'<div class="mr-calendar-empty">Нет уроков</div>'}</div></section>`}).join('')}</div>
-      <div class="small muted mr-schedule-tip">На компьютере запланированный урок можно перетащить на другой день. Время останется прежним; на телефоне используй кнопку «Перенести».</div>`;
+      <div class="small muted mr-schedule-tip">На компьютере запланированный урок можно перетащить на другой день. Бессрочная серия хранится как правило и автоматически создаёт будущие уроки; остановить её можно через «Удалить».</div>`;
     bindEnhancedSchedule(root);
     decorateScheduleAttendance(root);
   }
 
   async function openRescheduleLesson(id) {
     const l=S.lessons.find(x=>x.id===id);if(!l)return;
-    const futureSeries=l.recurrence_series_id?S.lessons.filter(x=>x.recurrence_series_id===l.recurrence_series_id&&x.status==='assigned'&&new Date(x.scheduled_at)>=new Date(l.scheduled_at)).length:0;
-    const m=modal(`<h2>Перенести урок</h2><p class="muted">${esc(lessonStudentName(l))} · ${esc(lessonTopicName(l))}</p><form id="mrRescheduleForm"><div class="grid cols2"><div class="field"><label>Новая дата и время</label><input id="mrMoveWhen" type="datetime-local" value="${isoLocalInput(l.scheduled_at)}" required></div><div class="field"><label>Минут</label><input id="mrMoveDuration" type="number" min="15" step="5" value="${Number(l.duration_minutes||60)}"></div></div><div class="field"><label>Комментарий преподавателя</label><input id="mrMoveNote" value="${esc(l.schedule_note||'')}" placeholder="например: перенос по просьбе ученика"></div>${futureSeries>1?`<label class="mr-inline-check"><input type="checkbox" id="mrMoveFuture"> сдвинуть это и следующие занятия серии (${futureSeries}) на столько же</label>`:''}<div class="actions"><button class="btn primary">Сохранить перенос</button><button type="button" class="btn danger" id="mrDeleteScheduled">Удалить запись</button></div></form>`, 'wide-modal');
+    const infinite=isInfiniteSeries(l);
+    const futureSeries=!infinite&&l.recurrence_series_id?S.lessons.filter(x=>x.recurrence_series_id===l.recurrence_series_id&&x.status==='assigned'&&new Date(x.scheduled_at)>=new Date(l.scheduled_at)).length:0;
+    const m=modal(`<h2>Перенести урок</h2><p class="muted">${esc(lessonStudentName(l))} · ${esc(lessonTopicName(l))}</p><form id="mrRescheduleForm"><div class="grid cols2"><div class="field"><label>Новая дата и время</label><input id="mrMoveWhen" type="datetime-local" value="${isoLocalInput(l.scheduled_at)}" required></div><div class="field"><label>Минут</label><input id="mrMoveDuration" type="number" min="15" step="5" value="${Number(l.duration_minutes||60)}"></div></div><div class="field"><label>Заметка</label><input id="mrMoveNote" value="${esc(l.schedule_note||'')}" placeholder="необязательно"></div>${futureSeries>1?`<label class="mr-inline-check"><input type="checkbox" id="mrMoveFuture"> сдвинуть это и следующие занятия серии (${futureSeries}) на столько же</label>`:''}${infinite?'<div class="notice">Для бессрочного расписания переносится только выбранная дата. Следующие недели сохраняют обычное время.</div>':''}<div class="actions"><button class="btn primary">Сохранить перенос</button></div></form>`, 'wide-modal');
     m.querySelector('#mrRescheduleForm').onsubmit=async e=>{
       e.preventDefault();const newDate=new Date(m.querySelector('#mrMoveWhen').value);if(Number.isNaN(newDate.getTime()))return toast('Проверь дату');
       const duration=Math.max(15,Number(m.querySelector('#mrMoveDuration').value||60)),note=m.querySelector('#mrMoveNote').value.trim();
-      const delta=newDate.getTime()-new Date(l.scheduled_at).getTime();const moveFuture=!!m.querySelector('#mrMoveFuture')?.checked;
+      const delta=newDate.getTime()-new Date(l.scheduled_at).getTime();const moveFuture=!infinite&&!!m.querySelector('#mrMoveFuture')?.checked;
       let targets=[l];if(moveFuture)targets=S.lessons.filter(x=>x.recurrence_series_id===l.recurrence_series_id&&x.status==='assigned'&&new Date(x.scheduled_at)>=new Date(l.scheduled_at));
-      for(const x of targets){const shifted=moveFuture?new Date(new Date(x.scheduled_at).getTime()+delta):newDate;const changed=Math.abs(shifted-new Date(x.scheduled_at))>60000;const body={scheduled_at:shifted.toISOString(),duration_minutes:x.id===l.id?duration:Number(x.duration_minutes||duration),schedule_updated_at:new Date().toISOString()};if(changed)body.rescheduled_from=x.rescheduled_from||x.scheduled_at;if(x.id===l.id)body.schedule_note=note;const {error}=await sb.from('lessons').update(body).eq('id',x.id);if(error)return fail(error)}
-      m.remove();await rerenderScheduleFromServer(moveFuture?`Перенесено занятий: ${targets.length}`:'Урок перенесён');
+      try{
+        if(infinite)await recordRecurrenceException(l);
+        for(const x of targets){
+          const shifted=moveFuture?new Date(new Date(x.scheduled_at).getTime()+delta):newDate;
+          const changed=Math.abs(shifted-new Date(x.scheduled_at))>60000;
+          const body={scheduled_at:shifted.toISOString(),duration_minutes:x.id===l.id?duration:Number(x.duration_minutes||duration),schedule_updated_at:new Date().toISOString()};
+          if(changed)body.rescheduled_from=x.rescheduled_from||x.scheduled_at;
+          if(x.id===l.id)body.schedule_note=note;
+          const {error}=await sb.from('lessons').update(body).eq('id',x.id);if(error)throw error;
+        }
+        m.remove();await rerenderScheduleFromServer(moveFuture?`Перенесено занятий: ${targets.length}`:'Урок перенесён');
+      }catch(err){fail(err)}
     };
-    m.querySelector('#mrDeleteScheduled').onclick=async()=>{if(!confirm('Удалить эту запись расписания без возможности восстановления? Для обычных изменений лучше использовать «Отменить».'))return;const {error}=await sb.from('lessons').delete().eq('id',l.id);if(error)return fail(error);m.remove();await rerenderScheduleFromServer('Запись удалена')};
   }
 
-  async function openCancelLesson(id) {
+  async function openDeleteLesson(id){
     const l=S.lessons.find(x=>x.id===id);if(!l)return;
-    const futureSeries=l.recurrence_series_id?S.lessons.filter(x=>x.recurrence_series_id===l.recurrence_series_id&&x.status==='assigned'&&new Date(x.scheduled_at)>=new Date(l.scheduled_at)).length:0;
-    const m=modal(`<h2>Отменить урок</h2><p class="muted">${esc(lessonStudentName(l))} · ${dateLong(l.scheduled_at)}</p><form id="mrCancelForm"><div class="field"><label>Причина / заметка</label><input id="mrCancelReason" placeholder="необязательно"></div>${futureSeries>1?`<label class="mr-inline-check"><input id="mrCancelFuture" type="checkbox"> отменить это и следующие занятия серии (${futureSeries})</label>`:''}<div class="notice">Отмена сохраняется в расписании и истории. В отличие от удаления, занятие можно вернуть.</div><button class="btn danger">Отменить занятие</button></form>`);
-    m.querySelector('#mrCancelForm').onsubmit=async e=>{e.preventDefault();const reason=m.querySelector('#mrCancelReason').value.trim(),future=!!m.querySelector('#mrCancelFuture')?.checked;let targets=[l];if(future)targets=S.lessons.filter(x=>x.recurrence_series_id===l.recurrence_series_id&&x.status==='assigned'&&new Date(x.scheduled_at)>=new Date(l.scheduled_at));const ids=targets.map(x=>x.id);const {error}=await sb.from('lessons').update({status:'cancelled',cancelled_at:new Date().toISOString(),cancellation_reason:reason,schedule_updated_at:new Date().toISOString()}).in('id',ids);if(error)return fail(error);m.remove();await rerenderScheduleFromServer(future?`Отменено занятий: ${ids.length}`:'Урок отменён')};
+    const infinite=isInfiniteSeries(l);
+    const future=l.recurrence_series_id?S.lessons.filter(x=>x.recurrence_series_id===l.recurrence_series_id&&x.status==='assigned'&&new Date(x.scheduled_at)>=new Date(l.scheduled_at)).length:0;
+    const canSeries=!!l.recurrence_series_id&&(infinite||future>1);
+    const m=modal(`<h2>Удалить занятие</h2><p class="muted">${esc(lessonStudentName(l))} · ${esc(lessonTopicName(l))} · ${esc(dateLong(l.scheduled_at))}</p><div class="notice"><b>Удаление скрывает занятие полностью.</b> В расписании и кабинете ученика его больше не будет.</div><div class="mr-delete-schedule-options"><button class="btn danger" id="mrDeleteOne">Удалить только это занятие</button>${canSeries?`<button class="btn danger" id="mrDeleteFuture">${infinite?'Остановить серию с этой даты':'Удалить это и следующие занятия серии'}</button>`:''}</div>`);
+    m.querySelector('#mrDeleteOne').onclick=async()=>{
+      if(!confirm('Удалить выбранное занятие без возможности восстановления?'))return;
+      try{
+        if(infinite)await recordRecurrenceException(l);
+        const {error}=await sb.from('lessons').delete().eq('id',l.id);if(error)throw error;
+        m.remove();await rerenderScheduleFromServer('Занятие удалено');
+      }catch(err){fail(err)}
+    };
+    const futureBtn=m.querySelector('#mrDeleteFuture');
+    if(futureBtn)futureBtn.onclick=async()=>{
+      const text=infinite?'Остановить бессрочное расписание с этой даты и удалить уже созданные будущие занятия?':'Удалить выбранное и все следующие занятия этой серии?';
+      if(!confirm(text))return;
+      try{
+        if(infinite){
+          const rule=scheduleRuleFor(l);
+          const {error:ruleError}=await sb.from('lesson_recurrence_rules').update({active:false,stopped_at:l.rescheduled_from||l.scheduled_at,updated_at:new Date().toISOString()}).eq('id',rule.id);
+          if(ruleError)throw ruleError;
+        }
+        const ids=S.lessons.filter(x=>x.recurrence_series_id===l.recurrence_series_id&&x.status==='assigned'&&new Date(x.scheduled_at)>=new Date(l.scheduled_at)).map(x=>x.id);
+        if(ids.length){
+          const {error}=await sb.from('lessons').delete().in('id',ids);if(error)throw error;
+        }
+        m.remove();await rerenderScheduleFromServer(infinite?'Бессрочная серия остановлена':'Будущие занятия серии удалены');
+      }catch(err){fail(err)}
+    };
   }
 
   async function enhanceScheduleWorkspace() {
@@ -2592,6 +2595,13 @@
     [...content.children].forEach(el=>{if(el!==top)el.classList.add('mr-schedule-legacy')});
     const root=document.createElement('section');root.id='mrScheduleEnhanced';root.className='mr-schedule-enhanced';
     if(top)top.insertAdjacentElement('afterend',root);else content.prepend(root);
+    try{
+      await materializeRecurringLessons();
+      await loadScheduleRules();
+      const {data,error}=await sb.from('lessons').select('*,students(name,grade),topics(title)').order('scheduled_at',{ascending:true});
+      if(error)throw error;
+      S.lessons=data||S.lessons;
+    }catch(e){console.warn('[Mathroom schedule prepare]',e)}
     renderEnhancedSchedule(root);
   }
 
@@ -3034,74 +3044,77 @@
 
   async function enhanceStudentToday(){
     if(!S.access||S.studentTab!=='today'||!S.student)return;
-    const root=document.querySelector('#mrStudentToday');if(!root||root.dataset.ready==='1'||root.dataset.ready==='loading')return;root.dataset.ready='loading';
+    const root=document.querySelector('#mrStudentToday');
+    if(!root||root.dataset.ready==='1'||root.dataset.ready==='loading')return;
+    root.dataset.ready='loading';
     try{
-      const [l,h,t,rv,g,q,r,rep,ci]=await Promise.all([
+      const [l,h,t,rv,g,rep]=await Promise.all([
         sb.rpc('get_my_lessons'),
         sb.from('homeworks').select('id,title,status,score,due_at,revision_requested_at,revision_message,created_at,topics(title)').eq('student_id',S.student.id).order('created_at',{ascending:false}),
         sb.from('tests').select('id,title,status,score,created_at,topics(title)').eq('student_id',S.student.id).order('created_at',{ascending:false}),
-        sb.rpc('get_my_review_items'),sb.rpc('get_my_goals'),sb.rpc('get_my_questions'),sb.rpc('get_my_resources'),sb.rpc('get_my_lesson_reports'),sb.rpc('get_my_lesson_checkins')
+        sb.rpc('get_my_review_items'),
+        sb.rpc('get_my_goals'),
+        sb.rpc('get_my_lesson_reports')
       ]);
-      const err=l.error||h.error||t.error||rv.error||g.error||q.error||r.error||rep.error||ci.error;if(err)throw err;
+      const err=l.error||h.error||t.error||rv.error||g.error||rep.error;
+      if(err)throw err;
       if(S.studentTab!=='today'||!document.body.contains(root))return;
-      const lessons=Array.isArray(l.data)?l.data:[],homeworks=h.data||[],tests=t.data||[],review=Array.isArray(rv.data)?rv.data:[],goals=Array.isArray(g.data)?g.data:[],questions=Array.isArray(q.data)?q.data:[],resources=Array.isArray(r.data)?r.data:[],reports=Array.isArray(rep.data)?rep.data:[],checkins=Array.isArray(ci.data)?ci.data:[];
+
+      const lessons=Array.isArray(l.data)?l.data:[],homeworks=h.data||[],tests=t.data||[];
+      const review=Array.isArray(rv.data)?rv.data:[],goals=Array.isArray(g.data)?g.data:[],reports=Array.isArray(rep.data)?rep.data:[];
       const now=Date.now(),today=todayDay();
       const upcoming=lessons.filter(x=>x.status==='assigned'&&x.scheduled_at&&new Date(x.scheduled_at).getTime()>=now-5*60000).sort((a,b)=>new Date(a.scheduled_at)-new Date(b.scheduled_at));
       const next=upcoming[0]||null;
-      const assignedHw=homeworks.filter(x=>x.status==='assigned'),revision=assignedHw.filter(x=>x.revision_requested_at),overdue=assignedHw.filter(x=>x.due_at&&new Date(x.due_at).getTime()<now&&!x.revision_requested_at),dueHw=assignedHw.filter(x=>!x.revision_requested_at).sort((a,b)=>new Date(a.due_at||'2999-12-31')-new Date(b.due_at||'2999-12-31'));
+      const assignedHw=homeworks.filter(x=>x.status==='assigned');
+      const revision=assignedHw.filter(x=>x.revision_requested_at);
+      const overdue=assignedHw.filter(x=>x.due_at&&new Date(x.due_at).getTime()<now&&!x.revision_requested_at);
+      const dueHw=assignedHw.filter(x=>!x.revision_requested_at).sort((a,b)=>new Date(a.due_at||'2999-12-31')-new Date(b.due_at||'2999-12-31'));
       const assignedTests=tests.filter(x=>x.status==='assigned');
       const dueReview=review.filter(x=>x.next_review_at&&x.next_review_at<=today).sort((a,b)=>Number(a.mastery||100)-Number(b.mastery||100));
-      const openQuestions=questions.filter(x=>x.status!=='resolved'),answers=openQuestions.filter(x=>x.teacher_reply);
       const activeGoals=goals.filter(x=>x.status==='active');
-      const publishedResources=resources.filter(x=>x.visible_to_student!==false).sort((a,b)=>(Number(b.pinned)-Number(a.pinned))||String(b.created_at||'').localeCompare(String(a.created_at||'')));
       const latestReport=[...reports].sort((a,b)=>String(b.created_at||'').localeCompare(String(a.created_at||'')))[0]||null;
-      const completed=[...lessons].filter(x=>x.status==='completed').sort((a,b)=>new Date(b.completed_at||b.scheduled_at||0)-new Date(a.completed_at||a.scheduled_at||0));
-      const latestCompleted=completed[0]||null,latestCompletedAt=latestCompleted?new Date(latestCompleted.completed_at||latestCompleted.scheduled_at||0).getTime():0;
-      const latestCompletedReport=latestCompleted?(reports.find(x=>x.lesson_id===latestCompleted.id)||null):null;
-      const latestCheckin=latestCompleted?(checkins.find(x=>x.lesson_id===latestCompleted.id)||null):null;
-      const showPostLesson=!!latestCompleted&&Date.now()-latestCompletedAt<=36*3600000;
 
-      let primary={kind:'clear',title:'На сегодня срочных заданий нет',text:'Можно спокойно повторить тему или задать вопрос преподавателю.',button:'Открыть прогресс',tab:'progress'};
-      if(revision[0])primary={kind:'revision',title:'Сначала исправь домашнюю',text:revision[0].title+(revision[0].revision_message?` · ${revision[0].revision_message}`:''),button:'Перейти к заданиям',tab:'tasks'};
-      else if(overdue[0])primary={kind:'overdue',title:'Начни с просроченной домашней',text:overdue[0].title,button:'Перейти к заданиям',tab:'tasks'};
-      else if(dueHw[0])primary={kind:'homework',title:'Следующий шаг — домашняя',text:`${dueHw[0].title}${dueHw[0].due_at?` · срок ${new Date(dueHw[0].due_at).toLocaleDateString('ru-RU',{day:'2-digit',month:'2-digit'})}`:''}`,button:'Перейти к заданиям',tab:'tasks'};
-      else if(assignedTests[0])primary={kind:'test',title:'Есть назначенный тест',text:assignedTests[0].title,button:'Перейти к заданиям',tab:'tasks'};
-      else if(dueReview[0])primary={kind:'review',title:'Полезно немного повторить',text:`${dueReview[0].label} · текущая уверенность ${Math.round(Number(dueReview[0].mastery||0))}%`,button:'Открыть прогресс',tab:'progress'};
+      let primary={kind:'clear',title:'К занятию всё спокойно',text:'Можно открыть доску заранее или посмотреть ближайшие задания.',button:'Открыть доску',tab:'board'};
+      if(revision[0])primary={kind:'revision',title:'Есть домашняя на доработку',text:revision[0].title+(revision[0].revision_message?` · ${revision[0].revision_message}`:''),button:'Открыть задания',tab:'tasks'};
+      else if(overdue[0])primary={kind:'overdue',title:'Есть просроченное задание',text:overdue[0].title,button:'Открыть задания',tab:'tasks'};
+      else if(dueHw[0])primary={kind:'homework',title:'Следующее задание',text:`${dueHw[0].title}${dueHw[0].due_at?` · срок ${new Date(dueHw[0].due_at).toLocaleDateString('ru-RU',{day:'2-digit',month:'2-digit'})}`:''}`,button:'Открыть задания',tab:'tasks'};
+      else if(assignedTests[0])primary={kind:'test',title:'Есть назначенный тест',text:assignedTests[0].title,button:'Открыть задания',tab:'tasks'};
+      else if(dueReview[0])primary={kind:'review',title:'Можно коротко повторить',text:`${dueReview[0].label} · ${Math.round(Number(dueReview[0].mastery||0))}%`,button:'Открыть прогресс',tab:'progress'};
 
       const focusItems=[
-        ...revision.slice(0,2).map(x=>({type:'Доработка',title:x.title,meta:'преподаватель ждёт исправления',tab:'tasks',cls:'warn'})),
+        ...revision.slice(0,2).map(x=>({type:'Доработка',title:x.title,meta:'нужно исправить',tab:'tasks',cls:'warn'})),
         ...overdue.slice(0,2).map(x=>({type:'Просрочено',title:x.title,meta:'лучше закрыть первым',tab:'tasks',cls:'warn'})),
         ...dueHw.filter(x=>!overdue.some(o=>o.id===x.id)).slice(0,3).map(x=>({type:'Домашняя',title:x.title,meta:x.due_at?`срок ${new Date(x.due_at).toLocaleDateString('ru-RU',{day:'2-digit',month:'2-digit'})}`:'без срока',tab:'tasks',cls:''})),
         ...assignedTests.slice(0,2).map(x=>({type:'Тест',title:x.title,meta:x.topics?.title||'',tab:'tasks',cls:''})),
-        ...dueReview.slice(0,3).map(x=>({type:'Повторение',title:x.label,meta:`${Math.round(Number(x.mastery||0))}% уверенности`,tab:'progress',cls:Number(x.mastery)<60?'warn':''}))
+        ...dueReview.slice(0,3).map(x=>({type:'Повторение',title:x.label,meta:`${Math.round(Number(x.mastery||0))}%`,tab:'progress',cls:Number(x.mastery)<60?'warn':''}))
       ].slice(0,5);
 
-      const weekEnd=now+7*86400000,weekLessons=upcoming.filter(x=>new Date(x.scheduled_at).getTime()<=weekEnd).slice(0,4);
-      const nextAt=next?new Date(next.scheduled_at).getTime():0, preflightVisible=!!next&&nextAt-now<=36*60*60*1000&&nextAt-now>=-5*60000;
+      const weekEnd=now+7*86400000,weekLessons=upcoming.filter(x=>new Date(x.scheduled_at).getTime()<=weekEnd).slice(0,5);
+      const nextAt=next?new Date(next.scheduled_at).getTime():0;
+      const preflightVisible=!!next&&nextAt-now<=36*60*60*1000&&nextAt-now>=-5*60000;
       const pendingBeforeLesson=next?assignedHw.filter(x=>!x.due_at||new Date(x.due_at).getTime()<=nextAt||x.revision_requested_at).length+assignedTests.length:0;
       const mediaReady=recentMediaSelfCheck();
-      root.innerHTML=`<section class="card mr-today-hero ${primary.kind}"><div><span class="pill">один шаг за раз</span><h2>${esc(primary.title)}</h2><p>${esc(primary.text)}</p><div class="actions"><button class="btn primary" id="mrTodayPrimary">${esc(primary.button)}</button><button class="btn" id="mrTodayAsk">Задать вопрос</button></div></div><div class="mr-today-next"><small>Следующий урок</small><b>${next?esc(next.topics?.title||'Урок'):'Пока не назначен'}</b><span>${next?esc(relativeStudentDate(next.scheduled_at)):'Когда преподаватель добавит урок, он появится здесь.'}</span>${next?'<button class="btn sm" id="mrTodayDevice">Проверить камеру и микрофон</button>':''}</div></section>
-        ${preflightVisible?`<section class="card mr-preflight"><div class="mr-card-head"><div><span class="pill">перед уроком</span><h2>Всё готово к занятию?</h2><p class="small muted">${esc(next.topics?.title||'Урок')} · ${esc(relativeStudentDate(next.scheduled_at))}</p></div><div class="mr-preflight-countdown"><small>До старта</small><b data-live-countdown="${esc(next.scheduled_at)}">${esc(liveCountdownText(next.scheduled_at))}</b></div></div><div class="mr-preflight-steps"><button data-today-tab="tasks" class="${pendingBeforeLesson?'warn':'done'}"><span>${pendingBeforeLesson?'1':'✓'}</span><div><small>Задания</small><b>${pendingBeforeLesson?`Осталось: ${pendingBeforeLesson}`:'Актуальных хвостов нет'}</b><em>${pendingBeforeLesson?'Открой и проверь, что нужно закончить':'Можно переходить к уроку'}</em></div><strong>→</strong></button><button id="mrPreflightDevice" data-preflight-device class="${mediaReady?'done':'warn'}"><span>${mediaReady?'✓':'2'}</span><div><small>Камера и микрофон</small><b data-media-ready-state class="pill ${mediaReady?'good':'warn'}">${mediaReady?'Проверено ✓':'Нужно проверить'}</b><em>Тест выполняется только на этом устройстве</em></div><strong>→</strong></button><button data-today-tab="board"><span>3</span><div><small>Рабочее место</small><b>Открыть доску</b><em>Можно зайти заранее и дождаться преподавателя</em></div><strong>→</strong></button></div></section>`:''}
-        ${showPostLesson?`<section class="card mr-postlesson-student"><div class="mr-card-head"><div><span class="pill good">после урока</span><h2>${latestCheckin?'Итог сохранён':'Как прошло занятие?'}</h2><p class="small muted">${esc(latestCompleted.topics?.title||'Урок')} · ${dateLong(latestCompleted.completed_at||latestCompleted.scheduled_at)}</p></div>${latestCheckin?`<span class="mr-post-confidence">${latestCheckin.confidence}/5</span>`:`<button class="btn primary" id="mrTodayCheckin">Оценить урок</button>`}</div><div class="mr-postlesson-body">${latestCompletedReport?.public_highlights?`<div><small>Получилось</small><p>${nl(latestCompletedReport.public_highlights)}</p></div>`:''}${latestCompletedReport?.public_focus?`<div><small>Повторить</small><p>${nl(latestCompletedReport.public_focus)}</p></div>`:''}${latestCompleted.homework_plan?`<div><small>К следующему уроку</small><p>${nl(latestCompleted.homework_plan)}</p></div>`:''}${latestCheckin?.note?`<div class="student-note"><small>Ты отметил</small><p>${nl(latestCheckin.note)}</p></div>`:''}${!latestCompletedReport?.public_highlights&&!latestCompletedReport?.public_focus&&!latestCompleted.homework_plan?'<div class="empty">Преподаватель ещё не добавил подробный итог.</div>':''}</div></section>`:''}
-        <div class="grid cols4 mr-today-metrics"><div class="card"><small>Заданий</small><b>${assignedHw.length+assignedTests.length}</b><span>сейчас назначено</span></div><div class="card"><small>Повторить</small><b>${dueReview.length}</b><span>тем сейчас</span></div><div class="card"><small>Ответы</small><b>${answers.length}</b><span>от преподавателя</span></div><div class="card"><small>Цели</small><b>${activeGoals.length}</b><span>активных</span></div></div>
-        <div class="grid cols2 mr-today-grid"><section class="card"><div class="mr-card-head"><div><h2>Что сделать сейчас</h2><p class="small muted">Mathroom ставит более срочные действия выше. Не нужно делать всё сразу.</p></div><button class="btn sm" data-today-tab="tasks">Все задания</button></div><div class="mr-today-actions">${focusItems.length?focusItems.map((x,i)=>`<button data-today-tab="${x.tab}" class="${x.cls}"><span>${i+1}</span><div><small>${esc(x.type)}</small><b>${esc(x.title)}</b><em>${esc(x.meta)}</em></div><strong>→</strong></button>`).join(''):'<div class="empty">Срочных учебных дел нет. Можно повторить то, что хочется закрепить.</div>'}</div></section>
-        <section class="card"><div class="mr-card-head"><div><h2>Ближайшие 7 дней</h2><p class="small muted">Уроки и основные ориентиры.</p></div><button class="btn sm" data-today-tab="lessons">Все уроки</button></div><div class="mr-week-plan">${weekLessons.length?weekLessons.map(x=>`<div><span>${new Date(x.scheduled_at).toLocaleDateString('ru-RU',{weekday:'short',day:'2-digit',month:'2-digit'})}</span><b>${esc(x.topics?.title||'Урок')}</b><small>${compactClock(x.scheduled_at)} · ${Number(x.duration_minutes||60)} мин</small></div>`).join(''):'<div class="empty">На ближайшую неделю уроки пока не стоят.</div>'}${activeGoals[0]?`<div class="mr-week-goal"><span>Цель</span><b>${esc(activeGoals[0].title)}</b><small>${Math.round(Number(activeGoals[0].progress||0))}% выполнено</small></div>`:''}</div></section></div>
-        <div class="grid cols2 mr-today-grid"><section class="card"><div class="mr-card-head"><div><h2>Последнее с урока</h2><p class="small muted">Коротко, без лишней оценки себя.</p></div><button class="btn sm" data-today-tab="progress">Прогресс</button></div>${latestReport?`<div class="mr-today-report">${latestReport.public_highlights?`<div><span>Получилось</span><p>${nl(latestReport.public_highlights)}</p></div>`:''}${latestReport.public_focus?`<div><span>Можно повторить</span><p>${nl(latestReport.public_focus)}</p></div>`:''}${!latestReport.public_highlights&&!latestReport.public_focus?'<div class="empty">Подробный комментарий появится после следующего отчёта.</div>':''}</div>`:'<div class="empty">После урока здесь появится короткий итог.</div>'}</section>
-        <section class="card"><div class="mr-card-head"><div><h2>Полезные материалы</h2><p class="small muted">Закреплённые и свежие материалы преподавателя.</p></div><button class="btn sm" data-today-tab="progress">Все материалы</button></div><div class="mr-today-resources">${publishedResources.length?publishedResources.slice(0,4).map(x=>`<article><div><span class="pill">${x.pinned?'важное':x.kind==='link'?'ссылка':'заметка'}</span><b>${esc(x.title)}</b>${x.body?`<small>${esc(String(x.body).slice(0,130))}${String(x.body).length>130?'…':''}</small>`:''}</div>${x.kind==='link'&&safeResourceUrl(x.url)?`<button class="btn xs" data-today-resource="${x.id}" data-url="${esc(safeResourceUrl(x.url))}">Открыть</button>`:''}</article>`).join(''):'<div class="empty">Материалов пока нет.</div>'}</div></section></div>
-        <section class="card mr-today-calm"><div><span>?</span><div><h3>Если застрял — это не повод сидеть над задачей в одиночку</h3><p>Сформулируй, на каком шаге стало непонятно, и отправь вопрос преподавателю.</p></div></div><button class="btn" id="mrTodayAskBottom">Задать вопрос</button></section>`;
+
+      root.innerHTML=`<section class="card mr-today-hero ${primary.kind}"><div><span class="pill">подготовка к уроку</span><h2>${esc(primary.title)}</h2><p>${esc(primary.text)}</p><div class="actions"><button class="btn primary" id="mrTodayPrimary">${esc(primary.button)}</button></div></div><div class="mr-today-next"><small>Следующий урок</small><b>${next?esc(next.topics?.title||'Урок'):'Пока не назначен'}</b><span>${next?esc(relativeStudentDate(next.scheduled_at)):'Когда преподаватель добавит урок, он появится здесь.'}</span>${next?'<button class="btn sm" id="mrTodayDevice">Проверить камеру и микрофон</button>':''}</div></section>
+        ${preflightVisible?`<section class="card mr-preflight"><div class="mr-card-head"><div><span class="pill">перед уроком</span><h2>Проверка перед занятием</h2><p class="small muted">${esc(next.topics?.title||'Урок')} · ${esc(relativeStudentDate(next.scheduled_at))}</p></div><div class="mr-preflight-countdown"><small>До старта</small><b data-live-countdown="${esc(next.scheduled_at)}">${esc(liveCountdownText(next.scheduled_at))}</b></div></div><div class="mr-preflight-steps"><button data-today-tab="tasks" class="${pendingBeforeLesson?'warn':'done'}"><span>${pendingBeforeLesson?'1':'✓'}</span><div><small>Задания</small><b>${pendingBeforeLesson?`Осталось: ${pendingBeforeLesson}`:'Хвостов нет'}</b><em>${pendingBeforeLesson?'Проверь задания перед уроком':'Можно переходить к уроку'}</em></div><strong>→</strong></button><button id="mrPreflightDevice" data-preflight-device class="${mediaReady?'done':'warn'}"><span>${mediaReady?'✓':'2'}</span><div><small>Камера и микрофон</small><b data-media-ready-state class="pill ${mediaReady?'good':'warn'}">${mediaReady?'Проверено ✓':'Нужно проверить'}</b><em>Тест выполняется только на этом устройстве</em></div><strong>→</strong></button><button data-today-tab="board"><span>3</span><div><small>Доска</small><b>Открыть рабочую доску</b><em>Можно зайти заранее</em></div><strong>→</strong></button></div></section>`:''}
+        <div class="grid cols4 mr-today-metrics"><div class="card"><small>Заданий</small><b>${assignedHw.length+assignedTests.length}</b><span>сейчас назначено</span></div><div class="card"><small>Повторить</small><b>${dueReview.length}</b><span>тем сейчас</span></div><div class="card"><small>Уроков 7 дней</small><b>${weekLessons.length}</b><span>в расписании</span></div><div class="card"><small>Цели</small><b>${activeGoals.length}</b><span>активных</span></div></div>
+        <div class="grid cols2 mr-today-grid"><section class="card"><div class="mr-card-head"><div><h2>Перед следующим уроком</h2><p class="small muted">Только то, что относится к занятию и подготовке.</p></div><button class="btn sm" data-today-tab="tasks">Все задания</button></div><div class="mr-today-actions">${focusItems.length?focusItems.map((x,i)=>`<button data-today-tab="${x.tab}" class="${x.cls}"><span>${i+1}</span><div><small>${esc(x.type)}</small><b>${esc(x.title)}</b><em>${esc(x.meta)}</em></div><strong>→</strong></button>`).join(''):'<div class="empty">Срочных учебных дел нет.</div>'}</div></section>
+        <section class="card"><div class="mr-card-head"><div><h2>Ближайшие 7 дней</h2><p class="small muted">Только расписание занятий.</p></div><button class="btn sm" data-today-tab="lessons">Все уроки</button></div><div class="mr-week-plan">${weekLessons.length?weekLessons.map(x=>`<div><span>${new Date(x.scheduled_at).toLocaleDateString('ru-RU',{weekday:'short',day:'2-digit',month:'2-digit'})}</span><b>${esc(x.topics?.title||'Урок')}</b><small>${compactClock(x.scheduled_at)} · ${Number(x.duration_minutes||60)} мин</small></div>`).join(''):'<div class="empty">На ближайшую неделю уроки пока не стоят.</div>'}</div></section></div>
+        <section class="card"><div class="mr-card-head"><div><h2>Последний итог урока</h2><p class="small muted">Короткая памятка по пройденному — без чатов и сообщений между занятиями.</p></div><button class="btn sm" data-today-tab="progress">Прогресс</button></div>${latestReport?`<div class="mr-today-report">${latestReport.public_highlights?`<div><span>Получилось</span><p>${nl(latestReport.public_highlights)}</p></div>`:''}${latestReport.public_focus?`<div><span>Повторить</span><p>${nl(latestReport.public_focus)}</p></div>`:''}${!latestReport.public_highlights&&!latestReport.public_focus?'<div class="empty">Комментарий появится после следующего урока.</div>':''}</div>`:'<div class="empty">После проведённого урока здесь может появиться короткий итог.</div>'}</section>`;
+
       root.dataset.ready='1';
       root.querySelector('#mrTodayPrimary').onclick=()=>studentTabGo(primary.tab);
-      root.querySelector('#mrTodayAsk').onclick=openStudentQuestionComposer;root.querySelector('#mrTodayAskBottom').onclick=openStudentQuestionComposer;
       root.querySelector('#mrTodayDevice')?.addEventListener('click',openMediaSelfCheck);
       root.querySelector('#mrPreflightDevice')?.addEventListener('click',openMediaSelfCheck);
-      root.querySelector('#mrTodayCheckin')?.addEventListener('click',()=>openStudentCheckin(latestCompleted.id));
       root.querySelectorAll('[data-today-tab]').forEach(b=>b.onclick=()=>studentTabGo(b.dataset.todayTab));
-      root.querySelectorAll('[data-today-resource]').forEach(b=>b.onclick=async()=>{try{await sb.rpc('mark_my_resource_opened',{p_resource_id:b.dataset.todayResource})}catch{}window.open(b.dataset.url,'_blank','noopener')});
       paintLiveCountdowns();
     }catch(e){
-      console.warn('[Mathroom student today]',e);root.dataset.ready='error';root.innerHTML=`<div class="card"><h2>Сегодня</h2><div class="notice warn">Не удалось собрать сводку. Обнови страницу; остальные разделы кабинета продолжают работать.</div></div>`;
+      console.warn('[Mathroom student today]',e);
+      root.dataset.ready='error';
+      root.innerHTML=`<div class="card"><h2>Сегодня</h2><div class="notice warn">Не удалось собрать сводку. Обнови страницу; остальные разделы кабинета продолжают работать.</div></div>`;
     }
   }
+
 
 
   // Iteration 20 — student-initiated schedule-change requests with teacher confirmation.
@@ -3220,7 +3233,7 @@
   }
   function jumpTeacherView(view){document.querySelector(`[data-nav="${CSS.escape(view)}"]`)?.click()}
 
-  function quickJumpEntries(comms){
+  function quickJumpEntries(){
     const now=Date.now(),entries=[];
     const add=(type,id,title,meta,search,action,icon)=>entries.push({type,id,title,meta,search:`${title} ${meta||''} ${search||''}`.toLowerCase(),action,icon});
     [['dashboard','Главная'],['schedule','Расписание'],['students','Ученики'],['topics','Темы'],['bank','Банк задач'],['assignments','Задания'],['history','История'],['board','Доска']].forEach(([view,title])=>add('Раздел',view,title,'Открыть раздел',view,()=>jumpTeacherView(view),'↗'));
@@ -3229,7 +3242,6 @@
     (S.topics||[]).forEach(t=>add('Тема',t.id,t.title,`${t.grade} класс${t.section?` · ${t.section}`:''}`,'тема теория',()=>openTopicAnywhere(t.id),'Т'));
     const urgentHw=(S.homeworks||[]).filter(h=>h.status==='submitted'||(h.status==='assigned'&&h.revision_requested_at)||(h.status==='assigned'&&!h.revision_requested_at&&h.due_at&&new Date(h.due_at).getTime()<now));
     urgentHw.slice(0,30).forEach(h=>add('Задание',h.id,h.title,`${h.students?.name||'Ученик'} · ${h.status==='submitted'?'ждёт проверки':h.revision_requested_at?'доработка':'просрочено'}`,'домашняя дз проверка',()=>openAssignmentAnywhere('homework',h.id),'✓'));
-    (comms?.questions||[]).filter(q=>q.status!=='resolved').slice(0,30).forEach(q=>add('Вопрос',q.id,String(q.question||'Вопрос ученика').slice(0,80),`${q.students?.name||'Ученик'} · ${q.teacher_reply?'есть ответ':'нужен ответ'}`,'вопрос сообщение',()=>openTeacherQuestions(q.student_id),'?'));
     return entries;
   }
 
@@ -3237,7 +3249,7 @@
     if(S.access||!S.user)return;
     const existing=document.querySelector('.mr-quickjump-modal');if(existing){existing.querySelector('#mrQuickInput')?.focus();return;}
     try{
-      const comms=await loadTeacherComms('',false).catch(()=>({questions:[]})),entries=quickJumpEntries(comms);
+      const entries=quickJumpEntries();
       const m=modal(`<div class="mr-quickjump"><div class="mr-card-head"><div><h2>Быстрый переход</h2><p class="muted">Найди ученика, урок, тему, задание или раздел.</p></div><span class="pill">Ctrl / ⌘ + K</span></div><div class="mr-quick-search"><span>⌕</span><input id="mrQuickInput" autocomplete="off" placeholder="Например: Иван, квадратные уравнения, ДЗ…"><kbd>Esc</kbd></div><div id="mrQuickResults" class="mr-quick-results"></div><div class="small muted mr-quick-hint">↑ ↓ — выбрать · Enter — открыть</div></div>`,'wide-modal mr-quickjump-modal');
       const input=m.querySelector('#mrQuickInput'),body=m.querySelector('#mrQuickResults');let visible=[],active=0;
       const draw=()=>{
@@ -3264,9 +3276,9 @@
   }
 
   function teacherActionLabel(item){
-    return ({homework:'Проверить',question:'Ответить',schedule_request:'Разобрать',attendance:'Отметить',wrap:'Закрыть',prep:'Подготовить',checkin:'Открыть'})[item.kind]||'Открыть';
+    return ({homework:'Проверить',attendance:'Отметить',wrap:'Закрыть',prep:'Подготовить'})[item.kind]||'Открыть';
   }
-  function teacherActionIcon(kind){return ({homework:'✓',question:'?',schedule_request:'↔',attendance:'●',wrap:'↺',prep:'◷',checkin:'!'})[kind]||'•'}
+  function teacherActionIcon(kind){return ({homework:'✓',attendance:'●',wrap:'↺',prep:'◷'})[kind]||'•'}
 
   async function enhanceTeacherActionCenter(){
     if(S.access||S.view!=='dashboard'||document.querySelector('#mrTeacherActionCenter'))return;
@@ -3275,10 +3287,6 @@
       const now=Date.now(),items=[];
       const add=(kind,priority,title,meta,data={})=>items.push({kind,priority,title,meta,...data});
       (S.homeworks||[]).filter(h=>h.status==='submitted').forEach(h=>add('homework',100,`ДЗ ждёт проверки · ${h.students?.name||'Ученик'}`,h.title,{id:h.id,student_id:h.student_id}));
-      const comms=await loadTeacherComms('',false).catch(()=>({questions:[],checkins:[]}));
-      (comms.questions||[]).filter(q=>q.status!=='resolved'&&!String(q.teacher_reply||'').trim()).forEach(q=>add('question',95,`Новый вопрос · ${q.students?.name||'Ученик'}`,String(q.question||'').slice(0,140),{student_id:q.student_id,id:q.id}));
-      const scheduleRequests=(await loadTeacherScheduleRequests(false).catch(()=>[])).filter(r=>r.status==='pending');
-      scheduleRequests.forEach(r=>{const l=scheduleRequestLesson(r),until=l?.scheduled_at?new Date(l.scheduled_at).getTime()-now:Infinity,priority=until<=24*3600000?99:92;add('schedule_request',priority,`${scheduleRequestKindLabel(r.kind)} · ${scheduleRequestStudent(r)?.name||'Ученик'}`,`${l?.topics?.title||'Урок'} · ${l?.scheduled_at?dateLong(l.scheduled_at):'дата недоступна'}${r.kind==='reschedule'&&r.preferred_at?` → ${dateLong(r.preferred_at)}`:''}`,{request:r,student_id:r.student_id,lesson_id:r.lesson_id})});
       (S.lessons||[]).filter(l=>pastUnmarked(l)&&now-new Date(l.scheduled_at).getTime()<=14*86400000).sort((a,b)=>new Date(b.scheduled_at)-new Date(a.scheduled_at)).slice(0,12).forEach(l=>add('attendance',90,`Не отмечена посещаемость · ${lessonStudentName(l)}`,`${lessonTopicName(l)} · ${dateLong(l.scheduled_at)}`,{lesson_id:l.id}));
       const recentCompleted=(S.lessons||[]).filter(l=>l.status==='completed'&&Date.now()-new Date(l.completed_at||l.scheduled_at).getTime()<=36*3600000);
       let reportIds=new Set();
@@ -3286,28 +3294,23 @@
       recentCompleted.filter(l=>!reportIds.has(l.id)).forEach(l=>add('wrap',88,`Нет итога урока · ${lessonStudentName(l)}`,`${lessonTopicName(l)} · ${dateLong(l.completed_at||l.scheduled_at)}`,{lesson_id:l.id}));
       const prep=await loadPrepDataset(false).catch(()=>({lessons:[],plans:[]}));
       (prep.lessons||[]).filter(l=>{const dt=new Date(l.scheduled_at).getTime()-now;const plan=(prep.plans||[]).find(p=>p.lesson_id===l.id);return dt>=-5*60000&&dt<=48*3600000&&plan?.prep_status!=='ready'}).forEach(l=>add('prep',80,`Подготовить урок · ${lessonStudentName(l)}`,`${lessonTopicName(l)} · ${relativeStudentDate(l.scheduled_at)}`,{lesson_id:l.id}));
-      const lowByStudent=new Map();
-      (comms.checkins||[]).filter(x=>Number(x.confidence)<=2&&now-new Date(x.created_at).getTime()<14*86400000).forEach(x=>{if(!lowByStudent.has(x.student_id))lowByStudent.set(x.student_id,x)});
-      [...lowByStudent.values()].forEach(x=>add('checkin',65,`После урока было сложно · ${x.students?.name||'Ученик'}`,`${x.lessons?.topics?.title||'Урок'} · самооценка ${x.confidence}/5`,{student_id:x.student_id}));
       items.sort((a,b)=>b.priority-a.priority);
-      const urgent=items.filter(x=>x.priority>=90).length,study=items.filter(x=>['homework','question','checkin'].includes(x.kind)).length,ops=items.filter(x=>['schedule_request','attendance','wrap','prep'].includes(x.kind)).length;
+      const urgent=items.filter(x=>x.priority>=90).length,checks=items.filter(x=>x.kind==='homework').length,lessons=items.filter(x=>['attendance','wrap','prep'].includes(x.kind)).length;
       const box=document.createElement('section');box.id='mrTeacherActionCenter';box.className='card mr-action-center';
-      box.innerHTML=`<div class="mr-card-head"><div><div class="actions"><span class="pill ${urgent?'warn':'good'}">${urgent?`срочно ${urgent}`:'без срочного'}</span><span class="pill">в работе ${items.length}</span></div><h2>К обработке</h2><p class="small muted">Одна очередь того, что требует действия преподавателя. Более срочное стоит выше.</p></div><button class="btn sm" id="mrActionQuickJump">Быстрый переход</button></div><div class="grid cols3 mr-action-metrics"><div><small>Учебное</small><b>${study}</b><span>ДЗ, вопросы, сигналы</span></div><div><small>Организация</small><b>${ops}</b><span>переносы и уроки</span></div><div><small>Всего</small><b>${items.length}</b><span>${items.length?'можно разбирать сверху вниз':'всё закрыто'}</span></div></div><div class="mr-action-list">${items.length?items.slice(0,10).map((x,i)=>`<article class="mr-action-row ${x.priority>=90?'urgent':''}"><span class="mr-action-icon">${teacherActionIcon(x.kind)}</span><div><small>${i===0?'Следующее действие':x.kind==='homework'?'Задание':x.kind==='question'?'Сообщение':x.kind==='schedule_request'?'Расписание':x.kind==='prep'?'До урока':x.kind==='wrap'?'После урока':x.kind==='attendance'?'Журнал':'Сигнал ученика'}</small><b>${esc(x.title)}</b><em>${esc(x.meta||'')}</em></div><button class="btn sm ${i===0?'primary':''}" data-action-index="${i}">${teacherActionLabel(x)}</button></article>`).join(''):'<div class="empty">Очередь пуста — обязательных действий сейчас нет.</div>'}</div>${items.length>10?`<div class="small muted mr-action-more">Ещё ${items.length-10} пунктов доступны в профильных разделах.</div>`:''}`;
+      box.innerHTML=`<div class="mr-card-head"><div><div class="actions"><span class="pill ${urgent?'warn':'good'}">${urgent?`срочно ${urgent}`:'без срочного'}</span><span class="pill">в работе ${items.length}</span></div><h2>К обработке</h2><p class="small muted">Только действия, связанные с проведением и закрытием уроков.</p></div><button class="btn sm" id="mrActionQuickJump">Быстрый переход</button></div><div class="grid cols3 mr-action-metrics"><div><small>Проверка</small><b>${checks}</b><span>сданные задания</span></div><div><small>Уроки</small><b>${lessons}</b><span>подготовка и завершение</span></div><div><small>Всего</small><b>${items.length}</b><span>${items.length?'можно разбирать сверху вниз':'всё закрыто'}</span></div></div><div class="mr-action-list">${items.length?items.slice(0,10).map((x,i)=>`<article class="mr-action-row ${x.priority>=90?'urgent':''}"><span class="mr-action-icon">${teacherActionIcon(x.kind)}</span><div><small>${i===0?'Следующее действие':x.kind==='homework'?'Задание':x.kind==='prep'?'До урока':x.kind==='wrap'?'После урока':'Журнал'}</small><b>${esc(x.title)}</b><em>${esc(x.meta||'')}</em></div><button class="btn sm ${i===0?'primary':''}" data-action-index="${i}">${teacherActionLabel(x)}</button></article>`).join(''):'<div class="empty">Очередь пуста — обязательных действий сейчас нет.</div>'}</div>`;
       const work=document.querySelector('#mrTeacherWorkday');if(work)work.insertAdjacentElement('beforebegin',box);else{const top=content.querySelector('.topbar');top?top.insertAdjacentElement('afterend',box):content.prepend(box)}
       box.querySelector('#mrActionQuickJump').onclick=openTeacherQuickJump;
-      box.querySelectorAll('[data-action-index]').forEach(b=>b.onclick=()=>{const x=items[Number(b.dataset.actionIndex)];if(!x)return;if(x.kind==='homework')openAssignmentAnywhere('homework',x.id);if(x.kind==='question')openTeacherQuestions(x.student_id);if(x.kind==='schedule_request')openTeacherScheduleRequest(x.request);if(x.kind==='attendance')openAttendanceModal(x.lesson_id);if(x.kind==='wrap')openLessonWrapUp(x.lesson_id);if(x.kind==='prep')openLessonPreparation(x.lesson_id);if(x.kind==='checkin')openStudentProfileAnywhere(x.student_id)});
+      box.querySelectorAll('[data-action-index]').forEach(b=>b.onclick=()=>{const x=items[Number(b.dataset.actionIndex)];if(!x)return;if(x.kind==='homework')openAssignmentAnywhere('homework',x.id);if(x.kind==='attendance')openAttendanceModal(x.lesson_id);if(x.kind==='wrap')openLessonWrapUp(x.lesson_id);if(x.kind==='prep')openLessonPreparation(x.lesson_id)});
     }catch(e){console.warn('[Mathroom action center]',e)}
   }
 
   async function refreshNonLessonEnhancements() {
-    if (!S.access && S.view === 'profile') { await enhanceTeacherProfile(); await enhanceStudentAttendanceProfile(); await enhanceTeacherStudentCommunication(); await enhanceSmartPreparation(); await enhanceAttentionOverview(); await enhanceRoadmapOverview(); await enhanceMasteryOverview(); await enhanceLearningIntelligence(); await enhanceTargetTrajectoryOverview(); await enhanceActivityOverview(); }
+    if (!S.access && S.view === 'profile') { await enhanceTeacherProfile(); await enhanceStudentAttendanceProfile(); await enhanceSmartPreparation(); await enhanceAttentionOverview(); await enhanceRoadmapOverview(); await enhanceMasteryOverview(); await enhanceLearningIntelligence(); await enhanceTargetTrajectoryOverview(); await enhanceActivityOverview(); }
     if (!S.access) enhanceTeacherQuickJump();
-    if (!S.access && S.view === 'dashboard') { await enhanceTeacherActionCenter(); await enhanceTeacherOperationsDashboard(); await enhancePostLessonClosure(); await enhanceTeacherCommunicationDashboard(); await enhancePreparationCenter(); await enhanceDashboardHomeworkWatch(); }
-    if (!S.access && S.view === 'schedule') { await enhanceScheduleWorkspace(); await enhanceTeacherScheduleRequestsPanel(); }
-    if (S.access && S.studentTab === 'today') { await enhanceStudentToday(); await enhanceStudentScheduleToday(); }
+    if (!S.access && S.view === 'dashboard') { await enhanceTeacherActionCenter(); await enhanceTeacherOperationsDashboard(); await enhancePostLessonClosure(); await enhancePreparationCenter(); await enhanceDashboardHomeworkWatch(); }
+    if (!S.access && S.view === 'schedule') { await enhanceScheduleWorkspace(); }
+    if (S.access && S.studentTab === 'today') { await enhanceStudentToday(); }
     if (S.access && S.studentTab === 'progress') { await enhanceStudentGoals(); await enhanceStudentReview(); await enhanceStudentMastery(); await enhanceStudentProgressSnapshots(); await enhanceStudentActivity(); }
-    if (S.access && S.studentTab === 'lessons') { await enhanceStudentScheduleRequests(); }
-    if (S.access) { await enhanceStudentCommunication(); }
   }
 
   async function syncContext() {

@@ -365,3 +365,15 @@ button{cursor:pointer} a{color:inherit}.hidden{display:none!important}.muted{col
 .mr-request-kind{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:12px 0}.mr-request-kind label{cursor:pointer}.mr-request-kind input{position:absolute;opacity:0;pointer-events:none}.mr-request-kind span{display:grid;gap:3px;border:1px solid var(--line);border-radius:14px;padding:12px;background:#fff}.mr-request-kind input:checked+span{border-color:#17191c;box-shadow:0 0 0 2px #17191c0f}.mr-request-kind b{font-size:13px}.mr-request-kind small{font-size:11px;color:var(--muted)}.mr-request-summary{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:12px 0}.mr-request-summary>div{border:1px solid var(--line);border-radius:13px;padding:11px 12px;background:#fafbfc;display:grid;gap:4px}.mr-request-summary small{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;font-weight:800}.mr-request-summary b{font-size:13px}.mr-request-summary p{margin:0;font-size:12px;line-height:1.45}.mr-teacher-schedule-requests{border-color:#eadfce;background:#fffdf9}
 @media(max-width:760px){.mr-student-request-list article,.mr-teacher-request-list article{grid-template-columns:1fr}.mr-student-request-list article>.actions,.mr-teacher-request-list article>.btn{width:100%}.mr-student-request-list article>.actions .btn,.mr-teacher-request-list article>.btn{width:100%}.mr-student-schedule-today{align-items:flex-start;flex-direction:column}.mr-student-schedule-today>.btn{width:100%}.mr-request-kind,.mr-request-summary{grid-template-columns:1fr}}
 .mr-request-decisions{display:grid;gap:6px;border-top:1px solid var(--line);padding-top:10px}.mr-request-decisions>small{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;font-weight:850}.mr-request-decisions>div{display:grid;grid-template-columns:auto minmax(0,1fr);gap:4px 8px;align-items:center;padding:7px 0}.mr-request-decisions>div b{font-size:12px}.mr-request-decisions>div em{grid-column:2;font-size:11px;color:var(--muted);font-style:normal}
+
+/* cumulative-wip-21 — lesson-first workflow + board parity */
+.board-mode-switch{align-items:center;flex-wrap:wrap}
+.mr-delete-schedule-options{display:grid;gap:10px;margin-top:14px}
+.mr-delete-schedule-options .btn{justify-content:center}
+.mr-calendar-actions .btn.danger{margin-left:auto}
+@media(max-width:650px){
+  .board-mode-switch{align-items:stretch}
+  .board-mode-switch .search{width:100%!important}
+  .mr-calendar-actions .btn.danger{margin-left:0}
+}
+
