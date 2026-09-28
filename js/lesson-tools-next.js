@@ -42,8 +42,10 @@
       this.autoRecord=this.role==='teacher' && localStorage.getItem('mathroom.autoRecord')!=='0';
       this.recorder=null; this.recordChunks=[]; this.recordWritable=null; this.recordFileHandle=null; this.recordDirHandle=null; this.recordWriteChain=Promise.resolve(); this.recordUseOpfs=false; this.recordFileName=''; this.recordCanvas=null; this.recordCtx=null; this.recordAnim=0; this.recordBoardImage=null; this.recordBoardTimer=null; this.recordAudioContext=null; this.recordAudioDest=null;
       this.remoteRecording=false; this.recordSegment=1; this.recordStartedAt=0; this.recordSegmentTimer=null; this.recordStopping=false; this.recordShouldContinue=false;
+      this.peerId=(crypto.randomUUID?crypto.randomUUID():Math.random().toString(36).slice(2));
+      this.signalMode='db'; this.signalCursor=0; this.signalSince=new Date(Date.now()-3000).toISOString(); this.signalPollTimer=null; this.signalBusy=false; this.signalErrors=0;
       this.onOnline=()=>{if(!this.destroyed&&this.localStream&&this.remoteReady&&this.role==='teacher'&&this.pc?.connectionState!=='connected')this.makeOffer(true).catch(()=>{})};
-      window.addEventListener('online',this.onOnline); this.join(); this.prepareTurn();
+      window.addEventListener('online',this.onOnline); this.iceReadyPromise=this.prepareTurn(); this.join();
     }
     readDevicePrefs(){try{return JSON.parse(localStorage.getItem(`mathroom.devices.${this.role}`)||'{}')||{}}catch{return{}}}
     saveDevicePrefs(){localStorage.setItem(`mathroom.devices.${this.role}`,JSON.stringify(this.devicePrefs||{}))}
@@ -54,29 +56,119 @@
         this.turnReady=this.iceServersList.some(x=>String(Array.isArray(x.urls)?x.urls.join(' '):x.urls||'').includes('turn')); if(this.pc&&this.pc.signalingState!=='closed')this.pc.setConfiguration({iceServers:this.iceServersList}); this.paintStatus();
       }}catch(e){console.info('[Mathroom video] TURN credentials unavailable; STUN fallback remains active')}
     }
-    async join(){this.channel=sb.channel(signalTopic(this.lessonId),{config:{private:true}}).on('broadcast',{event:'signal'},({payload})=>this.onSignal(payload)).subscribe(status=>{this.subscribed=status==='SUBSCRIBED';if(this.subscribed){this.send('hello',{});if(this.localStream)this.send(this.role==='teacher'?'teacher-ready':'ready',{})}this.paintStatus()})}
-    send(kind,data={},to=''){if(!this.channel||!this.subscribed)return;Promise.resolve(this.channel.send({type:'broadcast',event:'signal',payload:{kind,data,from:this.role,to,at:Date.now()}})).catch(e=>console.warn('[Mathroom video] signal send failed',e))}
-    async onSignal(msg={}){if(this.destroyed||msg.from===this.role||(msg.to&&msg.to!==this.role))return;try{
-      if(msg.kind==='hello'){if(this.localStream)this.send(this.role==='teacher'?'teacher-ready':'ready',{});return}
-      if(msg.kind==='ready'||msg.kind==='teacher-ready'){this.remoteReady=true;this.status='Собеседник готов';this.paintStatus();if(this.role==='teacher'&&this.localStream)await this.makeOffer(false);return}
+    async join(){
+      this.signalMode='db';
+      try{
+        await this.pollSignals(true);
+        this.subscribed=true; this.signalErrors=0; this.paintStatus();
+        await this.send('hello',{});
+        if(this.localStream)await this.send(this.role==='teacher'?'teacher-ready':'ready',{},this.role==='teacher'?'student':'teacher');
+      }catch(e){
+        console.warn('[Mathroom video] DB signalling unavailable, Broadcast fallback',e);
+        this.startBroadcastFallback();
+      }
+    }
+    startBroadcastFallback(){
+      this.signalMode='broadcast';
+      try{if(this.channel)sb.removeChannel(this.channel)}catch{}
+      this.channel=sb.channel(signalTopic(this.lessonId),{config:{private:true}}).on('broadcast',{event:'signal'},({payload})=>this.onSignal(payload)).subscribe(status=>{
+        this.subscribed=status==='SUBSCRIBED';
+        if(this.subscribed){this.send('hello',{});if(this.localStream)this.send(this.role==='teacher'?'teacher-ready':'ready',{},this.role==='teacher'?'student':'teacher')}
+        this.paintStatus();
+      });
+    }
+    scheduleSignalPoll(delay){clearTimeout(this.signalPollTimer);if(this.destroyed||this.signalMode!=='db')return;this.signalPollTimer=setTimeout(()=>this.pollSignals(false).catch(()=>{}),delay)}
+    async pollSignals(initial=false){
+      if(this.destroyed||this.signalMode!=='db'||this.signalBusy)return;
+      this.signalBusy=true;
+      try{
+        const {data,error}=await sb.rpc('webrtc_get_signals',{p_lesson_id:this.lessonId,p_after_id:this.signalCursor,p_for_role:this.role,p_since:this.signalSince});
+        if(error)throw error;
+        this.subscribed=true; this.signalErrors=0;
+        const rows=Array.isArray(data)?data:[];
+        for(const row of rows){
+          this.signalCursor=Math.max(this.signalCursor,Number(row.id||0));
+          if(row.peer_id===this.peerId||row.sender_role===this.role)continue;
+          await this.onSignal({kind:row.kind,data:row.payload||{},from:row.sender_role,to:row.recipient_role||'',peerId:row.peer_id,at:row.created_at});
+        }
+        this.paintStatus();
+      }catch(e){
+        this.signalErrors++;
+        this.subscribed=false; this.paintStatus();
+        if(initial)throw e;
+        console.warn('[Mathroom video] signalling poll',e);
+      }finally{
+        this.signalBusy=false;
+        if(!initial)this.scheduleSignalPoll(this.pc?.connectionState==='connected'?1800:650);
+      }
+      if(initial)this.scheduleSignalPoll(350);
+    }
+    async send(kind,data={},to=''){
+      if(this.destroyed)return;
+      const payload={kind,data,from:this.role,to,peerId:this.peerId,at:Date.now()};
+      if(this.signalMode==='broadcast'){
+        if(!this.channel||!this.subscribed)return;
+        try{await this.channel.send({type:'broadcast',event:'signal',payload})}catch(e){console.warn('[Mathroom video] signal send failed',e)}
+        return;
+      }
+      try{
+        const {error}=await sb.rpc('webrtc_send_signal',{p_lesson_id:this.lessonId,p_from:this.role,p_to:to||'',p_kind:kind,p_payload:data||{},p_peer_id:this.peerId});
+        if(error)throw error;
+        this.subscribed=true; this.signalErrors=0; this.paintStatus();
+      }catch(e){
+        this.signalErrors++; this.subscribed=false; this.paintStatus();
+        console.warn('[Mathroom video] DB signal send failed',e);
+      }
+    }
+    async onSignal(msg={}){if(this.destroyed||msg.peerId===this.peerId||msg.from===this.role||(msg.to&&msg.to!==this.role))return;try{
+      if(msg.kind==='hello'){if(this.localStream)await this.send(this.role==='teacher'?'teacher-ready':'ready',{},this.role==='teacher'?'student':'teacher');return}
+      if(msg.kind==='ready'||msg.kind==='teacher-ready'){this.remoteReady=true;this.status='Собеседник готов';this.paintStatus();if(this.role==='student'&&msg.kind==='teacher-ready'&&this.localStream)await this.send('ready',{},'teacher');if(this.role==='teacher'&&this.localStream)await this.makeOffer(false);return}
       if(msg.kind==='offer'&&this.role==='student'){if(!this.localStream){this.pendingOffer=msg.data;this.status='Преподаватель готов — включи камеру';this.paintStatus();return}await this.acceptOffer(msg.data);return}
-      if(msg.kind==='answer'&&this.role==='teacher'){const pc=this.ensurePeer();if(pc.signalingState==='have-local-offer'){await pc.setRemoteDescription(new RTCSessionDescription(msg.data));await this.flushIce()}return}
-      if(msg.kind==='ice'){const cand=msg.data?new RTCIceCandidate(msg.data):null;if(!cand)return;const pc=this.ensurePeer();if(pc.remoteDescription)await pc.addIceCandidate(cand).catch(()=>{});else this.pendingIce.push(cand);return}
+      if(msg.kind==='answer'&&this.role==='teacher'){const pc=this.ensurePeer();if(pc.signalingState==='have-local-offer'){await pc.setRemoteDescription(new RTCSessionDescription(msg.data));this.status='Проверяем маршрут…';this.paintStatus()}return}
       if(msg.kind==='recording'){this.remoteRecording=!!msg.data?.active;this.paintStatus();return}
       if(msg.kind==='hangup'){this.closePeer(false,true);this.status='Собеседник завершил видеосвязь';this.paintStatus()}
-    }catch(e){console.error('[Mathroom video] signal error',e);this.status='Ошибка соединения — нажми «Переподключить»';this.paintStatus()}}
+    }catch(e){console.error('[Mathroom video] signal error',e);this.status='Ошибка обмена WebRTC — нажми «Переподключить»';this.paintStatus()}}
     attachLocalTracks(pc=this.pc){if(!pc||!this.localStream)return;for(const track of this.localStream.getTracks()){const sender=pc.getSenders().find(s=>s.track?.kind===track.kind);if(!sender)pc.addTrack(track,this.localStream);else if(sender.track!==track&&!(track.kind==='video'&&this.screenTrack))sender.replaceTrack(track).catch(()=>{})}}
     ensurePeer(){
       if(this.pc&&this.pc.signalingState!=='closed'){this.attachLocalTracks(this.pc);return this.pc}
       const pc=new RTCPeerConnection({iceServers:this.iceServersList});this.pc=pc;this.pendingIce=[];this.remoteStream=new MediaStream();this.attachLocalTracks(pc);
       pc.ontrack=e=>{const tracks=e.streams?.[0]?.getTracks?.()||[e.track];for(const track of tracks)if(!this.remoteStream.getTracks().some(t=>t.id===track.id))this.remoteStream.addTrack(track);this.bindMedia()};
-      pc.onicecandidate=e=>{if(e.candidate)this.send('ice',e.candidate.toJSON())};
+      pc.onicecandidate=e=>{if(!e.candidate)this.paintStatus()};
       pc.onconnectionstatechange=()=>{const st=pc.connectionState;if(st==='connected'){clearTimeout(this.retryTimer);clearTimeout(this.disconnectTimer);this.status='Соединено';this.bindMedia();this.startStats();if(this.role==='teacher'&&this.autoRecord)setTimeout(()=>this.startRecording(true).catch(()=>{}),700)}else if(st==='connecting')this.status='Подключение…';else if(st==='disconnected'){this.status='Связь прервана · восстанавливаем…';clearTimeout(this.disconnectTimer);this.disconnectTimer=setTimeout(()=>{if(this.pc===pc&&pc.connectionState!=='connected'&&this.role==='teacher'&&this.localStream&&this.remoteReady)this.makeOffer(true).catch(()=>{})},2400)}else if(st==='failed'){this.status=this.turnReady?'Соединение не установлено · переподключение…':'P2P не установлено · проверь TURN';if(this.role==='teacher'&&this.localStream&&this.remoteReady){clearTimeout(this.retryTimer);this.retryTimer=setTimeout(()=>this.makeOffer(true).catch(()=>{}),1200)}}this.paintStatus()};
       pc.oniceconnectionstatechange=()=>{if(pc.iceConnectionState==='checking'){this.status='Проверяем сеть…';this.paintStatus()}};return pc;
     }
-    async flushIce(){if(!this.pc?.remoteDescription)return;for(const c of this.pendingIce.splice(0))await this.pc.addIceCandidate(c).catch(()=>{})}
-    async makeOffer(iceRestart=false){if(this.role!=='teacher'||!this.localStream||this.makingOffer)return;this.makingOffer=true;try{let pc=this.ensurePeer();if(pc.signalingState!=='stable'){if(!iceRestart)return;this.closePeer(false,false);pc=this.ensurePeer()}const offer=await pc.createOffer(iceRestart?{iceRestart:true}:undefined);await pc.setLocalDescription(offer);this.send('offer',pc.localDescription.toJSON(),'student');this.status=iceRestart?'Переподключение…':'Ожидаем ученика…';this.paintStatus()}finally{this.makingOffer=false}}
-    async acceptOffer(data){let pc=this.ensurePeer();if(pc.signalingState!=='stable'){try{await pc.setLocalDescription({type:'rollback'})}catch{this.closePeer(false,false);pc=this.ensurePeer()}}await pc.setRemoteDescription(new RTCSessionDescription(data));await this.flushIce();const answer=await pc.createAnswer();await pc.setLocalDescription(answer);this.send('answer',pc.localDescription.toJSON(),'teacher');this.status='Подключение…';this.paintStatus()}
+    async flushIce(){}
+    async waitIceGathering(pc,timeout=3200){
+      if(!pc||pc.iceGatheringState==='complete')return;
+      await Promise.race([new Promise(resolve=>{const on=()=>{if(pc.iceGatheringState==='complete'){pc.removeEventListener('icegatheringstatechange',on);resolve()}};pc.addEventListener('icegatheringstatechange',on)}),wait(timeout)]);
+    }
+    async makeOffer(iceRestart=false){
+      if(this.role!=='teacher'||!this.localStream||this.makingOffer)return;
+      this.makingOffer=true;
+      try{
+        await Promise.race([this.iceReadyPromise||Promise.resolve(),wait(900)]);
+        let pc=this.ensurePeer();
+        if(pc.signalingState!=='stable'){if(!iceRestart)return;this.closePeer(false,false);pc=this.ensurePeer()}
+        const offer=await pc.createOffer(iceRestart?{iceRestart:true}:undefined);
+        await pc.setLocalDescription(offer);
+        this.status='Собираем сетевой маршрут…';this.paintStatus();
+        await this.waitIceGathering(pc);
+        await this.send('offer',{type:pc.localDescription.type,sdp:pc.localDescription.sdp},'student');
+        this.status=iceRestart?'Переподключение…':'Ожидаем ответ ученика…';this.paintStatus();
+      }finally{this.makingOffer=false}
+    }
+    async acceptOffer(data){
+      await Promise.race([this.iceReadyPromise||Promise.resolve(),wait(900)]);
+      let pc=this.ensurePeer();
+      if(pc.signalingState!=='stable'){try{await pc.setLocalDescription({type:'rollback'})}catch{this.closePeer(false,false);pc=this.ensurePeer()}}
+      await pc.setRemoteDescription(new RTCSessionDescription(data));
+      const answer=await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+      this.status='Собираем сетевой маршрут…';this.paintStatus();
+      await this.waitIceGathering(pc);
+      await this.send('answer',{type:pc.localDescription.type,sdp:pc.localDescription.sdp},'teacher');
+      this.status='Проверяем соединение…';this.paintStatus();
+    }
     constraints(){const v=this.devicePrefs.video?{deviceId:{exact:this.devicePrefs.video},width:{ideal:1280},height:{ideal:720}}:{width:{ideal:1280},height:{ideal:720}};const a={echoCancellation:true,noiseSuppression:true,autoGainControl:true,...(this.devicePrefs.audio?{deviceId:{exact:this.devicePrefs.audio}}:{})};return{video:v,audio:a}}
     async refreshDevices(){try{const d=await navigator.mediaDevices.enumerateDevices();this.devices.video=d.filter(x=>x.kind==='videoinput');this.devices.audio=d.filter(x=>x.kind==='audioinput');this.devices.output=d.filter(x=>x.kind==='audiooutput');this.renderDeviceOptions()}catch{}}
     async startMedia(reconnect=false){try{if(!navigator.mediaDevices?.getUserMedia)throw new Error('Камера недоступна в этом браузере');if(!window.isSecureContext)throw new Error('Для камеры нужен HTTPS');if(!this.localStream){try{this.localStream=await navigator.mediaDevices.getUserMedia(this.constraints())}catch(e){if((e?.name==='OverconstrainedError'||e?.name==='NotFoundError')&&(this.devicePrefs.video||this.devicePrefs.audio)){this.devicePrefs={...this.devicePrefs,video:'',audio:''};this.saveDevicePrefs();this.localStream=await navigator.mediaDevices.getUserMedia({video:{width:{ideal:1280},height:{ideal:720}},audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true}})}else throw e}}if(reconnect)this.closePeer(false,false);this.ensurePeer();this.bindMedia();await this.refreshDevices();this.status='Камера и микрофон включены';this.paintStatus();this.send(this.role==='teacher'?'teacher-ready':'ready',{});this.send('hello',{});if(this.role==='student'&&this.pendingOffer){const offer=this.pendingOffer;this.pendingOffer=null;await this.acceptOffer(offer)}if(this.role==='teacher'&&this.remoteReady)await this.makeOffer(reconnect)}catch(e){fail(e)}}
@@ -95,7 +187,7 @@
     startStats(){this.stopStats();this.statsTimer=setInterval(()=>this.collectStats().catch(()=>{}),3000);this.collectStats().catch(()=>{})}
     stopStats(){clearInterval(this.statsTimer);this.statsTimer=null}
     async collectStats(){if(!this.pc||this.pc.connectionState!=='connected')return;const reports=await this.pc.getStats();let pair=null,local=null,remote=null,received=0,packets=0,lost=0;reports.forEach(r=>{if(r.type==='candidate-pair'&&r.state==='succeeded'&&r.nominated)pair=r;if(r.type==='inbound-rtp'&&!r.isRemote){received+=Number(r.bytesReceived||0);packets+=Number(r.packetsReceived||0);lost+=Number(r.packetsLost||0)}});if(pair){local=reports.get(pair.localCandidateId);remote=reports.get(pair.remoteCandidateId)}const now=Date.now(),dt=this.lastBytesAt?(now-this.lastBytesAt)/1000:0;const bitrate=dt>0?Math.max(0,Math.round((received-this.lastBytes)*8/dt/1000)):null;this.lastBytes=received;this.lastBytesAt=now;const total=packets+lost;this.stats={rtt:pair?.currentRoundTripTime!=null?Math.round(pair.currentRoundTripTime*1000):null,loss:total>0?Math.max(0,Math.round(lost*1000/total)/10):0,route:local?.candidateType==='relay'||remote?.candidateType==='relay'?'TURN relay':`${String(local?.candidateType||'P2P').toUpperCase()} · ${String(pair?.protocol||local?.protocol||'udp').toUpperCase()}`,bitrate};this.paintStatus()}
-    paintStatus(){const el=this.panel?.querySelector('#mrVideoStatus')||document.querySelector('#mrVideoStatus');const text=`${this.status}${this.localStream?(this.turnReady?' · TURN готов':' · WebRTC'):''}${this.subscribed?'':' · сигналинг…'}`;if(el)el.textContent=text;const badge=this.panel?.querySelector('#mrTransportBadge');if(badge)badge.textContent=this.stats.route!=='—'?this.stats.route:(this.turnReady?'TURN / P2P':'P2P');const q=this.panel?.querySelector('#mrQuality');if(q)q.textContent=`${this.stats.rtt==null?'—':this.stats.rtt+' мс'} · потери ${this.stats.loss==null?'—':this.stats.loss+'%'}${this.stats.bitrate?` · ${this.stats.bitrate} кбит/с`:''}`;const rec=this.panel?.querySelector('#mrRecBadge');if(rec){const local=this.recorder?.state==='recording',active=this.role==='teacher'?local:this.remoteRecording;rec.hidden=!active;rec.textContent=this.role==='teacher'?`● REC · часть ${this.recordSegment}`:'● REC преподавателя'}}
+    paintStatus(){const el=this.panel?.querySelector('#mrVideoStatus')||document.querySelector('#mrVideoStatus');const sig=this.signalMode==='db'?'DB':'Realtime';const text=`${this.status}${this.localStream?(this.turnReady?' · TURN готов':' · WebRTC'):''}${this.subscribed?` · сигналинг ${sig}`:' · сигналинг недоступен'}`;if(el)el.textContent=text;const badge=this.panel?.querySelector('#mrTransportBadge');if(badge)badge.textContent=this.stats.route!=='—'?this.stats.route:(this.pc?.connectionState==='connected'?(this.turnReady?'TURN / P2P':'P2P'):(this.turnReady?'WebRTC + TURN':'WebRTC'));const q=this.panel?.querySelector('#mrQuality');if(q)q.textContent=`${this.stats.rtt==null?'—':this.stats.rtt+' мс'} · потери ${this.stats.loss==null?'—':this.stats.loss+'%'}${this.stats.bitrate?` · ${this.stats.bitrate} кбит/с`:''}`;const rec=this.panel?.querySelector('#mrRecBadge');if(rec){const local=this.recorder?.state==='recording',active=this.role==='teacher'?local:this.remoteRecording;rec.hidden=!active;rec.textContent=this.role==='teacher'?`● REC · часть ${this.recordSegment}`:'● REC преподавателя'}}
     renderDeviceOptions(){const root=this.panel;if(!root)return;const fill=(id,list,current,label)=>{const el=root.querySelector(id);if(!el)return;const value=current||'';el.innerHTML=`<option value="">${label}</option>`+list.map((d,i)=>`<option value="${esc(d.deviceId)}" ${d.deviceId===value?'selected':''}>${esc(d.label||`${label} ${i+1}`)}</option>`).join('')};fill('#mrVideoInput',this.devices.video,this.devicePrefs.video,'Камера');fill('#mrAudioInput',this.devices.audio,this.devicePrefs.audio,'Микрофон');fill('#mrAudioOutput',this.devices.output,this.devicePrefs.output,'Динамики')}
     renderButtons(){const root=this.panel||document,mic=root.querySelector?.('#mrVideoMic'),cam=root.querySelector?.('#mrVideoCam'),screen=root.querySelector?.('#mrVideoScreen'),float=root.querySelector?.('#mrVideoFloat'),recBtn=root.querySelector?.('#mrRecToggle');const at=this.localStream?.getAudioTracks?.()[0],vt=this.localStream?.getVideoTracks?.()[0];if(mic)mic.textContent=at?.enabled===false?'🔇 Микрофон выкл':'🎙 Микрофон вкл';if(cam)cam.textContent=vt?.enabled===false?'🚫 Камера выкл':'📹 Камера вкл';if(screen)screen.textContent=this.screenTrack?'🖥 Экран включён':'🖥 Экран';if(float)float.textContent=this.floating?'↙ Вернуть видео':'▱ Поверх доски';if(recBtn)recBtn.textContent=this.recorder?.state==='recording'?'■ Остановить запись':'● Запись'}
     preferredMime(){return['video/webm;codecs=vp9,opus','video/webm;codecs=vp8,opus','video/webm'].find(x=>window.MediaRecorder?.isTypeSupported?.(x))||''}
@@ -118,7 +210,7 @@
         const ar=host.querySelector('#mrAutoRecord');if(ar){ar.checked=this.autoRecord;ar.onchange=()=>{this.autoRecord=ar.checked;localStorage.setItem('mathroom.autoRecord',ar.checked?'1':'0');if(ar.checked&&this.pc?.connectionState==='connected')this.startRecording(true).catch(()=>{});if(!ar.checked)this.stopRecording(true).catch(()=>{})}}
       }
       this.panel=host;host.className=`mr-video-card ${(compact||this.userCompact)?'compact':''}`;const compactBtn=host.querySelector('#mrVideoCompact');if(compactBtn)compactBtn.textContent=this.userCompact?'↕ Развернуть':'↕ Компактно';const start=host.querySelector('#mrVideoStart');if(start)start.textContent=this.localStream?'Переподключить':'Включить камеру';this.applyFloating();this.bindMedia();this.renderButtons();this.paintStatus();this.refreshDevices().catch(()=>{})}
-    destroy(){this.destroyed=true;this.recordShouldContinue=false;this.end().catch(()=>{});window.removeEventListener('online',this.onOnline);if(this.channel)sb.removeChannel(this.channel);this.channel=null}
+    destroy(){this.destroyed=true;this.recordShouldContinue=false;clearTimeout(this.signalPollTimer);this.end().catch(()=>{});window.removeEventListener('online',this.onOnline);if(this.channel)sb.removeChannel(this.channel);this.channel=null}
   }
   async function getQueue(lessonId) {
     const { data, error } = await sb.from('lesson_queue_items').select('*').eq('lesson_id', lessonId).order('position');
@@ -3172,8 +3264,20 @@
     }
   });
 
+  let studentLessonWatchBusy=false;
+  const studentLessonWatchTimer=setInterval(async()=>{
+    if(!S.access||!S.student||studentLessonWatchBusy||document.hidden)return;
+    studentLessonWatchBusy=true;
+    try{
+      const {data,error}=await sb.rpc('get_my_lessons');if(error)return;
+      const active=(Array.isArray(data)?data:[]).find(x=>x.status==='in_progress')||null;
+      const currentId=S.studentLive?.lesson_id||null;
+      if((active?.id||null)!==currentId&&typeof window.renderStudent==='function')await window.renderStudent();
+    }catch(e){console.warn('[Mathroom student lesson watch]',e)}finally{studentLessonWatchBusy=false}
+  },2500);
+
   observer = new MutationObserver(scheduleSync);
   observer.observe(document.getElementById('app'), { childList: true, subtree: true });
-  window.addEventListener('beforeunload', () => { call?.destroy(); clearInterval(refreshTimer); observer?.disconnect(); });
+  window.addEventListener('beforeunload', () => { call?.destroy(); clearInterval(refreshTimer); clearInterval(studentLessonWatchTimer); observer?.disconnect(); });
   scheduleSync();
 })();
