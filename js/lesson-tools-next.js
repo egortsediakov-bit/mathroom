@@ -37,6 +37,10 @@
     } catch { return false; }
   }
 
+  function isMobileJazzClient() {
+    return !!(window.matchMedia?.('(max-width: 760px)')?.matches || /Android|iPhone|iPad|iPod/i.test(navigator.userAgent || ''));
+  }
+
   function ensureJazzStyles() {
     if (document.getElementById('mrJazzStyles')) return;
     const st = document.createElement('style'); st.id = 'mrJazzStyles';
@@ -44,10 +48,10 @@
       .mr-jazz-card{margin-top:12px;border:1px solid var(--line,#e5e7eb);border-radius:18px;background:#fff;padding:16px;box-shadow:0 8px 26px rgba(20,24,32,.05)}
       .mr-jazz-head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px}.mr-jazz-title{display:flex;align-items:center;gap:9px;flex-wrap:wrap}.mr-jazz-dot{width:9px;height:9px;border-radius:50%;background:#28a164;box-shadow:0 0 0 4px rgba(40,161,100,.12)}
       .mr-jazz-dot.wait{background:#b7bbc3;box-shadow:0 0 0 4px rgba(120,125,135,.10)}.mr-jazz-provider{font-size:12px;padding:5px 8px;border-radius:999px;background:#f4f5f7;color:#545b66;font-weight:700}.mr-jazz-copy{margin-top:7px;color:var(--muted,#747b85);font-size:13px;line-height:1.45}
-      .mr-jazz-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:13px}.mr-jazz-actions .btn{min-height:42px}.mr-jazz-primary{min-width:210px}.mr-jazz-hint{margin-top:11px;padding:10px 12px;border-radius:12px;background:#f7f8fa;font-size:12px;color:#686f79;line-height:1.45}
+      .mr-jazz-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:13px}.mr-jazz-actions .btn{min-height:42px}.mr-jazz-primary{min-width:210px}.mr-jazz-hint{margin-top:11px;padding:10px 12px;border-radius:12px;background:#f7f8fa;font-size:12px;color:#686f79;line-height:1.45}.mr-jazz-hint b{color:#3f4650}.mr-jazz-mobile-note{display:none}
       .mr-jazz-state{display:flex;align-items:center;gap:8px;font-size:13px;color:#4d5560;margin-top:5px}.mr-jazz-state strong{color:#20242a}.mr-jazz-error{background:#fff5f4;color:#9f2d22;border:1px solid #f2d5d1;border-radius:12px;padding:10px 12px;margin-top:10px;font-size:13px}
       .mr-jazz-settings-note{padding:11px 12px;background:#f7f8fa;border-radius:12px;margin:10px 0;font-size:13px;line-height:1.5}.mr-jazz-url-preview{word-break:break-all;background:#f6f7f8;padding:9px;border-radius:10px;font-size:12px}
-      @media(max-width:700px){.mr-jazz-head{flex-direction:column}.mr-jazz-actions{display:grid;grid-template-columns:1fr}.mr-jazz-actions .btn,.mr-jazz-primary{width:100%;min-height:46px}.mr-jazz-card{padding:14px}}
+      @media(max-width:700px){.mr-jazz-head{flex-direction:column}.mr-jazz-actions{display:grid;grid-template-columns:1fr}.mr-jazz-actions .btn,.mr-jazz-actions a.btn,.mr-jazz-primary{width:100%;min-height:50px;display:flex;align-items:center;justify-content:center}.mr-jazz-card{padding:14px}.mr-jazz-desktop-note{display:none}.mr-jazz-mobile-note{display:block}}
     `;
     document.head.appendChild(st);
   }
@@ -135,7 +139,13 @@
       m.querySelector('#mrJazzTest').onclick = () => {
         const url = String(input.value || '').trim();
         if (!isSaluteJazzUrl(url)) return toast('Вставь корректную ссылку SaluteJazz');
-        window.open(url, '_blank', 'noopener,noreferrer');
+        if (isMobileJazzClient()) {
+          const a = document.createElement('a');
+          a.href = url; a.target = '_blank'; a.rel = 'noopener noreferrer';
+          document.body.appendChild(a); a.click(); a.remove();
+        } else {
+          window.open(url, '_blank', 'noopener,noreferrer');
+        }
       };
       m.querySelector('#mrJazzSave').onclick = async () => {
         try {
@@ -147,13 +157,38 @@
       };
     }
 
+    popupGeometry() {
+      const availW = screen.availWidth || window.screen.width || 1440;
+      const availH = screen.availHeight || window.screen.height || 900;
+      const width = Math.min(410, Math.max(360, Math.round(availW * 0.24)));
+      const height = Math.min(590, Math.max(500, Math.round(availH * 0.66)));
+      const left = Math.max(0, availW - width - 18);
+      const top = Math.max(0, Math.round((availH - height) / 2));
+      return { width, height, left, top };
+    }
+
     popupFeatures() {
-      const mobile = window.matchMedia?.('(max-width: 760px)')?.matches || /Android|iPhone|iPad|iPod/i.test(navigator.userAgent || '');
-      if (mobile) return '';
-      const width = 470, height = Math.min(760, Math.max(600, (screen.availHeight || 800) - 100));
-      const left = Math.max(0, (screen.availWidth || 1400) - width - 28);
-      const top = 32;
-      return `popup=yes,width=${width},height=${height},left=${left},top=${top},resizable=yes,scrollbars=yes`;
+      if (isMobileJazzClient()) return '';
+      const g = this.popupGeometry();
+      return [
+        'popup=yes',
+        `width=${g.width}`, `height=${g.height}`,
+        `left=${g.left}`, `top=${g.top}`,
+        'resizable=yes', 'scrollbars=yes',
+        'toolbar=no', 'location=no', 'menubar=no', 'status=no'
+      ].join(',');
+    }
+
+    compactPopup(win) {
+      if (!win || isMobileJazzClient()) return;
+      const g = this.popupGeometry();
+      const apply = () => {
+        try { win.resizeTo(g.width, g.height); } catch {}
+        try { win.moveTo(g.left, g.top); } catch {}
+      };
+      apply();
+      setTimeout(apply, 120);
+      setTimeout(apply, 650);
     }
 
     openCall() {
@@ -164,20 +199,34 @@
         return;
       }
       if (!isSaluteJazzUrl(this.roomUrl)) return toast('Ссылка SaluteJazz настроена неверно');
+
+      if (isMobileJazzClient()) {
+        const a = document.createElement('a');
+        a.href = this.roomUrl;
+        a.target = '_blank';
+        a.rel = 'noopener noreferrer';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        return;
+      }
+
       try {
         if (this.popup && !this.popup.closed) {
+          this.compactPopup(this.popup);
           this.popup.focus();
           return;
         }
       } catch {}
-      const features = this.popupFeatures();
-      const opened = window.open(this.roomUrl, this.windowName, features || undefined);
+      const opened = window.open(this.roomUrl, this.windowName, this.popupFeatures());
       if (!opened) {
-        toast('Браузер заблокировал окно. Разреши всплывающие окна для Mathroom и нажми ещё раз.');
+        toast('Браузер заблокировал компактное окно. Разреши всплывающие окна для Mathroom или открой Jazz в новой вкладке.');
         return;
       }
+      this.popup = opened;
+      this.compactPopup(opened);
       try { opened.focus(); } catch {}
-      this.popup = opened; this.openedAt = Date.now();
+      this.openedAt = Date.now();
       clearInterval(this.popupWatch);
       this.popupWatch = setInterval(() => {
         try {
@@ -216,15 +265,18 @@
           </div>
           ${this.role === 'teacher' ? '<button class="btn sm ghost" id="mrJazzSettings">⚙ Настроить</button>' : ''}
         </div>
-        ${this.error ? `<div class="mr-jazz-error">${esc(this.error)}${this.error.toLowerCase().includes('teacher_video_settings') || this.error.toLowerCase().includes('get_student_lesson_video_room') ? '<br><b>Сначала выполни SQL из обновления v24.1.</b>' : ''}</div>` : ''}
+        ${this.error ? `<div class="mr-jazz-error">${esc(this.error)}${this.error.toLowerCase().includes('teacher_video_settings') || this.error.toLowerCase().includes('get_student_lesson_video_room') ? '<br><b>Сначала выполни SQL из обновления v24.1; для v24.2 новый SQL не нужен.</b>' : ''}</div>` : ''}
         <div class="mr-jazz-actions">
-          <button class="btn primary mr-jazz-primary" id="mrJazzOpen" ${this.loading || !this.enabled || (!configured && this.role === 'student') ? 'disabled' : ''}>${esc(mainLabel)}</button>
+          ${isMobileJazzClient() && configured && this.enabled && !this.loading
+            ? `<a class="btn primary mr-jazz-primary" id="mrJazzOpen" href="${esc(this.roomUrl)}" target="_blank" rel="noopener noreferrer">${esc(mainLabel)}</a>`
+            : `<button class="btn primary mr-jazz-primary" id="mrJazzOpen" ${this.loading || !this.enabled || (!configured && this.role === 'student') ? 'disabled' : ''}>${esc(mainLabel)}</button>`}
           ${this.role === 'teacher' && configured ? '<button class="btn" id="mrJazzCopy">Скопировать ссылку</button>' : ''}
           ${this.role === 'teacher' && !configured ? '<button class="btn" id="mrJazzSetup">Добавить комнату</button>' : ''}
         </div>
-        <div class="mr-jazz-hint">Mathroom остаётся открытым для доски и заданий. На компьютере звонок открывается отдельным компактным окном; на телефоне — отдельной вкладкой/приложением.</div>
+        <div class="mr-jazz-hint mr-jazz-desktop-note"><b>Компьютер:</b> Mathroom просит открыть Jazz в окне примерно 390×560 px. Если браузер всё равно делает его большим, в самом SaluteJazz включи <b>«Картинка в картинке»</b>.</div>
+        <div class="mr-jazz-hint mr-jazz-mobile-note"><b>Телефон:</b> вход теперь открывается обычной ссылкой, а не popup. Jazz запустится в новой вкладке или приложении — разрешать всплывающие окна Mathroom не нужно.</div>
       `;
-      const open = host.querySelector('#mrJazzOpen'); if (open) open.onclick = () => this.openCall();
+      const open = host.querySelector('#mrJazzOpen'); if (open && open.tagName !== 'A') open.onclick = () => this.openCall();
       const settings = host.querySelector('#mrJazzSettings'); if (settings) settings.onclick = () => this.openSettings();
       const setup = host.querySelector('#mrJazzSetup'); if (setup) setup.onclick = () => this.openSettings();
       const copy = host.querySelector('#mrJazzCopy'); if (copy) copy.onclick = () => this.copyRoom();
