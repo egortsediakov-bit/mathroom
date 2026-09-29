@@ -45,7 +45,7 @@
       this.peerId=(crypto.randomUUID?crypto.randomUUID():Math.random().toString(36).slice(2));
       this.signalMode='hybrid'; this.signalCursor=0; this.signalSince=new Date(Date.now()-3000).toISOString(); this.signalPollTimer=null; this.signalBusy=false; this.signalErrors=0; this.fastChannel=null; this.fastSubscribed=false; this.signalSeq=0; this.seenSignalIds=new Set(); this.remoteOfferId=''; this.localIceCount=0; this.remoteIceCount=0;
       this.handshakeTimer=null; this.lastOfferData=null; this.lastOfferSentAt=0; this.lastAnswerData=null; this.lastAnswerSentAt=0; this.lastSignalAt=0;
-      this.lastAnswerAt=0; this.negotiationStartedAt=0; this.connectWatchTimer=null; this.recoveryBusy=false; this.remotePeerId=''; this.currentOfferId=''; this.joinedAt=0;
+      this.lastAnswerAt=0; this.negotiationStartedAt=0; this.connectWatchTimer=null; this.recoveryBusy=false; this.remotePeerId=''; this.currentOfferId=''; this.joinedAt=0; this.lastNeedOfferAt=0;
       // Some desktop camera drivers expose a mirrored preview even when CSS is neutral.
       // Keep a local-only correction preference and enable it once for teacher desktop sessions.
       const savedMirror=localStorage.getItem(`mathroom.video.mirrorPreview.${this.role}`);
@@ -126,13 +126,14 @@
       await this.send(this.role==='teacher'?'teacher-ready':'ready',{joined:true},other);
       const now=Date.now();
       if(this.role==='teacher'){
-        if(!this.remoteReady){
-          this.status='Ожидаем, когда ученик присоединится…';this.paintStatus();return;
-        }
         if(pc?.signalingState==='have-local-offer'&&this.lastOfferData){
           if(now-this.lastOfferSentAt>900){
+            // localDescription is updated by the browser as ICE candidates appear.
+            // Refresh the SDP snapshot before every retry so a late student can
+            // receive host/srflx candidates even if earlier trickle messages were missed.
+            if(pc.localDescription?.sdp)this.lastOfferData={...this.lastOfferData,sdp:pc.localDescription.sdp};
             this.lastOfferSentAt=now;await this.send('offer',this.lastOfferData,'student');
-            this.status='Ожидаем ответ ученика…';this.paintStatus();
+            this.status=this.remoteReady?'Ожидаем ответ ученика…':'Предложение готово · ждём вход ученика…';this.paintStatus();
           }
           return;
         }
@@ -142,8 +143,17 @@
           if(age>=5000&&pc.connectionState!=='connected'){await this.recoverConnection('timeout');return}
         }
         if(!this.makingOffer&&(!pc||pc.signalingState==='stable'))await this.makeOffer(false);
-      }else if(this.lastAnswerData&&now-this.lastAnswerSentAt>900){
-        this.lastAnswerSentAt=now;await this.send('answer',this.lastAnswerData,'teacher');
+      }else{
+        if(this.lastAnswerData&&now-this.lastAnswerSentAt>900){
+          if(this.pc?.localDescription?.sdp)this.lastAnswerData={...this.lastAnswerData,sdp:this.pc.localDescription.sdp};
+          this.lastAnswerSentAt=now;await this.send('answer',this.lastAnswerData,'teacher');
+        }
+        // Do not depend on the teacher receiving a separate ready event.
+        // A joined student explicitly asks for a fresh offer until one arrives.
+        if(!this.pendingOffer&&!this.pc?.remoteDescription?.type&&now-this.lastNeedOfferAt>850){
+          this.lastNeedOfferAt=now;await this.send('need-offer',{joined:true},'teacher');
+          this.status='Запрашиваем соединение у преподавателя…';this.paintStatus();
+        }
       }
     }
         scheduleSignalPoll(delay){clearTimeout(this.signalPollTimer);if(this.destroyed||this.signalMode==='realtime-only')return;this.signalPollTimer=setTimeout(()=>this.pollSignals(false).catch(()=>{}),delay)}
@@ -198,7 +208,19 @@
       this.lastSignalAt=Date.now();
       if(msg.kind==='hello'){
         if(this.localStream)await this.send(this.role==='teacher'?'teacher-ready':'ready',{joined:true},this.role==='teacher'?'student':'teacher');
-        this.startHandshakeLoop();return;
+        this.startHandshakeLoop();
+        if(this.role==='teacher'&&this.localStream&&this.pc?.connectionState!=='connected')await this.makeOffer(false);
+        return;
+      }
+      if(msg.kind==='need-offer'&&this.role==='teacher'){
+        this.remoteReady=true;
+        this.status='Ученик запросил соединение…';this.paintStatus();
+        const pc=this.pc;
+        if(pc?.signalingState==='have-local-offer'&&this.lastOfferData){
+          if(pc.localDescription?.sdp)this.lastOfferData={...this.lastOfferData,sdp:pc.localDescription.sdp};
+          this.lastOfferSentAt=Date.now();await this.send('offer',this.lastOfferData,'student');
+        }else await this.makeOffer(false);
+        return;
       }
       if(msg.kind==='ready'||msg.kind==='teacher-ready'){
         const incomingPeer=msg.peerId||'';
@@ -282,7 +304,7 @@
       await Promise.race([new Promise(resolve=>{const on=()=>{if(pc.iceGatheringState==='complete'){pc.removeEventListener('icegatheringstatechange',on);resolve()}};pc.addEventListener('icegatheringstatechange',on)}),wait(timeout)]);
     }
     async makeOffer(iceRestart=false){
-      if(this.role!=='teacher'||!this.localStream||!this.remoteReady||this.makingOffer)return;
+      if(this.role!=='teacher'||!this.localStream||this.makingOffer)return;
       this.makingOffer=true;
       try{
         await Promise.race([this.iceReadyPromise||Promise.resolve(),wait(250)]);
@@ -301,7 +323,7 @@
         this.negotiationStartedAt=Date.now();
         this.lastOfferData={type:pc.localDescription.type,sdp:pc.localDescription.sdp,offerId};
         this.lastOfferSentAt=Date.now();
-        this.status='Отправили предложение · ждём ответ…';this.paintStatus();
+        this.status=this.remoteReady?'Отправили предложение · ждём ответ…':'Предложение готово · ждём вход ученика…';this.paintStatus();
         await this.send('offer',this.lastOfferData,'student');
         this.startHandshakeLoop();this.armConnectWatch();
       }finally{this.makingOffer=false}
@@ -311,7 +333,7 @@
       let pc=this.ensurePeer();
       const offerId=data?.offerId||'';
       if(this.remoteOfferId&&offerId&&this.remoteOfferId!==offerId){this.pendingIce=[]}
-      this.remoteOfferId=offerId;
+      this.remoteOfferId=offerId;this.lastNeedOfferAt=0;
       if(pc.signalingState!=='stable'){try{await pc.setLocalDescription({type:'rollback'})}catch{this.closePeer(false,false);pc=this.ensurePeer()}}
       await pc.setRemoteDescription(new RTCSessionDescription({type:data?.type||'offer',sdp:data?.sdp||''}));
       await this.flushIce();
@@ -348,7 +370,8 @@
           this.send('hello',{joined:true},other)
         ]);
         if(this.role==='student'&&this.pendingOffer){const offer=this.pendingOffer;this.pendingOffer=null;await this.acceptOffer(offer)}
-        if(this.role==='teacher'&&this.remoteReady)await this.makeOffer(reconnect);
+        if(this.role==='teacher')await this.makeOffer(reconnect);
+        else if(!this.pendingOffer&&!this.pc?.remoteDescription?.type){this.lastNeedOfferAt=Date.now();await this.send('need-offer',{joined:true},'teacher')}
       }catch(e){fail(e)}
     }
         async switchDevices(){try{const next=await navigator.mediaDevices.getUserMedia(this.constraints()),old=this.localStream;this.localStream=next;const pc=this.pc;if(pc){const a=next.getAudioTracks()[0],v=next.getVideoTracks()[0],as=pc.getSenders().find(s=>s.track?.kind==='audio'),vs=pc.getSenders().find(s=>s.track?.kind==='video');if(as&&a)await as.replaceTrack(a);if(vs&&v&&!this.screenTrack)await vs.replaceTrack(v);if(!as&&a)pc.addTrack(a,next);if(!vs&&v)pc.addTrack(v,next)}old?.getTracks().forEach(t=>t.stop());this.bindMedia();await this.refreshDevices();toast('Устройство переключено')}catch(e){fail(e)}}
