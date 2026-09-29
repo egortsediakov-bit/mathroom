@@ -390,7 +390,7 @@ button{cursor:pointer} a{color:inherit}.hidden{display:none!important}.muted{col
 @media(max-width:760px){.board-pdf-thumbs{grid-template-columns:repeat(2,1fr)}.mr-video-card.floating{left:8px!important;right:8px!important;top:70px!important;width:auto!important;min-width:0;max-width:none;height:auto!important;resize:none}.mr-lesson-pro-grid{grid-template-columns:1fr!important}.mr-lesson-pro-suite>.mr-card-head{align-items:flex-start;flex-direction:column}.mr-lesson-pro-suite>.mr-card-head>.actions{display:grid;grid-template-columns:1fr 1fr;width:100%}.mr-lesson-pro-suite>.mr-card-head>.actions .btn:first-child{grid-column:1/-1}.mr-preflight-grid{grid-template-columns:1fr!important}}
 
 /* v23.4 — first-minute UX, mobile tap reliability, non-mirrored camera */
-#mrLocalVideo,.mr-video-frame.local video,.mr-device-preview video{transform:none!important}
+.mr-video-frame.remote video{transform:none!important}#mrLocalVideo[data-mirror-corrected="0"]{transform:none!important}#mrLocalVideo[data-mirror-corrected="1"]{transform:scaleX(-1)!important}
 button,.btn,.tabs button,.nav button,[role="button"],summary{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
 button,.btn,.tabs button,.nav button{-webkit-user-select:none;user-select:none}
 .mr-help-button{position:fixed;right:max(18px,env(safe-area-inset-right));bottom:max(18px,env(safe-area-inset-bottom));z-index:1800;border:1px solid #d8dde3;background:#17191c;color:#fff;border-radius:999px;padding:9px 13px;display:flex;align-items:center;gap:8px;box-shadow:0 12px 38px #0002;font:700 13px/1 system-ui;cursor:pointer;touch-action:manipulation}.mr-help-button>b{width:24px;height:24px;border-radius:50%;display:grid;place-items:center;background:#fff;color:#17191c;font-size:14px}.mr-help-button:hover{transform:translateY(-1px)}
@@ -401,3 +401,7 @@ button,.btn,.tabs button,.nav button{-webkit-user-select:none;user-select:none}
 @media (hover:none) and (pointer:coarse){.mr-help-button:hover{transform:none}.mr-first-step:not(.static):hover{background:#fff;border-color:var(--line)}}
 @media(max-width:760px){.mr-first-grid{grid-template-columns:1fr}.mr-guide-grid{grid-template-columns:1fr}.mr-guide-steps{grid-template-columns:1fr 1fr}.mr-help-button{right:10px;bottom:max(10px,env(safe-area-inset-bottom));padding:8px}.mr-help-button>span{display:none}.mr-video-coach{grid-template-columns:28px minmax(0,1fr)}.mr-video-coach>.btn{grid-column:1/-1;justify-self:start}.mr-video-head{align-items:flex-start}.mr-video-head>.actions{justify-content:flex-end}.mr-video-frame.local{right:10px!important;top:68px!important;width:112px!important;height:84px!important}.mr-video-card{padding:10px}.student-home,.student-shell{padding-left:10px!important;padding-right:10px!important}}
 @media(max-width:480px){.mr-guide-steps{grid-template-columns:1fr}.mr-video-actions{grid-template-columns:1fr 1fr!important}.mr-video-actions .btn.primary,.mr-video-actions .btn.danger{grid-column:1/-1}}
+
+/* v23.5 video stability + explicit camera orientation */
+#mrVideoMirror{white-space:nowrap}
+#mrLocalVideo{backface-visibility:hidden;-webkit-backface-visibility:hidden}
