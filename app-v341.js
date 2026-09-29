@@ -318,6 +318,7 @@ async function renderStudent(){
   else await mountBoard(c,S.student.id,false);
   if(active)subscribeStudentLive(active.id);
 }
+window.renderStudent=renderStudent;
 function subscribeStudentLive(lessonId){
   cleanupLive();let timerInt=setInterval(()=>{const el=document.getElementById('studentTimer');if(el)el.textContent=fmtTime(elapsedSeconds(S.studentLive))},1000);const ch=sb.channel(`student-live:${lessonId}`).on('postgres_changes',{event:'UPDATE',schema:'public',table:'lesson_live_state',filter:`lesson_id=eq.${lessonId}`},payload=>{const prev=S.studentLive||{};const next=payload.new||{};S.studentLive=next;const structural=prev.focus_enabled!==next.focus_enabled||prev.current_queue_item_id!==next.current_queue_item_id||prev.current_title!==next.current_title||prev.current_prompt!==next.current_prompt;if(structural)renderStudent();else{const el=document.getElementById('studentTimer');if(el)el.textContent=fmtTime(elapsedSeconds(next))}}).subscribe();S.liveCleanup=()=>{clearInterval(timerInt);sb.removeChannel(ch)};
 }

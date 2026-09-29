@@ -2,7 +2,7 @@
   const MR = window.MR;
   if (!MR) return;
   const { S, modal, esc } = MR;
-  const VERSION = '23.4';
+  const VERSION = '23.7';
   const key = (name) => `mathroom.ux.${VERSION}.${name}.${S.access ? 'student' : 'teacher'}`;
 
   function safeStoreGet(k){ try { return localStorage.getItem(k); } catch { return null; } }
@@ -22,15 +22,15 @@
       <div class="mr-guide-grid">
         <article><b>1. Ученики</b><p>Добавь ученика один раз. Его персональная ссылка остаётся постоянной.</p><button class="btn sm" data-guide-go="students">Открыть учеников</button></article>
         <article><b>2. Расписание</b><p>Создай разовый урок или еженедельную серию. Серия продолжается, пока ты её не остановишь.</p><button class="btn sm" data-guide-go="schedule">Открыть расписание</button></article>
-        <article><b>3. Начало урока</b><p>Открой урок и нажми «Запустить всё». Камеру можно включить отдельно. Подключение обычно занимает несколько секунд.</p></article>
+        <article><b>3. Начало урока</b><p>Открой урок и нажми «Присоединиться к уроку». Mathroom одним действием запросит камеру и микрофон и начнёт соединение.</p></article>
         <article><b>4. Доска</b><p>Используй несколько листов, вставку Ctrl+V, PDF, шаблоны, черновик преподавателя и экспорт.</p><button class="btn sm" data-guide-go="board">Открыть доску</button></article>
       </div>
-      <div class="mr-guide-section"><h3>Если видеосвязь не появилась сразу</h3><div class="mr-guide-steps"><span><i>1</i> Камера включена у обоих</span><span><i>2</i> В статусе есть «сигналинг DB»</span><span><i>3</i> Подожди 5–10 секунд</span><span><i>4</i> Если связи нет — «Переподключить»</span></div></div>
+      <div class="mr-guide-section"><h3>Если видеосвязь не появилась сразу</h3><div class="mr-guide-steps"><span><i>1</i> Оба нажали «Присоединиться к уроку»</span><span><i>2</i> Разрешены камера и микрофон</span><span><i>3</i> В статусе есть «сигналинг DB»</span><span><i>4</i> Если связи нет — «Переподключить»</span></div></div>
       <div class="mr-guide-section"><h3>Полезные клавиши</h3><div class="mr-shortcuts"><span><kbd>Ctrl/⌘ K</kbd> быстрые команды</span><span><kbd>Alt M</kbd> микрофон</span><span><kbd>Alt V</kbd> камера</span><span><kbd>Alt S</kbd> демонстрация экрана</span><span><kbd>F1</kbd> эта справка</span></div></div>` : `
       <div class="mr-guide-head"><div><span class="pill">Быстрый старт</span><h2>Как проходит урок</h2><p class="muted">Ничего настраивать заранее не нужно: когда преподаватель начнёт урок, Mathroom покажет его автоматически.</p></div></div>
       <div class="mr-guide-grid">
         <article><b>1. Дождись урока</b><p>Открытая страница сама увидит начало занятия. Обновлять её не требуется.</p><button class="btn sm" data-guide-student="today">На «Сегодня»</button></article>
-        <article><b>2. Включи камеру</b><p>Разреши браузеру камеру и микрофон. После этого Mathroom сам повторяет попытки соединения.</p></article>
+        <article><b>2. Присоединись</b><p>Нажми «Присоединиться к уроку» и один раз разреши браузеру камеру и микрофон.</p></article>
         <article><b>3. Работай на доске</b><p>Все изменения доски синхронизируются во время занятия.</p><button class="btn sm" data-guide-student="board">Открыть доску</button></article>
         <article><b>4. Если связь пропала</b><p>Нажми «Переподключить». Страницу обычно перезагружать не нужно.</p></article>
       </div>
@@ -77,7 +77,7 @@
     const root = document.querySelector('#studentContent') || document.querySelector('.student-home');
     if (!root || document.getElementById('mrStudentFirstMinutes')) return;
     const card = document.createElement('section'); card.id='mrStudentFirstMinutes'; card.className='card mr-first-minutes mr-student-first-minutes';
-    card.innerHTML = `<div class="mr-card-head"><div><span class="pill">Первый вход</span><h2>Здесь всё просто</h2><p class="small muted">Когда преподаватель начнёт занятие, урок появится сам — страницу обновлять не нужно.</p></div><button class="btn sm ghost" id="mrHideStudentFirst">Понятно</button></div><div class="mr-first-grid"><div class="mr-first-step static"><span>1</span><div><b>Дождись старта</b><small>Mathroom сам обнаружит активный урок</small></div></div><div class="mr-first-step static"><span>2</span><div><b>Включи камеру</b><small>Разреши камеру и микрофон браузеру</small></div></div><div class="mr-first-step static"><span>3</span><div><b>Работай на доске</b><small>Всё нужное находится внутри занятия</small></div></div></div>`;
+    card.innerHTML = `<div class="mr-card-head"><div><span class="pill">Первый вход</span><h2>Здесь всё просто</h2><p class="small muted">Когда преподаватель начнёт занятие, урок появится сам — страницу обновлять не нужно.</p></div><button class="btn sm ghost" id="mrHideStudentFirst">Понятно</button></div><div class="mr-first-grid"><div class="mr-first-step static"><span>1</span><div><b>Дождись старта</b><small>Mathroom сам обнаружит активный урок</small></div></div><div class="mr-first-step static"><span>2</span><div><b>Присоединись</b><small>Одна кнопка включает камеру, микрофон и соединение</small></div></div><div class="mr-first-step static"><span>3</span><div><b>Работай на доске</b><small>Всё нужное находится внутри занятия</small></div></div></div>`;
     root.prepend(card); card.querySelector('#mrHideStudentFirst').onclick=()=>{safeStoreSet(key('welcome'),'done');card.remove()};
   }
 
@@ -86,7 +86,7 @@
     let c = panel.querySelector('#mrVideoCoach');
     if (!c && safeStoreGet(key('videoCoach')) !== 'done') {
       c=document.createElement('div');c.id='mrVideoCoach';c.className='mr-video-coach';
-      c.innerHTML=`<span class="mr-video-coach-icon">i</span><div><b id="mrVideoCoachTitle">Как подключиться</b><small id="mrVideoCoachText">Включи камеру на обоих устройствах. Mathroom сам повторяет signaling и ICE.</small></div><button class="btn sm ghost" id="mrVideoCoachHide">Скрыть</button>`;
+      c.innerHTML=`<span class="mr-video-coach-icon">i</span><div><b id="mrVideoCoachTitle">Как подключиться</b><small id="mrVideoCoachText">На обоих устройствах нажмите «Присоединиться к уроку». Mathroom сам установит видеосвязь.</small></div><button class="btn sm ghost" id="mrVideoCoachHide">Скрыть</button>`;
       panel.querySelector('.mr-video-head')?.insertAdjacentElement('afterend',c);
       c.querySelector('#mrVideoCoachHide').onclick=()=>{safeStoreSet(key('videoCoach'),'done');c.remove()};
     }
@@ -96,13 +96,13 @@
     c.classList.remove('ok','warn');
     if (/Соединено/i.test(status)){c.classList.add('ok');title.textContent='Связь установлена';text.textContent='Видео и звук подключены. Перезагрузка страницы не нужна.'}
     else if (/Ошибка|не установлено|недоступен/i.test(status)){c.classList.add('warn');title.textContent='Связь ещё не установлена';text.textContent='Нажми «Переподключить». Если статус сигналинга DB виден, Mathroom продолжит попытки автоматически.'}
-    else if (/Ожидаем|Подключение|Проверяем|Отправляем|Повторяем/i.test(status)){title.textContent='Соединяем участников';text.textContent='Обычно это занимает 2–10 секунд. Не обновляй страницу — повторные попытки выполняются автоматически.'}
-    else {title.textContent='Как подключиться';text.textContent='Включи камеру на обоих устройствах. После этого дождись статуса «Соединено».'}
+    else if (/Ожидаем|Подключение|Проверяем|Отправляем|Повторяем/i.test(status)){title.textContent='Соединяем участников';text.textContent='Обычно это занимает несколько секунд. Не обновляй страницу — Mathroom сам повторит попытку.'}
+    else {title.textContent='Как подключиться';text.textContent='Нажми «Присоединиться к уроку». После разрешения камеры и микрофона дождись статуса «Соединено».'}
   }
 
   function improveAccessibility(){
     const labels = {
-      mrVideoStart:'Включить или переподключить видеосвязь', mrVideoMic:'Включить или выключить микрофон', mrVideoCam:'Включить или выключить камеру',
+      mrVideoStart:'Присоединиться к уроку или переподключить видеосвязь', mrVideoMic:'Включить или выключить микрофон', mrVideoCam:'Включить или выключить камеру',
       mrVideoSound:'Разрешить воспроизведение звука', mrVideoPiP:'Открыть видео в Picture-in-Picture', mrVideoScreen:'Показать экран', mrVideoEnd:'Завершить видеосвязь'
     };
     for (const [id,label] of Object.entries(labels)){const el=document.getElementById(id);if(el&&!el.title){el.title=label;el.setAttribute('aria-label',label)}}

@@ -407,3 +407,14 @@ button,.btn,.tabs button,.nav button{-webkit-user-select:none;user-select:none}
 #mrLocalVideo{backface-visibility:hidden;-webkit-backface-visibility:hidden}
 
 #mrRemoteAudio{display:none!important}
+
+/* v23.7: one-step lesson join */
+.mr-video-join{min-height:48px;padding-inline:20px;font-size:15px;font-weight:800}
+.mr-video-join-note{margin-top:10px}
+.mr-video-card [hidden]{display:none!important}
+@media (max-width:700px){
+  .mr-video-join{width:100%;min-height:52px;font-size:16px}
+  .mr-video-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+  .mr-video-actions .mr-video-join{grid-column:1/-1}
+  .mr-video-actions .btn{min-height:48px;touch-action:manipulation}
+}
