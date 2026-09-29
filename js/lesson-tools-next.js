@@ -45,7 +45,7 @@
       this.peerId=(crypto.randomUUID?crypto.randomUUID():Math.random().toString(36).slice(2));
       this.signalMode='hybrid'; this.signalCursor=0; this.signalSince=new Date(Date.now()-3000).toISOString(); this.signalPollTimer=null; this.signalBusy=false; this.signalErrors=0; this.fastChannel=null; this.fastSubscribed=false; this.signalSeq=0; this.seenSignalIds=new Set(); this.remoteOfferId=''; this.localIceCount=0; this.remoteIceCount=0;
       this.handshakeTimer=null; this.rendezvousTimer=null; this.rendezvousBusy=false; this.rendezvousAvailable=false; this.lastRvOfferAt=0; this.lastRvAnswerAt=0; this.lastOfferData=null; this.lastOfferSentAt=0; this.lastAnswerData=null; this.lastAnswerSentAt=0; this.lastSignalAt=0;
-      this.lastAnswerAt=0; this.negotiationStartedAt=0; this.connectWatchTimer=null; this.recoveryBusy=false; this.remotePeerId=''; this.currentOfferId=''; this.joinedAt=0; this.lastNeedOfferAt=0;
+      this.lastAnswerAt=0; this.negotiationStartedAt=0; this.connectWatchTimer=null; this.recoveryBusy=false; this.remotePeerId=''; this.currentOfferId=''; this.joinedAt=0; this.lastNeedOfferAt=0; this.iceRestartAttempts=0; this.iceFailureSince=0; this.localCandidateTypes=new Set(); this.remoteCandidateTypes=new Set();
       // Some desktop camera drivers expose a mirrored preview even when CSS is neutral.
       // Keep a local-only correction preference and enable it once for teacher desktop sessions.
       const savedMirror=localStorage.getItem(`mathroom.video.mirrorPreview.${this.role}`);
@@ -140,8 +140,8 @@
         }
         if(pc?.remoteDescription?.type==='answer'&&this.lastAnswerAt){
           const age=now-this.lastAnswerAt;
-          if(age<5000&&(pc.connectionState==='new'||pc.connectionState==='connecting'||pc.iceConnectionState==='new'||pc.iceConnectionState==='checking'))return;
-          if(age>=5000&&pc.connectionState!=='connected'){await this.recoverConnection('timeout');return}
+          if(age<12000&&(pc.connectionState==='new'||pc.connectionState==='connecting'||pc.iceConnectionState==='new'||pc.iceConnectionState==='checking'||pc.iceConnectionState==='failed'))return;
+          if(age>=12000&&pc.connectionState!=='connected'){await this.tryIceRestart('timeout');return}
         }
         if(!this.makingOffer&&(!pc||pc.signalingState==='stable'))await this.makeOffer(false);
       }else{
@@ -326,9 +326,10 @@
       }
       if(msg.kind==='ice'){
         const pc=this.ensurePeer(),candidate=msg.data?.candidate||msg.data,offerId=msg.data?.offerId||'';
-        if(!candidate)return;this.remoteIceCount++;
+        if(!candidate)return;
         if(this.role==='teacher'&&offerId&&this.currentOfferId&&offerId!==this.currentOfferId)return;
         if(this.role==='student'&&offerId&&this.remoteOfferId&&offerId!==this.remoteOfferId)return;
+        this.remoteIceCount++;if(candidate.type)this.remoteCandidateTypes.add(candidate.type);
         const row={candidate,offerId};
         if(pc.remoteDescription?.type){try{await pc.addIceCandidate(new RTCIceCandidate(candidate))}catch(e){console.warn('[Mathroom video] add ICE',e)}}
         else this.pendingIce.push(row);
@@ -340,11 +341,11 @@
         attachLocalTracks(pc=this.pc){if(!pc||!this.localStream)return;for(const track of this.localStream.getTracks()){const sender=pc.getSenders().find(s=>s.track?.kind===track.kind);if(!sender)pc.addTrack(track,this.localStream);else if(sender.track!==track&&!(track.kind==='video'&&this.screenTrack))sender.replaceTrack(track).catch(()=>{})}}
     ensurePeer(){
       if(this.pc&&this.pc.signalingState!=='closed'){this.attachLocalTracks(this.pc);return this.pc}
-      const pc=new RTCPeerConnection({iceServers:this.iceServersList,iceCandidatePoolSize:4,bundlePolicy:'max-bundle'});this.pc=pc;this.pendingIce=[];this.localIceCount=0;this.remoteIceCount=0;this.remoteStream=new MediaStream();this.remoteVideoStream=new MediaStream();this.remoteAudioStream=new MediaStream();this.attachLocalTracks(pc);
+      const pc=new RTCPeerConnection({iceServers:this.iceServersList,iceCandidatePoolSize:4,bundlePolicy:'max-bundle'});this.pc=pc;this.pendingIce=[];this.localIceCount=0;this.remoteIceCount=0;this.localCandidateTypes=new Set();this.remoteCandidateTypes=new Set();this.remoteStream=new MediaStream();this.remoteVideoStream=new MediaStream();this.remoteAudioStream=new MediaStream();this.attachLocalTracks(pc);
       pc.ontrack=e=>{const tracks=e.streams?.[0]?.getTracks?.()||[e.track];for(const track of tracks){if(!this.remoteStream.getTracks().some(t=>t.id===track.id))this.remoteStream.addTrack(track);const bucket=track.kind==='video'?this.remoteVideoStream:this.remoteAudioStream;if(bucket&&!bucket.getTracks().some(t=>t.id===track.id))bucket.addTrack(track);track.onunmute=()=>{this.bindMedia();this.ensureRemotePlayback()};track.onended=()=>{try{this.remoteStream.removeTrack(track);bucket?.removeTrack?.(track)}catch{}this.bindMedia()}}this.bindMedia();this.ensureRemotePlayback()};
-      pc.onicecandidate=e=>{if(e.candidate){this.localIceCount++;const offerId=this.role==='teacher'?this.currentOfferId:this.remoteOfferId;this.send('ice',{candidate:e.candidate.toJSON?e.candidate.toJSON():e.candidate,offerId},this.role==='teacher'?'student':'teacher').catch(()=>{})}else this.paintStatus()};
-      pc.onconnectionstatechange=()=>{const st=pc.connectionState;if(st==='connected'){clearTimeout(this.retryTimer);clearTimeout(this.disconnectTimer);clearTimeout(this.connectWatchTimer);this.status='Соединено';this.stopHandshakeLoop();this.syncRemoteReceivers();this.bindMedia();this.ensureRemotePlayback();this.startRemotePlaybackWatch();this.startStats();if(this.role==='teacher'&&this.autoRecord)setTimeout(()=>this.startRecording(true).catch(()=>{}),700)}else if(st==='connecting'){this.status='Подключение…';this.startHandshakeLoop();this.armConnectWatch()}else if(st==='disconnected'){this.status='Связь прервана · восстанавливаем…';this.startHandshakeLoop();clearTimeout(this.disconnectTimer);this.disconnectTimer=setTimeout(()=>{if(this.pc===pc&&pc.connectionState!=='connected'&&this.role==='teacher'&&this.localStream)this.recoverConnection('disconnected').catch(()=>{})},1400)}else if(st==='failed'){this.status=this.turnReady?'Соединение не установлено · переподключение…':'P2P не установлено · переподключаем…';this.startHandshakeLoop();if(this.role==='teacher'&&this.localStream){clearTimeout(this.retryTimer);this.retryTimer=setTimeout(()=>this.recoverConnection('failed').catch(()=>{}),350)}}this.paintStatus()};
-      pc.oniceconnectionstatechange=()=>{if(pc.iceConnectionState==='checking'){this.status='Проверяем сеть…';this.paintStatus();this.armConnectWatch()}else if(pc.iceConnectionState==='connected'||pc.iceConnectionState==='completed'){this.status='ICE соединено · запускаем видео…';this.paintStatus()}else if(pc.iceConnectionState==='failed'&&this.role==='teacher'&&this.localStream){this.recoverConnection('ice-failed').catch(()=>{})}};pc.onicegatheringstatechange=()=>this.paintStatus();pc.onsignalingstatechange=()=>this.paintStatus();return pc;
+      pc.onicecandidate=e=>{if(e.candidate){this.localIceCount++;if(e.candidate.type)this.localCandidateTypes.add(e.candidate.type);const offerId=this.role==='teacher'?this.currentOfferId:this.remoteOfferId;this.send('ice',{candidate:e.candidate.toJSON?e.candidate.toJSON():e.candidate,offerId},this.role==='teacher'?'student':'teacher').catch(()=>{})}else this.paintStatus()};
+      pc.onconnectionstatechange=()=>{const st=pc.connectionState;if(st==='connected'){clearTimeout(this.retryTimer);clearTimeout(this.disconnectTimer);clearTimeout(this.connectWatchTimer);this.iceRestartAttempts=0;this.iceFailureSince=0;this.status='Соединено';this.stopHandshakeLoop();this.syncRemoteReceivers();this.bindMedia();this.ensureRemotePlayback();this.startRemotePlaybackWatch();this.startStats();if(this.role==='teacher'&&this.autoRecord)setTimeout(()=>this.startRecording(true).catch(()=>{}),700)}else if(st==='connecting'){this.status='Подключение…';this.startHandshakeLoop();this.armConnectWatch()}else if(st==='disconnected'){this.status='Связь временно прервана · ждём восстановления…';this.startHandshakeLoop();clearTimeout(this.disconnectTimer);this.disconnectTimer=setTimeout(()=>{if(this.pc===pc&&pc.connectionState!=='connected'&&this.role==='teacher'&&this.localStream)this.tryIceRestart('disconnected').catch(()=>{})},9000)}else if(st==='failed'){if(!this.iceFailureSince)this.iceFailureSince=Date.now();this.status=this.turnReady?'ICE не соединился · пробуем тот же звонок через TURN/P2P…':'P2P не соединился · сохраняем попытку для диагностики…';this.startHandshakeLoop();if(this.role==='teacher'&&this.localStream){clearTimeout(this.retryTimer);this.retryTimer=setTimeout(()=>this.tryIceRestart('failed').catch(()=>{}),2500)}}this.paintStatus()};
+      pc.oniceconnectionstatechange=()=>{if(pc.iceConnectionState==='checking'){this.status='Проверяем сеть…';this.paintStatus();this.armConnectWatch()}else if(pc.iceConnectionState==='connected'||pc.iceConnectionState==='completed'){this.iceRestartAttempts=0;this.iceFailureSince=0;this.status='ICE соединено · запускаем видео…';this.paintStatus()}else if(pc.iceConnectionState==='failed'){if(!this.iceFailureSince)this.iceFailureSince=Date.now();this.status=this.turnReady?'ICE failed · пробуем ICE restart без сброса звонка…':'ICE failed · P2P маршрут не найден';this.paintStatus();if(this.role==='teacher'&&this.localStream){clearTimeout(this.retryTimer);this.retryTimer=setTimeout(()=>this.tryIceRestart('ice-failed').catch(()=>{}),2500)}}};pc.onicegatheringstatechange=()=>this.paintStatus();pc.onsignalingstatechange=()=>this.paintStatus();return pc;
     }
     armConnectWatch(){
       clearTimeout(this.connectWatchTimer);
@@ -353,8 +354,30 @@
       // few seconds. Replacing the offer during that window makes the late answer stale.
       if(this.destroyed||this.role!=='teacher'||!this.localStream||this.pc?.remoteDescription?.type!=='answer')return;
       this.connectWatchTimer=setTimeout(()=>{
-        if(!this.destroyed&&this.pc?.remoteDescription?.type==='answer'&&this.pc?.connectionState!=='connected')this.recoverConnection('watchdog').catch(()=>{});
-      },9000);
+        if(!this.destroyed&&this.pc?.remoteDescription?.type==='answer'&&this.pc?.connectionState!=='connected')this.tryIceRestart('watchdog').catch(()=>{});
+      },14000);
+    }
+    async tryIceRestart(reason='ice-restart'){
+      if(this.destroyed||this.role!=='teacher'||!this.localStream||this.recoveryBusy)return false;
+      const pc=this.pc;
+      if(!pc||pc.signalingState==='closed'||pc.connectionState==='connected')return false;
+      if(!pc.remoteDescription?.type){return false}
+      if(this.iceRestartAttempts>=1){
+        this.status=this.turnReady?'ICE не соединился даже после restart · нажми «Переподключить»':'P2P не удалось · вероятно нужен TURN или в Wi‑Fi включена изоляция клиентов';
+        this.paintStatus();
+        return false;
+      }
+      this.iceRestartAttempts++;
+      this.status='ICE restart · не сбрасываем полученный ответ…';this.paintStatus();
+      try{
+        if(typeof pc.restartIce==='function')pc.restartIce();
+        await this.makeOffer(true);
+        return true;
+      }catch(e){
+        console.warn('[Mathroom video] ICE restart failed',reason,e);
+        this.status='ICE restart не удался · нажми «Переподключить»';this.paintStatus();
+        return false;
+      }
     }
     async recoverConnection(reason='retry'){
       if(this.destroyed||this.role!=='teacher'||!this.localStream||this.recoveryBusy)return;
@@ -439,7 +462,7 @@
           }
         }
         this.joinedAt=Date.now();
-        if(reconnect)this.closePeer(false,false);
+        if(reconnect){this.iceRestartAttempts=0;this.iceFailureSince=0;this.closePeer(false,false)}
         this.ensurePeer();this.bindMedia();await this.refreshDevices();this.renderButtons();
         this.status='Вы в уроке · ждём собеседника';this.paintStatus();this.startHandshakeLoop();
         const other=this.role==='teacher'?'student':'teacher';
@@ -471,7 +494,7 @@
     startStats(){this.stopStats();this.statsTimer=setInterval(()=>this.collectStats().catch(()=>{}),3000);this.collectStats().catch(()=>{})}
     stopStats(){clearInterval(this.statsTimer);this.statsTimer=null}
     async collectStats(){if(!this.pc||this.pc.connectionState!=='connected')return;const reports=await this.pc.getStats();let pair=null,local=null,remote=null,received=0,packets=0,lost=0,videoBytes=0,videoFrames=0,videoFps=null;reports.forEach(r=>{if(r.type==='candidate-pair'&&r.state==='succeeded'&&r.nominated)pair=r;if(r.type==='inbound-rtp'&&!r.isRemote){received+=Number(r.bytesReceived||0);packets+=Number(r.packetsReceived||0);lost+=Number(r.packetsLost||0);if(r.kind==='video'||r.mediaType==='video'){videoBytes+=Number(r.bytesReceived||0);videoFrames=Math.max(videoFrames,Number(r.framesDecoded||0));if(r.framesPerSecond!=null)videoFps=Math.round(r.framesPerSecond)}}});if(pair){local=reports.get(pair.localCandidateId);remote=reports.get(pair.remoteCandidateId)}const now=Date.now(),dt=this.lastBytesAt?(now-this.lastBytesAt)/1000:0;const bitrate=dt>0?Math.max(0,Math.round((received-this.lastBytes)*8/dt/1000)):null;this.lastBytes=received;this.lastBytesAt=now;const total=packets+lost;this.stats={rtt:pair?.currentRoundTripTime!=null?Math.round(pair.currentRoundTripTime*1000):null,loss:total>0?Math.max(0,Math.round(lost*1000/total)/10):0,route:local?.candidateType==='relay'||remote?.candidateType==='relay'?'TURN relay':`${String(local?.candidateType||'P2P').toUpperCase()} · ${String(pair?.protocol||local?.protocol||'udp').toUpperCase()}`,bitrate,videoFps,videoBytes,videoFrames};if(videoBytes>0){this.ensureRemotePlayback();const v=this.panel?.querySelector('#mrRemoteVideo');if(videoFrames>0&&(!v?.videoWidth||v.paused)){this.bindMedia();this.ensureRemotePlayback()}}this.paintStatus()}
-    paintStatus(){const el=this.panel?.querySelector('#mrVideoStatus')||document.querySelector('#mrVideoStatus');const dbLabel=this.role==='student'?'DB token':'DB';let sig=this.fastSubscribed?(this.subscribed?`Realtime + ${dbLabel}`:'Realtime'):(this.subscribed?dbLabel:'—');if(this.rendezvousAvailable)sig+=(sig==='—'?'Rendezvous':' + Rendezvous');const connected=this.pc?.connectionState==='connected';const videoLive=connected&&(this.stats.videoFrames>0||this.panel?.querySelector('#mrRemoteVideo')?.videoWidth>0);const base=connected?(videoLive?'Соединено · видео идёт':'Соединено · запускаем видео…'):this.status;const signalOk=this.fastSubscribed||this.subscribed;const text=`${base}${this.localStream?(this.turnReady?' · TURN готов':' · WebRTC'):''}${signalOk?` · сигналинг ${sig}`:' · сигналинг недоступен'}`;if(el)el.textContent=text;const badge=this.panel?.querySelector('#mrTransportBadge');if(badge)badge.textContent=this.stats.route!=='—'?this.stats.route:(connected?(this.turnReady?'TURN / P2P':'P2P'):(this.turnReady?'WebRTC + TURN':'WebRTC'));const q=this.panel?.querySelector('#mrQuality');if(q){const ice=this.pc?.iceConnectionState||'—',sg=this.pc?.signalingState||'—';q.textContent=this.pc?.connectionState==='connected'?`${this.stats.rtt==null?'—':this.stats.rtt+' мс'} · потери ${this.stats.loss==null?'—':this.stats.loss+'%'}${this.stats.bitrate?` · ${this.stats.bitrate} кбит/с`:''}${this.stats.videoFps!=null?` · видео ${this.stats.videoFps} fps`:''}`:`ICE ${ice} · SDP ${sg} · кандидаты ${this.localIceCount}/${this.remoteIceCount}`;}const rec=this.panel?.querySelector('#mrRecBadge');if(rec){const local=this.recorder?.state==='recording',active=this.role==='teacher'?local:this.remoteRecording;rec.hidden=!active;rec.textContent=this.role==='teacher'?`● REC · часть ${this.recordSegment}`:'● REC преподавателя'}}
+    paintStatus(){const el=this.panel?.querySelector('#mrVideoStatus')||document.querySelector('#mrVideoStatus');const dbLabel=this.role==='student'?'DB token':'DB';let sig=this.fastSubscribed?(this.subscribed?`Realtime + ${dbLabel}`:'Realtime'):(this.subscribed?dbLabel:'—');if(this.rendezvousAvailable)sig+=(sig==='—'?'Rendezvous':' + Rendezvous');const connected=this.pc?.connectionState==='connected';const videoLive=connected&&(this.stats.videoFrames>0||this.panel?.querySelector('#mrRemoteVideo')?.videoWidth>0);const base=connected?(videoLive?'Соединено · видео идёт':'Соединено · запускаем видео…'):this.status;const signalOk=this.fastSubscribed||this.subscribed;const text=`${base}${this.localStream?(this.turnReady?' · TURN готов':' · WebRTC'):''}${signalOk?` · сигналинг ${sig}`:' · сигналинг недоступен'}`;if(el)el.textContent=text;const badge=this.panel?.querySelector('#mrTransportBadge');if(badge)badge.textContent=this.stats.route!=='—'?this.stats.route:(connected?(this.turnReady?'TURN / P2P':'P2P'):(this.turnReady?'WebRTC + TURN':'WebRTC'));const q=this.panel?.querySelector('#mrQuality');if(q){const ice=this.pc?.iceConnectionState||'—',sg=this.pc?.signalingState||'—';const lt=[...this.localCandidateTypes].join('/')||'—',rt=[...this.remoteCandidateTypes].join('/')||'—';q.textContent=this.pc?.connectionState==='connected'?`${this.stats.rtt==null?'—':this.stats.rtt+' мс'} · потери ${this.stats.loss==null?'—':this.stats.loss+'%'}${this.stats.bitrate?` · ${this.stats.bitrate} кбит/с`:''}${this.stats.videoFps!=null?` · видео ${this.stats.videoFps} fps`:''}`:`ICE ${ice} · SDP ${sg} · кандидаты ${this.localIceCount}/${this.remoteIceCount} · L:${lt} R:${rt}`;}const rec=this.panel?.querySelector('#mrRecBadge');if(rec){const local=this.recorder?.state==='recording',active=this.role==='teacher'?local:this.remoteRecording;rec.hidden=!active;rec.textContent=this.role==='teacher'?`● REC · часть ${this.recordSegment}`:'● REC преподавателя'}}
     renderDeviceOptions(){const root=this.panel;if(!root)return;const fill=(id,list,current,label)=>{const el=root.querySelector(id);if(!el)return;const value=current||'';el.innerHTML=`<option value="">${label}</option>`+list.map((d,i)=>`<option value="${esc(d.deviceId)}" ${d.deviceId===value?'selected':''}>${esc(d.label||`${label} ${i+1}`)}</option>`).join('')};fill('#mrVideoInput',this.devices.video,this.devicePrefs.video,'Камера');fill('#mrAudioInput',this.devices.audio,this.devicePrefs.audio,'Микрофон');fill('#mrAudioOutput',this.devices.output,this.devicePrefs.output,'Динамики')}
     renderButtons(){
       const root=this.panel||document,mic=root.querySelector?.('#mrVideoMic'),cam=root.querySelector?.('#mrVideoCam'),mirror=root.querySelector?.('#mrVideoMirror'),sound=root.querySelector?.('#mrVideoSound'),screen=root.querySelector?.('#mrVideoScreen'),float=root.querySelector?.('#mrVideoFloat'),recBtn=root.querySelector?.('#mrRecToggle'),start=root.querySelector?.('#mrVideoStart');
