@@ -44,7 +44,7 @@
       this.remoteRecording=false; this.recordSegment=1; this.recordStartedAt=0; this.recordSegmentTimer=null; this.recordStopping=false; this.recordShouldContinue=false;
       this.peerId=(crypto.randomUUID?crypto.randomUUID():Math.random().toString(36).slice(2));
       this.signalMode='hybrid'; this.signalCursor=0; this.signalSince=new Date(Date.now()-3000).toISOString(); this.signalPollTimer=null; this.signalBusy=false; this.signalErrors=0; this.fastChannel=null; this.fastSubscribed=false; this.signalSeq=0; this.seenSignalIds=new Set(); this.remoteOfferId=''; this.localIceCount=0; this.remoteIceCount=0;
-      this.handshakeTimer=null; this.lastOfferData=null; this.lastOfferSentAt=0; this.lastAnswerData=null; this.lastAnswerSentAt=0; this.lastSignalAt=0;
+      this.handshakeTimer=null; this.rendezvousTimer=null; this.rendezvousBusy=false; this.rendezvousAvailable=false; this.lastRvOfferAt=0; this.lastRvAnswerAt=0; this.lastOfferData=null; this.lastOfferSentAt=0; this.lastAnswerData=null; this.lastAnswerSentAt=0; this.lastSignalAt=0;
       this.lastAnswerAt=0; this.negotiationStartedAt=0; this.connectWatchTimer=null; this.recoveryBusy=false; this.remotePeerId=''; this.currentOfferId=''; this.joinedAt=0; this.lastNeedOfferAt=0;
       // Some desktop camera drivers expose a mirrored preview even when CSS is neutral.
       // Keep a local-only correction preference and enable it once for teacher desktop sessions.
@@ -110,12 +110,13 @@
       this.startHandshakeLoop();
     }
     startHandshakeLoop(){
-      clearInterval(this.handshakeTimer);
+      clearInterval(this.handshakeTimer);clearInterval(this.rendezvousTimer);
       if(this.destroyed)return;
       this.handshakeTimer=setInterval(()=>this.handshakeTick().catch(e=>console.warn('[Mathroom video] handshake retry',e)),700);
-      this.handshakeTick().catch(()=>{});
+      this.rendezvousTimer=setInterval(()=>this.syncRendezvous().catch(e=>console.warn('[Mathroom video] rendezvous retry',e)),300);
+      this.handshakeTick().catch(()=>{});this.syncRendezvous(true).catch(()=>{});
     }
-    stopHandshakeLoop(){clearInterval(this.handshakeTimer);this.handshakeTimer=null}
+    stopHandshakeLoop(){clearInterval(this.handshakeTimer);this.handshakeTimer=null;clearInterval(this.rendezvousTimer);this.rendezvousTimer=null}
     async handshakeTick(){
       if(this.destroyed)return;
       const other=this.role==='teacher'?'student':'teacher';
@@ -155,6 +156,54 @@
           this.status='Запрашиваем соединение у преподавателя…';this.paintStatus();
         }
       }
+    }
+    async syncRendezvous(force=false){
+      if(this.destroyed||!this.localStream||this.rendezvousBusy||this.pc?.connectionState==='connected')return;
+      this.rendezvousBusy=true;
+      try{
+        if(this.role==='teacher'){
+          const pc=this.pc;
+          if(pc?.signalingState==='have-local-offer'&&this.currentOfferId&&pc.localDescription?.sdp){
+            const now=Date.now();
+            if(force||now-this.lastRvOfferAt>450){
+              this.lastRvOfferAt=now;
+              const {error}=await sb.rpc('webrtc_teacher_publish_offer',{p_lesson_id:this.lessonId,p_offer_id:this.currentOfferId,p_sdp:pc.localDescription.sdp,p_peer_id:this.peerId});
+              if(error)throw error;
+              this.rendezvousAvailable=true;
+            }
+            const {data,error}=await sb.rpc('webrtc_teacher_get_answer',{p_lesson_id:this.lessonId,p_offer_id:this.currentOfferId});
+            if(error)throw error;
+            const row=Array.isArray(data)?data[0]:null;
+            if(row?.answer_sdp&&pc.signalingState==='have-local-offer'){
+              this.rendezvousAvailable=true;
+              await this.onSignal({kind:'answer',data:{type:'answer',sdp:row.answer_sdp,offerId:this.currentOfferId,__mid:`rv-answer:${this.currentOfferId}:${row.student_updated_at||''}`},from:'student',to:'teacher',peerId:row.student_peer_id||'rv-student',msgId:`rv-answer:${this.currentOfferId}:${row.student_updated_at||''}`});
+            }
+          }
+        }else{
+          const {data,error}=await sb.rpc('webrtc_student_get_offer',{p_lesson_id:this.lessonId,p_access_token:String(S.access||'')});
+          if(error)throw error;
+          const row=Array.isArray(data)?data[0]:null;
+          if(row?.offer_id&&row?.offer_sdp){
+            this.rendezvousAvailable=true;
+            const same=this.remoteOfferId===row.offer_id&&this.pc?.remoteDescription?.type==='offer';
+            if(!same){
+              await this.acceptOffer({type:'offer',sdp:row.offer_sdp,offerId:row.offer_id});
+            }else if(this.lastAnswerData&&Date.now()-this.lastRvAnswerAt>450){
+              await this.publishRendezvousAnswer();
+            }
+          }
+        }
+      }catch(e){
+        this.rendezvousAvailable=false;
+        if(force)console.warn('[Mathroom video] rendezvous unavailable',e);
+      }finally{this.rendezvousBusy=false;this.paintStatus()}
+    }
+    async publishRendezvousAnswer(){
+      if(this.role!=='student'||!this.lastAnswerData?.sdp||!this.remoteOfferId)return false;
+      this.lastRvAnswerAt=Date.now();
+      const {data,error}=await sb.rpc('webrtc_student_publish_answer',{p_lesson_id:this.lessonId,p_access_token:String(S.access||''),p_offer_id:this.remoteOfferId,p_sdp:this.pc?.localDescription?.sdp||this.lastAnswerData.sdp,p_peer_id:this.peerId});
+      if(error)throw error;
+      this.rendezvousAvailable=!!data;return !!data;
     }
         scheduleSignalPoll(delay){clearTimeout(this.signalPollTimer);if(this.destroyed||this.signalMode==='realtime-only')return;this.signalPollTimer=setTimeout(()=>this.pollSignals(false).catch(()=>{}),delay)}
     async pollSignals(initial=false){
@@ -346,6 +395,7 @@
         this.lastOfferSentAt=Date.now();
         this.status=this.remoteReady?'Отправили предложение · ждём ответ…':'Предложение готово · ждём вход ученика…';this.paintStatus();
         await this.send('offer',this.lastOfferData,'student');
+        await this.syncRendezvous(true).catch(()=>{});
         // Keep this exact offer alive until an answer is actually applied. The
         // handshake loop republishes it with progressively richer ICE SDP.
         this.startHandshakeLoop();
@@ -369,7 +419,8 @@
       this.lastAnswerData={type:pc.localDescription.type,sdp:pc.localDescription.sdp,offerId};
       this.lastAnswerSentAt=Date.now();
       const delivered=await this.send('answer',this.lastAnswerData,'teacher');
-      this.status=delivered?'Ответ отправлен · проверяем сеть…':'Не удалось отправить ответ · повторяем…';this.paintStatus();this.startHandshakeLoop();
+      const rvDelivered=await this.publishRendezvousAnswer().catch(()=>false);
+      this.status=(delivered||rvDelivered)?'Ответ отправлен · проверяем сеть…':'Не удалось отправить ответ · повторяем…';this.paintStatus();this.startHandshakeLoop();
     }
         constraints(){const v=this.devicePrefs.video?{deviceId:{exact:this.devicePrefs.video},width:{ideal:1280},height:{ideal:720}}:{width:{ideal:1280},height:{ideal:720}};const a={echoCancellation:true,noiseSuppression:true,autoGainControl:true,...(this.devicePrefs.audio?{deviceId:{exact:this.devicePrefs.audio}}:{})};return{video:v,audio:a}}
     async refreshDevices(){try{const d=await navigator.mediaDevices.enumerateDevices();this.devices.video=d.filter(x=>x.kind==='videoinput');this.devices.audio=d.filter(x=>x.kind==='audioinput');this.devices.output=d.filter(x=>x.kind==='audiooutput');this.renderDeviceOptions()}catch{}}
@@ -420,7 +471,7 @@
     startStats(){this.stopStats();this.statsTimer=setInterval(()=>this.collectStats().catch(()=>{}),3000);this.collectStats().catch(()=>{})}
     stopStats(){clearInterval(this.statsTimer);this.statsTimer=null}
     async collectStats(){if(!this.pc||this.pc.connectionState!=='connected')return;const reports=await this.pc.getStats();let pair=null,local=null,remote=null,received=0,packets=0,lost=0,videoBytes=0,videoFrames=0,videoFps=null;reports.forEach(r=>{if(r.type==='candidate-pair'&&r.state==='succeeded'&&r.nominated)pair=r;if(r.type==='inbound-rtp'&&!r.isRemote){received+=Number(r.bytesReceived||0);packets+=Number(r.packetsReceived||0);lost+=Number(r.packetsLost||0);if(r.kind==='video'||r.mediaType==='video'){videoBytes+=Number(r.bytesReceived||0);videoFrames=Math.max(videoFrames,Number(r.framesDecoded||0));if(r.framesPerSecond!=null)videoFps=Math.round(r.framesPerSecond)}}});if(pair){local=reports.get(pair.localCandidateId);remote=reports.get(pair.remoteCandidateId)}const now=Date.now(),dt=this.lastBytesAt?(now-this.lastBytesAt)/1000:0;const bitrate=dt>0?Math.max(0,Math.round((received-this.lastBytes)*8/dt/1000)):null;this.lastBytes=received;this.lastBytesAt=now;const total=packets+lost;this.stats={rtt:pair?.currentRoundTripTime!=null?Math.round(pair.currentRoundTripTime*1000):null,loss:total>0?Math.max(0,Math.round(lost*1000/total)/10):0,route:local?.candidateType==='relay'||remote?.candidateType==='relay'?'TURN relay':`${String(local?.candidateType||'P2P').toUpperCase()} · ${String(pair?.protocol||local?.protocol||'udp').toUpperCase()}`,bitrate,videoFps,videoBytes,videoFrames};if(videoBytes>0){this.ensureRemotePlayback();const v=this.panel?.querySelector('#mrRemoteVideo');if(videoFrames>0&&(!v?.videoWidth||v.paused)){this.bindMedia();this.ensureRemotePlayback()}}this.paintStatus()}
-    paintStatus(){const el=this.panel?.querySelector('#mrVideoStatus')||document.querySelector('#mrVideoStatus');const dbLabel=this.role==='student'?'DB token':'DB';const sig=this.fastSubscribed?(this.subscribed?`Realtime + ${dbLabel}`:'Realtime'):(this.subscribed?dbLabel:'—');const connected=this.pc?.connectionState==='connected';const videoLive=connected&&(this.stats.videoFrames>0||this.panel?.querySelector('#mrRemoteVideo')?.videoWidth>0);const base=connected?(videoLive?'Соединено · видео идёт':'Соединено · запускаем видео…'):this.status;const signalOk=this.fastSubscribed||this.subscribed;const text=`${base}${this.localStream?(this.turnReady?' · TURN готов':' · WebRTC'):''}${signalOk?` · сигналинг ${sig}`:' · сигналинг недоступен'}`;if(el)el.textContent=text;const badge=this.panel?.querySelector('#mrTransportBadge');if(badge)badge.textContent=this.stats.route!=='—'?this.stats.route:(connected?(this.turnReady?'TURN / P2P':'P2P'):(this.turnReady?'WebRTC + TURN':'WebRTC'));const q=this.panel?.querySelector('#mrQuality');if(q){const ice=this.pc?.iceConnectionState||'—',sg=this.pc?.signalingState||'—';q.textContent=this.pc?.connectionState==='connected'?`${this.stats.rtt==null?'—':this.stats.rtt+' мс'} · потери ${this.stats.loss==null?'—':this.stats.loss+'%'}${this.stats.bitrate?` · ${this.stats.bitrate} кбит/с`:''}${this.stats.videoFps!=null?` · видео ${this.stats.videoFps} fps`:''}`:`ICE ${ice} · SDP ${sg} · кандидаты ${this.localIceCount}/${this.remoteIceCount}`;}const rec=this.panel?.querySelector('#mrRecBadge');if(rec){const local=this.recorder?.state==='recording',active=this.role==='teacher'?local:this.remoteRecording;rec.hidden=!active;rec.textContent=this.role==='teacher'?`● REC · часть ${this.recordSegment}`:'● REC преподавателя'}}
+    paintStatus(){const el=this.panel?.querySelector('#mrVideoStatus')||document.querySelector('#mrVideoStatus');const dbLabel=this.role==='student'?'DB token':'DB';let sig=this.fastSubscribed?(this.subscribed?`Realtime + ${dbLabel}`:'Realtime'):(this.subscribed?dbLabel:'—');if(this.rendezvousAvailable)sig+=(sig==='—'?'Rendezvous':' + Rendezvous');const connected=this.pc?.connectionState==='connected';const videoLive=connected&&(this.stats.videoFrames>0||this.panel?.querySelector('#mrRemoteVideo')?.videoWidth>0);const base=connected?(videoLive?'Соединено · видео идёт':'Соединено · запускаем видео…'):this.status;const signalOk=this.fastSubscribed||this.subscribed;const text=`${base}${this.localStream?(this.turnReady?' · TURN готов':' · WebRTC'):''}${signalOk?` · сигналинг ${sig}`:' · сигналинг недоступен'}`;if(el)el.textContent=text;const badge=this.panel?.querySelector('#mrTransportBadge');if(badge)badge.textContent=this.stats.route!=='—'?this.stats.route:(connected?(this.turnReady?'TURN / P2P':'P2P'):(this.turnReady?'WebRTC + TURN':'WebRTC'));const q=this.panel?.querySelector('#mrQuality');if(q){const ice=this.pc?.iceConnectionState||'—',sg=this.pc?.signalingState||'—';q.textContent=this.pc?.connectionState==='connected'?`${this.stats.rtt==null?'—':this.stats.rtt+' мс'} · потери ${this.stats.loss==null?'—':this.stats.loss+'%'}${this.stats.bitrate?` · ${this.stats.bitrate} кбит/с`:''}${this.stats.videoFps!=null?` · видео ${this.stats.videoFps} fps`:''}`:`ICE ${ice} · SDP ${sg} · кандидаты ${this.localIceCount}/${this.remoteIceCount}`;}const rec=this.panel?.querySelector('#mrRecBadge');if(rec){const local=this.recorder?.state==='recording',active=this.role==='teacher'?local:this.remoteRecording;rec.hidden=!active;rec.textContent=this.role==='teacher'?`● REC · часть ${this.recordSegment}`:'● REC преподавателя'}}
     renderDeviceOptions(){const root=this.panel;if(!root)return;const fill=(id,list,current,label)=>{const el=root.querySelector(id);if(!el)return;const value=current||'';el.innerHTML=`<option value="">${label}</option>`+list.map((d,i)=>`<option value="${esc(d.deviceId)}" ${d.deviceId===value?'selected':''}>${esc(d.label||`${label} ${i+1}`)}</option>`).join('')};fill('#mrVideoInput',this.devices.video,this.devicePrefs.video,'Камера');fill('#mrAudioInput',this.devices.audio,this.devicePrefs.audio,'Микрофон');fill('#mrAudioOutput',this.devices.output,this.devicePrefs.output,'Динамики')}
     renderButtons(){
       const root=this.panel||document,mic=root.querySelector?.('#mrVideoMic'),cam=root.querySelector?.('#mrVideoCam'),mirror=root.querySelector?.('#mrVideoMirror'),sound=root.querySelector?.('#mrVideoSound'),screen=root.querySelector?.('#mrVideoScreen'),float=root.querySelector?.('#mrVideoFloat'),recBtn=root.querySelector?.('#mrRecToggle'),start=root.querySelector?.('#mrVideoStart');
