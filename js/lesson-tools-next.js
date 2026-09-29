@@ -161,7 +161,13 @@
       if(this.destroyed||this.signalMode==='realtime-only'||this.signalBusy)return;
       this.signalBusy=true;
       try{
-        const {data,error}=await sb.rpc('webrtc_get_signals',{p_lesson_id:this.lessonId,p_after_id:this.signalCursor,p_for_role:this.role,p_since:this.signalSince});
+        // Do not poll strictly by the last numeric id. PostgreSQL identity values are
+        // allocated before COMMIT, so concurrent mobile/desktop requests can become
+        // visible out of id order. A later ready/hello could therefore advance the
+        // cursor past an answer that commits a fraction of a second later. Replay a
+        // short rolling window instead and deduplicate by __mid in onSignal().
+        const replaySince=new Date(Date.now()-20000).toISOString();
+        const {data,error}=await sb.rpc('webrtc_get_signals',{p_lesson_id:this.lessonId,p_after_id:0,p_for_role:this.role,p_since:replaySince});
         if(error)throw error;
         this.subscribed=true; this.signalErrors=0;
         const rows=Array.isArray(data)?data:[];
@@ -178,7 +184,7 @@
         console.warn('[Mathroom video] signalling poll',e);
       }finally{
         this.signalBusy=false;
-        if(!initial)this.scheduleSignalPoll(this.pc?.connectionState==='connected'?1500:(this.fastSubscribed?600:180));
+        if(!initial)this.scheduleSignalPoll(this.pc?.connectionState==='connected'?1500:250);
       }
       if(initial)this.scheduleSignalPoll(60);
     }
@@ -246,7 +252,11 @@
         await this.acceptOffer(msg.data);return;
       }
       if(msg.kind==='answer'&&this.role==='teacher'){
-        if(msg.data?.offerId&&this.currentOfferId&&msg.data.offerId!==this.currentOfferId)return;
+        if(msg.data?.offerId&&this.currentOfferId&&msg.data.offerId!==this.currentOfferId){
+          // A stale answer can only belong to an earlier explicit reconnect now.
+          // Keep waiting for the current offer instead of rebuilding it again.
+          this.status='Получили старый ответ · ждём актуальный…';this.paintStatus();return;
+        }
         const pc=this.ensurePeer();
         if(pc.signalingState==='have-local-offer'){
           await pc.setRemoteDescription(new RTCSessionDescription({type:msg.data?.type||'answer',sdp:msg.data?.sdp||''}));
@@ -281,10 +291,13 @@
     }
     armConnectWatch(){
       clearTimeout(this.connectWatchTimer);
-      if(this.destroyed||this.role!=='teacher'||!this.localStream)return;
+      // Never recycle an offer while we are still waiting for the student's answer.
+      // On iPhone/Safari camera permission + HTTP signalling can legitimately take a
+      // few seconds. Replacing the offer during that window makes the late answer stale.
+      if(this.destroyed||this.role!=='teacher'||!this.localStream||this.pc?.remoteDescription?.type!=='answer')return;
       this.connectWatchTimer=setTimeout(()=>{
-        if(!this.destroyed&&this.pc?.connectionState!=='connected')this.recoverConnection('watchdog').catch(()=>{});
-      },5500);
+        if(!this.destroyed&&this.pc?.remoteDescription?.type==='answer'&&this.pc?.connectionState!=='connected')this.recoverConnection('watchdog').catch(()=>{});
+      },9000);
     }
     async recoverConnection(reason='retry'){
       if(this.destroyed||this.role!=='teacher'||!this.localStream||this.recoveryBusy)return;
@@ -325,7 +338,9 @@
         this.lastOfferSentAt=Date.now();
         this.status=this.remoteReady?'Отправили предложение · ждём ответ…':'Предложение готово · ждём вход ученика…';this.paintStatus();
         await this.send('offer',this.lastOfferData,'student');
-        this.startHandshakeLoop();this.armConnectWatch();
+        // Keep this exact offer alive until an answer is actually applied. The
+        // handshake loop republishes it with progressively richer ICE SDP.
+        this.startHandshakeLoop();
       }finally{this.makingOffer=false}
     }
         async acceptOffer(data){
@@ -339,10 +354,14 @@
       await this.flushIce();
       const answer=await pc.createAnswer();
       await pc.setLocalDescription(answer);
+      // Give Safari a brief chance to place host/srflx candidates directly in SDP.
+      // The answer is still retried afterwards, but this makes the first durable DB
+      // answer sufficient even when Realtime/trickle ICE is unavailable on iPhone.
+      await this.waitIceGathering(pc,1800);
       this.lastAnswerData={type:pc.localDescription.type,sdp:pc.localDescription.sdp,offerId};
       this.lastAnswerSentAt=Date.now();
-      await this.send('answer',this.lastAnswerData,'teacher');
-      this.status='Ответ отправлен · проверяем сеть…';this.paintStatus();this.startHandshakeLoop();
+      const delivered=await this.send('answer',this.lastAnswerData,'teacher');
+      this.status=delivered?'Ответ отправлен · проверяем сеть…':'Не удалось отправить ответ · повторяем…';this.paintStatus();this.startHandshakeLoop();
     }
         constraints(){const v=this.devicePrefs.video?{deviceId:{exact:this.devicePrefs.video},width:{ideal:1280},height:{ideal:720}}:{width:{ideal:1280},height:{ideal:720}};const a={echoCancellation:true,noiseSuppression:true,autoGainControl:true,...(this.devicePrefs.audio?{deviceId:{exact:this.devicePrefs.audio}}:{})};return{video:v,audio:a}}
     async refreshDevices(){try{const d=await navigator.mediaDevices.enumerateDevices();this.devices.video=d.filter(x=>x.kind==='videoinput');this.devices.audio=d.filter(x=>x.kind==='audioinput');this.devices.output=d.filter(x=>x.kind==='audiooutput');this.renderDeviceOptions()}catch{}}
