@@ -61,13 +61,20 @@
       this.micEnabled = localStorage.getItem(`mathroom.media.mic.${this.role}`) !== '0';
       this.cameraEnabled = localStorage.getItem(`mathroom.media.camera.${this.role}`) !== '0';
       this.minimized = localStorage.getItem(`mathroom.media.minimized.${this.role}`) === '1';
-      this.iceServers = Array.isArray(CFG?.WEBRTC_ICE_SERVERS) && CFG.WEBRTC_ICE_SERVERS.length
+      this.baseIceServers = Array.isArray(CFG?.WEBRTC_ICE_SERVERS) && CFG.WEBRTC_ICE_SERVERS.length
         ? CFG.WEBRTC_ICE_SERVERS
         : [
             { urls: 'stun:stun.cloudflare.com:3478' },
             { urls: 'stun:stun.l.google.com:19302' }
           ];
+      this.iceServers = [...this.baseIceServers];
+      this.turnLoadedAt = 0;
+      this.turnExpiresAt = 0;
       this.hasTurn = this.iceServers.some(x => String(Array.isArray(x.urls) ? x.urls.join(' ') : x.urls || '').includes('turn:'));
+      this.staticTurnConfigured = this.hasTurn;
+      this.forceRelay = false;
+      this.relayEscalated = false;
+      this.routeLabel = '';
       this.ensureStyles();
       this.startSignaling();
       this.onOnline = () => {
@@ -127,6 +134,37 @@
     }
 
     otherRole() { return this.role === 'teacher' ? 'student' : 'teacher'; }
+
+    async ensureIceServers(force = false) {
+      const now = Date.now();
+      if (!force && this.staticTurnConfigured) return this.iceServers;
+      if (!force && this.hasTurn && this.turnExpiresAt > now + 5 * 60 * 1000) return this.iceServers;
+      try {
+        const body = {
+          lesson_id: this.lessonId,
+          role: this.role,
+          access_token: this.role === 'student' ? String(S.access || '') : ''
+        };
+        const { data, error } = await sb.functions.invoke('turn-credentials', { body });
+        if (error) throw error;
+        const turn = data?.iceServer || (Array.isArray(data?.iceServers) ? data.iceServers[0] : null);
+        if (!turn?.urls || !turn?.username || !turn?.credential) throw new Error('TURN credentials are incomplete');
+        this.iceServers = [...this.baseIceServers, turn];
+        this.hasTurn = true;
+        this.turnLoadedAt = now;
+        this.turnExpiresAt = Number(data?.expiresAt || 0) || (now + Math.max(30, Number(data?.ttl || 7200)) * 1000);
+        this.paint();
+        return this.iceServers;
+      } catch (e) {
+        console.warn('[Mathroom media] TURN credentials unavailable; using direct P2P only', e);
+        this.iceServers = [...this.baseIceServers];
+        this.hasTurn = this.iceServers.some(x => String(Array.isArray(x.urls) ? x.urls.join(' ') : x.urls || '').includes('turn:'));
+        this.turnLoadedAt = now;
+        this.turnExpiresAt = 0;
+        this.paint();
+        return this.iceServers;
+      }
+    }
 
     schedulePoll(delay = 800) {
       clearTimeout(this.pollTimer);
@@ -219,7 +257,8 @@
       }
       if (kind === 'teacher-ready' || kind === 'ready' || kind === 'need-offer') {
         this.remoteReady = true;
-        if (this.role === 'teacher' && this.joined && !this.isConnected()) this.makeOffer(false).catch(() => {});
+        if (kind === 'need-offer' && data?.relay && this.role === 'teacher' && this.hasTurn) this.forceRelay = true;
+        if (this.role === 'teacher' && this.joined && !this.isConnected()) this.makeOffer(!!data?.reconnect).catch(() => {});
         return;
       }
       if (kind === 'offer' && this.role === 'student') {
@@ -248,7 +287,12 @@
 
     createPeer() {
       if (this.pc && this.pc.signalingState !== 'closed') return this.pc;
-      const pc = new RTCPeerConnection({ iceServers: this.iceServers, iceCandidatePoolSize: 2, bundlePolicy: 'max-bundle' });
+      const pc = new RTCPeerConnection({
+        iceServers: this.iceServers,
+        iceCandidatePoolSize: 2,
+        bundlePolicy: 'max-bundle',
+        iceTransportPolicy: this.forceRelay && this.hasTurn ? 'relay' : 'all'
+      });
       this.pc = pc;
       this.pendingIce = [];
       this.remoteStream = new MediaStream();
@@ -268,6 +312,7 @@
         if (st === 'connected') {
           this.status = 'Соединено';
           this.reconnectAttempts = 0;
+          this.relayEscalated = this.forceRelay;
           clearTimeout(this.connectTimer);
           clearTimeout(this.disconnectTimer);
           clearInterval(this.readyTimer);
@@ -287,9 +332,15 @@
             else this.send('need-offer', { joined:true, reconnect:true }, 'teacher').catch(() => {});
           }, 2500);
         } else if (st === 'failed') {
-          this.status = this.hasTurn ? 'Не удалось соединиться · повторяем…' : 'Прямая связь не установилась · пробуем ещё раз…';
-          if (this.role === 'teacher' && this.joined && this.reconnectAttempts < 1) setTimeout(() => this.reconnect(true).catch(() => {}), 900);
-          else if (this.role === 'student' && this.joined) this.send('need-offer', { joined:true, reconnect:true }, 'teacher').catch(() => {});
+          if (this.hasTurn && !this.forceRelay) {
+            this.status = 'Прямое соединение недоступно · включаем резервный канал…';
+            if (this.role === 'teacher' && this.joined) setTimeout(() => this.reconnect(true, true).catch(() => {}), 500);
+            else if (this.role === 'student' && this.joined) this.send('need-offer', { joined:true, reconnect:true, relay:true }, 'teacher').catch(() => {});
+          } else {
+            this.status = this.hasTurn ? 'Не удалось соединиться · повторяем…' : 'Прямая связь не установилась · пробуем ещё раз…';
+            if (this.role === 'teacher' && this.joined && this.reconnectAttempts < 2) setTimeout(() => this.reconnect(true, this.forceRelay).catch(() => {}), 900);
+            else if (this.role === 'student' && this.joined) this.send('need-offer', { joined:true, reconnect:true, relay:this.forceRelay }, 'teacher').catch(() => {});
+          }
         }
         this.paint();
       };
@@ -335,14 +386,18 @@
         clearTimeout(this.connectTimer);
         this.connectTimer = setTimeout(() => {
           if (this.destroyed || !this.joined || this.isConnected()) return;
-          if (this.reconnectAttempts < 1) this.reconnect(true).catch(() => {});
+          if (this.hasTurn && !this.forceRelay) {
+            this.status = 'Прямой маршрут не ответил · переключаемся на резервный сервер…';
+            this.paint();
+            this.reconnect(true, true).catch(() => {});
+          } else if (this.reconnectAttempts < 2) this.reconnect(true, this.forceRelay).catch(() => {});
           else {
             this.status = this.hasTurn
-              ? 'Не удалось подключиться. Нажми «Переподключить».'
-              : 'Эта сеть не пропускает прямое P2P-соединение. Попробуй другую сеть или нажми «Переподключить».';
+              ? 'Не удалось подключиться. Проверь интернет и нажми «Переподключить».'
+              : 'Резервный сервер связи недоступен. Проверь интернет и нажми «Переподключить».';
             this.paint();
           }
-        }, 9000);
+        }, this.hasTurn && !this.forceRelay ? 6000 : 9000);
       } finally { this.makingOffer = false; }
     }
 
@@ -479,7 +534,12 @@
     async joinCall() {
       try {
         await this.acquireMedia();
+        this.status = 'Готовим канал связи…';
+        this.paint();
+        await this.ensureIceServers(false);
         this.joined = true;
+        this.forceRelay = false;
+        this.relayEscalated = false;
         this.closePrejoin(false);
         this.createPeer();
         this.bindMedia();
@@ -547,17 +607,19 @@
       } catch (e) { if (e?.name !== 'NotAllowedError') fail(e); }
     }
 
-    async reconnect(iceRestart = false) {
+    async reconnect(iceRestart = false, forceRelay = false) {
       if (!this.joined || this.destroyed) return;
       this.reconnectAttempts++;
+      if (this.turnExpiresAt && this.turnExpiresAt < Date.now() + 5 * 60 * 1000) await this.ensureIceServers(true);
+      if (forceRelay && this.hasTurn) this.forceRelay = true;
       this.closePeer(false);
-      this.status = 'Переподключаемся…';
+      this.status = this.forceRelay ? 'Подключаем через резервный сервер…' : 'Переподключаемся…';
       this.paint();
       this.createPeer();
       this.schedulePoll(50);
       this.startReadyLoop();
       if (this.role === 'teacher') await this.makeOffer(iceRestart);
-      else await this.send('need-offer', { joined:true, reconnect:true }, 'teacher');
+      else await this.send('need-offer', { joined:true, reconnect:true, relay:this.forceRelay }, 'teacher');
     }
 
     closePeer(notify = false) {
@@ -586,6 +648,9 @@
       this.localStream = null;
       this.status = 'Готов к подключению';
       this.connectionQuality = '';
+      this.forceRelay = false;
+      this.relayEscalated = false;
+      this.routeLabel = '';
       this.paint();
       this.schedulePoll(500);
     }
@@ -628,14 +693,23 @@
         if (!pc || pc.connectionState !== 'connected') return;
         try {
           const stats = await pc.getStats();
-          let rtt = null, packets = 0, lost = 0;
+          let rtt = null, packets = 0, lost = 0, selectedPair = null;
           stats.forEach(s => {
-            if (s.type === 'candidate-pair' && s.state === 'succeeded' && s.currentRoundTripTime != null) rtt = Math.round(s.currentRoundTripTime * 1000);
+            if (s.type === 'candidate-pair' && s.state === 'succeeded' && (s.selected || s.nominated || s.currentRoundTripTime != null)) {
+              if (!selectedPair || s.selected || s.nominated) selectedPair = s;
+              if (s.currentRoundTripTime != null) rtt = Math.round(s.currentRoundTripTime * 1000);
+            }
             if (s.type === 'inbound-rtp' && !s.isRemote) { packets += Number(s.packetsReceived || 0); lost += Number(s.packetsLost || 0); }
           });
+          if (selectedPair) {
+            const local = stats.get?.(selectedPair.localCandidateId);
+            const remote = stats.get?.(selectedPair.remoteCandidateId);
+            const relay = local?.candidateType === 'relay' || remote?.candidateType === 'relay' || this.forceRelay;
+            this.routeLabel = relay ? 'резервный маршрут' : 'прямой маршрут';
+          }
           const dp = packets - prevPackets, dl = lost - prevLost; prevPackets = packets; prevLost = lost;
           const loss = dp + dl > 0 ? Math.max(0, Math.round((dl / (dp + dl)) * 1000) / 10) : 0;
-          this.connectionQuality = `${rtt == null ? '—' : `${rtt} мс`} · потери ${loss}%`;
+          this.connectionQuality = `${this.routeLabel ? this.routeLabel + ' · ' : ''}${rtt == null ? '—' : `${rtt} мс`} · потери ${loss}%`;
           this.paint();
         } catch {}
       }, 2500);
@@ -676,7 +750,7 @@
       if (!host) {
         host = document.createElement('section');
         host.id = 'mrVideoPanel';
-        host.innerHTML = `<div class="mr-call-head"><div><div class="mr-call-title"><span class="mr-call-dot"></span><b>Связь урока</b><span class="pill">Mathroom P2P</span></div><div class="small muted" id="mrVideoStatus"></div></div><button class="btn sm" id="mrVideoMin" hidden>—</button></div>
+        host.innerHTML = `<div class="mr-call-head"><div><div class="mr-call-title"><span class="mr-call-dot"></span><b>Связь урока</b><span class="pill">Mathroom P2P + TURN</span></div><div class="small muted" id="mrVideoStatus"></div></div><button class="btn sm" id="mrVideoMin" hidden>—</button></div>
           <div class="mr-call-stage"><video class="mr-remote-video" id="mrRemoteVideo" autoplay muted playsinline></video><audio id="mrRemoteAudio" autoplay></audio><video class="mr-local-video" id="mrLocalVideo" autoplay muted playsinline></video><span class="mr-call-person">${this.role === 'teacher' ? 'Ученик' : 'Преподаватель'}</span></div>
           <div class="mr-call-actions"><button class="btn primary" id="mrVideoJoin">Присоединиться к уроку</button><button class="btn mr-hide-min" id="mrVideoMic" hidden></button><button class="btn mr-hide-min" id="mrVideoCam" hidden></button><button class="btn mr-hide-min" id="mrVideoSound" hidden>🔊 Звук</button>${this.role === 'teacher' ? '<button class="btn mr-hide-min" id="mrVideoScreen" hidden>🖥 Экран</button>' : ''}<button class="btn mr-hide-min" id="mrVideoReconnect" hidden>↻ Переподключить</button><button class="btn danger" id="mrVideoEnd" hidden>Выйти</button></div>
           <div class="mr-call-quality" id="mrVideoQuality"></div><div class="mr-call-note" id="mrVideoNote">Камера и микрофон выбираются перед входом. Связь встроена прямо в Mathroom.</div>`;
@@ -685,7 +759,7 @@
         host.querySelector('#mrVideoMic').onclick = () => this.toggleMic();
         host.querySelector('#mrVideoCam').onclick = () => this.toggleCamera();
         host.querySelector('#mrVideoSound').onclick = () => this.enableSound();
-        host.querySelector('#mrVideoReconnect').onclick = () => this.reconnect(true).catch(fail);
+        host.querySelector('#mrVideoReconnect').onclick = () => { this.forceRelay = false; this.reconnect(true, false).catch(fail); };
         host.querySelector('#mrVideoEnd').onclick = () => this.end();
         host.querySelector('#mrVideoMin').onclick = () => this.toggleMinimized();
         const screen = host.querySelector('#mrVideoScreen'); if (screen) screen.onclick = () => this.shareScreen();
@@ -701,7 +775,7 @@
       if (!host) return;
       host.className = `mr-native-call ${this.joined ? 'joined' : ''} ${this.isConnected() ? 'connected' : ''} ${this.minimized ? 'minimized' : ''}`;
       const status = host.querySelector('#mrVideoStatus'); if (status) status.textContent = this.status;
-      const q = host.querySelector('#mrVideoQuality'); if (q) q.textContent = this.connectionQuality || (this.joined ? (this.hasTurn ? 'P2P + TURN fallback' : 'P2P · бесплатный прямой канал') : '');
+      const q = host.querySelector('#mrVideoQuality'); if (q) q.textContent = this.connectionQuality || (this.joined ? (this.hasTurn ? 'Автоматический прямой + резервный маршрут' : 'Прямой канал · резервный сервер пока недоступен') : '');
       const join = host.querySelector('#mrVideoJoin'); if (join) join.hidden = this.joined;
       const ids = ['#mrVideoMic','#mrVideoCam','#mrVideoSound','#mrVideoReconnect','#mrVideoEnd','#mrVideoScreen'];
       ids.forEach(sel => { const el=host.querySelector(sel); if(el) el.hidden = !this.joined; });
@@ -710,7 +784,7 @@
       const cam = host.querySelector('#mrVideoCam'); if (cam) cam.textContent = this.cameraEnabled ? '📹 Вкл' : '🚫 Выкл';
       const screen = host.querySelector('#mrVideoScreen'); if (screen) screen.textContent = this.screenTrack ? '■ Экран' : '🖥 Экран';
       const note = host.querySelector('#mrVideoNote'); if (note) note.textContent = this.joined
-        ? (this.hasTurn ? 'Mathroom автоматически восстанавливает соединение при кратком обрыве.' : 'Бесплатный режим использует прямое WebRTC P2P-соединение. На некоторых закрытых мобильных/корпоративных сетях может понадобиться TURN.')
+        ? (this.hasTurn ? 'Mathroom сначала использует прямую связь, а при проблемах автоматически переключается через резервный сервер.' : 'Резервный сервер сейчас недоступен: Mathroom использует прямое P2P-соединение.')
         : 'Камера и микрофон выбираются перед входом. Связь встроена прямо в Mathroom.';
       this.bindMedia();
     }
