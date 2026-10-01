@@ -26,270 +26,714 @@
 
   function signalTopic(lessonId) { return `lesson:${lessonId}:webrtc`; }
 
-  function isSaluteJazzUrl(value) {
-    try {
-      const u = new URL(String(value || '').trim());
-      const host = u.hostname.toLowerCase();
-      return u.protocol === 'https:' && (
-        host === 'salutejazz.ru' || host.endsWith('.salutejazz.ru') ||
-        host === 'jazz.sber.ru' || host.endsWith('.jazz.sber.ru')
-      );
-    } catch { return false; }
-  }
-
-  function isMobileJazzClient() {
-    return !!(window.matchMedia?.('(max-width: 760px)')?.matches || /Android|iPhone|iPad|iPod/i.test(navigator.userAgent || ''));
-  }
-
-  function ensureJazzStyles() {
-    if (document.getElementById('mrJazzStyles')) return;
-    const st = document.createElement('style'); st.id = 'mrJazzStyles';
-    st.textContent = `
-      .mr-jazz-card{margin-top:12px;border:1px solid var(--line,#e5e7eb);border-radius:18px;background:#fff;padding:16px;box-shadow:0 8px 26px rgba(20,24,32,.05)}
-      .mr-jazz-head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px}.mr-jazz-title{display:flex;align-items:center;gap:9px;flex-wrap:wrap}.mr-jazz-dot{width:9px;height:9px;border-radius:50%;background:#28a164;box-shadow:0 0 0 4px rgba(40,161,100,.12)}
-      .mr-jazz-dot.wait{background:#b7bbc3;box-shadow:0 0 0 4px rgba(120,125,135,.10)}.mr-jazz-provider{font-size:12px;padding:5px 8px;border-radius:999px;background:#f4f5f7;color:#545b66;font-weight:700}.mr-jazz-copy{margin-top:7px;color:var(--muted,#747b85);font-size:13px;line-height:1.45}
-      .mr-jazz-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:13px}.mr-jazz-actions .btn{min-height:42px}.mr-jazz-primary{min-width:210px}.mr-jazz-hint{margin-top:11px;padding:10px 12px;border-radius:12px;background:#f7f8fa;font-size:12px;color:#686f79;line-height:1.45}.mr-jazz-hint b{color:#3f4650}.mr-jazz-mobile-note{display:none}
-      .mr-jazz-state{display:flex;align-items:center;gap:8px;font-size:13px;color:#4d5560;margin-top:5px}.mr-jazz-state strong{color:#20242a}.mr-jazz-error{background:#fff5f4;color:#9f2d22;border:1px solid #f2d5d1;border-radius:12px;padding:10px 12px;margin-top:10px;font-size:13px}
-      .mr-jazz-settings-note{padding:11px 12px;background:#f7f8fa;border-radius:12px;margin:10px 0;font-size:13px;line-height:1.5}.mr-jazz-url-preview{word-break:break-all;background:#f6f7f8;padding:9px;border-radius:10px;font-size:12px}
-      @media(max-width:700px){.mr-jazz-head{flex-direction:column}.mr-jazz-actions{display:grid;grid-template-columns:1fr}.mr-jazz-actions .btn,.mr-jazz-actions a.btn,.mr-jazz-primary{width:100%;min-height:50px;display:flex;align-items:center;justify-content:center}.mr-jazz-card{padding:14px}.mr-jazz-desktop-note{display:none}.mr-jazz-mobile-note{display:block}}
-    `;
-    document.head.appendChild(st);
-  }
-
   class VideoSession {
     constructor(ctx) {
       this.ctx = ctx;
       this.role = ctx.role;
       this.lessonId = ctx.lessonId;
-      this.roomUrl = '';
-      this.provider = 'salutejazz_external';
-      this.enabled = true;
-      this.loading = true;
-      this.error = '';
+      this.peerId = crypto.randomUUID ? crypto.randomUUID() : `peer-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      this.localStream = null;
+      this.remoteStream = new MediaStream();
+      this.pc = null;
       this.panel = null;
-      this.popup = null;
-      this.popupWatch = null;
-      this.openedAt = 0;
+      this.prejoin = null;
+      this.fastChannel = null;
+      this.fastSubscribed = false;
       this.destroyed = false;
-      this.windowName = `mathroom-jazz-${String(this.lessonId).replace(/[^a-z0-9_-]/gi,'').slice(0,24) || 'lesson'}`;
-      ensureJazzStyles();
-      this.load().catch(e => { this.error = e?.message || 'Не удалось загрузить настройки видеосвязи'; this.loading = false; this.repaint(); });
-    }
-
-    async load() {
-      this.loading = true; this.error = ''; this.repaint();
-      if (this.role === 'teacher') {
-        const { data, error } = await sb.from('teacher_video_settings')
-          .select('provider,room_url,enabled,updated_at')
-          .eq('teacher_id', S.user.id)
-          .maybeSingle();
-        if (error) throw error;
-        this.provider = data?.provider || 'salutejazz_external';
-        this.roomUrl = data?.room_url || '';
-        this.enabled = data?.enabled !== false;
-      } else {
-        const { data, error } = await sb.rpc('get_student_lesson_video_room', {
-          p_lesson_id: this.lessonId,
-          p_access_token: String(S.access || '')
-        });
-        if (error) throw error;
-        const v = (data && typeof data === 'object') ? data : {};
-        this.provider = v.provider || 'salutejazz_external';
-        this.roomUrl = v.room_url || '';
-        this.enabled = v.enabled !== false;
-      }
-      this.loading = false;
-      this.repaint();
-    }
-
-    repaint() {
-      if (this.destroyed || !this.panel?.parentElement) return;
-      this.renderPanel(this.panel.parentElement, false);
-    }
-
-    async saveSettings(url, enabled = true) {
-      if (this.role !== 'teacher') return;
-      const roomUrl = String(url || '').trim();
-      if (roomUrl && !isSaluteJazzUrl(roomUrl)) throw new Error('Нужна ссылка SaluteJazz на домене salutejazz.ru');
-      const payload = {
-        teacher_id: S.user.id,
-        provider: 'salutejazz_external',
-        room_url: roomUrl,
-        enabled: !!enabled,
-        updated_at: new Date().toISOString()
+      this.joined = false;
+      this.remoteReady = false;
+      this.makingOffer = false;
+      this.pendingOffer = null;
+      this.pendingIce = [];
+      this.currentOfferId = '';
+      this.remoteOfferId = '';
+      this.seenMessages = new Set();
+      this.signalSeq = 0;
+      this.pollTimer = null;
+      this.readyTimer = null;
+      this.connectTimer = null;
+      this.disconnectTimer = null;
+      this.statsTimer = null;
+      this.reconnectAttempts = 0;
+      this.status = 'Готов к подключению';
+      this.connectionQuality = '';
+      this.screenTrack = null;
+      this.micEnabled = localStorage.getItem(`mathroom.media.mic.${this.role}`) !== '0';
+      this.cameraEnabled = localStorage.getItem(`mathroom.media.camera.${this.role}`) !== '0';
+      this.minimized = localStorage.getItem(`mathroom.media.minimized.${this.role}`) === '1';
+      this.iceServers = Array.isArray(CFG?.WEBRTC_ICE_SERVERS) && CFG.WEBRTC_ICE_SERVERS.length
+        ? CFG.WEBRTC_ICE_SERVERS
+        : [
+            { urls: 'stun:stun.cloudflare.com:3478' },
+            { urls: 'stun:stun.l.google.com:19302' }
+          ];
+      this.hasTurn = this.iceServers.some(x => String(Array.isArray(x.urls) ? x.urls.join(' ') : x.urls || '').includes('turn:'));
+      this.ensureStyles();
+      this.startSignaling();
+      this.onOnline = () => {
+        if (this.destroyed || !this.joined) return;
+        this.status = 'Интернет вернулся · восстанавливаем связь…';
+        this.paint();
+        if (this.role === 'teacher') this.reconnect(true).catch(() => {});
+        else this.send('need-offer', { joined: true }, 'teacher').catch(() => {});
       };
-      const { error } = await sb.from('teacher_video_settings').upsert(payload, { onConflict: 'teacher_id' });
-      if (error) throw error;
-      this.roomUrl = roomUrl; this.enabled = !!enabled; this.provider = payload.provider; this.error = ''; this.loading = false;
-      this.repaint();
+      window.addEventListener('online', this.onOnline);
     }
 
-    openSettings() {
-      if (this.role !== 'teacher') return;
-      const m = modal(`
-        <h2>Видеосвязь SaluteJazz</h2>
-        <p class="muted">Mathroom отвечает за урок и доску, SaluteJazz — только за камеру, микрофон и звук.</p>
-        <div class="mr-jazz-settings-note"><b>Один раз:</b> создай постоянную встречу на salutejazz.ru, разреши гостевой вход, если он нужен твоим ученикам, и вставь сюда ссылку-приглашение.</div>
-        <div class="field"><label>Ссылка на постоянную встречу</label><input id="mrJazzUrl" type="url" inputmode="url" placeholder="https://salutejazz.ru/..." value="${esc(this.roomUrl || '')}"></div>
-        <label style="display:flex;gap:9px;align-items:center;margin:10px 0 14px"><input id="mrJazzEnabled" type="checkbox" ${this.enabled ? 'checked' : ''}> <span>Использовать SaluteJazz в уроках</span></label>
-        <div class="actions"><button class="btn" id="mrJazzTest">Проверить ссылку</button><button class="btn primary" id="mrJazzSave">Сохранить</button></div>
-        <p class="small muted" style="margin-top:12px">Важно: постоянную ссылку участник технически может сохранить после открытия. Для чувствительных сценариев периодически меняй комнату.</p>
-      `);
-      const input = m.querySelector('#mrJazzUrl');
-      m.querySelector('#mrJazzTest').onclick = () => {
-        const url = String(input.value || '').trim();
-        if (!isSaluteJazzUrl(url)) return toast('Вставь корректную ссылку SaluteJazz');
-        if (isMobileJazzClient()) {
-          const a = document.createElement('a');
-          a.href = url; a.target = '_blank'; a.rel = 'noopener noreferrer';
-          document.body.appendChild(a); a.click(); a.remove();
-        } else {
-          window.open(url, '_blank', 'noopener,noreferrer');
-        }
-      };
-      m.querySelector('#mrJazzSave').onclick = async () => {
-        try {
-          const url = String(input.value || '').trim();
-          if (!url) return toast('Добавь ссылку на комнату SaluteJazz');
-          await this.saveSettings(url, m.querySelector('#mrJazzEnabled').checked);
-          m.remove(); toast('Видеосвязь сохранена');
-        } catch (e) { fail(e); }
-      };
+    ensureStyles() {
+      if (document.getElementById('mrNativeMediaStyles')) return;
+      const st = document.createElement('style');
+      st.id = 'mrNativeMediaStyles';
+      st.textContent = `
+        .mr-native-call{border:1px solid var(--line,#e5e7eb);background:#fff;border-radius:18px;padding:14px;display:grid;gap:10px;box-shadow:0 8px 26px rgba(20,24,32,.05)}
+        .mr-native-call .mr-call-head{display:flex;align-items:center;justify-content:space-between;gap:12px}.mr-native-call .mr-call-title{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.mr-native-call .mr-call-dot{width:9px;height:9px;border-radius:50%;background:#aeb4bd;box-shadow:0 0 0 4px rgba(120,125,135,.1)}.mr-native-call.connected .mr-call-dot{background:#25a464;box-shadow:0 0 0 4px rgba(37,164,100,.12)}
+        .mr-native-call .mr-call-stage{display:none;position:relative;background:#101214;border-radius:14px;overflow:hidden;aspect-ratio:16/9;min-height:170px}.mr-native-call.joined .mr-call-stage{display:block}.mr-native-call .mr-remote-video{width:100%;height:100%;object-fit:cover;display:block;background:#101214}.mr-native-call .mr-local-video{position:absolute;right:10px;top:10px;width:92px;height:64px;object-fit:cover;border:2px solid rgba(255,255,255,.88);border-radius:10px;background:#1b1d20;box-shadow:0 6px 18px #0005}.mr-native-call .mr-call-person{position:absolute;left:10px;bottom:10px;background:#0009;color:#fff;padding:4px 8px;border-radius:8px;font-size:11px}.mr-native-call .mr-call-actions{display:flex;gap:7px;flex-wrap:wrap}.mr-native-call .mr-call-actions .btn{min-height:38px}.mr-native-call .mr-call-note{font-size:12px;color:var(--muted,#747b85);line-height:1.45}.mr-native-call .mr-call-quality{font-size:11px;color:var(--muted,#747b85)}
+        .mr-native-call.joined{position:fixed;right:18px;bottom:18px;z-index:1250;width:320px;max-width:calc(100vw - 36px);padding:10px;box-shadow:0 18px 55px #0004}.mr-native-call.joined .mr-call-head{cursor:move}.mr-native-call.joined.minimized{width:260px}.mr-native-call.joined.minimized .mr-call-stage,.mr-native-call.joined.minimized .mr-call-note,.mr-native-call.joined.minimized .mr-call-quality{display:none}.mr-native-call.joined.minimized .mr-call-actions .mr-hide-min{display:none}
+        .mr-native-prejoin-backdrop{position:fixed;inset:0;z-index:3000;background:rgba(8,11,16,.72);display:flex;align-items:center;justify-content:center;padding:18px}.mr-native-prejoin{width:min(720px,100%);background:#fff;border-radius:22px;padding:18px;box-shadow:0 28px 90px #0007;display:grid;gap:14px}.mr-native-prejoin h2{margin:0}.mr-native-prejoin-grid{display:grid;grid-template-columns:minmax(0,1fr) 250px;gap:14px}.mr-native-preview{position:relative;background:#111318;border-radius:16px;overflow:hidden;aspect-ratio:16/10}.mr-native-preview video{width:100%;height:100%;display:block;object-fit:cover}.mr-native-preview .mr-preview-name{position:absolute;left:10px;bottom:10px;background:#0009;color:#fff;padding:5px 8px;border-radius:8px;font-size:12px}.mr-native-prejoin-side{display:grid;align-content:start;gap:9px}.mr-native-prejoin-side .btn{min-height:44px}.mr-native-prejoin-footer{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}.mr-native-prejoin-error{display:none;padding:10px 12px;background:#fff4f2;color:#9a291d;border:1px solid #f0d3ce;border-radius:12px;font-size:13px}.mr-native-prejoin-error.show{display:block}
+        @media(max-width:760px){.mr-native-prejoin{padding:14px}.mr-native-prejoin-grid{grid-template-columns:1fr}.mr-native-prejoin-side{grid-template-columns:1fr 1fr}.mr-native-prejoin-side .mr-prejoin-wide{grid-column:1/-1}.mr-native-prejoin-footer{display:grid;grid-template-columns:1fr;width:100%}.mr-native-prejoin-footer .btn{width:100%;min-height:50px}.mr-native-call.joined{position:relative;right:auto;bottom:auto;width:100%;max-width:none;box-shadow:none}.mr-native-call.joined .mr-call-head{cursor:default}.mr-native-call .mr-call-stage{min-height:210px}.mr-native-call .mr-local-video{width:88px;height:62px}}
+      `;
+      document.head.appendChild(st);
     }
 
-    popupGeometry() {
-      const availW = screen.availWidth || window.screen.width || 1440;
-      const availH = screen.availHeight || window.screen.height || 900;
-      const width = Math.min(410, Math.max(360, Math.round(availW * 0.24)));
-      const height = Math.min(590, Math.max(500, Math.round(availH * 0.66)));
-      const left = Math.max(0, availW - width - 18);
-      const top = Math.max(0, Math.round((availH - height) / 2));
-      return { width, height, left, top };
-    }
-
-    popupFeatures() {
-      if (isMobileJazzClient()) return '';
-      const g = this.popupGeometry();
-      return [
-        'popup=yes',
-        `width=${g.width}`, `height=${g.height}`,
-        `left=${g.left}`, `top=${g.top}`,
-        'resizable=yes', 'scrollbars=yes',
-        'toolbar=no', 'location=no', 'menubar=no', 'status=no'
-      ].join(',');
-    }
-
-    compactPopup(win) {
-      if (!win || isMobileJazzClient()) return;
-      const g = this.popupGeometry();
-      const apply = () => {
-        try { win.resizeTo(g.width, g.height); } catch {}
-        try { win.moveTo(g.left, g.top); } catch {}
-      };
-      apply();
-      setTimeout(apply, 120);
-      setTimeout(apply, 650);
-    }
-
-    openCall() {
-      if (!this.enabled) return toast('Видеосвязь отключена преподавателем');
-      if (!this.roomUrl) {
-        if (this.role === 'teacher') this.openSettings();
-        else toast('Преподаватель ещё не настроил видеосвязь');
-        return;
-      }
-      if (!isSaluteJazzUrl(this.roomUrl)) return toast('Ссылка SaluteJazz настроена неверно');
-
-      if (isMobileJazzClient()) {
-        const a = document.createElement('a');
-        a.href = this.roomUrl;
-        a.target = '_blank';
-        a.rel = 'noopener noreferrer';
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        return;
-      }
-
+    async roomTopic() {
+      const token = this.role === 'student'
+        ? String(S.access || '')
+        : String((S.students || []).find(x => x.id === this.ctx.studentId)?.access_token || '');
+      const raw = `${this.lessonId}:${token || this.ctx.studentId || ''}:media-v25`;
       try {
-        if (this.popup && !this.popup.closed) {
-          this.compactPopup(this.popup);
-          this.popup.focus();
-          return;
+        if (crypto?.subtle) {
+          const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(raw));
+          return `media:${[...new Uint8Array(buf)].map(x => x.toString(16).padStart(2,'0')).join('').slice(0,40)}`;
         }
       } catch {}
-      const opened = window.open(this.roomUrl, this.windowName, this.popupFeatures());
-      if (!opened) {
-        toast('Браузер заблокировал компактное окно. Разреши всплывающие окна для Mathroom или открой Jazz в новой вкладке.');
+      let h = 2166136261;
+      for (let i = 0; i < raw.length; i++) { h ^= raw.charCodeAt(i); h = Math.imul(h, 16777619); }
+      return `media:${(h >>> 0).toString(16)}:${this.lessonId.slice(0,8)}`;
+    }
+
+    async startSignaling() {
+      try {
+        const topic = await this.roomTopic();
+        if (this.destroyed) return;
+        this.fastChannel = sb.channel(topic, { config: { broadcast: { self: false, ack: false } } })
+          .on('broadcast', { event: 'signal' }, ({ payload }) => this.onSignal(payload))
+          .subscribe(status => {
+            this.fastSubscribed = status === 'SUBSCRIBED';
+            this.paint();
+            if (this.fastSubscribed) this.send('hello', { online: true }, this.otherRole()).catch(() => {});
+          });
+      } catch (e) { console.warn('[Mathroom media] realtime unavailable', e); }
+      this.schedulePoll(150);
+    }
+
+    otherRole() { return this.role === 'teacher' ? 'student' : 'teacher'; }
+
+    schedulePoll(delay = 800) {
+      clearTimeout(this.pollTimer);
+      if (this.destroyed || this.pc?.connectionState === 'connected') return;
+      this.pollTimer = setTimeout(() => this.pollSignals().finally(() => this.schedulePoll(850)), delay);
+    }
+
+    async pollSignals() {
+      try {
+        const since = new Date(Date.now() - 30000).toISOString();
+        let data, error;
+        if (this.role === 'student') {
+          ({ data, error } = await sb.rpc('webrtc_student_get_signals', {
+            p_lesson_id: this.lessonId,
+            p_access_token: String(S.access || ''),
+            p_since: since
+          }));
+        } else {
+          ({ data, error } = await sb.rpc('webrtc_get_signals', {
+            p_lesson_id: this.lessonId,
+            p_after_id: 0,
+            p_for_role: 'teacher',
+            p_since: since
+          }));
+        }
+        if (error) throw error;
+        for (const row of (data || [])) {
+          if (row.peer_id === this.peerId || row.sender_role === this.role) continue;
+          await this.onSignal({
+            kind: row.kind,
+            data: row.payload || {},
+            from: row.sender_role,
+            to: row.recipient_role || '',
+            peerId: row.peer_id,
+            msgId: row.payload?.__mid || `db:${row.id}`
+          });
+        }
+      } catch (e) {
+        if (!this.fastSubscribed) console.warn('[Mathroom media] DB signaling unavailable', e);
+      }
+    }
+
+    async send(kind, data = {}, to = '') {
+      if (this.destroyed) return false;
+      const mid = data.__mid || `${this.peerId}:${Date.now()}:${++this.signalSeq}`;
+      const body = { ...data, __mid: mid };
+      const payload = { kind, data: body, from: this.role, to, peerId: this.peerId, msgId: mid, at: Date.now() };
+      const jobs = [];
+      if (this.fastChannel && this.fastSubscribed) jobs.push(this.fastChannel.send({ type:'broadcast', event:'signal', payload }));
+      if (this.role === 'student') {
+        jobs.push(sb.rpc('webrtc_student_send_signal', {
+          p_lesson_id: this.lessonId,
+          p_access_token: String(S.access || ''),
+          p_to: to || 'teacher',
+          p_kind: kind,
+          p_payload: body,
+          p_peer_id: this.peerId
+        }));
+      } else {
+        jobs.push(sb.rpc('webrtc_send_signal', {
+          p_lesson_id: this.lessonId,
+          p_from: 'teacher',
+          p_to: to || 'student',
+          p_kind: kind,
+          p_payload: body,
+          p_peer_id: this.peerId
+        }));
+      }
+      const settled = await Promise.allSettled(jobs);
+      return settled.some(x => x.status === 'fulfilled' && !x.value?.error);
+    }
+
+    async onSignal(msg) {
+      if (!msg || this.destroyed) return;
+      if (msg.peerId === this.peerId || msg.from === this.role) return;
+      if (msg.to && msg.to !== this.role) return;
+      const mid = msg.msgId || msg.data?.__mid;
+      if (mid) {
+        if (this.seenMessages.has(mid)) return;
+        this.seenMessages.add(mid);
+        if (this.seenMessages.size > 500) this.seenMessages = new Set([...this.seenMessages].slice(-250));
+      }
+      const kind = msg.kind;
+      const data = msg.data || {};
+      if (kind === 'hello') {
+        this.remoteReady = true;
+        if (this.joined) await this.send(this.role === 'teacher' ? 'teacher-ready' : 'ready', { joined:true }, this.otherRole());
+        if (this.role === 'teacher' && this.joined && !this.isConnected()) this.makeOffer(false).catch(() => {});
         return;
       }
-      this.popup = opened;
-      this.compactPopup(opened);
-      try { opened.focus(); } catch {}
-      this.openedAt = Date.now();
-      clearInterval(this.popupWatch);
-      this.popupWatch = setInterval(() => {
-        try {
-          if (!this.popup || this.popup.closed) { clearInterval(this.popupWatch); this.popupWatch = null; this.popup = null; this.repaint(); }
-        } catch {}
-      }, 1200);
-      this.repaint();
+      if (kind === 'teacher-ready' || kind === 'ready' || kind === 'need-offer') {
+        this.remoteReady = true;
+        if (this.role === 'teacher' && this.joined && !this.isConnected()) this.makeOffer(false).catch(() => {});
+        return;
+      }
+      if (kind === 'offer' && this.role === 'student') {
+        if (!this.joined) { this.pendingOffer = data; return; }
+        await this.acceptOffer(data);
+        return;
+      }
+      if (kind === 'answer' && this.role === 'teacher') {
+        await this.acceptAnswer(data);
+        return;
+      }
+      if (kind === 'ice') {
+        await this.acceptIce(data);
+        return;
+      }
+      if (kind === 'hangup') {
+        this.remoteReady = false;
+        this.closePeer(false);
+        this.status = 'Собеседник вышел из звонка';
+        this.paint();
+        if (this.joined) this.startReadyLoop();
+      }
     }
 
-    async copyRoom() {
-      if (this.role !== 'teacher' || !this.roomUrl) return;
-      try { await copyText(this.roomUrl); toast('Ссылка SaluteJazz скопирована'); }
-      catch { toast('Не удалось скопировать ссылку'); }
+    isConnected() { return this.pc?.connectionState === 'connected'; }
+
+    createPeer() {
+      if (this.pc && this.pc.signalingState !== 'closed') return this.pc;
+      const pc = new RTCPeerConnection({ iceServers: this.iceServers, iceCandidatePoolSize: 2, bundlePolicy: 'max-bundle' });
+      this.pc = pc;
+      this.pendingIce = [];
+      this.remoteStream = new MediaStream();
+      pc.ontrack = e => {
+        const incoming = e.streams?.[0]?.getTracks?.() || [e.track];
+        for (const track of incoming) if (track && !this.remoteStream.getTracks().some(t => t.id === track.id)) this.remoteStream.addTrack(track);
+        this.bindMedia();
+      };
+      pc.onicecandidate = e => {
+        if (!e.candidate) return;
+        const offerId = this.role === 'teacher' ? this.currentOfferId : this.remoteOfferId;
+        this.send('ice', { candidate: e.candidate.toJSON ? e.candidate.toJSON() : e.candidate, offerId }, this.otherRole()).catch(() => {});
+      };
+      pc.onconnectionstatechange = () => {
+        if (this.pc !== pc) return;
+        const st = pc.connectionState;
+        if (st === 'connected') {
+          this.status = 'Соединено';
+          this.reconnectAttempts = 0;
+          clearTimeout(this.connectTimer);
+          clearTimeout(this.disconnectTimer);
+          clearInterval(this.readyTimer);
+          this.readyTimer = null;
+          clearTimeout(this.pollTimer);
+          this.pollTimer = null;
+          this.bindMedia();
+          this.startStats();
+        } else if (st === 'connecting' || st === 'new') {
+          this.status = 'Подключаемся…';
+        } else if (st === 'disconnected') {
+          this.status = 'Связь прервана · восстанавливаем…';
+          clearTimeout(this.disconnectTimer);
+          this.disconnectTimer = setTimeout(() => {
+            if (this.destroyed || !this.joined || this.isConnected()) return;
+            if (this.role === 'teacher') this.reconnect(true).catch(() => {});
+            else this.send('need-offer', { joined:true, reconnect:true }, 'teacher').catch(() => {});
+          }, 2500);
+        } else if (st === 'failed') {
+          this.status = this.hasTurn ? 'Не удалось соединиться · повторяем…' : 'Прямая связь не установилась · пробуем ещё раз…';
+          if (this.role === 'teacher' && this.joined && this.reconnectAttempts < 1) setTimeout(() => this.reconnect(true).catch(() => {}), 900);
+          else if (this.role === 'student' && this.joined) this.send('need-offer', { joined:true, reconnect:true }, 'teacher').catch(() => {});
+        }
+        this.paint();
+      };
+      pc.oniceconnectionstatechange = () => this.paint();
+      return pc;
     }
 
-    toggleMic() { toast('Микрофон переключается в окне SaluteJazz'); this.openCall(); }
-    toggleCamera() { toast('Камера переключается в окне SaluteJazz'); this.openCall(); }
-    shareScreen() { toast('Демонстрация экрана запускается в SaluteJazz'); this.openCall(); }
+    bindOffererTracks(pc) {
+      if (!this.localStream) return;
+      const currentKinds = new Set(pc.getSenders().map(s => s.track?.kind).filter(Boolean));
+      for (const track of this.localStream.getTracks()) {
+        if (!currentKinds.has(track.kind)) pc.addTrack(track, this.localStream);
+      }
+    }
 
-    renderPanel(target, compact = false) {
-      if (!target || this.destroyed) return;
-      let host = target.querySelector(':scope > #mrVideoPanel');
-      if (!host) { host = document.createElement('section'); host.id = 'mrVideoPanel'; target.appendChild(host); }
-      this.panel = host;
-      const opened = (() => { try { return !!this.popup && !this.popup.closed; } catch { return false; } })();
-      const configured = !!this.roomUrl && isSaluteJazzUrl(this.roomUrl);
-      const statusText = this.loading ? 'Загружаем настройки…' : this.error ? 'Не удалось загрузить видеосвязь' : !this.enabled ? 'Отключено преподавателем' : configured ? (opened ? 'Окно звонка открыто' : 'Готово к подключению') : (this.role === 'teacher' ? 'Нужно добавить ссылку на комнату' : 'Преподаватель ещё не добавил комнату');
-      const mainLabel = opened ? 'Вернуться в звонок' : (this.role === 'teacher' ? 'Открыть видеосвязь' : 'Присоединиться к уроку');
-      host.className = 'mr-jazz-card';
-      host.innerHTML = `
-        <div class="mr-jazz-head">
-          <div>
-            <div class="mr-jazz-title"><span class="mr-jazz-dot ${configured && this.enabled ? '' : 'wait'}"></span><b>Связь урока</b><span class="mr-jazz-provider">SaluteJazz</span></div>
-            <div class="mr-jazz-state"><strong>${esc(statusText)}</strong></div>
-            <div class="mr-jazz-copy">Камера и микрофон настраиваются перед входом в SaluteJazz. После входа собеседника слышно сразу.</div>
+    async bindAnswererTracks(pc) {
+      if (!this.localStream) return;
+      for (const kind of ['audio','video']) {
+        const track = kind === 'video' && this.screenTrack
+          ? this.screenTrack
+          : this.localStream.getTracks().find(t => t.kind === kind);
+        if (!track) continue;
+        let tr = pc.getTransceivers().find(t => t.receiver?.track?.kind === kind || t.sender?.track?.kind === kind);
+        if (!tr) tr = pc.addTransceiver(kind, { direction:'sendrecv' });
+        try { await tr.sender.replaceTrack(track); } catch (e) { console.warn('[Mathroom media] replaceTrack', kind, e); }
+        try { tr.direction = 'sendrecv'; } catch {}
+      }
+    }
+
+    async makeOffer(iceRestart = false) {
+      if (this.destroyed || !this.joined || this.role !== 'teacher' || this.makingOffer) return;
+      const pc = this.createPeer();
+      if (pc.signalingState !== 'stable') return;
+      this.makingOffer = true;
+      try {
+        this.bindOffererTracks(pc);
+        this.currentOfferId = crypto.randomUUID ? crypto.randomUUID() : `offer-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        const offer = await pc.createOffer({ iceRestart: !!iceRestart });
+        await pc.setLocalDescription(offer);
+        this.status = this.remoteReady ? 'Соединяем…' : 'Ждём собеседника…';
+        this.paint();
+        await this.send('offer', { type:pc.localDescription.type, sdp:pc.localDescription.sdp, offerId:this.currentOfferId }, 'student');
+        clearTimeout(this.connectTimer);
+        this.connectTimer = setTimeout(() => {
+          if (this.destroyed || !this.joined || this.isConnected()) return;
+          if (this.reconnectAttempts < 1) this.reconnect(true).catch(() => {});
+          else {
+            this.status = this.hasTurn
+              ? 'Не удалось подключиться. Нажми «Переподключить».'
+              : 'Эта сеть не пропускает прямое P2P-соединение. Попробуй другую сеть или нажми «Переподключить».';
+            this.paint();
+          }
+        }, 9000);
+      } finally { this.makingOffer = false; }
+    }
+
+    async acceptOffer(data) {
+      const offerId = data?.offerId || '';
+      if (!data?.sdp) return;
+      if (this.remoteOfferId && offerId && this.remoteOfferId === offerId && this.pc?.remoteDescription?.type === 'offer') return;
+      if (this.pc && this.pc.signalingState !== 'stable') this.closePeer(false);
+      const pc = this.createPeer();
+      this.remoteOfferId = offerId;
+      this.status = 'Принимаем соединение…';
+      this.paint();
+      await pc.setRemoteDescription(new RTCSessionDescription({ type:data.type || 'offer', sdp:data.sdp }));
+      await this.bindAnswererTracks(pc);
+      await this.flushIce();
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+      await this.send('answer', { type:pc.localDescription.type, sdp:pc.localDescription.sdp, offerId:this.remoteOfferId }, 'teacher');
+      this.status = 'Ответ отправлен · подключаемся…';
+      this.paint();
+    }
+
+    async acceptAnswer(data) {
+      if (!this.pc || !data?.sdp) return;
+      if (data.offerId && this.currentOfferId && data.offerId !== this.currentOfferId) return;
+      if (this.pc.signalingState !== 'have-local-offer') return;
+      await this.pc.setRemoteDescription(new RTCSessionDescription({ type:data.type || 'answer', sdp:data.sdp }));
+      await this.flushIce();
+      this.status = 'Проверяем соединение…';
+      this.paint();
+    }
+
+    async acceptIce(data) {
+      const c = data?.candidate;
+      if (!c) return;
+      const offerId = data?.offerId || '';
+      if (this.role === 'teacher' && offerId && this.currentOfferId && offerId !== this.currentOfferId) return;
+      if (this.role === 'student' && offerId && this.remoteOfferId && offerId !== this.remoteOfferId) return;
+      if (!this.pc || !this.pc.remoteDescription?.type) {
+        this.pendingIce.push({ candidate:c, offerId });
+        return;
+      }
+      try { await this.pc.addIceCandidate(new RTCIceCandidate(c)); } catch (e) { console.warn('[Mathroom media] ICE', e); }
+    }
+
+    async flushIce() {
+      if (!this.pc?.remoteDescription?.type || !this.pendingIce.length) return;
+      const rows = this.pendingIce.splice(0);
+      for (const row of rows) await this.acceptIce(row);
+    }
+
+    async acquireMedia() {
+      if (this.localStream?.getTracks?.().some(t => t.readyState === 'live')) return this.localStream;
+      if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) throw new Error('Камера и микрофон доступны только по HTTPS в современном браузере.');
+      const audio = { echoCancellation:true, noiseSuppression:true, autoGainControl:true };
+      try {
+        this.localStream = await navigator.mediaDevices.getUserMedia({
+          audio,
+          video:{ width:{ideal:960}, height:{ideal:540}, frameRate:{ideal:24,max:30} }
+        });
+      } catch (e) {
+        if (e?.name === 'NotFoundError' || e?.name === 'OverconstrainedError') {
+          this.localStream = await navigator.mediaDevices.getUserMedia({ audio, video:false });
+          this.cameraEnabled = false;
+        } else throw e;
+      }
+      const at = this.localStream.getAudioTracks()[0]; if (at) at.enabled = this.micEnabled;
+      const vt = this.localStream.getVideoTracks()[0]; if (vt) vt.enabled = this.cameraEnabled;
+      this.bindMedia();
+      return this.localStream;
+    }
+
+    async openPrejoin() {
+      if (this.joined) return;
+      if (this.prejoin) return;
+      const backdrop = document.createElement('div');
+      backdrop.className = 'mr-native-prejoin-backdrop';
+      backdrop.innerHTML = `<div class="mr-native-prejoin">
+        <div><div class="pill">Встроенная связь Mathroom</div><h2>Подключиться к уроку</h2><p class="small muted">Выбери состояние камеры и микрофона. После входа собеседника будет слышно сразу.</p></div>
+        <div class="mr-native-prejoin-grid">
+          <div class="mr-native-preview"><video id="mrPrejoinVideo" autoplay muted playsinline></video><span class="mr-preview-name">Вы</span></div>
+          <div class="mr-native-prejoin-side">
+            <button class="btn" id="mrPrejoinMic">🎙 Микрофон</button>
+            <button class="btn" id="mrPrejoinCam">📹 Камера</button>
+            <div class="notice mr-prejoin-wide"><b>Доступ запрашивается один раз.</b><br><span class="small">Mathroom использует выбранное состояние сразу после входа — дополнительно включать устройства не нужно.</span></div>
           </div>
-          ${this.role === 'teacher' ? '<button class="btn sm ghost" id="mrJazzSettings">⚙ Настроить</button>' : ''}
         </div>
-        ${this.error ? `<div class="mr-jazz-error">${esc(this.error)}${this.error.toLowerCase().includes('teacher_video_settings') || this.error.toLowerCase().includes('get_student_lesson_video_room') ? '<br><b>Сначала выполни SQL из обновления v24.1; для v24.2 новый SQL не нужен.</b>' : ''}</div>` : ''}
-        <div class="mr-jazz-actions">
-          ${isMobileJazzClient() && configured && this.enabled && !this.loading
-            ? `<a class="btn primary mr-jazz-primary" id="mrJazzOpen" href="${esc(this.roomUrl)}" target="_blank" rel="noopener noreferrer">${esc(mainLabel)}</a>`
-            : `<button class="btn primary mr-jazz-primary" id="mrJazzOpen" ${this.loading || !this.enabled || (!configured && this.role === 'student') ? 'disabled' : ''}>${esc(mainLabel)}</button>`}
-          ${this.role === 'teacher' && configured ? '<button class="btn" id="mrJazzCopy">Скопировать ссылку</button>' : ''}
-          ${this.role === 'teacher' && !configured ? '<button class="btn" id="mrJazzSetup">Добавить комнату</button>' : ''}
-        </div>
-        <div class="mr-jazz-hint mr-jazz-desktop-note"><b>Компьютер:</b> Mathroom просит открыть Jazz в окне примерно 390×560 px. Если браузер всё равно делает его большим, в самом SaluteJazz включи <b>«Картинка в картинке»</b>.</div>
-        <div class="mr-jazz-hint mr-jazz-mobile-note"><b>Телефон:</b> вход теперь открывается обычной ссылкой, а не popup. Jazz запустится в новой вкладке или приложении — разрешать всплывающие окна Mathroom не нужно.</div>
-      `;
-      const open = host.querySelector('#mrJazzOpen'); if (open && open.tagName !== 'A') open.onclick = () => this.openCall();
-      const settings = host.querySelector('#mrJazzSettings'); if (settings) settings.onclick = () => this.openSettings();
-      const setup = host.querySelector('#mrJazzSetup'); if (setup) setup.onclick = () => this.openSettings();
-      const copy = host.querySelector('#mrJazzCopy'); if (copy) copy.onclick = () => this.copyRoom();
+        <div class="mr-native-prejoin-error" id="mrPrejoinError"></div>
+        <div class="mr-native-prejoin-footer"><button class="btn" id="mrPrejoinCancel">Отмена</button><button class="btn primary" id="mrPrejoinJoin">Войти в урок</button></div>
+      </div>`;
+      document.body.appendChild(backdrop);
+      this.prejoin = backdrop;
+      const err = backdrop.querySelector('#mrPrejoinError');
+      const join = backdrop.querySelector('#mrPrejoinJoin');
+      join.disabled = true;
+      backdrop.querySelector('#mrPrejoinCancel').onclick = () => this.closePrejoin(false);
+      backdrop.querySelector('#mrPrejoinMic').onclick = () => { this.micEnabled = !this.micEnabled; localStorage.setItem(`mathroom.media.mic.${this.role}`, this.micEnabled?'1':'0'); const t=this.localStream?.getAudioTracks?.()[0]; if(t)t.enabled=this.micEnabled; this.paintPrejoin(); };
+      backdrop.querySelector('#mrPrejoinCam').onclick = () => { this.cameraEnabled = !this.cameraEnabled; localStorage.setItem(`mathroom.media.camera.${this.role}`, this.cameraEnabled?'1':'0'); const t=this.localStream?.getVideoTracks?.()[0]; if(t)t.enabled=this.cameraEnabled; this.paintPrejoin(); };
+      join.onclick = () => this.joinCall();
+      try {
+        await this.acquireMedia();
+        if (!this.prejoin) return;
+        const video = backdrop.querySelector('#mrPrejoinVideo');
+        video.srcObject = this.localStream;
+        video.play().catch(() => {});
+        join.disabled = false;
+        this.paintPrejoin();
+      } catch (e) {
+        err.textContent = e?.name === 'NotAllowedError' ? 'Доступ к камере или микрофону запрещён. Разреши его в настройках браузера и попробуй снова.' : (e?.message || 'Не удалось открыть камеру и микрофон.');
+        err.classList.add('show');
+      }
+    }
+
+    paintPrejoin() {
+      if (!this.prejoin) return;
+      const mic = this.prejoin.querySelector('#mrPrejoinMic');
+      const cam = this.prejoin.querySelector('#mrPrejoinCam');
+      const hasMic = !!this.localStream?.getAudioTracks?.().length;
+      const hasCam = !!this.localStream?.getVideoTracks?.().length;
+      if (mic) mic.textContent = `${this.micEnabled && hasMic ? '🎙' : '🔇'} Микрофон ${this.micEnabled && hasMic ? 'включён' : 'выключен'}`;
+      if (cam) cam.textContent = `${this.cameraEnabled && hasCam ? '📹' : '🚫'} Камера ${this.cameraEnabled && hasCam ? 'включена' : 'выключена'}`;
+      if (cam) cam.disabled = !hasCam;
+    }
+
+    closePrejoin(stopMedia = false) {
+      this.prejoin?.remove();
+      this.prejoin = null;
+      if (stopMedia && !this.joined) {
+        this.localStream?.getTracks?.().forEach(t => t.stop());
+        this.localStream = null;
+      }
+    }
+
+    async joinCall() {
+      try {
+        await this.acquireMedia();
+        this.joined = true;
+        this.closePrejoin(false);
+        this.createPeer();
+        this.bindMedia();
+        this.status = 'Вы в уроке · ждём собеседника';
+        this.paint();
+        await this.send(this.role === 'teacher' ? 'teacher-ready' : 'ready', { joined:true }, this.otherRole());
+        await this.send('hello', { joined:true }, this.otherRole());
+        this.startReadyLoop();
+        this.schedulePoll(80);
+        if (this.role === 'student') {
+          if (this.pendingOffer) { const offer = this.pendingOffer; this.pendingOffer = null; await this.acceptOffer(offer); }
+          else await this.send('need-offer', { joined:true }, 'teacher');
+        } else if (this.remoteReady) await this.makeOffer(false);
+      } catch (e) { fail(e); }
+    }
+
+    startReadyLoop() {
+      clearInterval(this.readyTimer);
+      if (!this.joined || this.destroyed) return;
+      this.readyTimer = setInterval(() => {
+        if (this.destroyed || !this.joined || this.isConnected()) { clearInterval(this.readyTimer); this.readyTimer=null; return; }
+        this.send(this.role === 'teacher' ? 'teacher-ready' : 'ready', { joined:true }, this.otherRole()).catch(() => {});
+        if (this.role === 'student') this.send('need-offer', { joined:true }, 'teacher').catch(() => {});
+      }, 1200);
+    }
+
+    toggleMic() {
+      const t = this.localStream?.getAudioTracks?.()[0];
+      if (!t) return toast('Микрофон недоступен');
+      this.micEnabled = !this.micEnabled;
+      t.enabled = this.micEnabled;
+      localStorage.setItem(`mathroom.media.mic.${this.role}`, this.micEnabled?'1':'0');
+      this.paint();
+    }
+
+    toggleCamera() {
+      const t = this.localStream?.getVideoTracks?.()[0];
+      if (!t) return toast('Камера недоступна');
+      this.cameraEnabled = !this.cameraEnabled;
+      t.enabled = this.cameraEnabled;
+      localStorage.setItem(`mathroom.media.camera.${this.role}`, this.cameraEnabled?'1':'0');
+      this.paint();
+    }
+
+    async shareScreen() {
+      if (this.role !== 'teacher' || !this.joined) return;
+      try {
+        if (this.screenTrack) {
+          this.screenTrack.stop();
+          return;
+        }
+        const display = await navigator.mediaDevices.getDisplayMedia({ video:true, audio:false });
+        const track = display.getVideoTracks()[0];
+        const sender = this.pc?.getSenders?.().find(s => s.track?.kind === 'video');
+        if (sender) await sender.replaceTrack(track);
+        this.screenTrack = track;
+        track.onended = async () => {
+          const camera = this.localStream?.getVideoTracks?.()[0] || null;
+          try { if (sender) await sender.replaceTrack(camera); } catch {}
+          this.screenTrack = null;
+          this.bindMedia();
+          this.paint();
+        };
+        this.paint();
+      } catch (e) { if (e?.name !== 'NotAllowedError') fail(e); }
+    }
+
+    async reconnect(iceRestart = false) {
+      if (!this.joined || this.destroyed) return;
+      this.reconnectAttempts++;
+      this.closePeer(false);
+      this.status = 'Переподключаемся…';
+      this.paint();
+      this.createPeer();
+      this.schedulePoll(50);
+      this.startReadyLoop();
+      if (this.role === 'teacher') await this.makeOffer(iceRestart);
+      else await this.send('need-offer', { joined:true, reconnect:true }, 'teacher');
+    }
+
+    closePeer(notify = false) {
+      clearTimeout(this.connectTimer);
+      clearTimeout(this.disconnectTimer);
+      this.stopStats();
+      if (notify) this.send('hangup', {}, this.otherRole()).catch(() => {});
+      try { this.pc?.close(); } catch {}
+      this.pc = null;
+      this.currentOfferId = '';
+      this.remoteOfferId = '';
+      this.pendingIce = [];
+      this.remoteStream = new MediaStream();
+      this.bindMedia();
+    }
+
+    async end() {
+      if (!this.joined && !this.localStream) return;
+      this.send('hangup', {}, this.otherRole()).catch(() => {});
+      this.joined = false;
+      clearInterval(this.readyTimer); this.readyTimer = null;
+      clearTimeout(this.pollTimer); this.pollTimer = null;
+      this.closePeer(false);
+      this.screenTrack?.stop?.(); this.screenTrack = null;
+      this.localStream?.getTracks?.().forEach(t => t.stop());
+      this.localStream = null;
+      this.status = 'Готов к подключению';
+      this.connectionQuality = '';
+      this.paint();
+      this.schedulePoll(500);
+    }
+
+    bindMedia() {
+      const local = this.panel?.querySelector('#mrLocalVideo');
+      const remote = this.panel?.querySelector('#mrRemoteVideo');
+      const audio = this.panel?.querySelector('#mrRemoteAudio');
+      if (local) {
+        if (local.srcObject !== (this.localStream || null)) local.srcObject = this.localStream || null;
+        local.muted = true; local.playsInline = true;
+        if (this.localStream) local.play().catch(() => {});
+      }
+      if (remote) {
+        if (remote.srcObject !== this.remoteStream) remote.srcObject = this.remoteStream;
+        remote.muted = true; remote.playsInline = true;
+        if (this.remoteStream.getVideoTracks().length) remote.play().catch(() => {});
+      }
+      if (audio) {
+        if (audio.srcObject !== this.remoteStream) audio.srcObject = this.remoteStream;
+        audio.muted = false; audio.volume = 1;
+        if (this.remoteStream.getAudioTracks().length) audio.play().catch(() => {
+          this.status = 'Нажми 🔊, чтобы включить звук'; this.paint();
+        });
+      }
+    }
+
+    enableSound() {
+      const audio = this.panel?.querySelector('#mrRemoteAudio');
+      if (!audio) return;
+      audio.muted = false;
+      audio.play().then(() => { this.status = this.isConnected() ? 'Соединено' : this.status; this.paint(); }).catch(() => toast('Браузер не разрешил воспроизведение звука'));
+    }
+
+    startStats() {
+      this.stopStats();
+      let prevPackets = 0, prevLost = 0;
+      this.statsTimer = setInterval(async () => {
+        const pc = this.pc;
+        if (!pc || pc.connectionState !== 'connected') return;
+        try {
+          const stats = await pc.getStats();
+          let rtt = null, packets = 0, lost = 0;
+          stats.forEach(s => {
+            if (s.type === 'candidate-pair' && s.state === 'succeeded' && s.currentRoundTripTime != null) rtt = Math.round(s.currentRoundTripTime * 1000);
+            if (s.type === 'inbound-rtp' && !s.isRemote) { packets += Number(s.packetsReceived || 0); lost += Number(s.packetsLost || 0); }
+          });
+          const dp = packets - prevPackets, dl = lost - prevLost; prevPackets = packets; prevLost = lost;
+          const loss = dp + dl > 0 ? Math.max(0, Math.round((dl / (dp + dl)) * 1000) / 10) : 0;
+          this.connectionQuality = `${rtt == null ? '—' : `${rtt} мс`} · потери ${loss}%`;
+          this.paint();
+        } catch {}
+      }, 2500);
+    }
+
+    stopStats() { clearInterval(this.statsTimer); this.statsTimer = null; }
+
+    toggleMinimized() {
+      this.minimized = !this.minimized;
+      localStorage.setItem(`mathroom.media.minimized.${this.role}`, this.minimized?'1':'0');
+      this.paint();
+    }
+
+    attachDrag() {
+      const host = this.panel;
+      const head = host?.querySelector('.mr-call-head');
+      if (!host || !head || host.dataset.dragBound === '1') return;
+      host.dataset.dragBound = '1';
+      let drag = null;
+      head.addEventListener('pointerdown', e => {
+        if (window.matchMedia?.('(max-width:760px)')?.matches || e.target.closest('button')) return;
+        const r = host.getBoundingClientRect();
+        drag = { x:e.clientX, y:e.clientY, left:r.left, top:r.top };
+        head.setPointerCapture?.(e.pointerId);
+      });
+      head.addEventListener('pointermove', e => {
+        if (!drag || !this.joined) return;
+        host.style.left = Math.max(6, Math.min(window.innerWidth - host.offsetWidth - 6, drag.left + e.clientX - drag.x)) + 'px';
+        host.style.top = Math.max(6, Math.min(window.innerHeight - host.offsetHeight - 6, drag.top + e.clientY - drag.y)) + 'px';
+        host.style.right = 'auto'; host.style.bottom = 'auto';
+      });
+      head.addEventListener('pointerup', () => drag = null);
+    }
+
+    renderPanel(target) {
+      if (!target) return;
+      let host = target.querySelector(':scope > #mrVideoPanel');
+      if (!host) {
+        host = document.createElement('section');
+        host.id = 'mrVideoPanel';
+        host.innerHTML = `<div class="mr-call-head"><div><div class="mr-call-title"><span class="mr-call-dot"></span><b>Связь урока</b><span class="pill">Mathroom P2P</span></div><div class="small muted" id="mrVideoStatus"></div></div><button class="btn sm" id="mrVideoMin" hidden>—</button></div>
+          <div class="mr-call-stage"><video class="mr-remote-video" id="mrRemoteVideo" autoplay muted playsinline></video><audio id="mrRemoteAudio" autoplay></audio><video class="mr-local-video" id="mrLocalVideo" autoplay muted playsinline></video><span class="mr-call-person">${this.role === 'teacher' ? 'Ученик' : 'Преподаватель'}</span></div>
+          <div class="mr-call-actions"><button class="btn primary" id="mrVideoJoin">Присоединиться к уроку</button><button class="btn mr-hide-min" id="mrVideoMic" hidden></button><button class="btn mr-hide-min" id="mrVideoCam" hidden></button><button class="btn mr-hide-min" id="mrVideoSound" hidden>🔊 Звук</button>${this.role === 'teacher' ? '<button class="btn mr-hide-min" id="mrVideoScreen" hidden>🖥 Экран</button>' : ''}<button class="btn mr-hide-min" id="mrVideoReconnect" hidden>↻ Переподключить</button><button class="btn danger" id="mrVideoEnd" hidden>Выйти</button></div>
+          <div class="mr-call-quality" id="mrVideoQuality"></div><div class="mr-call-note" id="mrVideoNote">Камера и микрофон выбираются перед входом. Связь встроена прямо в Mathroom.</div>`;
+        target.appendChild(host);
+        host.querySelector('#mrVideoJoin').onclick = () => this.openPrejoin();
+        host.querySelector('#mrVideoMic').onclick = () => this.toggleMic();
+        host.querySelector('#mrVideoCam').onclick = () => this.toggleCamera();
+        host.querySelector('#mrVideoSound').onclick = () => this.enableSound();
+        host.querySelector('#mrVideoReconnect').onclick = () => this.reconnect(true).catch(fail);
+        host.querySelector('#mrVideoEnd').onclick = () => this.end();
+        host.querySelector('#mrVideoMin').onclick = () => this.toggleMinimized();
+        const screen = host.querySelector('#mrVideoScreen'); if (screen) screen.onclick = () => this.shareScreen();
+      }
+      this.panel = host;
+      this.attachDrag();
+      this.bindMedia();
+      this.paint();
+    }
+
+    paint() {
+      const host = this.panel;
+      if (!host) return;
+      host.className = `mr-native-call ${this.joined ? 'joined' : ''} ${this.isConnected() ? 'connected' : ''} ${this.minimized ? 'minimized' : ''}`;
+      const status = host.querySelector('#mrVideoStatus'); if (status) status.textContent = this.status;
+      const q = host.querySelector('#mrVideoQuality'); if (q) q.textContent = this.connectionQuality || (this.joined ? (this.hasTurn ? 'P2P + TURN fallback' : 'P2P · бесплатный прямой канал') : '');
+      const join = host.querySelector('#mrVideoJoin'); if (join) join.hidden = this.joined;
+      const ids = ['#mrVideoMic','#mrVideoCam','#mrVideoSound','#mrVideoReconnect','#mrVideoEnd','#mrVideoScreen'];
+      ids.forEach(sel => { const el=host.querySelector(sel); if(el) el.hidden = !this.joined; });
+      const min = host.querySelector('#mrVideoMin'); if (min) { min.hidden = !this.joined; min.textContent = this.minimized ? '□' : '—'; }
+      const mic = host.querySelector('#mrVideoMic'); if (mic) mic.textContent = this.micEnabled ? '🎙 Вкл' : '🔇 Выкл';
+      const cam = host.querySelector('#mrVideoCam'); if (cam) cam.textContent = this.cameraEnabled ? '📹 Вкл' : '🚫 Выкл';
+      const screen = host.querySelector('#mrVideoScreen'); if (screen) screen.textContent = this.screenTrack ? '■ Экран' : '🖥 Экран';
+      const note = host.querySelector('#mrVideoNote'); if (note) note.textContent = this.joined
+        ? (this.hasTurn ? 'Mathroom автоматически восстанавливает соединение при кратком обрыве.' : 'Бесплатный режим использует прямое WebRTC P2P-соединение. На некоторых закрытых мобильных/корпоративных сетях может понадобиться TURN.')
+        : 'Камера и микрофон выбираются перед входом. Связь встроена прямо в Mathroom.';
+      this.bindMedia();
     }
 
     destroy() {
       this.destroyed = true;
-      clearInterval(this.popupWatch); this.popupWatch = null;
-      // Не закрываем SaluteJazz автоматически: переход по разделам Mathroom не должен ронять звонок.
-      this.panel = null;
+      this.closePrejoin(true);
+      clearTimeout(this.pollTimer);
+      clearInterval(this.readyTimer);
+      clearTimeout(this.connectTimer);
+      clearTimeout(this.disconnectTimer);
+      this.stopStats();
+      try { this.pc?.close(); } catch {}
+      this.pc = null;
+      this.localStream?.getTracks?.().forEach(t => t.stop());
+      this.localStream = null;
+      this.screenTrack?.stop?.();
+      this.screenTrack = null;
+      window.removeEventListener('online', this.onOnline);
+      if (this.fastChannel) sb.removeChannel(this.fastChannel).catch?.(() => {});
+      this.fastChannel = null;
     }
   }
-
   async function getQueue(lessonId) {
     const { data, error } = await sb.from('lesson_queue_items').select('*').eq('lesson_id', lessonId).order('position');
     if (error) throw error; return data || [];
