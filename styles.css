@@ -924,3 +924,23 @@ body{background:
 @media(max-width:460px){
   .board-palette-grid{grid-template-columns:repeat(2,minmax(68px,1fr))!important}
 }
+
+/* Mathroom v26.8 — professional collaboration and object controls */
+.board-stage{--board-bg-color:#fff;background-color:var(--board-bg-color)!important;background-position:0 0}
+.board-stage[data-board-bg="blank"],.board-stage[data-board-bg="color"]{background-image:none!important}
+.board-stage[data-board-bg="cream"]{background-image:none!important;background-color:#fffaf2!important}
+.board-stage[data-board-bg="dots"]{background-image:radial-gradient(circle,#d8dbe0 1.1px,transparent 1.2px)!important;background-size:22px 22px!important}
+.board-stage[data-board-bg="grid"]{background-image:linear-gradient(#e6e8ec 1px,transparent 1px),linear-gradient(90deg,#e6e8ec 1px,transparent 1px)!important;background-size:28px 28px!important}
+.board-stage[data-board-bg="lines"]{background-image:repeating-linear-gradient(to bottom,transparent 0,transparent 31px,#e5e8ec 32px,#e5e8ec 33px)!important}
+.board-stage.drag-active::after{content:'Перетащи файл сюда';position:absolute;inset:14px;z-index:130;border:2px dashed var(--koto-orange);border-radius:20px;background:rgba(255,247,242,.82);display:grid;place-items:center;color:var(--koto-orange);font-family:'Unbounded',Inter,sans-serif;font-weight:700;pointer-events:none}
+
+.board-object-hud{position:absolute;z-index:128;display:flex;align-items:center;gap:4px;padding:5px;background:rgba(255,255,253,.97);border:1px solid #ddd9d2;border-radius:13px;box-shadow:0 10px 28px rgba(0,0,0,.13);backdrop-filter:blur(10px)}
+.board-object-hud[hidden]{display:none!important}.board-object-hud .btn{width:34px;min-width:34px;height:34px;min-height:34px;padding:0!important;display:grid;place-items:center;border-radius:9px;font-size:14px}.board-object-hud.locked{border-color:#bbb8b0;background:#f8f8f5}.board-object-hud .danger{color:#b42318}
+.board-follow-badge{position:absolute;right:12px;top:12px;z-index:124;padding:8px 11px;border-radius:999px;background:rgba(237,89,26,.94);color:#fff;font-size:11px;font-weight:800;box-shadow:0 8px 24px rgba(237,89,26,.22);pointer-events:none}.board-follow-badge[hidden]{display:none!important}
+.board-permission-select{grid-column:1/-1;width:100%!important;min-height:44px!important;background:#fff;border:1px solid var(--line);border-radius:11px;padding:8px 10px}
+.board-background-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px;margin:12px 0 16px}.board-background-grid button{min-height:70px;border:1px solid var(--line);border-radius:14px;background:#fff;font-weight:700;cursor:pointer}.board-background-grid button:hover{border-color:#f3a27a;background:#fff7f2}
+
+@media(max-width:760px){.board-object-hud{right:8px!important;left:auto!important;top:8px!important;max-width:calc(100% - 80px);overflow:auto}.board-follow-badge{top:auto;bottom:64px;right:8px}.board-background-grid{grid-template-columns:1fr 1fr}}
+.board-fill-swatches{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px;margin:12px 0}.board-fill-swatches button{min-height:54px;border:1px solid var(--line);border-radius:12px;background:#fff;font-size:11px;font-weight:700;cursor:pointer}.history-search-wrap{margin:12px 0}.history-search-wrap .search{max-width:620px;background:#fff}
+.board-head-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end}.board-head-actions .board-permission-select{width:auto!important;min-width:150px;grid-column:auto!important}.board-head-actions #followTeacherToggle.active{background:var(--koto-orange)!important;color:#fff!important;border-color:var(--koto-orange)!important}
+@media(max-width:760px){.board-head{align-items:flex-start}.board-head-actions{width:100%;justify-content:flex-start}.board-head-actions .board-permission-select{flex:1;min-width:130px}.board-head-actions #fullscreen{margin-left:auto}}
