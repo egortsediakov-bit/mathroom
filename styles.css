@@ -340,7 +340,7 @@ button{cursor:pointer} a{color:inherit}.hidden{display:none!important}.muted{col
 
 /* cumulative-wip-16 — student Today workspace + device self-check */
 .mr-student-today{display:grid;gap:16px}.mr-today-hero{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(260px,.65fr);gap:18px;align-items:stretch;overflow:hidden}.mr-today-hero h2{font-size:30px;line-height:1.08;margin:9px 0 8px;max-width:720px}.mr-today-hero p{margin:0 0 14px;color:var(--muted);line-height:1.5}.mr-today-next{border:1px solid var(--line);border-radius:16px;padding:14px;background:#fafbfc;display:grid;gap:6px;align-content:center}.mr-today-next small,.mr-today-metrics small{color:var(--muted);font-size:11px}.mr-today-next b{font-size:18px}.mr-today-next span{font-size:12px;color:var(--muted);line-height:1.4}.mr-today-next .btn{margin-top:5px;justify-self:start}.mr-today-metrics{gap:10px}.mr-today-metrics .card{padding:12px;display:grid;gap:2px}.mr-today-metrics b{font-size:27px;line-height:1.05}.mr-today-metrics span{font-size:11px;color:var(--muted)}.mr-today-grid{gap:16px}.mr-today-actions{display:grid;gap:7px;margin-top:10px}.mr-today-actions>button{width:100%;border:1px solid var(--line);border-radius:13px;background:#fff;padding:10px;display:grid;grid-template-columns:30px minmax(0,1fr) auto;gap:9px;align-items:center;text-align:left;color:inherit;cursor:pointer}.mr-today-actions>button:hover{border-color:#9ca3af;background:#fafafa}.mr-today-actions>button.warn{background:#fffaf2}.mr-today-actions>button>span{width:30px;height:30px;border-radius:10px;background:#f1f3f5;display:grid;place-items:center;font-size:12px;font-weight:900}.mr-today-actions>button>div{display:grid;gap:2px}.mr-today-actions small{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}.mr-today-actions b{font-size:13px}.mr-today-actions em{font-style:normal;color:var(--muted);font-size:11px}.mr-today-actions strong{font-size:18px}.mr-week-plan{display:grid;gap:8px;margin-top:10px}.mr-week-plan>div{display:grid;grid-template-columns:92px minmax(0,1fr) auto;gap:10px;align-items:center;padding:9px 0;border-top:1px solid var(--line)}.mr-week-plan>div:first-child{border-top:0}.mr-week-plan span{font-size:11px;color:var(--muted);text-transform:capitalize}.mr-week-plan b{font-size:13px}.mr-week-plan small{font-size:11px;color:var(--muted);white-space:nowrap}.mr-week-plan .mr-week-goal{border:1px solid var(--line);border-radius:12px;padding:10px;background:#fafbfc}.mr-today-report{display:grid;gap:10px;margin-top:10px}.mr-today-report>div{border-left:3px solid #d1d5db;padding:2px 0 2px 11px}.mr-today-report span{font-size:11px;color:var(--muted);font-weight:800}.mr-today-report p{margin:4px 0 0;line-height:1.5}.mr-today-resources{display:grid;gap:8px;margin-top:10px}.mr-today-resources article{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;border-top:1px solid var(--line);padding:8px 0}.mr-today-resources article:first-child{border-top:0}.mr-today-resources article>div{display:grid;gap:4px}.mr-today-resources small{color:var(--muted);line-height:1.4}.mr-today-calm{display:flex;align-items:center;justify-content:space-between;gap:16px}.mr-today-calm>div{display:flex;align-items:flex-start;gap:12px}.mr-today-calm>div>span{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;background:#f1f3f5;font-weight:900}.mr-today-calm h3{margin:0 0 4px;font-size:15px}.mr-today-calm p{margin:0;color:var(--muted);font-size:12px;line-height:1.45}
-.mr-device-check-grid{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(260px,.75fr);gap:14px;margin:14px 0}.mr-device-preview{min-height:300px;border-radius:16px;background:#111;display:grid;place-items:center;overflow:hidden;position:relative}.mr-device-preview video{width:100%;height:100%;min-height:300px;object-fit:cover;transform:none}.mr-device-empty{position:absolute;inset:0;display:grid;place-items:center;text-align:center;color:#fff;padding:24px;background:#111}.mr-device-empty[hidden]{display:none}.mr-device-status{display:grid;gap:12px;align-content:start}.mr-device-status>div{display:grid;gap:4px}.mr-device-status small{color:var(--muted);font-size:11px}.mr-device-status b{font-size:13px;overflow-wrap:anywhere}.mr-device-status span{font-size:12px;line-height:1.45}.mr-mic-meter{height:9px;border-radius:999px;background:#eceff2;overflow:hidden}.mr-mic-meter i{display:block;width:0;height:100%;background:#17191c;border-radius:inherit;transition:width .08s linear}
+.mr-device-check-grid{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(260px,.75fr);gap:14px;margin:14px 0}.mr-device-preview{min-height:300px;border-radius:16px;background:#111;display:grid;place-items:center;overflow:hidden;position:relative}.mr-device-preview video{width:100%;height:100%;min-height:300px;object-fit:cover;transform:scaleX(-1)}.mr-device-empty{position:absolute;inset:0;display:grid;place-items:center;text-align:center;color:#fff;padding:24px;background:#111}.mr-device-empty[hidden]{display:none}.mr-device-status{display:grid;gap:12px;align-content:start}.mr-device-status>div{display:grid;gap:4px}.mr-device-status small{color:var(--muted);font-size:11px}.mr-device-status b{font-size:13px;overflow-wrap:anywhere}.mr-device-status span{font-size:12px;line-height:1.45}.mr-mic-meter{height:9px;border-radius:999px;background:#eceff2;overflow:hidden}.mr-mic-meter i{display:block;width:0;height:100%;background:#17191c;border-radius:inherit;transition:width .08s linear}
 @media(max-width:760px){.mr-today-hero{grid-template-columns:1fr}.mr-today-hero h2{font-size:24px}.mr-today-metrics{grid-template-columns:1fr 1fr!important}.mr-today-grid{grid-template-columns:1fr!important}.mr-week-plan>div{grid-template-columns:82px minmax(0,1fr)}.mr-week-plan small{grid-column:2;white-space:normal}.mr-today-calm{align-items:flex-start;flex-direction:column}.mr-today-calm .btn{width:100%}.mr-device-check-grid{grid-template-columns:1fr}.mr-device-preview,.mr-device-preview video{min-height:220px}.student-top .tabs{flex-wrap:wrap}}
 
 /* cumulative-wip-17 — pre-lesson readiness + live countdown */
@@ -406,15 +406,114 @@ button,.btn,.tabs button,.nav button{-webkit-user-select:none;user-select:none}
 #mrVideoMirror{white-space:nowrap}
 #mrLocalVideo{backface-visibility:hidden;-webkit-backface-visibility:hidden}
 
-#mrRemoteAudio{display:none!important}
+/* v26.0 — minimal UI, tactile buttons, cleaner whiteboard */
+:root{
+  --bg:#f7f7f5;
+  --panel:#ffffff;
+  --text:#191a1c;
+  --muted:#74777d;
+  --line:#e7e7e3;
+  --accent:#171717;
+  --accent2:#f2f2ef;
+}
+html{background:var(--bg);-webkit-text-size-adjust:100%}
+body{background:var(--bg);color:var(--text);line-height:1.45;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
 
-/* v23.7: one-step lesson join */
-.mr-video-join{min-height:48px;padding-inline:20px;font-size:15px;font-weight:800}
-.mr-video-join-note{margin-top:10px}
-.mr-video-card [hidden]{display:none!important}
-@media (max-width:700px){
-  .mr-video-join{width:100%;min-height:52px;font-size:16px}
-  .mr-video-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
-  .mr-video-actions .mr-video-join{grid-column:1/-1}
-  .mr-video-actions .btn{min-height:48px;touch-action:manipulation}
+/* Consistent, genuinely pressable controls */
+button,.btn,.tabs button,.nav button,[role="button"]{
+  touch-action:manipulation;
+  -webkit-tap-highlight-color:transparent;
+}
+button:not(:disabled),.btn:not(:disabled),.tabs button:not(:disabled),.nav button:not(:disabled),[role="button"]:not([aria-disabled="true"]){cursor:pointer}
+button:disabled,.btn:disabled{cursor:not-allowed;opacity:.46}
+.btn,.tabs button,.nav button{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:6px;
+  min-height:38px;
+  border-color:var(--line);
+  border-radius:10px;
+  transition:transform .075s ease,background-color .14s ease,border-color .14s ease,box-shadow .14s ease,color .14s ease;
+  box-shadow:0 1px 0 rgba(20,20,20,.025);
+}
+.btn.sm{min-height:34px;padding:7px 10px}
+.btn:hover:not(:disabled){background:#f5f5f2;border-color:#d9d9d4}
+.btn.primary:hover:not(:disabled){background:#272727;border-color:#272727}
+.btn.ghost:hover:not(:disabled){background:#f2f2ef}
+button:not(:disabled):active,.btn:not(:disabled):active,.tabs button:not(:disabled):active,.nav button:not(:disabled):active,
+button.is-pressed:not(:disabled),.btn.is-pressed:not(:disabled),.tabs button.is-pressed:not(:disabled),.nav button.is-pressed:not(:disabled){
+  transform:translateY(1px) scale(.975);
+  box-shadow:inset 0 1px 2px rgba(0,0,0,.09);
+}
+button:focus-visible,.btn:focus-visible,.tabs button:focus-visible,.nav button:focus-visible,[role="button"]:focus-visible{
+  outline:2px solid #1f2937;
+  outline-offset:2px;
+}
+
+/* Quieter layout: less visual noise, more whitespace */
+.layout{grid-template-columns:218px minmax(0,1fr)}
+.sidebar{padding:20px 14px;gap:18px;background:#fbfbfa;border-color:var(--line)}
+.content{padding:24px;max-width:1440px}
+.topbar{margin-bottom:20px;align-items:center}
+.topbar h1{font-size:28px;letter-spacing:-.035em}
+.card,.form-card,.row,.video-card,.mr-video-card,.board-card,.item-box{
+  border-color:var(--line);
+  box-shadow:none;
+}
+.card,.form-card{border-radius:14px}
+.row{border-radius:12px;padding:12px 14px}
+.section-title{margin:20px 0 10px}
+.pill{background:#f1f1ee;color:#55585d}
+.notice{background:#f3f3f0;color:#53565b}
+.field input,.field select,.field textarea,.search,.profile-edit input,.profile-edit select{
+  border-color:#deded9;
+  border-radius:10px;
+  background:#fff;
+  transition:border-color .14s ease,box-shadow .14s ease,background-color .14s ease;
+}
+.field input:focus,.field textarea:focus,.field select:focus,.search:focus,.profile-edit input:focus,.profile-edit select:focus{
+  border-color:#a8a8a2;
+  box-shadow:0 0 0 3px rgba(20,20,20,.055);
+}
+.modal-backdrop{background:rgba(20,20,20,.30);backdrop-filter:blur(2px)}
+.modal{border:1px solid var(--line);border-radius:16px;box-shadow:0 22px 70px rgba(0,0,0,.16)}
+.nav{gap:3px}.nav button{justify-content:flex-start;min-height:38px;border-radius:9px;padding:9px 11px}
+.nav button.active,.nav button:hover{background:#eeeeeb;color:#111}
+
+/* Whiteboard: compact chrome, more room for the actual lesson */
+.board-card{border-radius:14px;background:#fff}
+.board-toolbar{gap:6px;padding:8px 10px;background:#fbfbfa;border-color:var(--line);scrollbar-width:thin;overscroll-behavior-x:contain}
+.board-tools{gap:5px}
+.board-toolbar .btn{background:#fff}
+.board-toolbar .btn.active{background:#171717!important;color:#fff!important;border-color:#171717!important}
+.board-toolbar .btn:hover:not(:disabled){background:#f2f2ef}
+.board-toolbar .btn.active:hover:not(:disabled){background:#252525!important}
+.board-select{min-height:34px;border:1px solid var(--line);border-radius:9px;background:#fff;color:var(--text)}
+.board-hint{padding:6px 10px;background:#fff;color:#85878c}
+.board-stage{background:#fff;isolation:isolate}
+.board-stage svg{shape-rendering:geometricPrecision;image-rendering:auto}
+.color-dot{box-shadow:0 0 0 1px rgba(0,0,0,.08);transition:transform .08s ease,outline-color .12s ease}
+.color-dot:active,.color-dot.is-pressed{transform:scale(.88)}
+.board-page-tabs{scrollbar-width:thin}
+.board-floating{box-shadow:0 8px 24px rgba(0,0,0,.08)!important;border-color:var(--line)!important}
+
+/* Small screens: controls remain easy to hit without consuming the whole board */
+@media(max-width:760px){
+  .content{padding:14px 10px 20px}
+  .topbar h1{font-size:25px}
+  .card,.form-card{padding:14px}
+  .board-toolbar{padding:7px 8px;overflow-x:auto;overflow-y:hidden}
+  .board-tools{width:max-content!important;min-width:max-content!important;flex-wrap:nowrap!important;padding-bottom:2px}
+  .board-tools .btn,.board-tools .board-select{flex:0 0 auto;white-space:nowrap}
+  .board-hint{display:none}
+}
+@media(pointer:coarse){
+  button,.btn,.tabs button,.nav button{min-height:44px}
+  .btn.sm{min-height:42px}
+  .board-tools .btn,.board-tools .board-select{min-height:44px}
+  .color-dot{width:38px;height:38px;min-width:38px;min-height:38px}
+}
+@media(prefers-reduced-motion:reduce){
+  button,.btn,.tabs button,.nav button,.color-dot{transition:none!important}
 }
