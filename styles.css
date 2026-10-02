@@ -866,3 +866,61 @@ body{background:
   .board-action-grid{grid-template-columns:1fr}
   .board-palette-grid{grid-template-columns:repeat(4,minmax(38px,44px))}
 }
+
+/* Mathroom v26.7 — readable figure palette + 3D direct controls */
+.board-shape-icon{
+  width:76px!important;
+  min-height:74px!important;
+  height:auto!important;
+  padding:7px 5px 6px!important;
+  display:flex!important;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  gap:4px;
+  color:#242337!important;
+  background:#fff!important;
+  border:1px solid #e8e6ee!important;
+  border-radius:14px!important;
+  position:relative;
+  z-index:2;
+  pointer-events:auto!important;
+  user-select:none;
+}
+.board-shape-icon:hover{background:#f8f6ff!important;border-color:#cfc8f6!important;box-shadow:0 6px 16px rgba(77,67,130,.08)}
+.board-shape-icon:active{transform:scale(.97)!important;background:#f0edff!important}
+.board-shape-svg{width:46px;height:38px;display:block;overflow:visible;fill:none;stroke:currentColor;stroke-width:2.15;stroke-linecap:round;stroke-linejoin:round;pointer-events:none}
+.board-shape-svg .icon-detail{stroke-width:1.35;stroke-dasharray:3 2;opacity:.7}
+.board-shape-label{display:block;width:100%;font-size:9px;line-height:1.12;font-weight:700;color:#69677b;white-space:normal;text-align:center;pointer-events:none}
+.board-solid-icon .board-shape-svg{width:50px;height:40px;stroke-width:1.9}
+.board-palette-grid{grid-template-columns:repeat(4,76px)!important;gap:9px!important;justify-content:start!important}
+.board-toolbar-side .board-shapes-popover{min-width:380px!important;max-width:min(470px,calc(100vw - 105px))!important}
+.board-solid-help{margin:2px 0 8px;padding:9px 10px;border-radius:11px;background:#fff7f2;border:1px solid #f4d8c9;color:#6c5143;font-size:10.5px;line-height:1.4}
+.board-solid-actions{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+.board-solid-actions .btn{justify-content:center!important;text-align:center!important}
+.board-solid-hud{
+  position:absolute;z-index:125;display:flex;align-items:center;gap:5px;
+  padding:5px;background:rgba(255,255,253,.96);border:1px solid #ddd9d2;border-radius:13px;
+  box-shadow:0 10px 28px rgba(0,0,0,.13);backdrop-filter:blur(10px);white-space:nowrap;
+}
+.board-solid-hud[hidden]{display:none!important}
+.board-solid-hud .btn{width:34px;min-width:34px;height:34px;min-height:34px;padding:0!important;display:grid;place-items:center;border-radius:9px;font-size:15px}
+.board-solid-hud-sep{width:1px;height:22px;background:#e6e2dc;margin:0 2px}
+.board-solid-hud-tip{font-size:9px;color:#87827a;padding:0 4px 0 2px}
+.board-stage svg [data-resize-handle]{filter:drop-shadow(0 1px 1px rgba(0,0,0,.12))}
+
+/* Make the dedicated scratch board visible as a first-class workspace. */
+.nav button[data-nav="scratch"]{position:relative}
+.nav button[data-nav="scratch"]::before{content:'✦';display:inline-block;margin-right:7px;color:var(--koto-orange);font-size:11px}
+.nav button[data-nav="board"]::before{content:'▦';display:inline-block;margin-right:7px;color:#777;font-size:11px}
+
+@media(max-width:760px){
+  .board-palette-grid{grid-template-columns:repeat(3,minmax(66px,76px))!important}
+  .board-shape-icon{width:100%!important;min-height:70px!important}
+  .board-toolbar-side .board-shapes-popover{min-width:0!important;max-width:none!important}
+  .board-solid-hud{left:auto!important;right:8px!important;top:auto!important;bottom:64px!important;max-width:calc(100% - 82px);overflow:auto}
+  .board-solid-hud-tip{display:none}
+}
+@media(max-width:460px){
+  .board-palette-grid{grid-template-columns:repeat(2,minmax(68px,1fr))!important}
+}

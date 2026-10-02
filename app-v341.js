@@ -47,7 +47,7 @@ function renderAuth(){
   document.getElementById('register').onclick=async()=>{const email=document.getElementById('email').value,password=document.getElementById('password').value;const {data,error}=await sb.auth.signUp({email,password});if(error)return document.getElementById('authMsg').textContent=error.message;if(!data.session){document.getElementById('authMsg').textContent='Аккаунт создан. Подтверди email, затем войди.';return}S.user=data.user;S.teacher=await ensureTeacher();await loadTeacher();restoreActiveLesson();renderTeacher()};
 }
 
-const nav=[['dashboard','Главная'],['schedule','Расписание'],['students','Ученики'],['topics','Темы'],['bank','Банк задач'],['assignments','Задания'],['history','История'],['board','Доска']];
+const nav=[['dashboard','Главная'],['schedule','Расписание'],['students','Ученики'],['topics','Темы'],['bank','Банк задач'],['assignments','Задания'],['history','История'],['scratch','Черновик'],['board','Доска']];
 function shell(content,title,sub=''){
   return `<div class="layout"><aside class="sidebar"><div class="brand">Mathroom <span class="cloud-badge">☁ cloud</span></div><nav class="nav">${nav.map(([id,n])=>`<button data-nav="${id}" class="${S.view===id?'active':''}">${n}</button>`).join('')}</nav><div class="sidebar-footer"><button class="btn ghost sm" id="logout">Выйти</button></div></aside><main class="content"><div class="topbar"><div><h1>${esc(title)}</h1>${sub?`<p>${esc(sub)}</p>`:''}</div></div>${content}</main></div>`;
 }
@@ -64,6 +64,7 @@ function renderTeacher(){
   if(S.view==='schedule')return renderSchedule();
   if(S.view==='assignments')return renderAssignments();
   if(S.view==='history')return renderHistory();
+  if(S.view==='scratch'){S.selectedStudent='__scratch__';return renderBoardPage()}
   if(S.view==='board')return renderBoardPage();
   if(S.view==='lesson')return renderLesson();
   return renderDashboard();
@@ -204,13 +205,26 @@ async function saveSnapshot(lesson,title='Итог урока',note=''){
   const {data:pages,error}=await sb.from('board_pages').select('id,title,sort_order,elements').eq('student_id',lesson.student_id).order('sort_order');if(error)throw error;
   const {error:e2}=await sb.from('lesson_board_versions').insert({teacher_id:S.user.id,lesson_id:lesson.id,title,note,pages:pages||[]});if(e2)throw e2;
 }
+async function deleteCompletedLessonHistory(id,{ask=true}={}){
+  const lesson=S.lessons.find(x=>x.id===id&&x.status==='completed');if(!lesson)return;
+  if(ask&&!confirm(`Удалить занятие «${lesson.topics?.title||'Без темы'}» из истории?\n\nБудут удалены запись завершённого урока и сохранённые версии его доски. Это действие нельзя отменить.`))return;
+  const vr=await sb.from('lesson_board_versions').delete().eq('lesson_id',id);if(vr.error)throw vr.error;
+  const lr=await sb.from('lessons').delete().eq('id',id);if(lr.error)throw lr.error;
+}
+async function clearCompletedLessonHistory(){
+  const ids=S.lessons.filter(x=>x.status==='completed').map(x=>x.id);if(!ids.length)return toast('История уже пустая');
+  if(!confirm(`Очистить всю историю занятий (${ids.length})?\n\nЗавершённые уроки и их сохранённые версии доски будут удалены без возможности восстановления.`))return;
+  try{const vr=await sb.from('lesson_board_versions').delete().in('lesson_id',ids);if(vr.error)throw vr.error;const lr=await sb.from('lessons').delete().in('id',ids);if(lr.error)throw lr.error;await loadTeacher();renderHistory();toast('История занятий очищена')}catch(e){fail(e)}
+}
 function renderHistory(){
   const all=S.lessons.filter(x=>x.status==='completed').sort((a,b)=>String(b.completed_at||b.created_at).localeCompare(String(a.completed_at||a.created_at)));
-  app.innerHTML=shell(`<div class="list">${all.length?all.map(l=>`<div class="row"><div><h3>${esc(l.students?.name||'')} · ${esc(l.topics?.title||'')}</h3><p>${dateLong(l.completed_at||l.started_at)}${l.public_summary?` · ${esc(l.public_summary.slice(0,120))}`:''}</p></div><button class="btn sm" data-history="${l.id}">Открыть</button></div>`).join(''):'<div class="empty">Завершённых уроков пока нет.</div>'}</div>`,'История уроков','Итоги и сохранённые версии доски');bindShell();document.querySelectorAll('[data-history]').forEach(b=>b.onclick=()=>openHistoryLesson(b.dataset.history));
+  const top=all.length?`<div class="history-tools card"><div><span class="koto-eyebrow">АРХИВ</span><h2>История занятий</h2><p class="muted">${all.length} завершён${all.length===1?'ное занятие':all.length<5?'ных занятия':'ных занятий'} · записи можно удалять по одной или очистить архив целиком.</p></div><button class="btn danger" id="clearLessonHistory">Очистить историю</button></div>`:'';
+  app.innerHTML=shell(`${top}<div class="list history-list">${all.length?all.map(l=>`<div class="row history-row"><div><div class="actions"><span class="pill koto-pill">Завершено</span><span class="small muted">${dateLong(l.completed_at||l.started_at)}</span></div><h3>${esc(l.students?.name||'')} · ${esc(l.topics?.title||'')}</h3>${l.public_summary?`<p>${esc(l.public_summary.slice(0,150))}</p>`:''}</div><div class="actions"><button class="btn sm" data-history="${l.id}">Открыть</button><button class="btn sm danger" data-history-delete="${l.id}" title="Удалить занятие из истории">Удалить</button></div></div>`).join(''):'<div class="empty">История чистая. Завершённые занятия появятся здесь.</div>'}</div>`,'История уроков','Итоги, заметки и сохранённые версии доски');bindShell();document.querySelectorAll('[data-history]').forEach(b=>b.onclick=()=>openHistoryLesson(b.dataset.history));document.querySelectorAll('[data-history-delete]').forEach(b=>b.onclick=async()=>{try{await deleteCompletedLessonHistory(b.dataset.historyDelete);await loadTeacher();renderHistory();toast('Занятие удалено из истории')}catch(e){fail(e)}});document.getElementById('clearLessonHistory')?.addEventListener('click',clearCompletedLessonHistory);
 }
 async function openHistoryLesson(id){
-  const l=S.lessons.find(x=>x.id===id),versions=S.versions.filter(x=>x.lesson_id===id);const m=modal(`<h2>${esc(l.students?.name||'')} · ${esc(l.topics?.title||'')}</h2><div class="grid cols2"><div class="notice"><b>Итоги ученику</b><div class="prewrap">${nl(l.public_summary||'—')}</div></div><div class="notice"><b>К следующему уроку</b><div class="prewrap">${nl(l.homework_plan||'—')}</div></div></div><div class="notice"><b>Приватные заметки</b><div class="prewrap">${nl(l.private_notes||'—')}</div></div><h3>Версии доски</h3><div class="list">${versions.length?versions.map(v=>`<div class="row"><div><b>${esc(v.title)}</b><div class="small muted">${dateLong(v.created_at)}${v.note?' · '+esc(v.note):''}</div></div><button class="btn sm" data-version="${v.id}">Открыть</button></div>`).join(''):'<div class="empty">Версий доски нет.</div>'}</div>`,'wide-modal');
+  const l=S.lessons.find(x=>x.id===id),versions=S.versions.filter(x=>x.lesson_id===id);if(!l)return toast('Урок уже удалён');const m=modal(`<div class="mr-card-head"><div><span class="koto-eyebrow">ЗАВЕРШЁННЫЙ УРОК</span><h2>${esc(l.students?.name||'')} · ${esc(l.topics?.title||'')}</h2></div><button class="btn sm danger" id="deleteHistoryLesson">Удалить из истории</button></div><div class="grid cols2"><div class="notice"><b>Итоги ученику</b><div class="prewrap">${nl(l.public_summary||'—')}</div></div><div class="notice"><b>К следующему уроку</b><div class="prewrap">${nl(l.homework_plan||'—')}</div></div></div><div class="notice"><b>Приватные заметки</b><div class="prewrap">${nl(l.private_notes||'—')}</div></div><h3>Версии доски</h3><div class="list">${versions.length?versions.map(v=>`<div class="row"><div><b>${esc(v.title)}</b><div class="small muted">${dateLong(v.created_at)}${v.note?' · '+esc(v.note):''}</div></div><button class="btn sm" data-version="${v.id}">Открыть</button></div>`).join(''):'<div class="empty">Версий доски нет.</div>'}</div>`,'wide-modal');
   m.querySelectorAll('[data-version]').forEach(b=>b.onclick=()=>{const v=versions.find(x=>x.id===b.dataset.version);m.remove();const x=modal(`<h2>${esc(v.title)}</h2><p class="muted">${esc(v.note||'Сохранённая версия')}</p><div id="snapshotRoot"></div>`,'snapshot-modal');mountSnapshot(x.querySelector('#snapshotRoot'),v.pages||[])});
+  m.querySelector('#deleteHistoryLesson')?.addEventListener('click',async()=>{try{await deleteCompletedLessonHistory(id);m.remove();await loadTeacher();renderHistory();toast('Занятие удалено из истории')}catch(e){fail(e)}});
 }
 
 async function startLesson(existing=null,topicId=null,studentId=null){
@@ -282,7 +296,7 @@ function renderBoardPage(){
   const scratch=S.selectedStudent==='__scratch__'||!S.students.length;const st=scratch?null:(S.students.find(x=>x.id===S.selectedStudent)||S.students[0]);if(st)S.selectedStudent=st.id;else S.selectedStudent='__scratch__';
   const studentOptions=S.students.map(s=>`<option value="${s.id}" ${st?.id===s.id?'selected':''}>${esc(s.name)} · ${s.grade} кл.</option>`).join('');
   app.innerHTML=shell(`<div class="actions board-mode-switch" style="margin-bottom:12px"><select id="boardStudent" class="search"><option value="__scratch__" ${scratch?'selected':''}>Моя доска-черновик</option>${studentOptions}</select><span class="small muted">${scratch?'Черновик виден только в этом браузере преподавателя.':'Доска ученика синхронизируется в реальном времени.'}</span></div><div id="boardRoot"></div>`,'Доска',scratch?'Личный черновик преподавателя':`${st.name} · совместная доска урока`);bindShell();
-  document.getElementById('boardStudent').onchange=()=>{S.selectedStudent=document.getElementById('boardStudent').value;renderBoardPage()};
+  document.getElementById('boardStudent').onchange=()=>{const v=document.getElementById('boardStudent').value;S.selectedStudent=v;S.view=v==='__scratch__'?'scratch':'board';renderBoardPage()};
   if(scratch)mountBoard(document.getElementById('boardRoot'),'teacher-scratch',true,{localOnly:true,localKey:`mathroom.teacher.scratch.${S.user.id}`}).then(c=>S.boardController=c);
   else mountBoard(document.getElementById('boardRoot'),st.id,true,{studentName:st.name}).then(c=>S.boardController=c);
 }
@@ -318,7 +332,6 @@ async function renderStudent(){
   else await mountBoard(c,S.student.id,false);
   if(active)subscribeStudentLive(active.id);
 }
-window.renderStudent=renderStudent;
 function subscribeStudentLive(lessonId){
   cleanupLive();let timerInt=setInterval(()=>{const el=document.getElementById('studentTimer');if(el)el.textContent=fmtTime(elapsedSeconds(S.studentLive))},1000);const ch=sb.channel(`student-live:${lessonId}`).on('postgres_changes',{event:'UPDATE',schema:'public',table:'lesson_live_state',filter:`lesson_id=eq.${lessonId}`},payload=>{const prev=S.studentLive||{};const next=payload.new||{};S.studentLive=next;const structural=prev.focus_enabled!==next.focus_enabled||prev.current_queue_item_id!==next.current_queue_item_id||prev.current_title!==next.current_title||prev.current_prompt!==next.current_prompt;if(structural)renderStudent();else{const el=document.getElementById('studentTimer');if(el)el.textContent=fmtTime(elapsedSeconds(next))}}).subscribe();S.liveCleanup=()=>{clearInterval(timerInt);sb.removeChannel(ch)};
 }
