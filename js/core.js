@@ -60,9 +60,18 @@ function copyText(text){
   return Promise.resolve();
 }
 function modal(html, cls=''){
-  const el=document.createElement('div'); el.className='modal-backdrop';
-  el.innerHTML=`<div class="modal ${cls}">${html}<div class="actions modal-default-close" style="margin-top:16px"><button class="btn" data-close>Закрыть</button></div></div>`;
-  document.body.appendChild(el); el.onclick=e=>{if(e.target===el||e.target.closest('[data-close]'))el.remove()}; return el;
+  const key=(cls+'|'+String(html||'').replace(/\s+/g,' ').trim().slice(0,180));
+  const existing=document.querySelector('.modal-backdrop');
+  if(existing){
+    if(existing.dataset.modalKey===key){existing.querySelector('.modal')?.focus?.({preventScroll:true});return existing}
+    existing.remove();
+  }
+  const el=document.createElement('div');el.className='modal-backdrop';el.dataset.modalKey=key;
+  el.innerHTML=`<div class="modal ${cls}" tabindex="-1">${html}<div class="actions modal-default-close" style="margin-top:16px"><button class="btn" data-close>Закрыть</button></div></div>`;
+  document.body.appendChild(el);
+  requestAnimationFrame(()=>el.querySelector('.modal')?.focus?.({preventScroll:true}));
+  el.onclick=e=>{if(e.target===el||e.target.closest('[data-close]'))el.remove()};
+  return el;
 }
 function cleanupBoard(){ if(S.boardCleanup){ S.boardCleanup(); S.boardCleanup=null; S.boardController=null; } }
 function cleanupLive(){ if(S.liveCleanup){ S.liveCleanup(); S.liveCleanup=null; } }

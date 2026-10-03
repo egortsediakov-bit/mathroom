@@ -1190,3 +1190,41 @@ body{background:linear-gradient(180deg,#fbfbfa 0%,#f5f4f1 100%)!important;color:
   .board-palette-grid{grid-template-columns:repeat(3,minmax(66px,1fr))!important}
   .board-more-grid,.board-action-grid,.board-writing-grid,.board-geometry-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important}
 }
+
+/* Mathroom v27.4 — always-collapsed navigation, top board controls, modal lock */
+.modal-backdrop{z-index:20000!important}
+
+@media(min-width:901px){
+  .layout.auto-sidebar{display:block!important;min-height:100dvh!important}
+  .auto-sidebar .content{max-width:none!important;width:100%!important;margin:0!important;padding:22px 24px 28px 28px!important}
+  .auto-sidebar .sidebar{
+    position:fixed!important;z-index:5000!important;left:0!important;top:0!important;bottom:auto!important;
+    width:250px!important;height:100svh!important;max-height:100dvh!important;box-sizing:border-box!important;
+    padding:20px 14px max(14px,env(safe-area-inset-bottom))!important;display:flex!important;flex-direction:column!important;
+    overflow:hidden!important;transform:translateX(calc(-100% + 16px))!important;
+    transition:transform .19s ease,box-shadow .19s ease!important;box-shadow:8px 0 28px rgba(25,25,30,.035)!important;
+  }
+  .auto-sidebar .sidebar:hover,.auto-sidebar .sidebar:focus-within{transform:translateX(0)!important;box-shadow:18px 0 50px rgba(25,25,30,.14)!important}
+  .auto-sidebar .sidebar::after{
+    content:""!important;position:absolute!important;right:0!important;left:auto!important;top:12%!important;
+    width:16px!important;height:76%!important;border-radius:10px 0 0 10px!important;
+    background:linear-gradient(180deg,transparent 0 5%,rgba(237,89,26,.55) 5% 95%,transparent 95% 100%)!important;
+    opacity:.24!important;pointer-events:auto!important;
+  }
+  .auto-sidebar .sidebar:hover::after,.auto-sidebar .sidebar:focus-within::after{opacity:0!important}
+  .auto-sidebar .sidebar>.brand{flex:0 0 auto!important;margin-bottom:18px!important}
+  .auto-sidebar .nav{flex:1 1 auto!important;min-height:0!important;overflow-y:auto!important;overflow-x:hidden!important;overscroll-behavior:contain!important;scrollbar-width:none!important;padding-bottom:8px!important}
+  .auto-sidebar .nav::-webkit-scrollbar{display:none!important}
+  .auto-sidebar .nav button{min-height:48px!important;margin:0 0 4px!important}
+  .auto-sidebar .sidebar-footer{position:relative!important;bottom:auto!important;flex:0 0 auto!important;margin-top:8px!important;padding:10px 0 0!important;background:#fff!important;z-index:2!important;display:grid!important;grid-template-columns:1fr 1fr!important;gap:8px!important}
+  .auto-sidebar .sidebar-footer .btn{min-height:40px!important}
+}
+
+.board-floating{top:12px!important;right:12px!important;bottom:auto!important}
+.board-head-actions{gap:6px!important;flex-wrap:wrap!important}
+.board-head-sep{width:1px;height:26px;background:#e8e4df;margin:0 2px;flex:0 0 auto}
+.board-head-icon{min-width:38px!important;padding:7px 9px!important;gap:5px!important}
+.board-head-icon .mr-ui-icon{width:17px!important;height:17px!important}
+.board-head-label{font-size:10.5px;font-weight:750}
+@media(max-width:1120px){.board-head-label{display:none}.board-head-icon{width:38px!important;padding:7px!important}}
+@media(max-width:760px){.board-floating{top:8px!important;right:8px!important}.board-head-sep{display:none}.board-head-actions{width:100%!important}}
