@@ -2,7 +2,8 @@
   const MR = window.MR;
   if (!MR) return;
   const { S, modal, esc } = MR;
-  const VERSION = '23.4';
+  const VERSION = '27.1';
+  const helpSeenKey = () => `mathroom.help.seen.${S.access ? 'student' : 'teacher'}`;
   const key = (name) => `mathroom.ux.${VERSION}.${name}.${S.access ? 'student' : 'teacher'}`;
 
   function safeStoreGet(k){ try { return localStorage.getItem(k); } catch { return null; } }
@@ -16,6 +17,8 @@
   }
 
   function openGuide(){
+    safeStoreSet(helpSeenKey(),'done');
+    document.getElementById('mrHelpButton')?.remove();
     const teacher = !S.access;
     const html = teacher ? `
       <div class="mr-guide-head"><div><span class="pill">Быстрый старт</span><h2>Как работать в Mathroom</h2><p class="muted">Главная идея: расписание → открыть урок → видеосвязь и доска → завершить урок.</p></div></div>
@@ -41,7 +44,9 @@
   }
 
   function ensureHelpButton(){
+    const seen=safeStoreGet(helpSeenKey())==='done';
     let b = document.getElementById('mrHelpButton');
+    if(seen){b?.remove();return}
     if (!b) {
       b = document.createElement('button');
       b.id = 'mrHelpButton'; b.className = 'mr-help-button';
@@ -49,6 +54,11 @@
       b.type = 'button'; b.setAttribute('aria-label','Открыть справку Mathroom');
       b.onclick = openGuide; document.body.appendChild(b);
     }
+  }
+  function bindSidebarHelp(){
+    const b=document.getElementById('sidebarHelp');
+    if(!b||b.dataset.guideBound==='1')return;
+    b.dataset.guideBound='1';b.onclick=openGuide;
   }
 
   function teacherWelcome(){
@@ -109,7 +119,7 @@
   }
 
   function sync(){
-    ensureHelpButton(); teacherWelcome(); studentWelcome(); ensureVideoCoach(); improveAccessibility();
+    ensureHelpButton(); bindSidebarHelp(); teacherWelcome(); studentWelcome(); ensureVideoCoach(); improveAccessibility();
   }
 
   // Unified tactile feedback for every real button. This is visual only and never

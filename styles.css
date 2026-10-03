@@ -1057,3 +1057,37 @@ body{background:linear-gradient(180deg,#fbfbfa 0%,#f5f4f1 100%)!important;color:
   .board-stage{min-height:65vh!important}.board-toolbar-side{width:60px!important;left:7px!important;top:7px!important;padding:6px!important;border-radius:17px!important}.board-rail-quick .btn{height:35px!important;min-height:35px!important}.board-rail-quick [data-tool="select"],.board-rail-quick [data-tool="hand"]{height:43px!important;min-height:43px!important}.board-toolbar-side .board-tool-group>summary{height:43px!important;min-height:43px!important}.board-toolbar-side .board-tool-popover,.board-toolbar-side .board-tool-group:nth-last-child(-n+2) .board-tool-popover{left:74px!important;right:8px!important;top:8px!important;bottom:8px!important;min-width:0!important;max-width:none!important;max-height:none!important}.board-action-grid,.board-writing-grid,.board-geometry-grid,.board-more-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important}.board-palette-grid{grid-template-columns:repeat(3,minmax(76px,1fr))!important}.board-toolbar-side .board-shapes-popover{min-width:0!important;max-width:none!important}.board-style-row{align-items:flex-start!important;flex-direction:column!important}.board-width-select{width:100%!important}.board-color-row{width:100%;justify-content:space-between}
 }
 @media(max-width:460px){.board-action-grid,.board-writing-grid,.board-geometry-grid,.board-more-grid{grid-template-columns:1fr 1fr!important}.board-palette-grid{grid-template-columns:repeat(2,minmax(76px,1fr))!important}.board-action-grid .btn{min-height:58px!important}.board-popover-subtitle{display:none}}
+
+/* Mathroom v27.1 — interaction recovery + viewport-safe popovers */
+#boardSvg{position:absolute!important;inset:0!important;width:100%!important;height:100%!important;z-index:1!important;pointer-events:auto!important;touch-action:none!important}
+.board-toolbar-side{z-index:30!important;overflow:visible!important}
+.board-object-hud,.board-solid-hud,.board-floating,.board-follow-badge{z-index:35!important}
+.board-stage.drag-active::after{pointer-events:none!important;z-index:25!important}
+.board-toolbar-side .board-tool-popover{
+  position:fixed!important;
+  left:var(--mr-pop-left,96px)!important;
+  top:var(--mr-pop-top,12px)!important;
+  right:auto!important;
+  bottom:auto!important;
+  width:min(610px,calc(100vw - var(--mr-pop-left,96px) - 14px))!important;
+  min-width:min(420px,calc(100vw - var(--mr-pop-left,96px) - 14px))!important;
+  max-width:calc(100vw - var(--mr-pop-left,96px) - 14px)!important;
+  max-height:var(--mr-pop-maxh,calc(100vh - 24px))!important;
+  overflow:auto!important;
+  overscroll-behavior:contain;
+}
+.board-toolbar-side .board-shapes-popover,.board-more-popover{
+  width:min(680px,calc(100vw - var(--mr-pop-left,96px) - 14px))!important;
+  min-width:min(520px,calc(100vw - var(--mr-pop-left,96px) - 14px))!important;
+  max-width:calc(100vw - var(--mr-pop-left,96px) - 14px)!important;
+}
+.sidebar-footer{display:grid!important;grid-template-columns:1fr 1fr;gap:8px!important;align-items:center!important}
+.sidebar-footer .sidebar-help{color:#555861!important;border-color:#e6e2dc!important;background:#fff!important}
+.sidebar-footer .sidebar-help:hover{color:var(--mr-orange)!important;border-color:var(--mr-orange-border)!important;background:var(--mr-orange-soft)!important}
+@media(max-width:760px){
+  .board-toolbar-side .board-tool-popover,.board-toolbar-side .board-shapes-popover,.board-more-popover{
+    left:var(--mr-pop-left,74px)!important;top:var(--mr-pop-top,8px)!important;
+    width:calc(100vw - var(--mr-pop-left,74px) - 8px)!important;
+    min-width:0!important;max-width:none!important;max-height:var(--mr-pop-maxh,calc(100vh - 16px))!important;
+  }
+}
