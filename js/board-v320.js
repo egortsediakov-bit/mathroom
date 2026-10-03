@@ -126,6 +126,79 @@
     return false;
   }
 
+
+  /* Precise eraser hit testing. The old eraser reused the broad selection hitbox,
+     so an object could disappear even when the visible eraser never touched it. */
+  function pointSegmentDistance(px,py,ax,ay,bx,by){
+    const dx=bx-ax,dy=by-ay,l2=dx*dx+dy*dy;
+    if(l2<=1e-12)return Math.hypot(px-ax,py-ay);
+    const t=Math.max(0,Math.min(1,((px-ax)*dx+(py-ay)*dy)/l2));
+    return Math.hypot(px-(ax+t*dx),py-(ay+t*dy));
+  }
+  function polylineNearPoint(rawPts,x,y,r,{closed=false}={}){
+    const pts=(rawPts||[]).map(p=>Array.isArray(p)?{x:p[0],y:p[1]}:{x:p.x,y:p.y}).filter(p=>Number.isFinite(p.x)&&Number.isFinite(p.y));
+    if(!pts.length)return false;
+    if(pts.length===1)return Math.hypot(x-pts[0].x,y-pts[0].y)<=r;
+    const n=closed?pts.length:pts.length-1;
+    for(let i=0;i<n;i++){
+      const a=pts[i],b=pts[(i+1)%pts.length];
+      if(pointSegmentDistance(x,y,a.x,a.y,b.x,b.y)<=r)return true;
+    }
+    return false;
+  }
+  function eraserHitsObject(o,x,y,eraserR){
+    if(!o||o.type==='board-bg')return false;
+    const strokePad=Math.max(1.5,Number(o.width||2)*.55),r=eraserR+strokePad;
+    if(o.type==='path')return polylineNearPoint(o.points||[],x,y,r);
+    if(['line','arrow'].includes(o.type))return pointSegmentDistance(x,y,o.x1,o.y1,o.x2,o.y2)<=r;
+    if(o.type==='ruler')return pointSegmentDistance(x,y,o.x1,o.y1,o.x2,o.y2)<=eraserR+10;
+    if(o.type==='polygon'){
+      const pts=(o.points||[]).map(p=>({x:p[0],y:p[1]}));
+      if(o.fill&&o.fill!=='none'&&pts.length>=3&&pointInPoly(x,y,pts))return true;
+      return polylineNearPoint(pts,x,y,r,{closed:true});
+    }
+    if(o.type==='rect'){
+      const x0=Math.min(o.x1,o.x2),x1=Math.max(o.x1,o.x2),y0=Math.min(o.y1,o.y2),y1=Math.max(o.y1,o.y2);
+      if(o.fill&&o.fill!=='none'&&x>=x0&&x<=x1&&y>=y0&&y<=y1)return true;
+      return polylineNearPoint([[x0,y0],[x1,y0],[x1,y1],[x0,y1]],x,y,r,{closed:true});
+    }
+    if(o.type==='ellipse'){
+      const cx=(o.x1+o.x2)/2,cy=(o.y1+o.y2)/2,rx=Math.abs(o.x2-o.x1)/2,ry=Math.abs(o.y2-o.y1)/2;
+      if(rx<1e-6||ry<1e-6)return Math.hypot(x-cx,y-cy)<=r;
+      const norm=((x-cx)*(x-cx))/(rx*rx)+((y-cy)*(y-cy))/(ry*ry);
+      if(o.fill&&o.fill!=='none'&&norm<=1)return true;
+      return polylineNearPoint(sampledEllipse(cx,cy,rx,ry,96),x,y,r,{closed:true});
+    }
+    if(o.type==='arc')return polylineNearPoint(sampledArc(o,96),x,y,r);
+    if(o.type==='compass')return polylineNearPoint(sampledEllipse(o.cx,o.cy,o.r,o.r,96),x,y,r,{closed:true});
+    if(o.type==='protractor'){
+      const pts=[];for(let i=0;i<=64;i++){const a=Math.PI-i/64*Math.PI;pts.push({x:o.x+o.r*Math.cos(a),y:o.y-o.r*Math.sin(a)})}
+      pts.push({x:o.x+o.r,y:o.y},{x:o.x-o.r,y:o.y});
+      return pointInPoly(x,y,pts)||polylineNearPoint(pts,x,y,r,{closed:true});
+    }
+    if(o.type==='solid3d'){
+      const {model,projected}=solidProjection(o);
+      for(const [ia,ib] of model.edges||[]){const a=projected[ia],b=projected[ib];if(a&&b&&pointSegmentDistance(x,y,a.x,a.y,b.x,b.y)<=eraserR+3)return true}
+      /* Faces are intentionally not treated as one giant invisible rectangle.
+         Filled face interiors count only if the pointer is actually inside a projected face. */
+      for(const face of model.faces||[]){const pts=face.map(i=>projected[i]).filter(Boolean);if(pts.length>=3&&pointInPoly(x,y,pts))return true}
+      return false;
+    }
+    const b=bounds(o);if(!Number.isFinite(b.x+b.y+b.w+b.h))return false;
+    if(['text','formula','note','image','coordinate','graph','attachment'].includes(o.type)){
+      return x>=b.x-eraserR&&x<=b.x+b.w+eraserR&&y>=b.y-eraserR&&y<=b.y+b.h+eraserR;
+    }
+    return false;
+  }
+  function eraserHit(elements,isTeacher,x,y,eraserR){
+    for(let i=elements.length-1;i>=0;i--){
+      const o=elements[i];
+      if(o?.teacherOnly&&!isTeacher)continue;
+      if(eraserHitsObject(o,x,y,eraserR))return o;
+    }
+    return null;
+  }
+
   function niceTickStep(range,target=6){
     const raw=Math.max(.0001,range/Math.max(2,target)),pow=Math.pow(10,Math.floor(Math.log10(raw))),n=raw/pow;
     const nice=n<=1?1:n<=2?2:n<=5?5:10;return nice*pow;
@@ -868,7 +941,7 @@
       if(tool==='laser'){laserPoint={x,y};broadcastTransient('laser',{point:laserPoint});render();return}
       if(tool==='marker'){drawing={id:uid(),type:'marker-temp',points:[[x,y]],color:'#f59e0b',width:14,expires:Date.now()+5000};tempMarks.push(drawing);render();return}
       if(tool==='focus'){focusDraft={x0:x,y0:y,x1:x,y1:y};focusRect={x,y,w:1,h:1};render();return}
-      if(tool==='eraser'){eraserPoint={x,y};eraserTrail=[[x,y]];eraserDown=true;pushElementsHistory();const o=hit(x,y);if(o&&!o.locked){elements=elements.filter(z=>z.id!==o.id);if(selectionHas(o.id)){const next=selectionList().filter(id=>id!==o.id);setSelection(next)}changed()}else render();return}
+      if(tool==='eraser'){eraserPoint={x,y};eraserTrail=[[x,y]];eraserDown=true;pushElementsHistory();const o=eraserHit(elements,isTeacher,x,y,18/camera.zoom);if(o&&!o.locked){elements=elements.filter(z=>z.id!==o.id);if(selectionHas(o.id)){const next=selectionList().filter(id=>id!==o.id);setSelection(next)}changed()}else render();return}
       if(tool==='text'){const text=prompt('Текст:');if(text){pushElementsHistory();elements.push({id:uid(),type:'text',x,y,text,color,fontSize:28});changed()}return}
       if(tool==='note'){const text=prompt('Текст заметки:');if(text){pushElementsHistory();const obj={id:uid(),type:'note',x,y,w:280,h:170,text,color:'#3d3515',fill:'#fff3bf',fontSize:20};elements.push(obj);selectOnly(obj.id);setTool('select');changed()}return}
       if(tool==='solid-point'){
@@ -924,7 +997,7 @@
       let[x,y]=screenToWorld(e.clientX,e.clientY);sendCursor(x,y);
       if(!['pen','pencil','marker','laser','eraser','compass','solid-rotate'].includes(tool))[x,y]=geometrySnapPoint(x,y,selectionList());
       if(marqueeSelect&&tool==='select'){marqueeSelect.x1=x;marqueeSelect.y1=y;renderInteractive();return}
-      if(tool==='eraser'){eraserPoint={x,y};if(eraserDown){const last=eraserTrail[eraserTrail.length-1];if(!last||Math.hypot(x-last[0],y-last[1])>2/camera.zoom)eraserTrail.push([x,y]);const o=hit(x,y);if(o&&!o.locked){elements=elements.filter(z=>z.id!==o.id);if(selectionHas(o.id)){const next=selectionList().filter(id=>id!==o.id);setSelection(next)}changed()}else renderInteractive()}else renderInteractive();return}
+      if(tool==='eraser'){eraserPoint={x,y};if(eraserDown){const last=eraserTrail[eraserTrail.length-1];if(!last||Math.hypot(x-last[0],y-last[1])>2/camera.zoom)eraserTrail.push([x,y]);const o=eraserHit(elements,isTeacher,x,y,18/camera.zoom);if(o&&!o.locked){elements=elements.filter(z=>z.id!==o.id);if(selectionHas(o.id)){const next=selectionList().filter(id=>id!==o.id);setSelection(next)}changed()}else renderInteractive()}else renderInteractive();return}
       if(tool==='laser'&&laserPoint){laserPoint={x,y};broadcastTransient('laser',{point:laserPoint});renderInteractive();return}
       if(tool==='marker'&&drawing?.type==='marker-temp'){appendFreehandPoints(drawing,e);renderInteractive();broadcastTransient('marker',{mark:{...drawing,expires:Date.now()+5000}});return}
       if(tool==='focus'&&focusDraft){focusDraft.x1=x;focusDraft.y1=y;focusRect={x:Math.min(focusDraft.x0,x),y:Math.min(focusDraft.y0,y),w:Math.abs(x-focusDraft.x0),h:Math.abs(y-focusDraft.y0)};render();return}
