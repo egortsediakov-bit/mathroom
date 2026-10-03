@@ -1472,3 +1472,55 @@ body{background:linear-gradient(180deg,#fbfbfa 0%,#f5f4f1 100%)!important;color:
     font-size:12px!important;
   }
 }
+
+/* Mathroom v27.12 — lesson board popovers match scratch-board behavior */
+/* Older nth-last-child rules anchored the last palettes (Lesson / More) to the
+   bottom of the viewport. In a live lesson this made them stretch below the
+   visible board. Always use the viewport-safe position calculated by JS. */
+.board-toolbar-side .board-tool-group:nth-last-child(-n+2) .board-tool-popover,
+.board-toolbar-side .board-tool-group[data-category="lesson"] .board-tool-popover,
+.board-toolbar-side .board-tool-group[data-category="more"] .board-tool-popover{
+  position:fixed!important;
+  left:var(--mr-pop-left,92px)!important;
+  top:var(--mr-pop-top,12px)!important;
+  right:auto!important;
+  bottom:auto!important;
+  max-height:min(var(--mr-pop-maxh,68vh),520px)!important;
+  overflow:auto!important;
+  overscroll-behavior:contain!important;
+}
+
+/* The live-lesson canvas uses exactly the same compact palette geometry as the
+   teacher scratch board. */
+.mr-lesson-board-main .board-toolbar-side .board-tool-popover,
+.student-lesson-room .board-toolbar-side .board-tool-popover{
+  width:300px!important;
+  min-width:300px!important;
+  max-width:min(300px,calc(100vw - var(--mr-pop-left,92px) - 12px))!important;
+  max-height:min(var(--mr-pop-maxh,68vh),520px)!important;
+}
+.mr-lesson-board-main .board-toolbar-side .board-shapes-popover,
+.student-lesson-room .board-toolbar-side .board-shapes-popover{
+  width:360px!important;
+  min-width:360px!important;
+  max-width:min(360px,calc(100vw - var(--mr-pop-left,92px) - 12px))!important;
+  max-height:min(var(--mr-pop-maxh,68vh),560px)!important;
+}
+@media(max-width:760px){
+  .board-toolbar-side .board-tool-group:nth-last-child(-n+2) .board-tool-popover,
+  .board-toolbar-side .board-tool-group[data-category="lesson"] .board-tool-popover,
+  .board-toolbar-side .board-tool-group[data-category="more"] .board-tool-popover,
+  .mr-lesson-board-main .board-toolbar-side .board-tool-popover,
+  .student-lesson-room .board-toolbar-side .board-tool-popover,
+  .mr-lesson-board-main .board-toolbar-side .board-shapes-popover,
+  .student-lesson-room .board-toolbar-side .board-shapes-popover{
+    left:72px!important;
+    right:8px!important;
+    top:var(--mr-pop-top,8px)!important;
+    bottom:auto!important;
+    width:auto!important;
+    min-width:0!important;
+    max-width:none!important;
+    max-height:min(var(--mr-pop-maxh,62dvh),500px)!important;
+  }
+}
