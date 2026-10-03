@@ -1091,3 +1091,102 @@ body{background:linear-gradient(180deg,#fbfbfa 0%,#f5f4f1 100%)!important;color:
     min-width:0!important;max-width:none!important;max-height:var(--mr-pop-maxh,calc(100vh - 16px))!important;
   }
 }
+
+/* Mathroom v27.3 — compact board UI, auto-hide workspace sidebar, safer panning */
+.board-stage,#boardSvg,.board-stage svg,.board-stage svg text{
+  -webkit-user-select:none!important;
+  user-select:none!important;
+  -webkit-touch-callout:none!important;
+}
+.board-stage.hand-mode,#boardSvg{touch-action:none!important}
+.board-stage.hand-mode *{-webkit-user-select:none!important;user-select:none!important}
+
+/* Smaller, denser tool popovers. */
+.board-toolbar-side .board-tool-popover{
+  width:min(420px,calc(100vw - var(--mr-pop-left,92px) - 12px))!important;
+  min-width:min(330px,calc(100vw - var(--mr-pop-left,92px) - 12px))!important;
+  max-width:calc(100vw - var(--mr-pop-left,92px) - 12px)!important;
+  max-height:min(var(--mr-pop-maxh,72vh),620px)!important;
+  padding:12px!important;
+  border-radius:16px!important;
+}
+.board-popover-head{padding:0 1px 8px!important;margin-bottom:9px!important;gap:8px!important}
+.board-popover-title{font-size:13px!important}.board-popover-subtitle{display:none!important}
+.board-action-grid,.board-writing-grid,.board-geometry-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:7px!important}
+.board-action-grid .btn{
+  min-height:45px!important;
+  padding:8px 10px!important;
+  flex-direction:row!important;
+  align-items:center!important;
+  justify-content:flex-start!important;
+  gap:8px!important;
+  border-radius:12px!important;
+}
+.board-action-grid .btn .mr-ui-icon{width:19px!important;height:19px!important;flex:0 0 auto}
+.board-action-grid .btn span{font-size:11px!important;line-height:1.1!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important}
+.board-tool-help{margin-top:8px!important;padding:8px 10px!important;font-size:10px!important;line-height:1.4!important}
+.board-style-row{padding-top:10px!important;margin-top:10px!important;gap:10px!important}.board-color-row{gap:7px!important}.color-dot{width:27px!important;height:27px!important}.board-width-select{height:38px!important;min-width:124px!important}
+
+/* Shapes stay visual, but use less screen space. */
+.board-toolbar-side .board-shapes-popover{
+  width:min(500px,calc(100vw - var(--mr-pop-left,92px) - 12px))!important;
+  min-width:min(420px,calc(100vw - var(--mr-pop-left,92px) - 12px))!important;
+  max-width:calc(100vw - var(--mr-pop-left,92px) - 12px)!important;
+  max-height:min(var(--mr-pop-maxh,76vh),660px)!important;
+}
+.board-palette-section{gap:7px!important;padding:0 0 9px!important}.board-palette-section>b{font-size:11px!important}
+.board-palette-grid{grid-template-columns:repeat(5,minmax(68px,1fr))!important;gap:7px!important}
+.board-shape-icon{min-height:76px!important;padding:7px 4px 6px!important;border-radius:12px!important;gap:4px!important}.board-shape-svg{width:46px!important;height:37px!important}.board-shape-label{font-size:9px!important;line-height:1.1!important}
+.board-solid-help{margin-top:4px!important;padding:8px 10px!important;font-size:10px!important;line-height:1.35!important}
+.board-solid-actions{display:none!important}
+
+/* Dense board actions: more commands, smaller footprint. */
+.board-more-popover{
+  width:min(520px,calc(100vw - var(--mr-pop-left,92px) - 12px))!important;
+  min-width:min(440px,calc(100vw - var(--mr-pop-left,92px) - 12px))!important;
+}
+.board-more-grid{grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:7px!important}
+.board-more-grid .btn{min-height:43px!important}
+
+/* 3D controls exist only beside a selected 3D object. */
+.board-solid-hud{max-width:calc(100% - 94px)!important;overflow-x:auto!important;scrollbar-width:thin!important;white-space:nowrap!important}
+.board-solid-hud .danger{color:#c23e16!important}
+
+/* Auto-hide main navigation on board workspaces. Move the pointer to the far-left edge to reveal it. */
+@media(min-width:901px){
+  .layout.workspace-mode{display:block!important;min-height:100dvh!important}
+  .workspace-mode .content{max-width:none!important;width:100%!important;margin:0!important;padding:22px 24px 28px 28px!important}
+  .workspace-mode .sidebar{
+    position:fixed!important;
+    z-index:5000!important;
+    left:0!important;top:0!important;bottom:0!important;
+    width:250px!important;height:100dvh!important;
+    padding:22px 16px calc(18px + env(safe-area-inset-bottom))!important;
+    overflow-y:auto!important;overflow-x:hidden!important;
+    transform:translateX(calc(-100% + 14px));
+    transition:transform .2s ease,box-shadow .2s ease!important;
+    box-shadow:8px 0 28px rgba(25,25,30,.04)!important;
+  }
+  .workspace-mode .sidebar:hover,.workspace-mode .sidebar:focus-within{
+    transform:translateX(0)!important;
+    box-shadow:18px 0 50px rgba(25,25,30,.13)!important;
+  }
+  .workspace-mode .sidebar::after{
+    content:"";position:fixed;left:0;top:18%;width:14px;height:64%;border-radius:0 10px 10px 0;
+    background:linear-gradient(180deg,transparent 0 10%,rgba(237,89,26,.7) 10% 90%,transparent 90% 100%);
+    opacity:.22;pointer-events:auto;
+  }
+  .workspace-mode .sidebar:hover::after{opacity:0}
+  .workspace-mode .sidebar-footer{
+    position:sticky!important;bottom:0!important;margin-top:auto!important;padding-top:12px!important;padding-bottom:2px!important;
+    background:linear-gradient(180deg,rgba(255,255,255,0),#fff 28%)!important;
+  }
+}
+
+@media(max-width:760px){
+  .board-toolbar-side .board-tool-popover,.board-toolbar-side .board-shapes-popover,.board-more-popover{
+    max-height:calc(100dvh - 16px)!important;
+  }
+  .board-palette-grid{grid-template-columns:repeat(3,minmax(66px,1fr))!important}
+  .board-more-grid,.board-action-grid,.board-writing-grid,.board-geometry-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+}
