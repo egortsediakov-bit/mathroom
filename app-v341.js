@@ -34,17 +34,45 @@ async function loadTeacher(){
   [S.students,S.topics,S.exercises,S.lessons,S.homeworks,S.tests,S.versions]=reqs.map(x=>x.data||[]);
   if(!S.selectedStudent&&S.students[0])S.selectedStudent=S.students[0].id;
 }
+let curriculumSyncPromise=null;
+function curriculumSeeded(){
+  const tag=window.MathroomCurriculumBank?.BANK_TAG;
+  return !!tag && (S.exercises||[]).some(x=>(x.tags||[]).includes(tag));
+}
+async function syncCurriculumBank({manual=false}={}){
+  const bank=window.MathroomCurriculumBank;
+  if(!bank||!S.user)return null;
+  if(curriculumSyncPromise)return curriculumSyncPromise;
+  if(!manual&&curriculumSeeded())return null;
+  curriculumSyncPromise=(async()=>{
+    if(manual)toast('Обновляю готовую базу тем и задач…');
+    try{
+      const result=await bank.seed({sb,teacherId:S.user.id,topics:S.topics,exercises:S.exercises});
+      if(result.topicsAdded||result.tasksAdded){
+        await loadTeacher();
+        if(['topics','bank','dashboard'].includes(S.view))renderTeacher();
+        toast(`База готова · ${result.totalTopics} тем · ${result.totalTasks} задач`);
+      }else if(manual)toast('База уже загружена и актуальна');
+      return result;
+    }catch(e){
+      console.error('curriculum seed',e);
+      if(manual)fail(e); else toast('Готовую базу не удалось загрузить автоматически. Открой «Банк задач» и нажми «Обновить базу».');
+      return null;
+    }finally{curriculumSyncPromise=null}
+  })();
+  return curriculumSyncPromise;
+}
 async function boot(){
   if(!configured)return configScreen();
   if(S.access)return bootStudent();
   const {data:{session}}=await sb.auth.getSession();
   if(!session||session.user.is_anonymous)return renderAuth();
-  S.user=session.user;try{S.teacher=await ensureTeacher();await loadTeacher();restoreActiveLesson();renderTeacher()}catch(e){fail(e);renderAuth()}
+  S.user=session.user;try{S.teacher=await ensureTeacher();await loadTeacher();restoreActiveLesson();renderTeacher();syncCurriculumBank()}catch(e){fail(e);renderAuth()}
 }
 function renderAuth(){
   app.innerHTML=`<div class="center-page"><div class="auth-card"><div class="brand">Mathroom</div><h1>Облачный кабинет</h1><p>GitHub Pages + Supabase</p><form id="loginForm"><div class="field"><label>Email</label><input id="email" type="email" required></div><div class="field"><label>Пароль</label><input id="password" type="password" minlength="6" required></div><div class="actions"><button class="btn primary">Войти</button><button type="button" class="btn" id="register">Создать аккаунт</button></div></form><div id="authMsg" class="small muted" style="margin-top:12px"></div></div></div>`;
-  document.getElementById('loginForm').onsubmit=async e=>{e.preventDefault();const email=document.getElementById('email').value,password=document.getElementById('password').value;const {data,error}=await sb.auth.signInWithPassword({email,password});if(error)return document.getElementById('authMsg').textContent=error.message;S.user=data.user;S.teacher=await ensureTeacher();await loadTeacher();restoreActiveLesson();renderTeacher()};
-  document.getElementById('register').onclick=async()=>{const email=document.getElementById('email').value,password=document.getElementById('password').value;const {data,error}=await sb.auth.signUp({email,password});if(error)return document.getElementById('authMsg').textContent=error.message;if(!data.session){document.getElementById('authMsg').textContent='Аккаунт создан. Подтверди email, затем войди.';return}S.user=data.user;S.teacher=await ensureTeacher();await loadTeacher();restoreActiveLesson();renderTeacher()};
+  document.getElementById('loginForm').onsubmit=async e=>{e.preventDefault();const email=document.getElementById('email').value,password=document.getElementById('password').value;const {data,error}=await sb.auth.signInWithPassword({email,password});if(error)return document.getElementById('authMsg').textContent=error.message;S.user=data.user;S.teacher=await ensureTeacher();await loadTeacher();restoreActiveLesson();renderTeacher();syncCurriculumBank()};
+  document.getElementById('register').onclick=async()=>{const email=document.getElementById('email').value,password=document.getElementById('password').value;const {data,error}=await sb.auth.signUp({email,password});if(error)return document.getElementById('authMsg').textContent=error.message;if(!data.session){document.getElementById('authMsg').textContent='Аккаунт создан. Подтверди email, затем войди.';return}S.user=data.user;S.teacher=await ensureTeacher();await loadTeacher();restoreActiveLesson();renderTeacher();syncCurriculumBank()};
 }
 
 const nav=[['dashboard','Главная'],['schedule','Расписание'],['students','Ученики'],['topics','Темы'],['bank','Банк задач'],['assignments','Задания'],['history','История'],['scratch','Черновик'],['board','Доска']];
@@ -156,10 +184,13 @@ function renderTopic(){
 }
 
 function renderBank(){
-  const cats=[...new Set(S.exercises.map(x=>x.category).filter(Boolean))].sort(),tags=[...new Set(S.exercises.flatMap(x=>x.tags||[]))].sort();
-  app.innerHTML=shell(`<div class="form-card"><div class="grid cols4"><div class="field"><label>Поиск</label><input id="bankSearch" placeholder="условие, тег, тема..."></div><div class="field"><label>Сложность</label><select id="bankDiff"><option value="">Все</option><option value="basic">Базовые</option><option value="medium">Средние</option><option value="advanced">Сложные</option></select></div><div class="field"><label>Категория</label><select id="bankCat"><option value="">Все</option>${cats.map(x=>`<option>${esc(x)}</option>`).join('')}</select></div><div class="field"><label>Тег</label><select id="bankTag"><option value="">Все</option>${tags.map(x=>`<option>${esc(x)}</option>`).join('')}</select></div></div></div><div id="bankList"></div>`,'Банк задач','Категории, теги и история использования');bindShell();
-  const draw=()=>{const qv=document.getElementById('bankSearch').value.toLowerCase(),d=document.getElementById('bankDiff').value,c=document.getElementById('bankCat').value,tag=document.getElementById('bankTag').value;const arr=S.exercises.filter(x=>x.kind==='task').filter(x=>(!d||x.difficulty===d)&&(!c||x.category===c)&&(!tag||(x.tags||[]).includes(tag))&&(!qv||[x.title,x.content,x.category,...(x.tags||[])].join(' ').toLowerCase().includes(qv)));document.getElementById('bankList').innerHTML=`<div class="list">${arr.length?arr.map(x=>{const t=S.topics.find(z=>z.id===x.topic_id);return `<div class="row"><div><div class="actions"><span class="pill">${t?.grade||'?'} кл.</span><span class="pill">${diffLabel(x.difficulty)}</span>${x.category?`<span class="pill">${esc(x.category)}</span>`:''}</div><h3>${esc(x.title||'Задача')}</h3><div class="prewrap">${nl(x.content)}</div><p>${esc(t?.title||'')} ${(x.tags||[]).map(z=>'#'+esc(z)).join(' ')} · использована ${x.use_count||0} раз</p></div><button class="btn sm" data-answer="${x.id}">Ответ</button></div>`}).join(''):'<div class="empty">Ничего не найдено.</div>'}</div>`;document.querySelectorAll('[data-answer]').forEach(b=>b.onclick=()=>{const e=S.exercises.find(x=>x.id===b.dataset.answer);modal(`<h2>${esc(e.title||'Ответ')}</h2><div class="notice mono">${esc(e.answer||'Ответ не заполнен')}</div>`)})};
-  ['bankSearch','bankDiff','bankCat','bankTag'].forEach(id=>document.getElementById(id).oninput=draw);draw();
+  const bankTag=window.MathroomCurriculumBank?.BANK_TAG;
+  const cats=[...new Set(S.exercises.map(x=>x.category).filter(Boolean))].sort(),tags=[...new Set(S.exercises.flatMap(x=>x.tags||[]).filter(x=>x!==bankTag&&!String(x).startsWith('mrseed:')))].sort();
+  const grades=[...new Set(S.topics.map(x=>Number(x.grade)).filter(Boolean))].sort((a,b)=>a-b),builtIn=(S.exercises||[]).filter(x=>(x.tags||[]).includes(bankTag)).length;
+  app.innerHTML=shell(`<div class="actions bank-summary" style="margin-bottom:12px"><span class="pill">${S.exercises.filter(x=>x.kind==='task').length} задач</span><span class="pill">${builtIn} из готовой базы</span><button class="btn sm" id="syncCurriculumBank">Обновить базу 1–11</button></div><div class="form-card"><div class="grid cols4"><div class="field"><label>Поиск</label><input id="bankSearch" placeholder="условие, тег, тема..."></div><div class="field"><label>Класс</label><select id="bankGrade"><option value="">Все</option>${grades.map(x=>`<option value="${x}">${x}</option>`).join('')}</select></div><div class="field"><label>Сложность</label><select id="bankDiff"><option value="">Все</option><option value="basic">Базовые</option><option value="medium">Средние</option><option value="advanced">Сложные</option></select></div><div class="field"><label>Категория</label><select id="bankCat"><option value="">Все</option>${cats.map(x=>`<option>${esc(x)}</option>`).join('')}</select></div></div><div class="field" style="margin-top:10px"><label>Тег</label><select id="bankTag"><option value="">Все</option>${tags.map(x=>`<option>${esc(x)}</option>`).join('')}</select></div></div><div id="bankList"></div>`,'Банк задач','Готовая база 1–11 классов + свои задачи');bindShell();
+  document.getElementById('syncCurriculumBank').onclick=()=>syncCurriculumBank({manual:true});
+  const draw=()=>{const qv=document.getElementById('bankSearch').value.toLowerCase(),g=document.getElementById('bankGrade').value,d=document.getElementById('bankDiff').value,c=document.getElementById('bankCat').value,tag=document.getElementById('bankTag').value;const arr=S.exercises.filter(x=>x.kind==='task').filter(x=>{const t=S.topics.find(z=>z.id===x.topic_id);return(!g||String(t?.grade)===g)&&(!d||x.difficulty===d)&&(!c||x.category===c)&&(!tag||(x.tags||[]).includes(tag))&&(!qv||[x.title,x.content,x.category,t?.title,t?.section,...(x.tags||[])].join(' ').toLowerCase().includes(qv))});document.getElementById('bankList').innerHTML=`<div class="list">${arr.length?arr.map(x=>{const t=S.topics.find(z=>z.id===x.topic_id);const visibleTags=(x.tags||[]).filter(z=>z!==bankTag&&!String(z).startsWith('mrseed:'));return `<div class="row"><div><div class="actions"><span class="pill">${t?.grade||'?'} кл.</span><span class="pill">${diffLabel(x.difficulty)}</span>${x.category?`<span class="pill">${esc(x.category)}</span>`:''}</div><h3>${esc(x.title||'Задача')}</h3><div class="prewrap">${nl(x.content)}</div><p>${esc(t?.section||'')} · ${esc(t?.title||'')} ${visibleTags.map(z=>'#'+esc(z)).join(' ')} · использована ${x.use_count||0} раз</p></div><button class="btn sm" data-answer="${x.id}">Ответ</button></div>`}).join(''):'<div class="empty">Ничего не найдено.</div>'}</div>`;document.querySelectorAll('[data-answer]').forEach(b=>b.onclick=()=>{const e=S.exercises.find(x=>x.id===b.dataset.answer);modal(`<h2>${esc(e.title||'Ответ')}</h2><div class="notice mono">${esc(e.answer||'Ответ не заполнен')}</div>`)})};
+  ['bankSearch','bankGrade','bankDiff','bankCat','bankTag'].forEach(id=>document.getElementById(id).oninput=draw);draw();
 }
 
 function renderSchedule(){
