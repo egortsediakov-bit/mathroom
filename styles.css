@@ -1524,3 +1524,26 @@ body{background:linear-gradient(180deg,#fbfbfa 0%,#f5f4f1 100%)!important;color:
     max-height:min(var(--mr-pop-maxh,62dvh),500px)!important;
   }
 }
+
+/* Mathroom v28.2 — curriculum path, child-friendly theory and textbook library */
+.mr-curriculum-head{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:20px;align-items:center;margin-bottom:16px}
+.mr-curriculum-head h2,.mr-curriculum-track-head h2,.mr-topic-hero h2{margin:6px 0 4px}
+.mr-grade-tabs{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;max-width:520px}
+.mr-grade-tabs .btn{min-width:38px}
+.mr-curriculum-track{margin:18px 0 28px}
+.mr-curriculum-track-head{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;margin:0 4px 10px}
+.mr-curriculum-list{display:grid;gap:8px}
+.mr-curriculum-row{display:grid;grid-template-columns:46px minmax(0,1fr) auto;gap:12px;align-items:center;background:#fff;border:1px solid var(--line);border-radius:15px;padding:12px 14px;cursor:pointer;transition:.16s ease}
+.mr-curriculum-row:hover{border-color:#c9cdd2;transform:translateY(-1px);box-shadow:0 8px 24px #00000008}
+.mr-curriculum-row.custom{border-style:dashed}
+.mr-curriculum-step{width:36px;height:36px;border-radius:11px;display:grid;place-items:center;background:#f5f6f8;font-weight:800;font-size:12px;color:#555d66;font-variant-numeric:tabular-nums}
+.mr-curriculum-main h3{margin:2px 0 5px;font-size:16px}
+.mr-row-arrow{font-size:20px;color:#9aa0a7;padding-left:3px}
+.mr-topic-create summary{cursor:pointer;display:flex;gap:12px;justify-content:space-between;align-items:center;list-style:none}.mr-topic-create summary::-webkit-details-marker{display:none}.mr-topic-create[open] summary{margin-bottom:14px}
+.mr-topic-hero{margin-bottom:14px}.mr-topic-hero>.mr-card-head{align-items:flex-start}.mr-next-topic-mini{min-width:min(340px,100%);padding:13px 14px;border-radius:14px;background:#f7f8f9;border:1px solid var(--line);display:grid;gap:5px}.mr-next-topic-mini small{color:var(--muted)}
+.mr-theory-card{margin-bottom:14px}.mr-theory-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:12px}.mr-theory-block{border:1px solid var(--line);border-radius:14px;padding:14px;background:#fbfbfc}.mr-theory-block.lead{grid-column:1/-1;background:#fff8f4;border-color:#f0d5c7}.mr-theory-block h3{margin:0 0 8px;font-size:14px}.mr-theory-body{white-space:pre-wrap;line-height:1.65;font-size:14px;color:#34383e}
+.mr-topic-sources{margin-bottom:18px}.mr-textbook-source{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:11px 0;border-top:1px solid var(--line)}.mr-textbook-source:first-of-type{border-top:0}.mr-textbook-source>div:first-child{display:grid;gap:3px}.mr-textbook-source span,.mr-textbook-source small{color:var(--muted);font-size:12px}
+.mr-profile-next-topic,.mr-schedule-suggestion{display:flex;justify-content:space-between;align-items:center;gap:18px;margin-top:16px}.mr-profile-next-topic h2,.mr-schedule-suggestion h3{margin:7px 0 4px}
+.mr-textbook-setup{max-width:820px}.mr-textbook-upload{margin-bottom:18px}.mr-textbook-card{display:grid;gap:12px}.mr-textbook-card h3{margin:5px 0}.mr-textbook-links{display:flex;gap:6px;flex-wrap:wrap;border-top:1px solid var(--line);padding-top:11px}
+@media(max-width:900px){.mr-curriculum-head{grid-template-columns:1fr}.mr-grade-tabs{justify-content:flex-start;max-width:none}.mr-theory-grid{grid-template-columns:1fr}.mr-theory-block.lead{grid-column:auto}.mr-profile-next-topic,.mr-schedule-suggestion,.mr-textbook-source{align-items:flex-start;flex-direction:column}.mr-curriculum-row{grid-template-columns:38px minmax(0,1fr)}.mr-curriculum-row>.actions{grid-column:2}.mr-row-arrow{display:none}}
+@media(max-width:560px){.mr-grade-tabs{display:grid;grid-template-columns:repeat(6,1fr)}.mr-grade-tabs .btn{min-width:0;padding-left:7px;padding-right:7px}.mr-curriculum-row{padding:11px}.mr-curriculum-step{width:32px;height:32px}.mr-topic-hero>.mr-card-head{display:grid;gap:12px}}
