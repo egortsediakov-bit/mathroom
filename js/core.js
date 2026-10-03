@@ -17,8 +17,33 @@ const S = {
 
 const esc = (v='') => String(v).replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
 const nl = (v='') => esc(v).replace(/\n/g, '<br>');
-const uid = () => crypto.randomUUID();
-const token = () => Array.from(crypto.getRandomValues(new Uint8Array(24))).map(x => x.toString(16).padStart(2,'0')).join('');
+
+// UUID compatibility layer.
+// crypto.randomUUID() is a Secure Context API and may be missing on HTTP/custom-domain
+// deployments even when crypto.getRandomValues() is available. The whiteboard relies on
+// IDs during initial page normalization, so calling randomUUID() directly could prevent the
+// entire board from mounting. Keep RFC 4122 v4 semantics without requiring randomUUID().
+function secureRandomBytes(length){
+  const bytes=new Uint8Array(length);
+  const c=globalThis.crypto;
+  if(c&&typeof c.getRandomValues==='function'){
+    try{return c.getRandomValues(bytes)}catch(e){console.warn('[Mathroom] getRandomValues fallback',e)}
+  }
+  for(let i=0;i<bytes.length;i++)bytes[i]=Math.floor(Math.random()*256);
+  return bytes;
+}
+const uid = () => {
+  const c=globalThis.crypto;
+  if(c&&typeof c.randomUUID==='function'){
+    try{return c.randomUUID()}catch(e){console.warn('[Mathroom] randomUUID fallback',e)}
+  }
+  const b=secureRandomBytes(16);
+  b[6]=(b[6]&0x0f)|0x40;
+  b[8]=(b[8]&0x3f)|0x80;
+  const h=Array.from(b,x=>x.toString(16).padStart(2,'0')).join('');
+  return `${h.slice(0,8)}-${h.slice(8,12)}-${h.slice(12,16)}-${h.slice(16,20)}-${h.slice(20)}`;
+};
+const token = () => Array.from(secureRandomBytes(24)).map(x => x.toString(16).padStart(2,'0')).join('');
 const dateLong = v => v ? new Date(v).toLocaleString('ru-RU',{day:'numeric',month:'long',year:'numeric',hour:'2-digit',minute:'2-digit'}) : '—';
 const dateShort = v => v ? new Date(v).toLocaleDateString('ru-RU',{day:'2-digit',month:'2-digit',year:'numeric'}) : '—';
 const diffLabel = v => ({basic:'Базовая',medium:'Средняя',advanced:'Сложная'})[v] || v || '—';
