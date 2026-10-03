@@ -1,7 +1,7 @@
 const app = document.getElementById('app');
 const toastEl = document.getElementById('toast');
 const CFG = window.MATHROOM_CONFIG || {};
-const configured = /^https:\/\/.+\.supabase\.co$/.test(CFG.SUPABASE_URL || '') && CFG.SUPABASE_ANON_KEY && !CFG.SUPABASE_ANON_KEY.includes('YOUR_');
+const configured = /^https:\/\/.+\.supabase\.co$/.test(CFG.SUPABASE_URL || '') && CFG.SUPABASE_ANON_KEY && !/(YOUR_|REPLACE_ME|PROJECT\.supabase\.co)/i.test(`${CFG.SUPABASE_URL||''} ${CFG.SUPABASE_ANON_KEY||''}`);
 const sb = configured ? supabase.createClient(CFG.SUPABASE_URL, CFG.SUPABASE_ANON_KEY, {
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
 }) : null;

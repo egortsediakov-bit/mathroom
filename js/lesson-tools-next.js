@@ -58,6 +58,9 @@
       this.status = 'Готов к подключению';
       this.connectionQuality = '';
       this.screenTrack = null;
+      this.screenPreviewStream = null;
+      this.soundEnabled = localStorage.getItem(`mathroom.media.sound.${this.role}`) !== '0';
+      this.expanded = localStorage.getItem(`mathroom.media.expanded.${this.role}`) === '1';
       this.micEnabled = localStorage.getItem(`mathroom.media.mic.${this.role}`) !== '0';
       this.cameraEnabled = localStorage.getItem(`mathroom.media.camera.${this.role}`) !== '0';
       this.minimized = localStorage.getItem(`mathroom.media.minimized.${this.role}`) === '1';
@@ -94,10 +97,10 @@
       st.textContent = `
         .mr-native-call{border:1px solid var(--line,#e5e7eb);background:#fff;border-radius:18px;padding:14px;display:grid;gap:10px;box-shadow:0 8px 26px rgba(20,24,32,.05)}
         .mr-native-call .mr-call-head{display:flex;align-items:center;justify-content:space-between;gap:12px}.mr-native-call .mr-call-title{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.mr-native-call .mr-call-dot{width:9px;height:9px;border-radius:50%;background:#aeb4bd;box-shadow:0 0 0 4px rgba(120,125,135,.1)}.mr-native-call.connected .mr-call-dot{background:#25a464;box-shadow:0 0 0 4px rgba(37,164,100,.12)}
-        .mr-native-call .mr-call-stage{display:none;position:relative;background:#101214;border-radius:14px;overflow:hidden;aspect-ratio:16/9;min-height:170px}.mr-native-call.joined .mr-call-stage{display:block}.mr-native-call .mr-remote-video{width:100%;height:100%;object-fit:cover;display:block;background:#101214}.mr-native-call .mr-local-video{position:absolute;right:10px;top:10px;width:92px;height:64px;object-fit:cover;border:2px solid rgba(255,255,255,.88);border-radius:10px;background:#1b1d20;box-shadow:0 6px 18px #0005}.mr-native-call .mr-call-person{position:absolute;left:10px;bottom:10px;background:#0009;color:#fff;padding:4px 8px;border-radius:8px;font-size:11px}.mr-native-call .mr-call-actions{display:flex;gap:7px;flex-wrap:wrap}.mr-native-call .mr-call-actions .btn{min-height:38px}.mr-native-call .mr-call-note{font-size:12px;color:var(--muted,#747b85);line-height:1.45}.mr-native-call .mr-call-quality{font-size:11px;color:var(--muted,#747b85)}
-        .mr-native-call.joined{position:fixed;right:18px;bottom:18px;z-index:1250;width:320px;max-width:calc(100vw - 36px);padding:10px;box-shadow:0 18px 55px #0004}.mr-native-call.joined .mr-call-head{cursor:move}.mr-native-call.joined.minimized{width:260px}.mr-native-call.joined.minimized .mr-call-stage,.mr-native-call.joined.minimized .mr-call-note,.mr-native-call.joined.minimized .mr-call-quality{display:none}.mr-native-call.joined.minimized .mr-call-actions .mr-hide-min{display:none}
+        .mr-native-call .mr-call-stage{display:none;position:relative;background:#101214;border-radius:14px;overflow:hidden;aspect-ratio:16/9;min-height:170px}.mr-native-call.joined .mr-call-stage{display:block}.mr-native-call .mr-remote-video{width:100%;height:100%;object-fit:contain;display:block;background:#101214}.mr-native-call .mr-local-video{position:absolute;right:10px;top:10px;width:104px;height:70px;object-fit:cover;border:2px solid rgba(255,255,255,.88);border-radius:10px;background:#1b1d20;box-shadow:0 6px 18px #0005;cursor:zoom-in}.mr-native-call.sharing .mr-local-video{object-fit:contain;background:#0b0d10}.mr-native-call .mr-call-person{position:absolute;left:10px;bottom:10px;background:#0009;color:#fff;padding:4px 8px;border-radius:8px;font-size:11px}.mr-native-call .mr-call-actions{display:flex;gap:7px;flex-wrap:wrap}.mr-native-call .mr-call-actions .btn{min-height:38px}.mr-native-call .mr-call-note{font-size:12px;color:var(--muted,#747b85);line-height:1.45}.mr-native-call .mr-call-quality{font-size:11px;color:var(--muted,#747b85)}
+        .mr-native-call.joined{position:fixed;right:18px;bottom:18px;z-index:1250;width:320px;max-width:calc(100vw - 36px);padding:10px;box-shadow:0 18px 55px #0004;transition:width .18s ease,height .18s ease}.mr-native-call.joined .mr-call-head{cursor:move}.mr-native-call.joined.expanded{width:min(860px,calc(100vw - 36px));max-height:calc(100vh - 36px);overflow:auto}.mr-native-call.joined.expanded .mr-call-stage{min-height:360px;aspect-ratio:16/9}.mr-native-call.joined.expanded .mr-local-video{width:180px;height:110px}.mr-native-call.joined.minimized{width:260px}.mr-native-call.joined.minimized .mr-call-stage,.mr-native-call.joined.minimized .mr-call-note,.mr-native-call.joined.minimized .mr-call-quality{display:none}.mr-native-call.joined.minimized .mr-call-actions .mr-hide-min{display:none}
         .mr-native-prejoin-backdrop{position:fixed;inset:0;z-index:3000;background:rgba(8,11,16,.72);display:flex;align-items:center;justify-content:center;padding:18px}.mr-native-prejoin{width:min(720px,100%);background:#fff;border-radius:22px;padding:18px;box-shadow:0 28px 90px #0007;display:grid;gap:14px}.mr-native-prejoin h2{margin:0}.mr-native-prejoin-grid{display:grid;grid-template-columns:minmax(0,1fr) 250px;gap:14px}.mr-native-preview{position:relative;background:#111318;border-radius:16px;overflow:hidden;aspect-ratio:16/10}.mr-native-preview video{width:100%;height:100%;display:block;object-fit:cover}.mr-native-preview .mr-preview-name{position:absolute;left:10px;bottom:10px;background:#0009;color:#fff;padding:5px 8px;border-radius:8px;font-size:12px}.mr-native-prejoin-side{display:grid;align-content:start;gap:9px}.mr-native-prejoin-side .btn{min-height:44px}.mr-native-prejoin-footer{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}.mr-native-prejoin-error{display:none;padding:10px 12px;background:#fff4f2;color:#9a291d;border:1px solid #f0d3ce;border-radius:12px;font-size:13px}.mr-native-prejoin-error.show{display:block}
-        @media(max-width:760px){.mr-native-prejoin{padding:14px}.mr-native-prejoin-grid{grid-template-columns:1fr}.mr-native-prejoin-side{grid-template-columns:1fr 1fr}.mr-native-prejoin-side .mr-prejoin-wide{grid-column:1/-1}.mr-native-prejoin-footer{display:grid;grid-template-columns:1fr;width:100%}.mr-native-prejoin-footer .btn{width:100%;min-height:50px}.mr-native-call.joined{position:relative;right:auto;bottom:auto;width:100%;max-width:none;box-shadow:none}.mr-native-call.joined .mr-call-head{cursor:default}.mr-native-call .mr-call-stage{min-height:210px}.mr-native-call .mr-local-video{width:88px;height:62px}}
+        @media(max-width:760px){.mr-native-prejoin{padding:14px}.mr-native-prejoin-grid{grid-template-columns:1fr}.mr-native-prejoin-side{grid-template-columns:1fr 1fr}.mr-native-prejoin-side .mr-prejoin-wide{grid-column:1/-1}.mr-native-prejoin-footer{display:grid;grid-template-columns:1fr;width:100%}.mr-native-prejoin-footer .btn{width:100%;min-height:50px}.mr-native-call.joined{position:relative;right:auto;bottom:auto;width:100%;max-width:none;box-shadow:none}.mr-native-call.joined.expanded{position:fixed;inset:8px;width:auto;max-width:none;max-height:none;z-index:3200;overflow:auto}.mr-native-call.joined.expanded .mr-call-stage{min-height:50vh}.mr-native-call.joined .mr-call-head{cursor:default}.mr-native-call .mr-call-stage{min-height:210px}.mr-native-call .mr-local-video{width:88px;height:62px}.mr-native-call.joined.expanded .mr-local-video{width:120px;height:80px}}
       `;
       document.head.appendChild(st);
     }
@@ -351,8 +354,11 @@
     bindOffererTracks(pc) {
       if (!this.localStream) return;
       const currentKinds = new Set(pc.getSenders().map(s => s.track?.kind).filter(Boolean));
-      for (const track of this.localStream.getTracks()) {
-        if (!currentKinds.has(track.kind)) pc.addTrack(track, this.localStream);
+      const tracks = [];
+      const audio = this.localStream.getAudioTracks()[0]; if (audio) tracks.push(audio);
+      const video = this.screenTrack || this.localStream.getVideoTracks()[0]; if (video) tracks.push(video);
+      for (const track of tracks) {
+        if (!currentKinds.has(track.kind)) pc.addTrack(track, track === this.screenTrack ? new MediaStream([track]) : this.localStream);
       }
     }
 
@@ -585,7 +591,7 @@
     }
 
     async shareScreen() {
-      if (this.role !== 'teacher' || !this.joined) return;
+      if (!this.joined) return;
       try {
         if (this.screenTrack) {
           this.screenTrack.stop();
@@ -596,10 +602,13 @@
         const sender = this.pc?.getSenders?.().find(s => s.track?.kind === 'video');
         if (sender) await sender.replaceTrack(track);
         this.screenTrack = track;
+        this.screenPreviewStream = new MediaStream([track]);
+        this.bindMedia();
         track.onended = async () => {
           const camera = this.localStream?.getVideoTracks?.()[0] || null;
           try { if (sender) await sender.replaceTrack(camera); } catch {}
           this.screenTrack = null;
+          this.screenPreviewStream = null;
           this.bindMedia();
           this.paint();
         };
@@ -643,7 +652,7 @@
       clearInterval(this.readyTimer); this.readyTimer = null;
       clearTimeout(this.pollTimer); this.pollTimer = null;
       this.closePeer(false);
-      this.screenTrack?.stop?.(); this.screenTrack = null;
+      this.screenTrack?.stop?.(); this.screenTrack = null; this.screenPreviewStream = null;
       this.localStream?.getTracks?.().forEach(t => t.stop());
       this.localStream = null;
       this.status = 'Готов к подключению';
@@ -660,9 +669,11 @@
       const remote = this.panel?.querySelector('#mrRemoteVideo');
       const audio = this.panel?.querySelector('#mrRemoteAudio');
       if (local) {
-        if (local.srcObject !== (this.localStream || null)) local.srcObject = this.localStream || null;
+        const preview = this.screenTrack ? (this.screenPreviewStream || new MediaStream([this.screenTrack])) : (this.localStream || null);
+        if (this.screenTrack && !this.screenPreviewStream) this.screenPreviewStream = preview;
+        if (local.srcObject !== preview) local.srcObject = preview;
         local.muted = true; local.playsInline = true;
-        if (this.localStream) local.play().catch(() => {});
+        if (preview) local.play().catch(() => {});
       }
       if (remote) {
         if (remote.srcObject !== this.remoteStream) remote.srcObject = this.remoteStream;
@@ -671,18 +682,34 @@
       }
       if (audio) {
         if (audio.srcObject !== this.remoteStream) audio.srcObject = this.remoteStream;
-        audio.muted = false; audio.volume = 1;
-        if (this.remoteStream.getAudioTracks().length) audio.play().catch(() => {
-          this.status = 'Нажми 🔊, чтобы включить звук'; this.paint();
+        audio.muted = !this.soundEnabled; audio.volume = 1;
+        if (this.remoteStream.getAudioTracks().length && this.soundEnabled) audio.play().catch(() => {
+          this.status = 'Нажми 🔊, чтобы включить звук'; this.soundEnabled = false; this.paint();
         });
       }
     }
 
-    enableSound() {
+    toggleSound() {
       const audio = this.panel?.querySelector('#mrRemoteAudio');
-      if (!audio) return;
-      audio.muted = false;
-      audio.play().then(() => { this.status = this.isConnected() ? 'Соединено' : this.status; this.paint(); }).catch(() => toast('Браузер не разрешил воспроизведение звука'));
+      this.soundEnabled = !this.soundEnabled;
+      localStorage.setItem(`mathroom.media.sound.${this.role}`, this.soundEnabled ? '1' : '0');
+      if (audio) {
+        audio.muted = !this.soundEnabled;
+        if (this.soundEnabled) audio.play().then(() => { this.status = this.isConnected() ? 'Соединено' : this.status; this.paint(); }).catch(() => { this.soundEnabled = false; localStorage.setItem(`mathroom.media.sound.${this.role}`,'0'); this.paint(); toast('Браузер не разрешил воспроизведение звука'); });
+      }
+      this.paint();
+    }
+
+    enableSound() {
+      if (this.soundEnabled) { const audio=this.panel?.querySelector('#mrRemoteAudio'); audio?.play?.().catch(()=>{}); return; }
+      this.toggleSound();
+    }
+
+    toggleExpanded() {
+      this.expanded = !this.expanded;
+      if (this.expanded) this.minimized = false;
+      localStorage.setItem(`mathroom.media.expanded.${this.role}`, this.expanded ? '1' : '0');
+      this.paint();
     }
 
     startStats() {
@@ -719,6 +746,7 @@
 
     toggleMinimized() {
       this.minimized = !this.minimized;
+      if (this.minimized) this.expanded = false;
       localStorage.setItem(`mathroom.media.minimized.${this.role}`, this.minimized?'1':'0');
       this.paint();
     }
@@ -751,18 +779,21 @@
         host = document.createElement('section');
         host.id = 'mrVideoPanel';
         host.innerHTML = `<div class="mr-call-head"><div><div class="mr-call-title"><span class="mr-call-dot"></span><b>Связь урока</b><span class="pill">Mathroom P2P + TURN</span></div><div class="small muted" id="mrVideoStatus"></div></div><button class="btn sm" id="mrVideoMin" hidden>—</button></div>
-          <div class="mr-call-stage"><video class="mr-remote-video" id="mrRemoteVideo" autoplay muted playsinline></video><audio id="mrRemoteAudio" autoplay></audio><video class="mr-local-video" id="mrLocalVideo" autoplay muted playsinline></video><span class="mr-call-person">${this.role === 'teacher' ? 'Ученик' : 'Преподаватель'}</span></div>
-          <div class="mr-call-actions"><button class="btn primary" id="mrVideoJoin">Присоединиться к уроку</button><button class="btn mr-hide-min" id="mrVideoMic" hidden></button><button class="btn mr-hide-min" id="mrVideoCam" hidden></button><button class="btn mr-hide-min" id="mrVideoSound" hidden>🔊 Звук</button>${this.role === 'teacher' ? '<button class="btn mr-hide-min" id="mrVideoScreen" hidden>🖥 Экран</button>' : ''}<button class="btn mr-hide-min" id="mrVideoReconnect" hidden>↻ Переподключить</button><button class="btn danger" id="mrVideoEnd" hidden>Выйти</button></div>
+          <div class="mr-call-stage" id="mrCallStage" title="Двойной клик — полноэкранный режим"><video class="mr-remote-video" id="mrRemoteVideo" autoplay muted playsinline></video><audio id="mrRemoteAudio" autoplay></audio><video class="mr-local-video" id="mrLocalVideo" autoplay muted playsinline title="Ваше видео / ваш экран"></video><span class="mr-call-person">${this.role === 'teacher' ? 'Ученик' : 'Преподаватель'}</span></div>
+          <div class="mr-call-actions"><button class="btn primary" id="mrVideoJoin">Присоединиться к уроку</button><button class="btn mr-hide-min" id="mrVideoMic" hidden></button><button class="btn mr-hide-min" id="mrVideoCam" hidden></button><button class="btn mr-hide-min" id="mrVideoSound" hidden></button><button class="btn mr-hide-min" id="mrVideoScreen" hidden>🖥 Экран</button><button class="btn mr-hide-min" id="mrVideoExpand" hidden>⛶ Увеличить</button><button class="btn mr-hide-min" id="mrVideoReconnect" hidden>↻ Переподключить</button><button class="btn danger" id="mrVideoEnd" hidden>Выйти</button></div>
           <div class="mr-call-quality" id="mrVideoQuality"></div><div class="mr-call-note" id="mrVideoNote">Камера и микрофон выбираются перед входом. Связь встроена прямо в Mathroom.</div>`;
         target.appendChild(host);
         host.querySelector('#mrVideoJoin').onclick = () => this.openPrejoin();
         host.querySelector('#mrVideoMic').onclick = () => this.toggleMic();
         host.querySelector('#mrVideoCam').onclick = () => this.toggleCamera();
-        host.querySelector('#mrVideoSound').onclick = () => this.enableSound();
+        host.querySelector('#mrVideoSound').onclick = () => this.toggleSound();
         host.querySelector('#mrVideoReconnect').onclick = () => { this.forceRelay = false; this.reconnect(true, false).catch(fail); };
         host.querySelector('#mrVideoEnd').onclick = () => this.end();
         host.querySelector('#mrVideoMin').onclick = () => this.toggleMinimized();
         const screen = host.querySelector('#mrVideoScreen'); if (screen) screen.onclick = () => this.shareScreen();
+        const expand = host.querySelector('#mrVideoExpand'); if (expand) expand.onclick = () => this.toggleExpanded();
+        const stage = host.querySelector('#mrCallStage'); if (stage) stage.ondblclick = () => stage.requestFullscreen?.().catch?.(()=>{});
+        const localPreview = host.querySelector('#mrLocalVideo'); if (localPreview) localPreview.onclick = () => { if (this.screenTrack) this.toggleExpanded(); };
       }
       this.panel = host;
       this.attachDrag();
@@ -773,16 +804,18 @@
     paint() {
       const host = this.panel;
       if (!host) return;
-      host.className = `mr-native-call ${this.joined ? 'joined' : ''} ${this.isConnected() ? 'connected' : ''} ${this.minimized ? 'minimized' : ''}`;
+      host.className = `mr-native-call ${this.joined ? 'joined' : ''} ${this.isConnected() ? 'connected' : ''} ${this.minimized ? 'minimized' : ''} ${this.expanded ? 'expanded' : ''} ${this.screenTrack ? 'sharing' : ''}`;
       const status = host.querySelector('#mrVideoStatus'); if (status) status.textContent = this.status;
       const q = host.querySelector('#mrVideoQuality'); if (q) q.textContent = this.connectionQuality || (this.joined ? (this.hasTurn ? 'Автоматический прямой + резервный маршрут' : 'Прямой канал · резервный сервер пока недоступен') : '');
       const join = host.querySelector('#mrVideoJoin'); if (join) join.hidden = this.joined;
-      const ids = ['#mrVideoMic','#mrVideoCam','#mrVideoSound','#mrVideoReconnect','#mrVideoEnd','#mrVideoScreen'];
+      const ids = ['#mrVideoMic','#mrVideoCam','#mrVideoSound','#mrVideoReconnect','#mrVideoEnd','#mrVideoScreen','#mrVideoExpand'];
       ids.forEach(sel => { const el=host.querySelector(sel); if(el) el.hidden = !this.joined; });
       const min = host.querySelector('#mrVideoMin'); if (min) { min.hidden = !this.joined; min.textContent = this.minimized ? '□' : '—'; }
       const mic = host.querySelector('#mrVideoMic'); if (mic) mic.textContent = this.micEnabled ? '🎙 Вкл' : '🔇 Выкл';
       const cam = host.querySelector('#mrVideoCam'); if (cam) cam.textContent = this.cameraEnabled ? '📹 Вкл' : '🚫 Выкл';
-      const screen = host.querySelector('#mrVideoScreen'); if (screen) screen.textContent = this.screenTrack ? '■ Экран' : '🖥 Экран';
+      const sound = host.querySelector('#mrVideoSound'); if (sound) sound.textContent = this.soundEnabled ? '🔊 Звук' : '🔇 Звук';
+      const screen = host.querySelector('#mrVideoScreen'); if (screen) screen.textContent = this.screenTrack ? '■ Остановить экран' : '🖥 Экран';
+      const expand = host.querySelector('#mrVideoExpand'); if (expand) expand.textContent = this.expanded ? '↙ Уменьшить' : '⛶ Увеличить';
       const note = host.querySelector('#mrVideoNote'); if (note) note.textContent = this.joined
         ? (this.hasTurn ? 'Mathroom сначала использует прямую связь, а при проблемах автоматически переключается через резервный сервер.' : 'Резервный сервер сейчас недоступен: Mathroom использует прямое P2P-соединение.')
         : 'Камера и микрофон выбираются перед входом. Связь встроена прямо в Mathroom.';
@@ -803,6 +836,7 @@
       this.localStream = null;
       this.screenTrack?.stop?.();
       this.screenTrack = null;
+      this.screenPreviewStream = null;
       window.removeEventListener('online', this.onOnline);
       if (this.fastChannel) sb.removeChannel(this.fastChannel).catch?.(() => {});
       this.fastChannel = null;
@@ -1055,12 +1089,25 @@
         const desc = e.source === 'board' ? (e.details?.note || 'Сохранённая версия доски') : eventDescription(e);
         return `<div class="mr-history-row" data-history-cat="${cat}"><div class="mr-history-icon">${icon}</div><div class="mr-history-main"><div class="mr-history-top"><b>${esc(e.title || label)}</b><span>${time}</span></div><div class="small muted">${esc(label)}${desc ? ' · ' + esc(desc) : ''}</div></div></div>`;
       };
-      const m = modal(`<div class="mr-history-head"><div><h2>История урока</h2><p class="muted">Хронология задач, таймера, заметок и снимков доски.</p></div><div class="actions"><button class="btn sm" id="mrHistoryCopy">Скопировать сводку</button></div></div><div class="mr-history-stats"><span>Задачи: ${counts.tasks}</span><span>Очередь: ${counts.queue}</span><span>Таймер: ${counts.timer}</span><span>Доска: ${counts.board}</span><span>Заметки: ${counts.notes}</span></div><div class="mr-history-filters"><button class="btn sm active" data-history-filter="all">Все</button><button class="btn sm" data-history-filter="tasks">Задачи</button><button class="btn sm" data-history-filter="queue">Очередь</button><button class="btn sm" data-history-filter="timer">Таймер</button><button class="btn sm" data-history-filter="board">Доска</button><button class="btn sm" data-history-filter="notes">Заметки</button></div><div class="mr-history-list">${timeline.length ? timeline.map(rowHtml).join('') : '<div class="empty">Событий пока нет. Они начнут накапливаться во время урока.</div>'}</div>`, 'wide-modal');
+      const m = modal(`<div class="mr-history-head"><div><h2>История урока</h2><p class="muted">Хронология задач, таймера, заметок и снимков доски.</p></div><div class="actions"><button class="btn sm" id="mrHistoryCopy">Скопировать сводку</button>${ctx.role==='teacher'?'<button class="btn sm danger" id="mrHistoryClear">Удалить историю</button>':''}</div></div><div class="mr-history-stats"><span>Задачи: ${counts.tasks}</span><span>Очередь: ${counts.queue}</span><span>Таймер: ${counts.timer}</span><span>Доска: ${counts.board}</span><span>Заметки: ${counts.notes}</span></div><div class="mr-history-filters"><button class="btn sm active" data-history-filter="all">Все</button><button class="btn sm" data-history-filter="tasks">Задачи</button><button class="btn sm" data-history-filter="queue">Очередь</button><button class="btn sm" data-history-filter="timer">Таймер</button><button class="btn sm" data-history-filter="board">Доска</button><button class="btn sm" data-history-filter="notes">Заметки</button></div><div class="mr-history-list">${timeline.length ? timeline.map(rowHtml).join('') : '<div class="empty">Событий пока нет. Они начнут накапливаться во время урока.</div>'}</div>`, 'wide-modal');
       m.querySelectorAll('[data-history-filter]').forEach(btn => btn.onclick = () => {
         const f = btn.dataset.historyFilter;
         m.querySelectorAll('[data-history-filter]').forEach(x => x.classList.toggle('active', x === btn));
         m.querySelectorAll('[data-history-cat]').forEach(row => row.style.display = f === 'all' || row.dataset.historyCat === f ? '' : 'none');
       });
+      const clear = m.querySelector('#mrHistoryClear'); if (clear) clear.onclick = async () => {
+        if (!confirm('Удалить историю этого урока? Будут удалены события и сохранённые версии доски. Сам урок и его задания останутся.')) return;
+        clear.disabled = true;
+        try {
+          const [{ error: evErr }, { error: verErr }] = await Promise.all([
+            sb.from('lesson_events').delete().eq('lesson_id', ctx.lessonId),
+            sb.from('lesson_board_versions').delete().eq('lesson_id', ctx.lessonId)
+          ]);
+          if (evErr) throw evErr; if (verErr) throw verErr;
+          historyBaseline.delete(historyKey(ctx.lessonId));
+          m.remove(); toast('История урока удалена');
+        } catch (e) { clear.disabled = false; fail(e); }
+      };
       const copy = m.querySelector('#mrHistoryCopy'); if (copy) copy.onclick = async () => {
         const text = timeline.slice().reverse().map(e => {
           const [, label] = eventMeta(e.kind, e.details); const t = new Date(e.created_at).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
@@ -1196,7 +1243,7 @@
           <div class="actions"><button class="btn sm" id="mrNoteTime">+ Время</button><button class="btn sm" id="mrNoteCurrent">+ Текущая задача</button><button class="btn sm" id="mrNoteCheckpoint">Зафиксировать</button></div>
         </section>`;
       const collapseKey = `mathroom.board-companion.collapsed.${S.user?.id || 'teacher'}`;
-      const applyCollapsed = () => { let collapsed = false; try { collapsed = localStorage.getItem(collapseKey) === '1'; } catch {} host.classList.toggle('collapsed', collapsed); host.querySelector('#mrPinnedCollapse').textContent = collapsed ? 'Развернуть' : 'Свернуть'; };
+      const applyCollapsed = () => { let collapsed = true; try { collapsed = localStorage.getItem(collapseKey) !== '0'; } catch {} host.classList.toggle('collapsed', collapsed); host.querySelector('#mrPinnedCollapse').textContent = collapsed ? 'Развернуть' : 'Свернуть'; };
       host.querySelector('#mrPinnedCollapse').onclick = () => { try { localStorage.setItem(collapseKey, host.classList.contains('collapsed') ? '0' : '1'); } catch {} applyCollapsed(); };
       applyCollapsed();
     }
@@ -1233,16 +1280,48 @@
     setupQuickNotes(ctx, host, current);
   }
 
+  function compactTeacherLessonChrome() {
+    const control = document.querySelector('#lessonControl');
+    if (!control) return;
+    control.classList.add('mr-lesson-control-compact');
+    const queue = control.querySelector('.lesson-queue');
+    if (queue && !queue.dataset.compactInit) { queue.removeAttribute('open'); queue.dataset.compactInit='1'; }
+
+    const topActions = document.querySelector('#leaveLesson')?.closest('.actions');
+    if (topActions && !topActions.classList.contains('mr-lesson-top-actions')) {
+      topActions.classList.add('mr-lesson-top-actions');
+      const copy = topActions.querySelector('#copyLessonLink'), save = topActions.querySelector('#saveVersion');
+      if (copy || save) {
+        const more = document.createElement('details'); more.className='mr-lesson-top-more';
+        more.innerHTML='<summary class="btn">Ещё</summary><div class="mr-lesson-top-more-pop"></div>';
+        topActions.insertBefore(more, topActions.querySelector('#completeLesson'));
+        const pop = more.querySelector('.mr-lesson-top-more-pop'); if (copy) pop.appendChild(copy); if (save) pop.appendChild(save);
+      }
+    }
+
+    const layout = document.querySelector('.lesson-cloud-layout');
+    const material = layout?.querySelector(':scope > .lesson-cloud-material');
+    const boardRoot = document.querySelector('#lessonBoard');
+    const boardWrap = boardRoot?.parentElement;
+    if (layout && boardWrap) boardWrap.classList.add('mr-lesson-board-main');
+    if (layout && material && !layout.querySelector(':scope > .mr-lesson-materials-drawer')) {
+      const drawer = document.createElement('details'); drawer.className='mr-lesson-materials-drawer';
+      drawer.innerHTML='<summary><span><b>Материалы урока</b><small>теория · примеры · задачи</small></span><span>Открыть</span></summary>';
+      layout.appendChild(drawer); drawer.appendChild(material);
+    }
+  }
+
   async function refreshTeacherAddon(ctx) {
     if (addonBusy) return; addonBusy = true;
     try {
       const control = document.querySelector('#lessonControl'); if (!control) return;
+      compactTeacherLessonChrome();
       let host = document.querySelector('#mrLessonAddon');
       const [queue, live] = await Promise.all([getQueue(ctx.lessonId), getLiveState(ctx.lessonId)]);
       observeLessonChanges(ctx, queue, live).catch(e => console.warn('[Mathroom history]', e));
       if (!host) {
         host = document.createElement('div'); host.id = 'mrLessonAddon'; host.className = 'mr-lesson-addon'; control.insertAdjacentElement('afterend', host);
-        host.innerHTML = `<div class="mr-addon-toolbar"><div id="mrProgressMount"></div><div class="actions"><button class="btn sm" id="mrQuickPlan">⚡ Быстрый план</button><button class="btn sm" id="mrLessonPlan">◎ Цели и план</button><button class="btn sm" id="mrQueueManager">☷ Очередь</button><button class="btn sm" id="mrLessonHistory">История урока</button><button class="btn sm" id="mrSaveTemplate">Сохранить очередь</button><button class="btn sm" id="mrOpenTemplates">Шаблоны</button></div></div><div id="mrLessonPlanMount"></div><div id="mrTeacherVideoMount"></div>`;
+        host.innerHTML = `<div id="mrTeacherVideoMount"></div><details class="mr-lesson-tools-drawer"><summary><span>Дополнительные инструменты урока</span><small>план · очередь · история · шаблоны</small></summary><div class="mr-addon-toolbar"><div id="mrProgressMount"></div><div class="actions"><button class="btn sm" id="mrQuickPlan">⚡ Быстрый план</button><button class="btn sm" id="mrLessonPlan">◎ Цели и план</button><button class="btn sm" id="mrQueueManager">☷ Очередь</button><button class="btn sm" id="mrLessonHistory">История урока</button><button class="btn sm" id="mrSaveTemplate">Сохранить очередь</button><button class="btn sm" id="mrOpenTemplates">Шаблоны</button></div></div><div id="mrLessonPlanMount"></div></details>`;
         host.querySelector('#mrQuickPlan').onclick = () => quickPlan(ctx);
         host.querySelector('#mrLessonPlan').onclick = () => openLessonPlan(ctx);
         host.querySelector('#mrQueueManager').onclick = () => openQueueManager(ctx);
@@ -3845,7 +3924,7 @@
     const key = String(e.key || '').toLowerCase();
     if (key === 'm') { e.preventDefault(); call.toggleMic(); }
     if (key === 'v') { e.preventDefault(); call.toggleCamera(); }
-    if (key === 's' && call.role === 'teacher') { e.preventDefault(); call.shareScreen(); }
+    if (key === 's') { e.preventDefault(); call.shareScreen(); }
     const ctx = ctxNow();
     if (ctx?.role === 'teacher' && ['arrowleft','arrowright','1','2','3','0'].includes(key)) {
       e.preventDefault();
