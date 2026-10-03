@@ -790,16 +790,44 @@
     function rememberAsset(meta){try{const list=assetLibrary().filter(x=>x.assetPath!==meta.assetPath);list.unshift({...meta,id:meta.id||uid(),createdAt:new Date().toISOString()});localStorage.setItem(assetLibraryKey,JSON.stringify(list.slice(0,60)))}catch{}}
     function openAssetLibrary(){const list=assetLibrary(),m=modal(`<div class="mr-card-head"><div><h2>Материалы</h2><p class="muted">Недавно загруженные изображения и файлы. Их можно повторно вставлять на любую доску.</p></div></div><div class="list">${list.length?list.map(a=>`<div class="row"><div><b>${esc(a.name||'Материал')}</b><div class="small muted">${esc(a.mime||a.type||'файл')} · ${a.createdAt?new Date(a.createdAt).toLocaleDateString('ru-RU'):''}</div></div><div class="actions"><button class="btn sm primary" data-asset-use="${a.id}">Вставить</button><button class="btn sm danger" data-asset-remove="${a.id}">Убрать</button></div></div>`).join(''):'<div class="empty">Материалов пока нет. Перетащите файл на доску или нажмите «Файл».</div>'}</div>`,'wide-modal');m.querySelectorAll('[data-asset-use]').forEach(b=>b.onclick=()=>{const a=list.find(x=>x.id===b.dataset.assetUse);if(!a)return;pushElementsHistory();let obj;if(a.type==='image')obj={id:uid(),type:'image',assetPath:a.assetPath,x:camera.x+180/camera.zoom,y:camera.y+70/camera.zoom,w:a.w||640,h:a.h||420,name:a.name};else obj={id:uid(),type:'attachment',assetPath:a.assetPath,x:camera.x+190/camera.zoom,y:camera.y+100/camera.zoom,w:380,h:100,name:a.name,mime:a.mime};elements.push(obj);selectOnly(obj.id);m.remove();setTool('select');changed();ensureAsset(a.assetPath).then(render)});m.querySelectorAll('[data-asset-remove]').forEach(b=>b.onclick=()=>{const next=list.filter(x=>x.id!==b.dataset.assetRemove);localStorage.setItem(assetLibraryKey,JSON.stringify(next));b.closest('.row')?.remove()})}
     async function importAttachment(file){if(file.size>60*1024*1024)throw new Error('Файл больше 60 МБ');const ext=(file.name.split('.').pop()||'bin').replace(/[^a-z0-9]/gi,'').toLowerCase()||'bin',path=await uploadBlob(file,file.type||'application/octet-stream',ext);rememberAsset({assetPath:path,name:file.name,mime:file.type||'application/octet-stream',type:'attachment'});pushElementsHistory();const obj={id:uid(),type:'attachment',assetPath:path,x:camera.x+190/camera.zoom,y:camera.y+100/camera.zoom,w:380,h:100,name:file.name,mime:file.type||'application/octet-stream'};elements.push(obj);selectOnly(obj.id);setTool('select');changed();toast('Файл добавлен на доску · двойной клик откроет его')}
-    async function importPdf(file){
-      if(!window.pdfjsLib)throw new Error('PDF.js не загрузился');if(file.size>35*1024*1024)throw new Error('PDF больше 35 МБ');
-      status.textContent='Читаем PDF…';const doc=await window.pdfjsLib.getDocument({data:await file.arrayBuffer()}).promise;
-      pushElementsHistory();let y= camera.y+60/camera.zoom,first=null;const x=camera.x+180/camera.zoom,gap=28;
-      for(let i=1;i<=doc.numPages;i++){
-        status.textContent=`PDF: страница ${i}/${doc.numPages}`;const page=await doc.getPage(i),vp=page.getViewport({scale:1.25}),canvas=document.createElement('canvas'),ctx=canvas.getContext('2d');canvas.width=Math.ceil(vp.width);canvas.height=Math.ceil(vp.height);await page.render({canvasContext:ctx,viewport:vp}).promise;
-        const blob=await new Promise((res,rej)=>canvas.toBlob(b=>b?res(b):rej(new Error('Не удалось создать изображение')),'image/png',.92)),path=await uploadBlob(blob,'image/png','png'),scale=Math.min(1,900/canvas.width),w=Math.round(canvas.width*scale),h=Math.round(canvas.height*scale),obj={id:uid(),type:'image',assetPath:path,x,y,w,h,name:`${file.name} · ${i}`};
+    async function importPdfBlob(blob,opts={}){
+      if(!window.pdfjsLib)throw new Error('PDF.js не загрузился');
+      const size=Number(blob?.size||0);
+      if(size>80*1024*1024)throw new Error('PDF больше 80 МБ. Сожми файл перед вставкой на доску.');
+      const name=String(opts.name||blob?.name||'Учебник.pdf');
+      status.textContent='Читаем PDF…';
+      const data=blob instanceof ArrayBuffer?blob:await blob.arrayBuffer();
+      const doc=await window.pdfjsLib.getDocument({data}).promise;
+      let pageFrom=Math.max(1,Math.min(doc.numPages,Number(opts.pageFrom)||1));
+      let pageTo=opts.pageTo==null?doc.numPages:Math.max(pageFrom,Math.min(doc.numPages,Number(opts.pageTo)||pageFrom));
+      const count=pageTo-pageFrom+1;
+      if(opts.maxPages&&count>opts.maxPages)throw new Error(`За один раз можно добавить не больше ${opts.maxPages} страниц. Выбери меньший диапазон.`);
+      if(opts.newSheet){
+        await save();
+        const clean=name.replace(/\.pdf$/i,'');
+        const title=opts.sheetTitle||`${clean} · стр. ${pageFrom}${pageTo!==pageFrom?`–${pageTo}`:''}`;
+        const p=await createPage(title,[]);
+        await switchPage(p.id,{skipSave:true});
+      }
+      pushElementsHistory();
+      let y=camera.y+60/camera.zoom,first=null;const x=camera.x+110/camera.zoom,gap=30;
+      for(let i=pageFrom;i<=pageTo;i++){
+        status.textContent=`PDF: страница ${i} · ${i-pageFrom+1}/${count}`;
+        const page=await doc.getPage(i),vp=page.getViewport({scale:1.55}),canvas=document.createElement('canvas'),ctx=canvas.getContext('2d',{alpha:false});
+        canvas.width=Math.ceil(vp.width);canvas.height=Math.ceil(vp.height);ctx.fillStyle='#fff';ctx.fillRect(0,0,canvas.width,canvas.height);
+        await page.render({canvasContext:ctx,viewport:vp}).promise;
+        const rendered=await new Promise((res,rej)=>canvas.toBlob(b=>b?res(b):rej(new Error('Не удалось создать изображение страницы')),'image/jpeg',.9));
+        const path=await uploadBlob(rendered,'image/jpeg','jpg'),scale=Math.min(1,980/canvas.width),w=Math.round(canvas.width*scale),h=Math.round(canvas.height*scale),obj={id:uid(),type:'image',assetPath:path,x,y,w,h,name:`${name} · стр. ${i}`};
         elements.push(obj);if(!first)first=obj;y+=h+gap;ensureAsset(path);
       }
-      if(first){selectOnly(first.id);setTool('select');changed()}status.textContent=`PDF импортирован · ${doc.numPages} стр. на текущий лист`;toast(`PDF полностью добавлен на текущую страницу: ${doc.numPages} стр.`);
+      if(first){selectOnly(first.id);setTool('select');changed()}
+      status.textContent=`Учебник на доске · стр. ${pageFrom}${pageTo!==pageFrom?`–${pageTo}`:''}`;
+      toast(count===1?`Страница ${pageFrom} добавлена на доску`:`Страницы ${pageFrom}–${pageTo} добавлены на доску`);
+      return {count,pageFrom,pageTo};
+    }
+    async function importPdf(file){
+      if(file.size>35*1024*1024)throw new Error('PDF больше 35 МБ');
+      return importPdfBlob(file,{name:file.name,pageFrom:1,pageTo:null});
     }
     async function handleImport(file){if(importBusy||!file)return;importBusy=true;try{if(file.type==='application/pdf'||/\.pdf$/i.test(file.name))await importPdf(file);else if(file.type.startsWith('image/'))await importImage(file);else if(file.type.startsWith('video/')||file.type.startsWith('audio/')||/\.(docx?|pptx?|xlsx?|txt|csv)$/i.test(file.name))await importAttachment(file);else throw new Error('Формат файла пока не поддерживается')}catch(e){fail(e)}finally{importBusy=false;const input=root.querySelector('#boardFile');if(input)input.value=''}}
 
@@ -1190,7 +1218,7 @@
     if(!localOnly)pagesChannel=sb.channel(`student:${studentId}:pages`,{config:{private:true}}).on('broadcast',{event:'pages'},()=>refreshPages()).on('broadcast',{event:'navigate'},({payload})=>{if(!isTeacher&&followTeacher&&payload?.pageId)switchPage(payload.pageId,{fromLeader:true}).catch(()=>{})}).on('broadcast',{event:'hello'},()=>{if(isTeacher)persistClassroom()}).on('broadcast',{event:'classroom'},({payload})=>{if(isTeacher)return;classroomMode=payload?.mode||'open';followTeacher=payload?.follow!==false;if(followTeacher&&payload?.pageId&&payload.pageId!==current?.id)switchPage(payload.pageId,{fromLeader:true}).then(()=>{if(payload.camera){camera={...payload.camera};zoomLabel.textContent=Math.round(camera.zoom*100)+'%';render()}}).catch(()=>{});else if(payload?.camera&&followTeacher){camera={...payload.camera};zoomLabel.textContent=Math.round(camera.zoom*100)+'%'};if(classroomMode==='view')setTool('hand');else if(classroomMode==='pen'&&!['pen','pencil','eraser','hand'].includes(tool))setTool('pen');renderTabs();render()}).subscribe(s=>{if(s==='SUBSCRIBED'){if(isTeacher)persistClassroom();else pagesChannel?.send({type:'broadcast',event:'hello',payload:{role:'student'}}).catch(()=>{})}});renderTabs();render();joinChannel();
     if(lessonId&&isTeacher){if(!readCheckpoints().length)setTimeout(()=>saveCheckpoint('Начало урока'),800);checkpointTimer=setInterval(()=>saveCheckpoint('Авто · '+new Date().toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'})).catch(()=>{}),5*60*1000)}
     const cleanup=()=>{clearTimeout(saveTimer);clearInterval(checkpointTimer);window.removeEventListener('keydown',key,true);window.removeEventListener('keyup',keyup);window.removeEventListener('paste',pasteExternal);window.removeEventListener('dragend',clearDragOverlay,true);window.removeEventListener('drop',clearDragOverlay,true);if(channel)sb.removeChannel(channel);if(pagesChannel)sb.removeChannel(pagesChannel)};S.boardCleanup=cleanup;
-    return {addText,addTheoryCards,undo,redo,save,fitAll,exportPage:exportCurrentPng,exportAll:exportAllPdf,getPages:()=>pages.map(p=>({...p,elements:p.id===current.id?clone(elements):clone(p.elements||[])})),checkpoint:saveCheckpoint,restoreStart:resetToLessonStart,copyToScratch,copyFromScratch,setTool,readClipboard:readSystemClipboard,clearFocus:()=>{focusRect=null;broadcastTransient('focus',{rect:null});render()}};
+    return {addText,addTheoryCards,importPdfBlob,undo,redo,save,fitAll,exportPage:exportCurrentPng,exportAll:exportAllPdf,getPages:()=>pages.map(p=>({...p,elements:p.id===current.id?clone(elements):clone(p.elements||[])})),checkpoint:saveCheckpoint,restoreStart:resetToLessonStart,copyToScratch,copyFromScratch,setTool,readClipboard:readSystemClipboard,clearFocus:()=>{focusRect=null;broadcastTransient('focus',{rect:null});render()}};
   }
 
   function mountSnapshot(root,pages){

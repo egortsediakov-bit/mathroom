@@ -1568,3 +1568,10 @@ body{background:linear-gradient(180deg,#fbfbfa 0%,#f5f4f1 100%)!important;color:
 .mr-upload-meta{display:flex;flex-wrap:wrap;gap:8px 18px;margin-top:9px;color:var(--muted);font-size:12px;font-variant-numeric:tabular-nums}
 .mr-upload-progress .actions{margin-top:10px}
 @media (max-width:700px){.mr-upload-meta{display:grid;grid-template-columns:1fr 1fr}.mr-upload-meta span:last-child{grid-column:1/-1}}
+
+/* v28.9 — textbook pages → board */
+.mr-textbook-board-actions{margin-top:14px;flex-wrap:wrap}
+.mr-textbook-board-actions .btn{min-height:42px}
+.mr-lesson-textbook{display:grid;gap:10px;margin-bottom:10px}
+.mr-lesson-textbook .actions{flex-wrap:wrap}
+@media(max-width:700px){.mr-textbook-board-actions .btn{width:100%;justify-content:center}}
