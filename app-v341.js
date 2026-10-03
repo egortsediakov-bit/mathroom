@@ -305,6 +305,15 @@ function renderTextbooks(){
   const tbFile=document.getElementById('tbFile');
   tbFile?.addEventListener('change',()=>{
     const file=tbFile.files?.[0];if(!file)return;
+    const detected=window.MathroomTextbooks56V286?.detectFile?.(file.name);
+    if(detected){
+      const title=document.getElementById('tbTitle'),author=document.getElementById('tbAuthor'),from=document.getElementById('tbFrom'),to=document.getElementById('tbTo'),subject=document.getElementById('tbSubject');
+      if(title&&!title.value.trim())title.value=detected.title||`Математика. ${detected.grade} класс${detected.part?`. Часть ${detected.part}`:''}`;
+      if(author&&!author.value.trim())author.value=detected.author||'';
+      if(from)from.value=String(detected.grade);if(to)to.value=String(detected.grade);if(subject)subject.value=detected.subject||'Математика';
+      toast(`Распознано: ${detected.series||'учебник'} · ${detected.grade} класс${detected.part?`, часть ${detected.part}`:''}`);
+      return;
+    }
     const n=file.name.toLowerCase();let grade=null,part=null;
     let m=n.match(/matematika[_ -]?(\d+)[_ -]?klass.*(?:ch|част)[_ -]?(\d+)/i);
     if(m){grade=Number(m[1]);part=Number(m[2]);}
