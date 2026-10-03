@@ -79,17 +79,32 @@ function topicPosition(t){
   const track=topicTrack(t),rows=(S.topics||[]).filter(x=>Number(x.grade)===Number(t.grade)&&topicTrack(x)===track).sort(curriculumBank()?.compareTopics||(()=>0));
   const ix=rows.findIndex(x=>String(x.id)===String(t.id));return {index:ix>=0?ix+1:0,total:rows.length,track};
 }
-function theoryHtml(raw=''){
-  const text=String(raw||'').trim();if(!text)return '<div class="empty">Теория пока не добавлена.</div>';
+function parseTheoryBlocks(raw=''){
+  const text=String(raw||'').trim();
+  if(!text)return [];
   const blocks=[];let title='',lines=[];
-  const flush=()=>{if(title||lines.length){blocks.push({title,body:lines.join('\n').trim()});title='';lines=[]}};
+  const flush=()=>{if(title||lines.length){blocks.push({title:(title||'').trim(),body:lines.join('\n').trim()});title='';lines=[]}};
   for(const line of text.split(/\r?\n/)){
-    const m=line.match(/^##\s+(.+)$/);if(m){flush();title=m[1].trim()}else lines.push(line);
-  }flush();
-  if(blocks.length<=1&&!blocks[0]?.title)return `<div class="prewrap">${nl(text)}</div>`;
-  return `<div class="mr-theory-grid">${blocks.filter(b=>b.title||b.body).map((b,i)=>`<section class="mr-theory-block ${i===0?'lead':''}">${b.title?`<h3>${esc(b.title)}</h3>`:''}<div class="mr-theory-body">${nl(b.body)}</div></section>`).join('')}</div>`;
+    const m=line.match(/^##\s+(.+)$/);
+    if(m){flush();title=m[1].trim();}
+    else lines.push(line);
+  }
+  flush();
+  if(!blocks.length&&text) return [{title:'',body:text}];
+  return blocks.filter(b=>b.title||b.body);
 }
-function plainTheory(raw=''){return String(raw||'').replace(/^##\s+/gm,'').trim()}
+function theoryHtml(raw=''){
+  const blocks=parseTheoryBlocks(raw);
+  if(!blocks.length)return '<div class="empty">Теория пока не добавлена.</div>';
+  if(blocks.length<=1&&!blocks[0]?.title)return `<div class="prewrap">${nl(blocks[0].body||'')}</div>`;
+  return `<div class="mr-theory-grid">${blocks.map((b,i)=>`<section class="mr-theory-block ${i===0?'lead':''}">${b.title?`<h3>${esc(b.title)}</h3>`:''}<div class="mr-theory-body">${nl(b.body)}</div></section>`).join('')}</div>`;
+}
+function plainTheory(raw=''){return parseTheoryBlocks(raw).map(b=>[b.title,b.body].filter(Boolean).join('\n')).join('\n\n').trim()}
+function sendTheoryToBoard(ctrl,topic){
+  if(!ctrl||!topic)return;
+  if(typeof ctrl.addTheoryCards==='function') return ctrl.addTheoryCards(topic.title, parseTheoryBlocks(topic.theory||''));
+  return ctrl.addText(`${topic.title}\n\n${plainTheory(topic.theory)}`,{fontSize:24});
+}
 function lastCompletedLessonForStudent(studentId){return (S.lessons||[]).filter(x=>x.student_id===studentId&&x.status==='completed'&&x.topic_id).sort((a,b)=>String(b.completed_at||b.scheduled_at||'').localeCompare(String(a.completed_at||a.scheduled_at||'')))[0]||null}
 function suggestedTopicForStudent(studentId){
   const st=(S.students||[]).find(x=>x.id===studentId);if(!st)return null;
@@ -266,7 +281,7 @@ function renderTopic(){
   document.getElementById('backTopics').onclick=()=>{S.topic=null;S.view='topics';S.topicGradeFilter=Number(t.grade);renderTeacher()};
   document.getElementById('editCurrentTopic').onclick=()=>editTopicModal(t,{returnToTopic:true});
   document.getElementById('deleteCurrentTopic').onclick=()=>deleteTopicRow(t,{returnToTopics:true});
-  document.getElementById('theoryBoardTopic').onclick=()=>{S.view='scratch';renderTeacher();setTimeout(()=>S.boardController?.addText?.(`${t.title}\n\n${plainTheory(t.theory)}`,{fontSize:24}),250)};
+  document.getElementById('theoryBoardTopic').onclick=()=>{S.view='scratch';renderTeacher();setTimeout(()=>sendTheoryToBoard(S.boardController,t),250)};
   document.getElementById('linkTextbookTopic').onclick=()=>linkTextbookModal({topicId:t.id});
   document.querySelectorAll('[data-open-source]').forEach(b=>b.onclick=()=>{const book=S.textbooks.find(x=>String(x.id)===String(b.dataset.openSource));if(book)openTextbook(book,Number(b.dataset.page)||0)});
   document.querySelectorAll('[data-unlink-source]').forEach(b=>b.onclick=async()=>{if(!confirm('Убрать привязку учебника к этой теме?'))return;const {error}=await sb.from('textbook_topic_links').delete().eq('id',b.dataset.unlinkSource);if(error)return fail(error);await loadTeacher();S.topic=S.topics.find(x=>x.id===t.id)||t;renderTopic()});
@@ -403,7 +418,7 @@ async function renderLesson(){
   const updateLive=async patch=>{const {data,error}=await sb.from('lesson_live_state').update({...patch,updated_at:new Date().toISOString()}).eq('lesson_id',lesson.id).select().single();if(error)return fail(error);liveState=data;};
   const setCurrent=async q=>{await updateLive({current_queue_item_id:q?.id||null,current_title:q?.title||'',current_prompt:q?.prompt||'',current_position:q?.position||0});renderLesson()};
   const addQueue=async(exercise,makeCurrent=false)=>{const existing=(queue||[]).find(x=>x.exercise_id===exercise.id);let q=existing;if(!q){const {data,error}=await sb.from('lesson_queue_items').insert({teacher_id:S.user.id,lesson_id:lesson.id,exercise_id:exercise.id,title:exercise.title||'Задача',prompt:exercise.content,correct_answer:exercise.answer,difficulty:exercise.difficulty,category:exercise.category||'',tags:exercise.tags||[],position:(queue||[]).length}).select().single();if(error)return fail(error);q=data}if(makeCurrent)await setCurrent(q);else{toast('Добавлено в очередь');renderLesson()}};
-  document.getElementById('leaveLesson').onclick=()=>{forgetActiveLesson();S.activeLesson=null;S.view='dashboard';renderTeacher()};document.getElementById('copyLessonLink').onclick=async()=>{await copyText(studentLink(st));toast('Ссылка скопирована')};document.getElementById('theoryBoard').onclick=()=>ctrl.addText(`${t.title}\n\n${plainTheory(t.theory)}`,{fontSize:24});
+  document.getElementById('leaveLesson').onclick=()=>{forgetActiveLesson();S.activeLesson=null;S.view='dashboard';renderTeacher()};document.getElementById('copyLessonLink').onclick=async()=>{await copyText(studentLink(st));toast('Ссылка скопирована')};document.getElementById('theoryBoard').onclick=()=>sendTheoryToBoard(ctrl,t);
   document.querySelectorAll('[data-to-board]').forEach(b=>b.onclick=()=>{const x=S.exercises.find(z=>z.id===b.dataset.toBoard);ctrl.addText(`${x.title||'Задача'}\n${x.content}`,{fontSize:25});sb.from('exercises').update({use_count:(x.use_count||0)+1,last_used_at:new Date().toISOString()}).eq('id',x.id).then(()=>{})});
   document.querySelectorAll('[data-queue-task]').forEach(b=>b.onclick=()=>addQueue(S.exercises.find(x=>x.id===b.dataset.queueTask),false));document.querySelectorAll('[data-focus-task]').forEach(b=>b.onclick=()=>addQueue(S.exercises.find(x=>x.id===b.dataset.focusTask),true));
   document.querySelectorAll('[data-current]').forEach(b=>b.onclick=()=>setCurrent((queue||[]).find(x=>x.id===b.dataset.current)));document.querySelectorAll('[data-remove-queue]').forEach(b=>b.onclick=async()=>{await sb.from('lesson_queue_items').delete().eq('id',b.dataset.removeQueue);if(liveState.current_queue_item_id===b.dataset.removeQueue)await updateLive({current_queue_item_id:null,current_title:'',current_prompt:''});renderLesson()});
