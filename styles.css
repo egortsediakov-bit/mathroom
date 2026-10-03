@@ -1299,3 +1299,77 @@ body{background:linear-gradient(180deg,#fbfbfa 0%,#f5f4f1 100%)!important;color:
   .board-shape-icon{min-height:64px!important;height:64px!important;padding:5px!important}
   .board-shape-svg{width:38px!important;height:31px!important}.board-shape-label{font-size:8.5px!important}
 }
+
+/* Mathroom v27.7 — quick board actions */
+.board-head-actions [data-tool].active{
+  background:var(--koto-orange)!important;
+  color:#fff!important;
+  border-color:var(--koto-orange)!important;
+}
+.board-clear-head{color:#b42318!important}
+.board-clear-head:hover:not(:disabled){background:#fff4f1!important;border-color:#efb8aa!important;color:#9f2e12!important}
+@media(max-width:900px){
+  .board-head-actions{overflow-x:auto!important;flex-wrap:nowrap!important;scrollbar-width:thin!important;padding-bottom:2px!important}
+  .board-head-actions .board-fullscreen-btn{flex:0 0 auto!important}
+  .board-head-actions .board-head-icon{flex:0 0 auto!important}
+}
+
+/* Mathroom v27.8 — ordered left board rail */
+.board-toolbar-side .board-rail-main{
+  display:flex!important;
+  flex-direction:column!important;
+  gap:7px!important;
+}
+.board-toolbar-side .board-rail-main .btn{
+  width:100%!important;
+  grid-column:auto!important;
+  height:48px!important;
+  min-height:48px!important;
+}
+.board-toolbar-side .board-rail-action{
+  width:100%!important;
+  height:48px!important;
+  min-height:48px!important;
+  padding:0!important;
+  display:grid!important;
+  place-items:center!important;
+  border-radius:13px!important;
+  border:1px solid transparent!important;
+  background:#fff!important;
+  color:#20222b!important;
+  box-shadow:none!important;
+}
+.board-toolbar-side .board-rail-action:hover:not(:disabled){
+  background:#f8f7f5!important;
+  border-color:#ece8e3!important;
+}
+.board-toolbar-side .board-rail-action.active{
+  background:var(--mr-orange-soft)!important;
+  color:var(--mr-orange)!important;
+  border-color:var(--mr-orange-border)!important;
+  box-shadow:0 5px 14px rgba(245,90,22,.08)!important;
+}
+.board-toolbar-side .board-rail-action .mr-ui-icon,
+.board-toolbar-side .board-rail-action svg{
+  width:22px!important;
+  height:22px!important;
+}
+.board-toolbar-side .board-rail-divider-bottom{margin-top:2px!important}
+.board-toolbar-side .board-rail-clear{
+  margin-top:auto!important;
+  color:#b42318!important;
+  background:#fffaf8!important;
+  border-color:#f1d6cc!important;
+}
+.board-toolbar-side .board-rail-clear:hover:not(:disabled){
+  background:#fff1ec!important;
+  border-color:#efbca8!important;
+  color:#a63a19!important;
+}
+@media(max-width:760px){
+  .board-toolbar-side .board-rail-main .btn,
+  .board-toolbar-side .board-rail-action{
+    height:43px!important;
+    min-height:43px!important;
+  }
+}
