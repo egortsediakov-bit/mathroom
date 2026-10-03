@@ -295,13 +295,37 @@ async function completeLesson(lesson,queue,live){
   }catch(e){fail(e)}};
 }
 
-function renderBoardPage(){
-  const scratch=S.selectedStudent==='__scratch__'||!S.students.length;const st=scratch?null:(S.students.find(x=>x.id===S.selectedStudent)||S.students[0]);if(st)S.selectedStudent=st.id;else S.selectedStudent='__scratch__';
-  const studentOptions=S.students.map(s=>`<option value="${s.id}" ${st?.id===s.id?'selected':''}>${esc(s.name)} · ${s.grade} кл.</option>`).join('');
-  app.innerHTML=shell(`<div class="actions board-mode-switch" style="margin-bottom:12px"><select id="boardStudent" class="search"><option value="__scratch__" ${scratch?'selected':''}>Моя доска-черновик</option>${studentOptions}</select><span class="small muted">${scratch?'Черновик виден только в этом браузере преподавателя.':'Доска ученика синхронизируется в реальном времени.'}</span></div><div id="boardRoot"></div>`,'Доска',scratch?'Личный черновик преподавателя':`${st.name} · совместная доска урока`);bindShell();
-  document.getElementById('boardStudent').onchange=()=>{const v=document.getElementById('boardStudent').value;S.selectedStudent=v;S.view=v==='__scratch__'?'scratch':'board';renderBoardPage()};
-  if(scratch)mountBoard(document.getElementById('boardRoot'),'teacher-scratch',true,{localOnly:true,localKey:`mathroom.teacher.scratch.${S.user.id}`}).then(c=>S.boardController=c);
-  else mountBoard(document.getElementById('boardRoot'),st.id,true,{studentName:st.name}).then(c=>S.boardController=c);
+async function renderBoardPage(){
+  const scratch=S.selectedStudent==='__scratch__'||!S.students.length;
+  const st=scratch?null:(S.students.find(x=>x.id===S.selectedStudent)||S.students[0]);
+  if(st)S.selectedStudent=st.id;else S.selectedStudent='__scratch__';
+  const teacherKey=S.user?.id||S.teacher?.id||'teacher';
+  const studentOptions=S.students.map(s=>`<option value="${s.id}" ${(!scratch&&st?.id===s.id)?'selected':''}>${esc(s.name)} · ${s.grade} кл.</option>`).join('');
+  app.innerHTML=shell(`<div class="actions board-mode-switch" style="margin-bottom:12px"><select id="boardStudent" class="search"><option value="__scratch__" ${scratch?'selected':''}>Моя доска-черновик</option>${studentOptions}</select><span class="small muted">${scratch?'Черновик виден только в этом браузере преподавателя и открывается сразу как отдельная рабочая доска.':'Доска ученика синхронизируется в реальном времени.'}</span></div><div id="boardRoot"><div class="card board-loading-card"><div class="muted">Загружаем доску…</div></div></div>`,'Доска',scratch?'Личный черновик преподавателя':`${st.name} · совместная доска урока`);
+  bindShell();
+  const selector=document.getElementById('boardStudent');
+  selector.onchange=()=>{const v=selector.value;S.selectedStudent=v;S.view=v==='__scratch__'?'scratch':'board';renderBoardPage()};
+  const root=document.getElementById('boardRoot');
+  try{
+    let controller=null;
+    if(scratch){
+      controller=await mountBoard(root,'teacher-scratch',true,{localOnly:true,localKey:`mathroom.teacher.scratch.${teacherKey}`});
+      if(!controller){
+        controller=await mountBoard(root,'teacher-scratch-fallback',true,{localOnly:true,localKey:`mathroom.teacher.scratch.${teacherKey}.fallback`});
+      }
+    }else{
+      controller=await mountBoard(root,st.id,true,{studentName:st.name});
+    }
+    S.boardController=controller||null;
+    if(!controller){
+      root.innerHTML=`<div class="card"><h2>Не удалось открыть доску</h2><p class="muted">Попробуй обновить страницу. Если проблема повторится, переключись на другой режим доски и вернись обратно.</p><div class="actions"><button class="btn primary" id="retryBoardMount">Обновить доску</button></div></div>`;
+      root.querySelector('#retryBoardMount')?.addEventListener('click',()=>renderBoardPage());
+    }
+  }catch(e){
+    console.error('[Mathroom board page]',e);
+    root.innerHTML=`<div class="card"><h2>Ошибка загрузки доски</h2><p class="muted">Черновик или доска ученика не смогли загрузиться. Мы сохранили навигацию и даём быстрый перезапуск страницы доски.</p><div class="actions"><button class="btn primary" id="retryBoardMount">Перезапустить доску</button></div></div>`;
+    root.querySelector('#retryBoardMount')?.addEventListener('click',()=>renderBoardPage());
+  }
 }
 
 async function bootStudent(){
