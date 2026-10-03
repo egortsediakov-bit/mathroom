@@ -10,15 +10,17 @@
     let m=s.match(/(?:^|\D)(1[01]|[1-9])\s*(?:класс|кл\.?|grade)(?:\D|$)/);
     if(m)return Number(m[1]);
     m=s.match(/mat(?:ematika)?[_\- ]*(1[01]|[1-9])k/i);if(m)return Number(m[1]);
+    m=s.match(/mat(?:ematika)?[_\- ]*(1[01]|[1-9])(?:[_\- ]|k)/i);if(m)return Number(m[1]);
     m=s.match(/(?:^|[_\- ])(1[01]|[1-9])[_\- ]?(?:klass|kl)(?:[_\- ]|$)/i);if(m)return Number(m[1]);
     return null;
   }
   function parsePart(s){
     s=norm(s);
-    let m=s.match(/(?:часть|ч\.?|part)\s*[_\- ]*([123])/i);if(m)return Number(m[1]);
+    let m=s.match(/mat(?:ematika)?[_\- ]*\d+(?:k)?[_\- ]0?([123])(?:[_\- ]|\.|$)/i);if(m)return Number(m[1]);
+    m=s.match(/(?:часть|ч\.?|part)\s*[_\- ]*([123])/i);if(m)return Number(m[1]);
     m=s.match(/mat\d+k0?([123])/i);if(m)return Number(m[1]);
     m=s.match(/(?:^|[_\- ])([123])[_\- ]?ch(?:ast)?(?:[_\- ]|$)/i);if(m)return Number(m[1]);
-    m=s.match(/(?:ch|част)[_\- ]?([123])/i);if(m)return Number(m[1]);
+    m=s.match(/(?:^|[_\- ])ch(?:ast)?[_\- ]?([123])(?:[_\- ]|$)/i);if(m)return Number(m[1]);
     return null;
   }
   function parseYear(s){const m=String(s||'').match(/\b(20\d{2})\b/);return m?Number(m[1]):null}
@@ -29,17 +31,17 @@
     let series='',author=book?.author||'',grade=first(toNum(book?.grade_from),fromExisting?.grade,parseGrade(raw)),part=first(fromExisting?.part,parsePart(raw)),year=parseYear(raw);
     if(n.includes('виленкин')||fromExisting?.series==='Виленкин'){series='vilenkin';author=author||'Н. Я. Виленкин и др.'}
     else if((n.includes('дорофеев')&&n.includes('петерсон'))||fromExisting?.series==='Дорофеев–Петерсон'){series='dorofeev-peterson';author=author||'Г. В. Дорофеев, Л. Г. Петерсон'}
-    else if(n.includes('петерсон')||/mat\d+k0?[123]/i.test(book?.file_name||'')){series='peterson-primary';author=author||'Л. Г. Петерсон'}
+    else if(n.includes('петерсон')||n.includes('peterson')||/(?:mat[1-4]k0?[123]|mat[1-4](?:k)?[_\- ]0?[123])/i.test(book?.file_name||'')){series='peterson-primary';author=author||'Л. Г. Петерсон'}
     else if(fromExisting?.series){series=String(fromExisting.series).toLowerCase().includes('виленкин')?'vilenkin':'dorofeev-peterson'}
     return {series,author,grade,part,year,recognized:!!series&&!!grade,label:series==='vilenkin'?'Виленкин':series==='dorofeev-peterson'?'Дорофеев–Петерсон':series==='peterson-primary'?'Петерсон':'Не распознан'};
   }
 
-  function sourceSeries(source,grade){
-    const n=norm(source);
-    if(n.includes('виленкин'))return 'vilenkin';
-    if(n.includes('дорофеев')&&n.includes('петерсон'))return 'dorofeev-peterson';
-    if(n.includes('петерсон')&&Number(grade)<=4)return 'peterson-primary';
-    return '';
+  function sourceSeriesList(source,grade){
+    const n=norm(source),out=[];
+    if(n.includes('виленкин'))out.push('vilenkin');
+    if(n.includes('дорофеев')&&n.includes('петерсон'))out.push('dorofeev-peterson');
+    if(n.includes('петерсон')&&Number(grade)<=4)out.push('peterson-primary');
+    return [...new Set(out)];
   }
   function sourceParts(source){
     const out=[];const s=norm(source);let m;const re=/(?:ч\.?|часть)\s*([123])/g;
@@ -57,13 +59,22 @@
     return `Автопривязка · ${s.length>170?s.slice(0,167)+'…':s}`;
   }
   function matchBookToTopic(bookMeta,topic,source){
-    if(!bookMeta?.recognized||!source)return null;
+    if(!bookMeta?.recognized)return null;
     const grade=Number(topic?.grade||0);if(bookMeta.grade&&grade!==bookMeta.grade)return null;
-    const ss=sourceSeries(source,grade);if(!ss||ss!==bookMeta.series)return null;
+    const catalog=window.MathroomTextbookPageMapV291;
+    const mapped=catalog?.lookup?.(bookMeta,topic);
+    if(mapped){
+      return {page_from:mapped.page_from,page_to:mapped.page_to,note:`Автопривязка · карта страниц v29.1 · ${mapped.label||'основной блок темы'}`,exactPages:true,catalog:true};
+    }
+    // Если конкретная тема/линия уже проверена в карте v29.1, отсутствие записи
+    // для этой части означает, что широкая старая привязка была ложной.
+    if(catalog?.isAudited?.(bookMeta,topic))return null;
+    if(!source)return null;
+    const series=sourceSeriesList(source,grade);if(!series.includes(bookMeta.series))return null;
     const parts=sourceParts(source);
     if(bookMeta.part&&parts.length&&!parts.includes(Number(bookMeta.part)))return null;
     const range=extractPageRange(source);
-    return {page_from:range.from,page_to:range.to,note:compactNote(source),exactPages:!!range.from};
+    return {page_from:range.from,page_to:range.to,note:compactNote(source),exactPages:!!range.from,catalog:false};
   }
 
   function buildCandidates({books=[],topics=[],sourceFor=()=>''}={}){
@@ -79,5 +90,5 @@
     return {rows,recognized,unrecognized,exactPages:rows.filter(x=>x.exactPages).length};
   }
 
-  window.MathroomTextbookSyncV290={version:'2026.10.04.10',detectBook,buildCandidates,matchBookToTopic,extractPageRange};
+  window.MathroomTextbookSyncV290={version:'2026.10.04.11',detectBook,buildCandidates,matchBookToTopic,extractPageRange};
 })();

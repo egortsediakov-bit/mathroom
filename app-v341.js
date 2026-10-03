@@ -92,11 +92,17 @@ async function syncTextbooksWithTopics({silent=false,bookIds=null}={}){
     bodies.push(body);
   }
   for(let i=0;i<bodies.length;i+=150){const {error}=await sb.from('textbook_topic_links').upsert(bodies.slice(i,i+150),{onConflict:'textbook_id,topic_id'});if(error)throw error}
+  // v29.1: удаляем только устаревшие АВТО-связи. Ручные связи пользователя не трогаем.
+  const plannedKeys=new Set(plan.rows.map(r=>`${r.book.id}|${r.topic.id}`));
+  const targetBookIds=new Set(plan.recognized.map(x=>String(x.book.id)));
+  const staleAuto=existing.filter(x=>targetBookIds.has(String(x.textbook_id))&&String(x.note||'').startsWith('Автопривязка ·')&&!plannedKeys.has(`${x.textbook_id}|${x.topic_id}`));
+  let removed=0;
+  for(let i=0;i<staleAuto.length;i+=100){const ids=staleAuto.slice(i,i+100).map(x=>x.id).filter(Boolean);if(!ids.length)continue;const {error}=await sb.from('textbook_topic_links').delete().in('id',ids);if(error)throw error;removed+=ids.length}
   await loadTeacher();
-  const result={...plan,created,updated,skippedManual,total:bodies.length};
+  const result={...plan,created,updated,removed,skippedManual,total:bodies.length};
   if(!silent){
     const unknown=plan.unrecognized.length;
-    const text=`<h2>Синхронизация завершена</h2><div class="grid cols3"><div class="card"><div class="muted">Распознано учебников</div><div class="metric">${plan.recognized.length}</div></div><div class="card"><div class="muted">Связей с темами</div><div class="metric">${plan.rows.length}</div></div><div class="card"><div class="muted">С точными страницами</div><div class="metric">${plan.exactPages}</div></div></div><div class="notice">Создано новых связей: <b>${created}</b> · обновлено: <b>${updated}</b>${skippedManual?` · ручные связи сохранены: <b>${skippedManual}</b>`:''}${unknown?`<br>Не распознано учебников: <b>${unknown}</b> — их можно привязать вручную.`:''}</div><p class="muted">Автопривязка использует автора, класс, часть и методические источники тем. Если в нашей карте известен точный диапазон страниц, он подставляется автоматически.</p>`;
+    const text=`<h2>Синхронизация завершена</h2><div class="grid cols3"><div class="card"><div class="muted">Распознано учебников</div><div class="metric">${plan.recognized.length}</div></div><div class="card"><div class="muted">Связей с темами</div><div class="metric">${plan.rows.length}</div></div><div class="card"><div class="muted">С точными страницами</div><div class="metric">${plan.exactPages}</div></div></div><div class="notice">Создано новых связей: <b>${created}</b> · обновлено: <b>${updated}</b>${removed?` · удалено устаревших авто-связей: <b>${removed}</b>`:''}${skippedManual?` · ручные связи сохранены: <b>${skippedManual}</b>`:''}${unknown?`<br>Не распознано учебников: <b>${unknown}</b> — их можно привязать вручную.`:''}</div><p class="muted">v29.1 использует проверенную карту страниц для Петерсон, Виленкина и Дорофеева–Петерсон. Номера относятся к страницам самого PDF, поэтому кнопка «На доску» открывает нужный лист напрямую. Для широких тем указан основной учебный блок, а не каждое повторительное упражнение.</p>`;
     modal(text,'wide-modal');
   }
   return result;
