@@ -508,7 +508,25 @@
       if(tool==='eraser'&&eraserTrail.length>1)g.appendChild(svgEl('path',{d:smoothPathD(eraserTrail),fill:'none',stroke:'#ef4444','stroke-width':36/camera.zoom,'stroke-linecap':'round','stroke-linejoin':'round',opacity:.10,'pointer-events':'none'}));
       if(tool==='eraser'&&eraserPoint){const rr=18/camera.zoom;g.appendChild(svgEl('circle',{cx:eraserPoint.x,cy:eraserPoint.y,r:rr,fill:'rgba(255,255,255,.78)',stroke:'#ef4444','stroke-width':1.8/camera.zoom,'pointer-events':'none'}));g.appendChild(svgEl('circle',{cx:eraserPoint.x,cy:eraserPoint.y,r:3/camera.zoom,fill:'#ef4444',opacity:.55,'pointer-events':'none'}))}
     }
-    function syncSelectionButtons(){const obj=elements.find(x=>x.id===selected),has=!!obj,locked=!!obj?.locked;const ids=['copySelected','duplicateSelected','lockSelected','bringForward','sendBackward','bringFront','sendBack','deleteSelected'];ids.forEach(id=>{const b=root.querySelector('#'+id);if(b)b.disabled=!has||(locked&&id!=='lockSelected'&&id!=='copySelected')});const pp=root.querySelector('#pasteSelected'),h=root.querySelector('#toggleHidden'),cr=root.querySelector('#cropImage'),lb=root.querySelector('#lockSelected');if(!isTeacher)['lockSelected','bringForward','sendBackward','bringFront','sendBack'].forEach(id=>{const b=root.querySelector('#'+id);if(b)b.hidden=true});if(pp)pp.disabled=!clipboardElement;if(lb&&obj)lb.innerHTML=obj.locked?`${uiIcon('unlock')} <span>Разблокировать</span>`:`${uiIcon('pin')} <span>Закрепить</span>`;if(h){h.disabled=!has;h.innerHTML=obj?.teacherOnly?`${uiIcon('eye')} <span>Показать ученику</span>`:`${uiIcon('eyeOff')} <span>Скрыть ученику</span>`}if(cr)cr.disabled=!(obj?.type==='image')||locked}
+    function syncSelectionButtons(){
+      const obj=elements.find(x=>x.id===selected),has=!!obj,locked=!!obj?.locked;
+      const ids=['copySelected','duplicateSelected','lockSelected','bringForward','sendBackward','bringFront','sendBack','deleteSelected'];
+      ids.forEach(id=>{const b=root.querySelector('#'+id);if(b)b.disabled=!has||(locked&&id!=='lockSelected'&&id!=='copySelected')});
+      if(has&&!locked){
+        const movable=elements.filter(x=>x.type!=='board-bg'),pos=movable.findIndex(x=>x.id===selected),last=movable.length-1;
+        const up=root.querySelector('#bringForward'),down=root.querySelector('#sendBackward'),front=root.querySelector('#bringFront'),back=root.querySelector('#sendBack');
+        if(up)up.disabled=pos<0||pos>=last;
+        if(front)front.disabled=pos<0||pos>=last;
+        if(down)down.disabled=pos<=0;
+        if(back)back.disabled=pos<=0;
+      }
+      const pp=root.querySelector('#pasteSelected'),h=root.querySelector('#toggleHidden'),cr=root.querySelector('#cropImage'),lb=root.querySelector('#lockSelected');
+      if(!isTeacher)['lockSelected','bringForward','sendBackward','bringFront','sendBack'].forEach(id=>{const b=root.querySelector('#'+id);if(b)b.hidden=true});
+      if(pp)pp.disabled=!clipboardElement;
+      if(lb&&obj)lb.innerHTML=obj.locked?`${uiIcon('unlock')} <span>Разблокировать</span>`:`${uiIcon('pin')} <span>Закрепить</span>`;
+      if(h){h.disabled=!has;h.innerHTML=obj?.teacherOnly?`${uiIcon('eye')} <span>Показать ученику</span>`:`${uiIcon('eyeOff')} <span>Скрыть ученику</span>`}
+      if(cr)cr.disabled=!(obj?.type==='image')||locked;
+    }
     function syncHistoryButtons(){const u=root.querySelector('#undo'),r=root.querySelector('#redo');if(u){u.disabled=!undoStack.length;u.title=undoStack.length?'Отменить последнее действие · Ctrl+Z':'Нечего отменять'}if(r){r.disabled=!redoStack.length;r.title=redoStack.length?'Вернуть действие · Ctrl+Y':'Нечего возвращать'}}
     function syncSolidHud(){
       if(!solidHud||!stage)return;const o=elements.find(x=>x.id===selected&&x.type==='solid3d');if(!o){solidHud.hidden=true;return}
@@ -542,7 +560,32 @@
     }
     function duplicateSelected(){const o=elements.find(x=>x.id===selected);if(!o||o.type==='board-bg')return;if(o.locked&&!isTeacher)return;pushElementsHistory();const c=translated(o,32/camera.zoom,32/camera.zoom);c.id=uid();c.locked=false;elements.push(c);selected=c.id;changed();toast('Объект продублирован')}
     function toggleLockSelected(){if(!isTeacher)return;const i=elements.findIndex(x=>x.id===selected);if(i<0)return;pushElementsHistory();elements[i]={...elements[i],locked:!elements[i].locked};changed();toast(elements[i].locked?'Объект закреплён':'Объект разблокирован')}
-    function reorderSelected(mode){if(!isTeacher||!selected)return;const i=elements.findIndex(x=>x.id===selected);if(i<0)return;pushElementsHistory();const [o]=elements.splice(i,1);const bg=elements[0]?.type==='board-bg'?1:0;let ni=i;if(mode==='forward')ni=Math.min(elements.length,i+1);if(mode==='backward')ni=Math.max(bg,i-1);if(mode==='front')ni=elements.length;if(mode==='back')ni=bg;elements.splice(ni,0,o);changed()}
+    function reorderSelected(mode){
+      if(!isTeacher||!selected)return;
+      const i=elements.findIndex(x=>x.id===selected),o=elements[i];
+      if(i<0||!o||o.type==='board-bg')return;
+      if(o.locked)return toast('Объект закреплён · сначала разблокируйте');
+      const movable=elements.map((x,idx)=>({x,idx})).filter(v=>v.x.type!=='board-bg');
+      const pos=movable.findIndex(v=>v.x.id===selected);
+      if(pos<0)return;
+      let targetPos=pos;
+      if(mode==='forward')targetPos=Math.min(movable.length-1,pos+1);
+      if(mode==='backward')targetPos=Math.max(0,pos-1);
+      if(mode==='front')targetPos=movable.length-1;
+      if(mode==='back')targetPos=0;
+      if(targetPos===pos){
+        toast(mode==='forward'||mode==='front'?'Объект уже выше всех':'Объект уже ниже всех');
+        return;
+      }
+      pushElementsHistory();
+      const backgrounds=elements.filter(x=>x.type==='board-bg');
+      const ordered=movable.map(v=>v.x);
+      const [moving]=ordered.splice(pos,1);
+      ordered.splice(targetPos,0,moving);
+      elements=[...backgrounds,...ordered];
+      changed();
+      toast(mode==='forward'?'Объект поднят на один слой':mode==='backward'?'Объект опущен на один слой':mode==='front'?'Объект на переднем плане':'Объект на заднем плане');
+    }
     function editSelected(){const i=elements.findIndex(x=>x.id===selected),o=elements[i];if(i<0||o.locked||(!isTeacher&&classroomMode!=='open'))return;if(o.type==='text'||o.type==='note'){const v=prompt(o.type==='note'?'Текст заметки:':'Текст:',o.text||'');if(v==null)return;pushElementsHistory();elements[i]={...o,text:v};changed()}else if(o.type==='formula'){const v=prompt('Формула:',o.source||o.text||'');if(v==null)return;pushElementsHistory();elements[i]={...o,source:v,text:prettyFormula(v)};changed()}else if(o.type==='graph'){const v=prompt('Функция y =',o.expression||'');if(v==null)return;try{graphSegments(v);pushElementsHistory();elements[i]={...o,expression:v};changed()}catch(e){fail(e)}}}
     function fillSelected(){const i=elements.findIndex(x=>x.id===selected),o=elements[i];if(i<0||o.locked||!['rect','ellipse','polygon','note'].includes(o.type))return toast('Заливка доступна для фигур и заметок');const m=modal(`<h2>Заливка объекта</h2><div class="board-fill-swatches"><button data-fill="none">Без заливки</button><button data-fill="#fff3bf" style="background:#fff3bf">Жёлтая</button><button data-fill="#ffe6d5" style="background:#ffe6d5">Оранжевая</button><button data-fill="#dbeafe" style="background:#dbeafe">Синяя</button><button data-fill="#dcfce7" style="background:#dcfce7">Зелёная</button></div><div class="field"><label>Свой цвет</label><input type="color" id="customFill" value="${o.fill&&o.fill!=='none'?o.fill:'#fff3bf'}"></div><button class="btn" id="applyCustomFill">Применить</button>`);const apply=v=>{pushElementsHistory();elements[i]={...elements[i],fill:v};m.remove();changed()};m.querySelectorAll('[data-fill]').forEach(b=>b.onclick=()=>apply(b.dataset.fill));m.querySelector('#applyCustomFill').onclick=()=>apply(m.querySelector('#customFill').value)}
     async function duplicateCurrentPage(){if(!isTeacher)return;await save();const p=await createPage(`${current.title||'Лист'} · копия`,clone(elements));await switchPage(p.id)}
@@ -803,7 +846,11 @@
     const ctl=s=>root.querySelector(s),bind=(s,ev,fn)=>{const el=ctl(s);if(!el){console.warn('[Mathroom board] control missing',s);return null}el.addEventListener(ev,fn);return el};
     root.querySelectorAll('[data-tool]').forEach(b=>b.addEventListener('click',()=>{setTool(b.dataset.tool);b.closest('.board-tool-group')?.removeAttribute('open')}));
     const positionPopover=d=>{const pop=d.querySelector('.board-tool-popover'),summary=d.querySelector('summary');if(!pop||!summary)return;requestAnimationFrame(()=>{const r=summary.getBoundingClientRect(),vw=window.innerWidth,vh=window.innerHeight,left=Math.max(8,Math.min(vw-260,r.right+10)),available=Math.max(220,vh-24),desired=Math.min(pop.scrollHeight||460,available),top=Math.max(12,Math.min(r.top,vh-desired-12));pop.style.setProperty('--mr-pop-left',`${left}px`);pop.style.setProperty('--mr-pop-top',`${top}px`);pop.style.setProperty('--mr-pop-maxh',`${Math.max(220,vh-top-12)}px`)})};
-    root.querySelectorAll('.board-tool-group').forEach(d=>d.addEventListener('toggle',()=>{if(!d.open)return;root.querySelectorAll('.board-tool-group').forEach(x=>{if(x!==d)x.removeAttribute('open')});positionPopover(d)}));
+    root.querySelectorAll('.board-tool-group').forEach(d=>{
+      d.addEventListener('toggle',()=>{if(!d.open)return;root.querySelectorAll('.board-tool-group').forEach(x=>{if(x!==d)x.removeAttribute('open')});positionPopover(d)});
+      const pop=d.querySelector('.board-tool-popover');
+      if(pop)pop.addEventListener('click',e=>{const button=e.target.closest?.('button');if(!button||button.disabled)return;setTimeout(()=>d.removeAttribute('open'),0)});
+    });
     root.querySelectorAll('[data-color]').forEach(b=>b.addEventListener('click',()=>{color=b.dataset.color;root.querySelectorAll('[data-color]').forEach(x=>x.classList.toggle('active',x===b))}));
     bind('#strokeWidth','change',e=>width=Number(e.target.value));
     bind('#undo','click',()=>undo());bind('#redo','click',()=>redo());bind('#copySelected','click',copySelected);bind('#pasteSelected','click',pasteSelected);bind('#duplicateSelected','click',duplicateSelected);bind('#lockSelected','click',toggleLockSelected);bind('#bringForward','click',()=>reorderSelected('forward'));bind('#sendBackward','click',()=>reorderSelected('backward'));bind('#bringFront','click',()=>reorderSelected('front'));bind('#sendBack','click',()=>reorderSelected('back'));bind('#pasteSystemClipboard','click',readSystemClipboard);bind('#deleteSelected','click',deleteSelected);
