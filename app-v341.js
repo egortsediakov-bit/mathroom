@@ -297,11 +297,64 @@ function renderTopic(){
 }
 
 
+function mrFormatBytes(bytes=0){
+  const n=Number(bytes)||0;if(n<1024)return `${n} Б`;if(n<1024*1024)return `${(n/1024).toFixed(1)} КБ`;if(n<1024*1024*1024)return `${(n/1024/1024).toFixed(1)} МБ`;return `${(n/1024/1024/1024).toFixed(2)} ГБ`;
+}
+function mrFormatEta(seconds){
+  if(!Number.isFinite(seconds)||seconds<0)return '—';const s=Math.ceil(seconds);if(s<60)return `${s} сек`;const m=Math.floor(s/60),r=s%60;if(m<60)return `${m} мин ${r?`${r} сек`:''}`.trim();const h=Math.floor(m/60),rm=m%60;return `${h} ч ${rm} мин`;
+}
+function textbookTusEndpoint(){
+  try{const u=new URL(CFG.SUPABASE_URL);if(u.hostname.endsWith('.supabase.co'))return `https://${u.hostname.replace(/\.supabase\.co$/,'.storage.supabase.co')}/storage/v1/upload/resumable`;}catch{}
+  return `${String(CFG.SUPABASE_URL||'').replace(/\/$/,'')}/storage/v1/upload/resumable`;
+}
+function textbookResumeKey(file){return `mathroom:textbook-upload:${S.user?.id||'teacher'}:${file.name}:${file.size}:${file.lastModified||0}`}
+async function uploadTextbookPdf(file,{onProgress=()=>{},onState=()=>{},onController=()=>{}}={}){
+  const key=textbookResumeKey(file);
+  let path='';try{path=localStorage.getItem(key)||''}catch{}
+  if(!path){path=`${S.user.id}/${Date.now()}-${token()}.pdf`;try{localStorage.setItem(key,path)}catch{}}
+  const useTus=file.size>6*1024*1024&&window.tus?.Upload;
+  if(!useTus){
+    onState(window.tus?.Upload?'Загружаем PDF…':'Загружаем обычным способом…');
+    onProgress(0,file.size,{mode:'standard'});
+    const up=await sb.storage.from('textbooks').upload(path,file,{contentType:'application/pdf',upsert:false,cacheControl:'3600'});
+    if(up.error)throw up.error;onProgress(file.size,file.size,{mode:'standard'});try{localStorage.removeItem(key)}catch{};return {path,resumed:false,mode:'standard'};
+  }
+  const {data:{session},error:sessionError}=await sb.auth.getSession();if(sessionError)throw sessionError;if(!session?.access_token)throw new Error('Сессия истекла. Войди в кабинет ещё раз.');
+  onState('Подготавливаем возобновляемую загрузку…');
+  return await new Promise((resolve,reject)=>{
+    let paused=false,resumed=false,finished=false;
+    const upload=new window.tus.Upload(file,{
+      endpoint:textbookTusEndpoint(),
+      retryDelays:[0,3000,5000,10000,20000],
+      headers:{authorization:`Bearer ${session.access_token}`},
+      uploadDataDuringCreation:true,
+      removeFingerprintOnSuccess:true,
+      metadata:{bucketName:'textbooks',objectName:path,contentType:'application/pdf',cacheControl:'3600'},
+      chunkSize:6*1024*1024,
+      onError(error){if(paused)return;reject(error)},
+      onProgress(bytesUploaded,bytesTotal){onProgress(bytesUploaded,bytesTotal,{mode:'tus',resumed})},
+      onSuccess(){finished=true;try{localStorage.removeItem(key)}catch{};resolve({path,resumed,mode:'tus',url:upload.url})}
+    });
+    const controller={
+      pause:async()=>{if(finished||paused)return;paused=true;await upload.abort(false);onState('Пауза · прогресс сохранён');},
+      resume:()=>{if(finished||!paused)return;paused=false;onState('Продолжаем загрузку…');upload.start()},
+      get paused(){return paused}
+    };
+    onController(controller);
+    upload.findPreviousUploads().then(previous=>{
+      if(previous?.length){upload.resumeFromPreviousUpload(previous[0]);resumed=true;onState('Найдена незавершённая загрузка · продолжаем с сохранённого места…')}
+      else onState('Загружаем PDF частями по 6 МБ…');
+      upload.start();
+    }).catch(reject);
+  });
+}
+
+
 function renderTextbooks(){
   if(!S.textbooksFeatureAvailable){app.innerHTML=shell(`<div class="card mr-textbook-setup"><span class="pill warn">Нужна настройка Supabase</span><h2>Библиотека учебников готова в интерфейсе</h2><p>Чтобы PDF хранились в облаке и открывались на любом устройстве, один раз выполни файл <b>supabase/upgrade-v28.2-textbooks.sql</b> в Supabase SQL Editor.</p><div class="notice">После этого обнови страницу — появится загрузка PDF, привязка к темам и страницы-источники.</div></div>`,'Учебники','PDF-библиотека преподавателя');bindShell();return}
   const books=(S.textbooks||[]),links=S.textbookLinks||[];
   const list=books.length?books.map(book=>{const ls=links.filter(x=>String(x.textbook_id)===String(book.id)),linked=ls.slice(0,5).map(l=>{const t=S.topics.find(x=>String(x.id)===String(l.topic_id));return t?`<span class="pill">${t.grade} кл. · ${esc(t.title)}${l.page_from?` · с.${l.page_from}`:''}</span>`:''}).join('');return `<article class="card mr-textbook-card"><div class="mr-card-head"><div><span class="pill">PDF</span><h3>${esc(book.title)}</h3><p class="muted">${book.author?esc(book.author)+' · ':''}${esc(book.subject||'Математика')}${book.grade_from?` · ${book.grade_from}${book.grade_to&&book.grade_to!==book.grade_from?`–${book.grade_to}`:''} класс`:''}</p></div><div class="actions"><button class="btn sm primary" data-book-open="${book.id}">Открыть</button><button class="btn sm" data-book-link="${book.id}">Привязать к теме</button><button class="btn sm danger" data-book-delete="${book.id}">Удалить</button></div></div><div class="mr-textbook-links">${linked||'<span class="small muted">Пока не привязан ни к одной теме.</span>'}${ls.length>5?`<span class="small muted">+ ещё ${ls.length-5}</span>`:''}</div></article>`}).join(''):'<div class="empty">Учебников пока нет. Добавь первый PDF выше.</div>';
-  app.innerHTML=shell(`<div class="form-card mr-textbook-upload"><h2>Добавить учебник</h2><form id="textbookForm"><div class="grid cols3"><div class="field"><label>Название</label><input id="tbTitle" required placeholder="Математика. 6 класс"></div><div class="field"><label>Автор</label><input id="tbAuthor" placeholder="Автор / издательство"></div><div class="field"><label>Предмет</label><select id="tbSubject"><option>Математика</option><option>Алгебра</option><option>Геометрия</option></select></div></div><div class="grid cols3"><div class="field"><label>С класса</label><select id="tbFrom">${Array.from({length:11},(_,i)=>`<option>${i+1}</option>`).join('')}</select></div><div class="field"><label>По класс</label><select id="tbTo">${Array.from({length:11},(_,i)=>`<option>${i+1}</option>`).join('')}</select></div><div class="field"><label>PDF</label><input id="tbFile" type="file" accept="application/pdf,.pdf" required></div></div><div class="small muted">PDF хранится в закрытом Supabase Storage. В теме можно указать точные страницы, на которых находится теория.</div><button class="btn primary">Загрузить PDF</button></form></div><div class="section-title"><h2>Моя библиотека · ${books.length}</h2></div><div class="grid cols2">${list}</div>`,'Учебники','PDF можно связывать с темами и конкретными страницами');bindShell();
+  app.innerHTML=shell(`<div class="form-card mr-textbook-upload"><h2>Добавить учебник</h2><form id="textbookForm"><div class="grid cols3"><div class="field"><label>Название</label><input id="tbTitle" required placeholder="Математика. 6 класс"></div><div class="field"><label>Автор</label><input id="tbAuthor" placeholder="Автор / издательство"></div><div class="field"><label>Предмет</label><select id="tbSubject"><option>Математика</option><option>Алгебра</option><option>Геометрия</option></select></div></div><div class="grid cols3"><div class="field"><label>С класса</label><select id="tbFrom">${Array.from({length:11},(_,i)=>`<option>${i+1}</option>`).join('')}</select></div><div class="field"><label>По класс</label><select id="tbTo">${Array.from({length:11},(_,i)=>`<option>${i+1}</option>`).join('')}</select></div><div class="field"><label>PDF</label><input id="tbFile" type="file" accept="application/pdf,.pdf" required></div></div><div class="small muted">PDF хранится в закрытом Supabase Storage. Файлы больше 6 МБ загружаются частями и могут продолжиться после обрыва связи.</div><div class="mr-upload-progress" id="tbUploadProgress" hidden><div class="mr-upload-progress-head"><b id="tbUploadState">Подготовка…</b><span id="tbUploadPercent">0%</span></div><div class="mr-upload-track"><i id="tbUploadBar"></i></div><div class="mr-upload-meta"><span id="tbUploadBytes">0 МБ</span><span id="tbUploadSpeed">—</span><span id="tbUploadEta">осталось —</span></div><div class="actions"><button class="btn sm" type="button" id="tbUploadPause" hidden>Пауза</button></div></div><button class="btn primary" id="tbUploadSubmit">Загрузить PDF</button></form></div><div class="section-title"><h2>Моя библиотека · ${books.length}</h2></div><div class="grid cols2">${list}</div>`,'Учебники','PDF можно связывать с темами и конкретными страницами');bindShell();
   const tbFile=document.getElementById('tbFile');
   tbFile?.addEventListener('change',()=>{
     const file=tbFile.files?.[0];if(!file)return;
@@ -329,7 +382,30 @@ function renderTextbooks(){
     }
   });
 
-  document.getElementById('textbookForm').onsubmit=async e=>{e.preventDefault();const file=document.getElementById('tbFile').files?.[0];if(!file)return toast('Выбери PDF');if(file.type&&file.type!=='application/pdf'&&!file.name.toLowerCase().endsWith('.pdf'))return toast('Нужен файл PDF');if(file.size>100*1024*1024)return toast('PDF больше 100 МБ. Лучше сжать файл.');const path=`${S.user.id}/${Date.now()}-${token()}.pdf`;try{const up=await sb.storage.from('textbooks').upload(path,file,{contentType:'application/pdf',upsert:false,cacheControl:'3600'});if(up.error)throw up.error;const body={teacher_id:S.user.id,title:document.getElementById('tbTitle').value.trim(),author:document.getElementById('tbAuthor').value.trim(),subject:document.getElementById('tbSubject').value,grade_from:Number(document.getElementById('tbFrom').value),grade_to:Number(document.getElementById('tbTo').value),file_path:path,file_name:file.name,file_size:file.size};const {error}=await sb.from('textbooks').insert(body);if(error){await sb.storage.from('textbooks').remove([path]);throw error}await loadTeacher();renderTextbooks();toast('Учебник загружен')}catch(err){fail(err)}};
+  document.getElementById('textbookForm').onsubmit=async e=>{
+    e.preventDefault();
+    const file=document.getElementById('tbFile').files?.[0];if(!file)return toast('Выбери PDF');
+    if(file.type&&file.type!=='application/pdf'&&!file.name.toLowerCase().endsWith('.pdf'))return toast('Нужен файл PDF');
+    if(file.size>100*1024*1024)return toast('PDF больше 100 МБ. Лучше сжать файл.');
+    const form=e.currentTarget,submit=document.getElementById('tbUploadSubmit'),box=document.getElementById('tbUploadProgress'),bar=document.getElementById('tbUploadBar'),percent=document.getElementById('tbUploadPercent'),bytesEl=document.getElementById('tbUploadBytes'),speedEl=document.getElementById('tbUploadSpeed'),etaEl=document.getElementById('tbUploadEta'),stateEl=document.getElementById('tbUploadState'),pauseBtn=document.getElementById('tbUploadPause');
+    box.hidden=false;submit.disabled=true;submit.textContent='Загружаем…';
+    let controller=null,lastBytes=null,lastAt=null,speed=0;
+    const setState=msg=>{if(stateEl)stateEl.textContent=msg};
+    const setProgress=(uploaded,total,meta={})=>{
+      const pct=total?Math.max(0,Math.min(100,uploaded/total*100)):0;if(bar)bar.style.width=`${pct}%`;if(percent)percent.textContent=`${pct.toFixed(pct<10?1:0)}%`;if(bytesEl)bytesEl.textContent=`${mrFormatBytes(uploaded)} / ${mrFormatBytes(total)}`;
+      const now=performance.now();if(lastBytes!=null&&lastAt!=null&&uploaded>=lastBytes){const dt=(now-lastAt)/1000,delta=uploaded-lastBytes;if(dt>.15&&delta>0){const inst=delta/dt;speed=speed?speed*.72+inst*.28:inst}}lastBytes=uploaded;lastAt=now;
+      if(speedEl)speedEl.textContent=speed?`${mrFormatBytes(speed)}/с`:(meta.resumed?'возобновление':'—');if(etaEl)etaEl.textContent=`осталось ${speed?mrFormatEta((total-uploaded)/speed):'—'}`;
+    };
+    const setController=c=>{controller=c;if(!pauseBtn)return;pauseBtn.hidden=!c;pauseBtn.textContent='Пауза';pauseBtn.onclick=async()=>{if(!controller)return;if(controller.paused){controller.resume();pauseBtn.textContent='Пауза'}else{await controller.pause();pauseBtn.textContent='Продолжить'}}};
+    let path='';
+    try{
+      const uploaded=await uploadTextbookPdf(file,{onProgress:setProgress,onState:setState,onController:setController});path=uploaded.path;
+      setState('PDF загружен · сохраняем учебник…');if(pauseBtn)pauseBtn.hidden=true;
+      const body={teacher_id:S.user.id,title:document.getElementById('tbTitle').value.trim(),author:document.getElementById('tbAuthor').value.trim(),subject:document.getElementById('tbSubject').value,grade_from:Number(document.getElementById('tbFrom').value),grade_to:Number(document.getElementById('tbTo').value),file_path:path,file_name:file.name,file_size:file.size};
+      const {error}=await sb.from('textbooks').insert(body);if(error){await sb.storage.from('textbooks').remove([path]);throw error}
+      setState('Готово');if(bar)bar.style.width='100%';if(percent)percent.textContent='100%';await loadTeacher();renderTextbooks();toast(uploaded.resumed?'Учебник загружен · загрузка успешно продолжена':'Учебник загружен');
+    }catch(err){console.error(err);setState('Не удалось завершить загрузку');submit.disabled=false;submit.textContent='Продолжить загрузку';if(pauseBtn)pauseBtn.hidden=true;fail(err)}
+  };
   document.querySelectorAll('[data-book-open]').forEach(b=>b.onclick=()=>{const book=books.find(x=>String(x.id)===String(b.dataset.bookOpen));if(book)openTextbook(book)});
   document.querySelectorAll('[data-book-link]').forEach(b=>b.onclick=()=>linkTextbookModal({textbookId:b.dataset.bookLink}));
   document.querySelectorAll('[data-book-delete]').forEach(b=>b.onclick=async()=>{const book=books.find(x=>String(x.id)===String(b.dataset.bookDelete));if(!book||!confirm(`Удалить учебник «${book.title}»?`))return;try{await sb.storage.from('textbooks').remove([book.file_path]);const {error}=await sb.from('textbooks').delete().eq('id',book.id);if(error)throw error;await loadTeacher();renderTextbooks();toast('Учебник удалён')}catch(err){fail(err)}});

@@ -1556,3 +1556,15 @@ body{background:linear-gradient(180deg,#fbfbfa 0%,#f5f4f1 100%)!important;color:
 .mr-curriculum-source b{font-size:13px;line-height:1.45;color:#252525}
 .mr-curriculum-source small{color:#77746f;line-height:1.4}
 @media(max-width:700px){.mr-curriculum-source{flex-direction:column}.mr-theory-source{font-size:11px}}
+
+/* v28.8 — large PDF / resumable textbook upload */
+.mr-upload-progress{margin:14px 0;padding:14px 16px;border:1px solid var(--line);border-radius:16px;background:#fff}
+.mr-upload-progress[hidden]{display:none!important}
+.mr-upload-progress-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px}
+.mr-upload-progress-head b{font-size:14px;line-height:1.35}
+.mr-upload-progress-head span{font-weight:800;font-variant-numeric:tabular-nums}
+.mr-upload-track{height:10px;border-radius:999px;background:#f0f1f3;overflow:hidden}
+.mr-upload-track i{display:block;width:0;height:100%;border-radius:inherit;background:var(--accent,#ed591a);transition:width .18s ease}
+.mr-upload-meta{display:flex;flex-wrap:wrap;gap:8px 18px;margin-top:9px;color:var(--muted);font-size:12px;font-variant-numeric:tabular-nums}
+.mr-upload-progress .actions{margin-top:10px}
+@media (max-width:700px){.mr-upload-meta{display:grid;grid-template-columns:1fr 1fr}.mr-upload-meta span:last-child{grid-column:1/-1}}
