@@ -63,6 +63,69 @@
     return{x:0,y:0,w:0,h:0};
   }
 
+
+  function marqueeRect(x0,y0,x1,y1){return{x0:Math.min(x0,x1),y0:Math.min(y0,y1),x1:Math.max(x0,x1),y1:Math.max(y0,y1)}}
+  function pointInMarquee(x,y,r,pad=0){return x>=r.x0-pad&&x<=r.x1+pad&&y>=r.y0-pad&&y<=r.y1+pad}
+  function marqueeContainsBounds(r,b,pad=0){return b.x>=r.x0-pad&&b.y>=r.y0-pad&&b.x+b.w<=r.x1+pad&&b.y+b.h<=r.y1+pad}
+  function rectsOverlap(a,b){return a.x0<=b.x1&&a.x1>=b.x0&&a.y0<=b.y1&&a.y1>=b.y0}
+  function orient(a,b,c){return(b.x-a.x)*(c.y-a.y)-(b.y-a.y)*(c.x-a.x)}
+  function onSeg(a,b,p,eps=1e-7){return Math.abs(orient(a,b,p))<=eps&&p.x>=Math.min(a.x,b.x)-eps&&p.x<=Math.max(a.x,b.x)+eps&&p.y>=Math.min(a.y,b.y)-eps&&p.y<=Math.max(a.y,b.y)+eps}
+  function segIntersects(a,b,c,d){
+    const o1=orient(a,b,c),o2=orient(a,b,d),o3=orient(c,d,a),o4=orient(c,d,b),eps=1e-7;
+    if(((o1>eps&&o2<-eps)||(o1<-eps&&o2>eps))&&((o3>eps&&o4<-eps)||(o3<-eps&&o4>eps)))return true;
+    return(Math.abs(o1)<=eps&&onSeg(a,b,c))||(Math.abs(o2)<=eps&&onSeg(a,b,d))||(Math.abs(o3)<=eps&&onSeg(c,d,a))||(Math.abs(o4)<=eps&&onSeg(c,d,b));
+  }
+  function segmentHitsMarquee(a,b,r,pad=0){
+    const rr={x0:r.x0-pad,y0:r.y0-pad,x1:r.x1+pad,y1:r.y1+pad};
+    if(pointInMarquee(a.x,a.y,rr)||pointInMarquee(b.x,b.y,rr))return true;
+    const tl={x:rr.x0,y:rr.y0},tr={x:rr.x1,y:rr.y0},br={x:rr.x1,y:rr.y1},bl={x:rr.x0,y:rr.y1};
+    return segIntersects(a,b,tl,tr)||segIntersects(a,b,tr,br)||segIntersects(a,b,br,bl)||segIntersects(a,b,bl,tl);
+  }
+  function pointInPoly(x,y,pts){
+    let inside=false;for(let i=0,j=pts.length-1;i<pts.length;j=i++){
+      const xi=pts[i].x,yi=pts[i].y,xj=pts[j].x,yj=pts[j].y;
+      const hit=((yi>y)!=(yj>y))&&(x<(xj-xi)*(y-yi)/((yj-yi)||1e-9)+xi);if(hit)inside=!inside;
+    }return inside;
+  }
+  function polylineHitsMarquee(rawPts,r,{closed=false,filled=false,pad=0}={}){
+    const pts=(rawPts||[]).map(p=>Array.isArray(p)?{x:p[0],y:p[1]}:{x:p.x,y:p.y}).filter(p=>Number.isFinite(p.x)&&Number.isFinite(p.y));
+    if(!pts.length)return false;
+    if(pts.some(p=>pointInMarquee(p.x,p.y,r,pad)))return true;
+    const n=closed?pts.length:pts.length-1;for(let i=0;i<n;i++){const a=pts[i],b=pts[(i+1)%pts.length];if(segmentHitsMarquee(a,b,r,pad))return true}
+    if(filled&&pts.length>=3){const corners=[[r.x0,r.y0],[r.x1,r.y0],[r.x1,r.y1],[r.x0,r.y1]];if(corners.some(([x,y])=>pointInPoly(x,y,pts)))return true}
+    return false;
+  }
+  function sampledEllipse(cx,cy,rx,ry,count=72){const pts=[];for(let i=0;i<count;i++){const a=i/count*Math.PI*2;pts.push({x:cx+rx*Math.cos(a),y:cy+ry*Math.sin(a)})}return pts}
+  function sampledArc(o,count=72){const a=arcPath(o),n=Math.max(8,Math.ceil(count*Math.min(1,a.length/(Math.PI*2))));const pts=[];for(let i=0;i<=n;i++){const t=i/n,ang=Number(o.a1||0)+a.sweep*t;pts.push({x:o.cx+o.r*Math.cos(ang),y:o.cy+o.r*Math.sin(ang)})}return pts}
+  function marqueeHitsObject(o,r){
+    if(!o||o.type==='board-bg')return false;const b=bounds(o);if(!Number.isFinite(b.x+b.y+b.w+b.h))return false;
+    if(marqueeContainsBounds(r,b))return true;
+    const pad=Math.max(2,Number(o.width||2)*.65);
+    if(o.type==='path')return polylineHitsMarquee(o.points||[],r,{pad});
+    if(['line','arrow','ruler'].includes(o.type))return segmentHitsMarquee({x:o.x1,y:o.y1},{x:o.x2,y:o.y2},r,pad+(o.type==='ruler'?8:0));
+    if(o.type==='polygon')return polylineHitsMarquee(o.points||[],r,{closed:true,filled:!!o.fill&&o.fill!=='none',pad});
+    if(o.type==='rect'){
+      const pts=[[o.x1,o.y1],[o.x2,o.y1],[o.x2,o.y2],[o.x1,o.y2]];return polylineHitsMarquee(pts,r,{closed:true,filled:!!o.fill&&o.fill!=='none',pad});
+    }
+    if(o.type==='ellipse'){
+      const cx=(o.x1+o.x2)/2,cy=(o.y1+o.y2)/2,rx=Math.abs(o.x2-o.x1)/2,ry=Math.abs(o.y2-o.y1)/2,pts=sampledEllipse(cx,cy,rx,ry);
+      if(polylineHitsMarquee(pts,r,{closed:true,pad}))return true;
+      if(o.fill&&o.fill!=='none'){const corners=[[r.x0,r.y0],[r.x1,r.y0],[r.x1,r.y1],[r.x0,r.y1]];return corners.some(([x,y])=>rx>0&&ry>0&&((x-cx)**2/rx**2+(y-cy)**2/ry**2)<=1)}
+      return false;
+    }
+    if(o.type==='arc')return polylineHitsMarquee(sampledArc(o),r,{pad});
+    if(o.type==='compass')return polylineHitsMarquee(sampledEllipse(o.cx,o.cy,o.r,o.r),r,{closed:true,pad});
+    if(o.type==='protractor'){
+      const pts=[];for(let i=0;i<=48;i++){const a=Math.PI-i/48*Math.PI;pts.push({x:o.x+o.r*Math.cos(a),y:o.y-o.r*Math.sin(a)})}pts.push({x:o.x+o.r,y:o.y},{x:o.x-o.r,y:o.y});return polylineHitsMarquee(pts,r,{closed:true,filled:true,pad});
+    }
+    if(o.type==='solid3d'){
+      const {model,projected}=solidProjection(o);for(const [ia,ib] of model.edges||[])if(segmentHitsMarquee(projected[ia],projected[ib],r,3))return true;
+      const corners=[[r.x0,r.y0],[r.x1,r.y0],[r.x1,r.y1],[r.x0,r.y1]];for(const face of model.faces||[]){const pts=face.map(i=>projected[i]);if(corners.some(([x,y])=>pointInPoly(x,y,pts)))return true}return false;
+    }
+    if(['text','formula','note','image','coordinate','graph','attachment'].includes(o.type))return rectsOverlap(r,{x0:b.x,y0:b.y,x1:b.x+b.w,y1:b.y+b.h});
+    return false;
+  }
+
   function niceTickStep(range,target=6){
     const raw=Math.max(.0001,range/Math.max(2,target)),pow=Math.pow(10,Math.floor(Math.log10(raw))),n=raw/pow;
     const nice=n<=1?1:n<=2?2:n<=5?5:10;return nice*pow;
@@ -895,7 +958,7 @@
       if(marqueeSelect){
         const m=marqueeSelect;marqueeSelect=null;const x0=Math.min(m.x0,m.x1),y0=Math.min(m.y0,m.y1),x1=Math.max(m.x0,m.x1),y1=Math.max(m.y0,m.y1),tiny=Math.abs(x1-x0)<3/camera.zoom&&Math.abs(y1-y0)<3/camera.zoom;
         if(tiny){setSelection(m.baseIds||[])}else{
-          const hitIds=elements.filter(o=>o.type!=='board-bg'&&(!o.teacherOnly||isTeacher)).filter(o=>{const b=bounds(o);return b.x<=x1&&b.x+b.w>=x0&&b.y<=y1&&b.y+b.h>=y0}).map(o=>o.id);
+          const mr=marqueeRect(x0,y0,x1,y1);const hitIds=elements.filter(o=>o.type!=='board-bg'&&(!o.teacherOnly||isTeacher)).filter(o=>marqueeHitsObject(o,mr)).map(o=>o.id);
           setSelection([...(m.baseIds||[]),...hitIds]);
           if(selectionCount()>1)toast(`${selectionCount()} объектов выбрано`);
         }

@@ -1373,3 +1373,102 @@ body{background:linear-gradient(180deg,#fbfbfa 0%,#f5f4f1 100%)!important;color:
     min-height:43px!important;
   }
 }
+
+/* Mathroom v27.10 — compact, fixed-size zoom controls */
+.board-stage .board-floating{
+  position:absolute!important;
+  left:auto!important;
+  right:12px!important;
+  top:12px!important;
+  bottom:auto!important;
+  inset:auto 12px auto auto!important;
+  z-index:180!important;
+  display:inline-flex!important;
+  flex-direction:row!important;
+  align-items:center!important;
+  justify-content:flex-start!important;
+  gap:2px!important;
+  width:max-content!important;
+  height:46px!important;
+  min-width:0!important;
+  max-width:none!important;
+  min-height:46px!important;
+  max-height:46px!important;
+  margin:0!important;
+  padding:4px!important;
+  overflow:visible!important;
+  border:1px solid var(--mr-line,#e5e1dc)!important;
+  border-radius:15px!important;
+  background:rgba(255,255,255,.96)!important;
+  box-shadow:0 10px 28px rgba(25,26,35,.10)!important;
+  backdrop-filter:blur(10px)!important;
+  pointer-events:auto!important;
+  white-space:nowrap!important;
+}
+.board-stage .board-floating .btn,
+.board-stage .board-floating #zoomLabel{
+  position:static!important;
+  float:none!important;
+  flex:0 0 auto!important;
+  width:36px!important;
+  height:36px!important;
+  min-width:36px!important;
+  max-width:36px!important;
+  min-height:36px!important;
+  max-height:36px!important;
+  margin:0!important;
+  padding:0!important;
+  display:grid!important;
+  place-items:center!important;
+  border:0!important;
+  border-radius:10px!important;
+  background:transparent!important;
+  box-shadow:none!important;
+  line-height:1!important;
+}
+.board-stage .board-floating #zoomLabel{
+  width:58px!important;
+  min-width:58px!important;
+  max-width:58px!important;
+  color:#25262d!important;
+  font-size:13px!important;
+  font-weight:800!important;
+  cursor:default!important;
+  user-select:none!important;
+}
+.board-stage .board-floating button:hover:not(:disabled){
+  background:#f6f4f1!important;
+  color:var(--mr-orange,#ed591a)!important;
+}
+.board-stage .board-floating .mr-ui-icon{
+  width:18px!important;
+  height:18px!important;
+  display:block!important;
+}
+@media(max-width:760px){
+  .board-stage .board-floating{
+    right:8px!important;
+    top:8px!important;
+    inset:auto 8px auto auto!important;
+    height:42px!important;
+    min-height:42px!important;
+    max-height:42px!important;
+    padding:3px!important;
+    border-radius:13px!important;
+  }
+  .board-stage .board-floating .btn,
+  .board-stage .board-floating #zoomLabel{
+    width:34px!important;
+    height:34px!important;
+    min-width:34px!important;
+    max-width:34px!important;
+    min-height:34px!important;
+    max-height:34px!important;
+  }
+  .board-stage .board-floating #zoomLabel{
+    width:52px!important;
+    min-width:52px!important;
+    max-width:52px!important;
+    font-size:12px!important;
+  }
+}
