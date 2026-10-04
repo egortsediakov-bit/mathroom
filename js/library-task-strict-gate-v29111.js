@@ -1,0 +1,114 @@
+/* Mathroom v29.11.1 — strict PDF task gate: keep only real exercises, purge theory/solutions. */
+(() => {
+  'use strict';
+  const api=window.MathroomTaskImportV298;
+  if(!api||api.__strictGate29111)return;
+  const VERSION='29.11.1';
+  const MR=()=>window.MR||{}, S=()=>MR().S||{};
+  const client=()=>MR().sb||window.MathroomLibrary2968?.resolveClient?.()||null;
+  const clean=s=>String(s||'').replace(/\u00ad/g,'').replace(/([А-Яа-яЁё])-\s+([А-Яа-яЁё])/g,'$1$2').replace(/\s+/g,' ').trim();
+  const norm=s=>clean(s).toLowerCase().replace(/ё/g,'е');
+
+  // Commands addressed to the pupil. These are the safest exercise markers.
+  const command=/(?:^|[.!?;:]\s*)(?:реши(?:те)?|найди(?:те)?|вычисли(?:те)?|докажи(?:те)?|построй(?:те)?|сравни(?:те)?|упрости(?:те)?|разложи(?:те)?|представь(?:те)?|определи(?:те)?|исследуй(?:те)?|составь(?:те)?|запиши(?:те)?|объясни(?:те)?|установи(?:те)?|укажи(?:те)?|вырази(?:те)?|выполни(?:те)?|ответь(?:те)?|заполни(?:те)?|подбери(?:те)?|приведи(?:те)?|перечисли(?:те)?|начерти(?:те)?|изобрази(?:те)?|решить|найти|вычислить|доказать|построить|сравнить|упростить|разложить|представить|определить)\b/i;
+  const question=/(?:\bсколько\b|\bчему\s+рав(?:ен|на|но|ны)\b|\bкако(?:е|й|ая|ие|ую)\b[^.!?]{0,90}\?|\bпри\s+каких\b[^.!?]{0,90}\?|\bверно\s+ли\b|\bможно\s+ли\b|\bсуществует\s+ли\b|\bявляется\s+ли\b|\bчто\s+получится\b|\bнайдите\b)/i;
+
+  // Explanations, worked solutions, definitions and textbook prose.
+  const solution=/(?:\b(?:упростим|умножим|разложим|возвед[её]м|вычислим|найд[её]м|докажем|построим|подставим|перепишем|рассмотрим|обозначим|представим|применим|получим|получаем|получили|имеем|видим|заметим|составим|вычтем|сложим|преобразуем|раскроем|вынесем)\b|\bмы\s+(?:получили|получаем|видим|имеем|можем)\b|\bследовательно\b|\bтаким\s+образом\b|\bотсюда\b|\bпоэтому\b|\bдля\s+этого\b|\bв\s+первом\s+случае\b|\bво\s+втором\s+случае\b|\bв\s+третьем\s+случае\b|\bэто\s+возможно,?\s+если\b|\bподбором\s+находим\b)/i;
+  const theory=/(?:\bназывается\b|\bназывают\b|\bявляется\b|\bявляются\b|\bпредставляет\s+собой\b|\bозначает\b|\bзаписываются\b|\bрасполагаются\b|\bважно\s+знать\b|\bнапример\b|\bто\s+есть\b|\bт\.\s*е\.\b|\bформул[аы]\b[^.!?]{0,80}\bдает\b|\bграфиком\b[^.!?]{0,80}\bявляется\b|\bво\s+второй\s+строчк|\bв\s+третью\s+строчк|\bкоэффициенты\s+многочлена\b[^.!?]{0,100}\bзапис)/i;
+  const structural=/(?:^|\s)(?:рис\.?\s*\d+|глава\b|§\s*\d+|параграф\b|пример\b|содержание\b|оглавление\b|ответы\b|линейная\s+функция\s*\d+\s*$|степенная\s+функция\b|квадрат\s+суммы\s+и\s+квадрат\s+разности\b)/i;
+  const garbage=/(?:\bБик\s*:|\bSe\s+oo\b|\|\s*Глава|[©®]{1,}|(?:\?\s*){3,}|[A-Za-zА-Яа-яЁё]\?\s*[—-]\s*[A-Za-zА-Яа-яЁё])/i;
+
+  function mathOnly(t){
+    const words=(t.match(/[А-Яа-яЁёA-Za-z]{2,}/g)||[]).length;
+    const ops=(t.match(/[0-9=+−–\-*/^√()\[\]{}<>%]/g)||[]).length;
+    return t.length>=8&&t.length<=180&&words<=4&&ops>=5;
+  }
+  function sourceKind(row){
+    const m=row?.meta||{}; return norm(`${m.source_kind||''} ${row?.source_title||''}`);
+  }
+  function decision(row){
+    const t=clean(row?.content), low=norm(t), kind=sourceKind(row);
+    if(!t||t.length<8)return'reject';
+    if(garbage.test(t)||structural.test(t))return'reject';
+    // Never accept worked solution/theory merely because OCR inserted a question mark.
+    if(solution.test(t)||theory.test(t))return'reject';
+    if(command.test(t))return'accept';
+    if(question.test(t))return'accept';
+    // A clean direct question mark is acceptable only when it looks interrogative rather than OCR garbage.
+    if(/\?$/.test(t)&&/(?:кто|что|где|когда|как|каков|какова|каковы|сколько|чему|какой|какая|какие|можно|верно|найдите|определите)/i.test(t))return'accept';
+    // In a dedicated problem book, a short pure formula can be a valid numbered exercise.
+    if(/задачник|сборник|taskbook|collection/.test(kind)&&mathOnly(t))return'accept';
+    // Fill-in style tasks: keep for review, do not pollute the bank automatically.
+    if(/\b(?:равен|равна|равно|равны)\s*[:—-]?\s*$/.test(low)||/_{2,}|…{2,}/.test(t))return'review';
+    if(mathOnly(t))return'review';
+    // Narrative prose without a pupil-facing instruction is not a task.
+    const words=(t.match(/[А-Яа-яЁёA-Za-z]{2,}/g)||[]).length;
+    if(words>=5)return'reject';
+    return'review';
+  }
+
+  async function uid(c){
+    if(S()?.user?.id)return S().user.id;
+    try{return (await c.auth.getUser()).data.user?.id||null}catch{return null}
+  }
+  async function removeExercises(c,ids){
+    const xs=[...new Set(ids.filter(Boolean).map(String))];
+    for(let i=0;i<xs.length;i+=100){const {error}=await c.from('exercises').delete().in('id',xs.slice(i,i+100));if(error)throw error;}
+  }
+  async function updateCandidates(c,teacher,ids,status){
+    for(let i=0;i<ids.length;i+=100){const {error}=await c.from('task_bank_import_candidates').update({status,updated_at:new Date().toISOString()}).eq('teacher_id',teacher).in('id',ids.slice(i,i+100));if(error)throw error;}
+  }
+  async function importIds(c,ids){
+    let n=0;for(let i=0;i<ids.length;i+=200){const {data,error}=await c.rpc('mathroom_import_task_candidates',{p_ids:ids.slice(i,i+200)});if(error)throw error;n+=Number(data)||0;}return n;
+  }
+
+  let running=false;
+  async function cleanAll({silent=false}={}){
+    if(running)return null;running=true;
+    const c=client();if(!c){running=false;return null}
+    const teacher=await uid(c);if(!teacher){running=false;return null}
+    try{
+      const rows=[];
+      for(let from=0;from<5000;from+=1000){
+        const {data,error}=await c.from('task_bank_import_candidates').select('id,status,exercise_id,content,task_no,source_title,confidence,meta').eq('teacher_id',teacher).in('status',['pending','ready','imported']).range(from,from+999);
+        if(error)throw error;const part=data||[];rows.push(...part);if(part.length<1000)break;
+      }
+      const reject=[],review=[],acceptPending=[],purge=[];
+      let kept=0;
+      for(const row of rows){
+        const d=decision(row);
+        if(row.status==='imported'){
+          if(d==='accept'){kept++;continue;}
+          if(row.exercise_id)purge.push(row.exercise_id);
+          (d==='reject'?reject:review).push(row.id);
+        }else{
+          if(d==='accept')acceptPending.push(row.id);
+          else if(d==='reject')reject.push(row.id);
+          else review.push(row.id);
+        }
+      }
+      if(purge.length)await removeExercises(c,purge);
+      if(reject.length)await updateCandidates(c,teacher,reject,'rejected');
+      if(review.length)await updateCandidates(c,teacher,review,'pending');
+      const imported=acceptPending.length?await importIds(c,acceptPending):0;
+      try{await window.MathroomBankPerformanceV2983?.refreshCount?.({force:true})}catch{}
+      try{await window.MathroomTaskImportUIV2983?.render?.(true)}catch{}
+      try{await window.MathroomPdfTasksBrowser2911?.refresh?.()}catch{}
+      if(!silent)MR().toast?.(`PDF строгая проверка: оставлено ${kept}, добавлено ${imported}, удалено теории ${reject.length}, сомнительных ${review.length}.`);
+      return{kept,imported,rejected:reject.length,review:review.length,purged:purge.length,version:VERSION};
+    }catch(e){console.error('[Mathroom strict PDF gate]',e);if(!silent)MR().toast?.('Проверка PDF-задач: '+String(e?.message||e));return null;}
+    finally{running=false;}
+  }
+
+  const prevScan=api.scanAndImport.bind(api);
+  api.scanAndImport=async opts=>{const r=await prevScan(opts);await cleanAll({silent:false});return r;};
+  api.strictClean29111=cleanAll;
+  api.strictDecision29111=decision;
+  api.__strictGate29111=true;
+  window.MathroomTaskStrictGate29111={version:VERSION,cleanAll,decision};
+
+  // Run after the older auto-review timers too, so any legacy false positives are removed.
+  setTimeout(()=>cleanAll({silent:false}),1800);
+  setTimeout(()=>cleanAll({silent:true}),5200);
+})();
