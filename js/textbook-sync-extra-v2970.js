@@ -85,9 +85,17 @@
         label:`Мордкович · ${profile?'профильный':'базовый'}${taskbook?' · задачник':''}`
       };
     }
+    if (/алимов|alimov/.test(n) && ((gf||10) >= 10 || (gt||11) >= 10)) {
+      return {
+        series:'alimov-base', author:book?.author||'Ш. А. Алимов и др.',
+        grade:gf||10, gradeFrom:gf||10, gradeTo:gt||11, part:num(book?.part_no), year:2016,
+        resourceType:'textbook', recognized:true, label:'Алимов · 10–11 классы'
+      };
+    }
     return null;
   }
 
+  const EXTRA_SERIES = new Set(['makarychev-base','makarychev-advanced','pogorelov','mordkovich-profile','mordkovich-base','alimov-base']);
   const gradeAllowed = (meta, topic) => {
     const g = Number(topic?.grade || 0), from = Number(meta?.gradeFrom ?? meta?.grade ?? 0), to = Number(meta?.gradeTo ?? meta?.grade ?? from);
     return !!g && (!from || (g >= from && g <= (to || from)));
@@ -107,9 +115,7 @@
 
   function detectBook(book){ return detectExtra(book) || oldDetect(book); }
   function matchBookToTopic(bookMeta, topic, source, book){
-    if (bookMeta?.series && ['makarychev-base','makarychev-advanced','pogorelov','mordkovich-profile','mordkovich-base'].includes(bookMeta.series)) {
-      return matchExtra(book, bookMeta, topic);
-    }
+    if (bookMeta?.series && EXTRA_SERIES.has(bookMeta.series)) return matchExtra(book, bookMeta, topic);
     return oldMatch(bookMeta, topic, source);
   }
   function buildCandidates({books=[],topics=[],sourceFor=()=>''}={}){
@@ -140,25 +146,59 @@
     'степень с натуральным показателем':['степень с натуральным показателем'],
     'степень с целым показателем':['степень с целым показателем'],
     'формулы сокращённого умножения':['формулы сокращенного умножения','квадрат суммы','разность квадратов'],
+    'квадратичная функция':['квадратичная функция','функция y x2','функция y = x2'],
+    'квадратные неравенства':['квадратные неравенства'],
+    'рациональные неравенства':['рациональные неравенства','метод интервалов'],
     'арифметическая прогрессия':['арифметическая прогрессия'],
     'геометрическая прогрессия':['геометрическая прогрессия'],
-    'тригонометрические функции':['тригонометрические функции'],
-    'производная':['производная'],
+    'вероятность':['вероятность'],
+    'комбинаторика':['комбинаторика','перестановки','размещения','сочетания'],
+    'степени и корни':['степени','корни','степенная функция'],
+    'иррациональные уравнения':['иррациональные уравнения'],
+    'показательная функция':['показательная функция'],
+    'показательные уравнения':['показательные уравнения'],
+    'логарифмы':['логарифм','логарифмы'],
+    'логарифмические уравнения':['логарифмические уравнения'],
+    'тригонометрическая окружность':['тригонометрическая окружность','единичная окружность'],
+    'тригонометрические тождества':['тригонометрические тождества','формулы тригонометрии'],
+    'тригонометрические уравнения':['тригонометрические уравнения'],
+    'преобразования графиков':['преобразования графиков','преобразование графиков'],
+    'производная — введение':['производная'],
+    'производная и правила дифференцирования':['производная','правила дифференцирования'],
+    'исследование функции':['исследование функции','исследование функций'],
+    'задачи на оптимизацию':['наибольшее значение','наименьшее значение','оптимизация'],
     'первообразная и интеграл':['первообразная','интеграл'],
+    'уравнения с параметром':['уравнения с параметром','параметр'],
+    'вероятность и комбинаторика':['вероятность','комбинаторика'],
     'параллельные прямые':['параллельные прямые'],
     'сумма углов треугольника':['сумма углов треугольника'],
     'подобие треугольников':['подобие треугольников'],
     'теорема пифагора':['теорема пифагора'],
+    'теоремы синусов и косинусов':['теорема синусов','теорема косинусов'],
     'окружность':['окружность'],
+    'длина окружности и площадь круга':['длина окружности','площадь круга'],
     'четырёхугольники':['четырехугольники','четырёхугольники'],
     'площади':['площадь','площади'],
-    'векторы':['векторы']
+    'векторы':['векторы'],
+    'векторы в пространстве':['векторы в пространстве'],
+    'метод координат':['метод координат','координаты'],
+    'синус, косинус и тангенс':['синус','косинус','тангенс'],
+    'параллельность и перпендикулярность':['параллельность','перпендикулярность'],
+    'призма и пирамида':['призма','пирамида'],
+    'цилиндр и конус':['цилиндр','конус'],
+    'шар и сфера':['шар','сфера'],
+    'объёмы многогранников':['объем многогранника','объёмы многогранников']
   };
   function stems(title){
     return norm(title).split(' ').filter(x=>x.length>=4&&!STOP.has(x)).map(x=>x.slice(0,Math.min(7,x.length)));
   }
+  function isTocLike(text){
+    const t=norm(text);
+    if(!t)return false;
+    return t.includes('оглавление') || t.includes('содержание');
+  }
   function pageScore(title,text){
-    const t=norm(text), nt=norm(title); if(!t) return {score:0,exact:false};
+    const t=norm(text), nt=norm(title); if(!t || isTocLike(text)) return {score:0,exact:false};
     const aliases=[nt,...(ALIASES[nt]||[]).map(norm)];
     for(const a of aliases){ if(a.length>=5 && t.includes(a)) return {score:1,exact:true}; }
     const ss=stems(title); if(!ss.length) return {score:0,exact:false};
@@ -211,6 +251,7 @@
 
   async function prepare({onProgress}={}){
     const sb=client(), S=window.MR?.S;
+    DYNAMIC.clear();STATE.error='';
     if(!sb || !S?.textbooks?.length || !S?.topics?.length) return STATE;
     const newBooks=(S.textbooks||[]).map(book=>({book,meta:detectExtra(book)})).filter(x=>x.meta?.recognized);
     if(!newBooks.length) return STATE;
@@ -235,6 +276,6 @@
     return STATE;
   }
 
-  window.MathroomTextbookSyncV290={...base,version:'2026.10.04.29.7.0',detectBook,buildCandidates,matchBookToTopic};
-  window.MathroomTextbookExtraV2970={version:'29.7.0',state:STATE,prepare,detectExtra,dynamic:DYNAMIC,staticMap:STATIC};
+  window.MathroomTextbookSyncV290={...base,version:'2026.10.04.29.7.1',detectBook,buildCandidates,matchBookToTopic};
+  window.MathroomTextbookExtraV2970={version:'29.7.1',state:STATE,prepare,detectExtra,dynamic:DYNAMIC,staticMap:STATIC};
 })();
