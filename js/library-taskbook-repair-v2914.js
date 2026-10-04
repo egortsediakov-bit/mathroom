@@ -1,9 +1,9 @@
-/* Mathroom v29.14.0 — guarantee all four School 57 taskbooks (grades 5–8) have active task-source rows. */
+/* Mathroom v29.14.1 — guarantee all four School 57 taskbooks (grades 5–8) have active task-source rows. */
 (() => {
   'use strict';
   if (window.MathroomTaskbookRepair2914) return;
 
-  const VERSION='29.14.0';
+  const VERSION='29.14.1';
   const MR=()=>window.MR||{};
   const S=()=>MR().S||{};
   const db=()=>MR().sb||window.MathroomLibrary2968?.resolveClient?.()||null;
@@ -27,6 +27,15 @@
   function isSchool57Book(book){
     const txt=`${book?.file_name||''} ${book?.title||''}`;
     return school57.test(txt)&&!!gradeOf(book);
+  }
+
+  async function refreshPolicyText(){
+    try{
+      const s=await window.MathroomTaskSourcePolicy2913?.stats?.();
+      const el=document.getElementById('taskSourcePolicy2913');
+      if(s&&el)el.textContent=`Источники задач: задачники 57 школы и банки ОГЭ/ЕГЭ. Учебники используются только как учебные материалы. Активных источников задач: ${s.allowed}/${s.total}.`;
+      await window.MathroomLibraryFullIndexUI2910?.refresh?.(true);
+    }catch{}
   }
 
   async function repair(){
@@ -93,6 +102,7 @@
 
       const unique=[...new Set(readyGrades)].sort((a,b)=>a-b);
       state.last={version:VERSION,found:target.length,ready:unique.length,grades:unique,repaired,created,missing:[5,6,7,8].filter(g=>!unique.includes(g))};
+      await refreshPolicyText();
       if(unique.length<4){
         MR().toast?.(`Задачники 57 школы: найдено ${unique.length}/4. Не найдены классы: ${state.last.missing.join(', ')||'—'}.`);
       }else if(repaired||created){
