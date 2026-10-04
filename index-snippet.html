@@ -1,0 +1,12 @@
+<!-- Mathroom v29.6. Add before </body>. If v29.5 is already connected, do not duplicate its two lines. -->
+<link rel="stylesheet" href="./css/task-bank-v295.css?v=29.6">
+<link rel="stylesheet" href="./css/library-v296.css?v=29.6">
+<script src="./js/task-bank-v295.js?v=29.6"></script>
+<script src="./js/library-v296.js?v=29.6"></script>
+<script>
+  window.addEventListener('DOMContentLoaded', () => {
+    // Temporary safe launcher. Opens the new catalog without changing the existing Mathroom navigation.
+    // Later it can be moved into the Materials/Library section with the same API call.
+    window.MathroomLibrary296?.mountLauncher({label:'Библиотека PDF'});
+  });
+</script>
