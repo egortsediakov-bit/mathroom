@@ -1,4 +1,4 @@
-/* Mathroom v29.13.1 — task-source PDF indexing progress in Task Bank. */
+/* Mathroom v29.13.2 — task-source PDF indexing progress + worker diagnostics. */
 (() => {
   'use strict';
   const state={busy:false,lastAt:0};
@@ -9,14 +9,20 @@
   function paint(st){
     const el=line();if(!el||!st?.ready)return;
     const total=st.expectedPages?fmt(st.expectedPages):'?';
-    const complete=`${fmt(st.complete)}/${fmt(st.taskSources||st.matched||0)}`;
+    const taskSources=Number(st.taskSources||st.matched||0);
+    const complete=`${fmt(st.complete)}/${fmt(taskSources)}`;
     const extra=st.unknownPages?` · неизвестен объём ${fmt(st.unknownPages)}`:'';
-    const q=st.incomplete?` · осталось в индексации ${fmt(st.incomplete)}`:'';
-    el.innerHTML=`Индексация источников задач: <b>${fmt(st.indexedPages)}/${total}</b> страниц · полностью <b>${complete}</b>${q}${extra}. Учебники сюда не входят.`;
+    const statuses=(st.details||[]).reduce((a,x)=>{const k=String(x.status||'unknown');a[k]=(a[k]||0)+1;return a;},{});
+    const diag=[];
+    if(statuses.pending)diag.push(`в очереди ${fmt(statuses.pending)}`);
+    if(statuses.processing)diag.push(`обрабатывается ${fmt(statuses.processing)}`);
+    if(statuses.done)diag.push(`готово ${fmt(statuses.done)}`);
+    const worker=diag.length?` · worker: ${diag.join(', ')}`:'';
+    el.innerHTML=`Индексация источников задач: <b>${fmt(st.indexedPages)}/${total}</b> страниц · полностью <b>${complete}</b>${extra}${worker}. Учебники сюда не входят.`;
   }
   async function refresh(force=false){if(state.busy)return;if(!force&&Date.now()-state.lastAt<10000){paint(mod()?.state?.last);return;}const m=mod();if(!m)return;state.busy=true;try{const st=await m.inspect({probeUnknown:false,queue:true});state.lastAt=Date.now();paint(st);}catch(e){console.warn('[Mathroom task-source index UI]',e);}finally{state.busy=false;}}
   setInterval(()=>{if(host())refresh(false);},5000);
   window.addEventListener('focus',()=>refresh(true));
   setTimeout(()=>refresh(true),5000);
-  window.MathroomLibraryFullIndexUI2910={version:'29.13.1',refresh};
+  window.MathroomLibraryFullIndexUI2910={version:'29.13.2',refresh};
 })();
