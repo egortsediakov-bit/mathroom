@@ -1,4 +1,4 @@
-/* Mathroom v29.12.0 — source/page badges + full index + PDF browser + strict reset tools. */
+/* Mathroom v29.13.0 — source/page badges + full index + PDF browser + strict task source policy. */
 (() => {
   'use strict';
   const MR=()=>window.MR||{}, S=()=>MR().S||{};
@@ -27,9 +27,10 @@
       await loadScript('./js/library-pdf-tasks-browser-v2911.js?v=29.12.0','mathroomPdfTasksBrowser2911');
       await loadScript('./js/library-task-strict-gate-v29111.js?v=29.11.1','mathroomTaskStrictGate29111');
       await loadScript('./js/library-pdf-reset-v2912.js?v=29.12.0','mathroomPdfReset2912');
-    }catch(e){console.warn('[Mathroom 29.12 extras loader]',e);}
+      await loadScript('./js/library-task-source-policy-v2913.js?v=29.13.0','mathroomTaskSourcePolicy2913');
+    }catch(e){console.warn('[Mathroom 29.13 extras loader]',e);}
   }
   new MutationObserver(decorate).observe(document.documentElement,{childList:true,subtree:true});
   setTimeout(decorate,700);setTimeout(loadExtras,900);
-  window.MathroomPdfTaskSourceUI={version:'29.12.0',decorate,openSource,loadExtras};
+  window.MathroomPdfTaskSourceUI={version:'29.13.0',decorate,openSource,loadExtras};
 })();
