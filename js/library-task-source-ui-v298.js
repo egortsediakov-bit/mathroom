@@ -1,4 +1,4 @@
-/* Mathroom v29.11.0 — source/page badges + full-library index + PDF-task browser loader. */
+/* Mathroom v29.11.1 — source/page badges + full-library index + PDF-task browser + strict task gate. */
 (() => {
   'use strict';
   const MR=()=>window.MR||{}, S=()=>MR().S||{};
@@ -29,11 +29,12 @@
       await loadScript('./js/library-full-index-v2910.js?v=29.10.1','mathroomFullIndex2910');
       await loadScript('./js/library-full-index-ui-v2910.js?v=29.10.1','mathroomFullIndexUI2910');
       await loadScript('./js/library-pdf-tasks-browser-v2911.js?v=29.11.0','mathroomPdfTasksBrowser2911');
-    }catch(e){console.warn('[Mathroom 29.11 extras loader]',e);}
+      await loadScript('./js/library-task-strict-gate-v29111.js?v=29.11.1','mathroomTaskStrictGate29111');
+    }catch(e){console.warn('[Mathroom 29.11.1 extras loader]',e);}
   }
 
   new MutationObserver(decorate).observe(document.documentElement,{childList:true,subtree:true});
   setTimeout(decorate,700);
   setTimeout(loadExtras,900);
-  window.MathroomPdfTaskSourceUI={version:'29.11.0',decorate,openSource,loadExtras};
+  window.MathroomPdfTaskSourceUI={version:'29.11.1',decorate,openSource,loadExtras};
 })();
