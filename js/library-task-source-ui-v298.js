@@ -1,4 +1,4 @@
-/* Mathroom v29.13.0 — source/page badges + full index + PDF browser + strict task source policy. */
+/* Mathroom v29.13.1 — source/page badges + task-source indexing + PDF browser. */
 (() => {
   'use strict';
   const MR=()=>window.MR||{}, S=()=>MR().S||{};
@@ -22,15 +22,16 @@
   function loadScript(src,id){if(document.getElementById(id))return Promise.resolve();return new Promise((resolve,reject)=>{const s=document.createElement('script');s.id=id;s.src=src;s.onload=resolve;s.onerror=reject;document.body.appendChild(s);});}
   async function loadExtras(){
     try{
-      await loadScript('./js/library-full-index-v2910.js?v=29.10.1','mathroomFullIndex2910');
-      await loadScript('./js/library-full-index-ui-v2910.js?v=29.10.1','mathroomFullIndexUI2910');
+      // Source policy must load before the index coordinator, otherwise old textbooks can be queued again.
+      await loadScript('./js/library-task-source-policy-v2913.js?v=29.13.1','mathroomTaskSourcePolicy2913');
+      await loadScript('./js/library-full-index-v2910.js?v=29.13.1','mathroomFullIndex2910');
+      await loadScript('./js/library-full-index-ui-v2910.js?v=29.13.1','mathroomFullIndexUI2910');
       await loadScript('./js/library-pdf-tasks-browser-v2911.js?v=29.12.0','mathroomPdfTasksBrowser2911');
       await loadScript('./js/library-task-strict-gate-v29111.js?v=29.11.1','mathroomTaskStrictGate29111');
-      await loadScript('./js/library-pdf-reset-v2912.js?v=29.12.0','mathroomPdfReset2912');
-      await loadScript('./js/library-task-source-policy-v2913.js?v=29.13.0','mathroomTaskSourcePolicy2913');
-    }catch(e){console.warn('[Mathroom 29.13 extras loader]',e);}
+      await loadScript('./js/library-pdf-reset-v2912.js?v=29.12.1','mathroomPdfReset2912');
+    }catch(e){console.warn('[Mathroom 29.13.1 extras loader]',e);}
   }
   new MutationObserver(decorate).observe(document.documentElement,{childList:true,subtree:true});
   setTimeout(decorate,700);setTimeout(loadExtras,900);
-  window.MathroomPdfTaskSourceUI={version:'29.13.0',decorate,openSource,loadExtras};
+  window.MathroomPdfTaskSourceUI={version:'29.13.1',decorate,openSource,loadExtras};
 })();
