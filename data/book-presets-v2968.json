@@ -1,0 +1,570 @@
+{
+  "version": "29.6.8",
+  "books": [
+    {
+      "external_key": "alg-7-base-makarychev-2024",
+      "filename_patterns": [
+        "1739968593__7_klass_makarychev_ju_n_i_dr_2024.pdf",
+        "7 klass makarychev 2024"
+      ],
+      "title": "Алгебра. 7 класс. Базовый уровень",
+      "subject": "algebra",
+      "subject_title": "Алгебра",
+      "grade_from": 7,
+      "grade_to": 7,
+      "level": "base",
+      "material_kind": "textbook",
+      "authors": "Ю. Н. Макарычев, Н. Г. Миндюк, К. И. Нешков, С. Б. Суворова",
+      "publication_year": 2024,
+      "publisher": "Просвещение"
+    },
+    {
+      "external_key": "alg-7-advanced-makarychev-2018",
+      "filename_patterns": [
+        "1527877676_2208_3-algebra.-7kl.-uglubl.-ur._makarychev-mindyuk-i-dr_2018-304s.pdf",
+        "7kl uglubl makarychev 2018"
+      ],
+      "title": "Алгебра. 7 класс. Углублённый уровень",
+      "subject": "algebra",
+      "subject_title": "Алгебра",
+      "grade_from": 7,
+      "grade_to": 7,
+      "level": "advanced",
+      "material_kind": "textbook",
+      "authors": "Ю. Н. Макарычев, Н. Г. Миндюк, К. И. Нешков, И. Е. Феоктистов",
+      "publication_year": 2018,
+      "publisher": "Просвещение"
+    },
+    {
+      "external_key": "alg-8-base-makarychev-2024",
+      "filename_patterns": [
+        "1740836686__-8-klass_-makarychev-ju_-n_-i-dr-2024.pdf",
+        "8 klass makarychev 2024"
+      ],
+      "title": "Алгебра. 8 класс. Базовый уровень",
+      "subject": "algebra",
+      "subject_title": "Алгебра",
+      "grade_from": 8,
+      "grade_to": 8,
+      "level": "base",
+      "material_kind": "textbook",
+      "authors": "Ю. Н. Макарычев, Н. Г. Миндюк, К. И. Нешков, С. Б. Суворова",
+      "publication_year": 2024,
+      "publisher": "Просвещение"
+    },
+    {
+      "external_key": "alg-8-advanced-makarychev-2019",
+      "filename_patterns": [
+        "a293aecd14_algebra_-8-kl_-klass-ju_-n_-makarychev-n_-g_-mindjuk-k_-i_-neshkov-i-dr_.pdf",
+        "8 klass makarychev mindjuk neshkov"
+      ],
+      "title": "Алгебра. 8 класс. Углублённый уровень",
+      "subject": "algebra",
+      "subject_title": "Алгебра",
+      "grade_from": 8,
+      "grade_to": 8,
+      "level": "advanced",
+      "material_kind": "textbook",
+      "authors": "Ю. Н. Макарычев, Н. Г. Миндюк, К. И. Нешков, И. Е. Феоктистов",
+      "publication_year": 2019,
+      "publisher": "Просвещение"
+    },
+    {
+      "external_key": "alg-9-base-makarychev-2023",
+      "filename_patterns": [
+        "7fb9904d29_algebra_9_klass_ju_n_makarychev_2023_g_.pdf",
+        "algebra 9 klass makarychev 2023"
+      ],
+      "title": "Алгебра. 9 класс. Базовый уровень",
+      "subject": "algebra",
+      "subject_title": "Алгебра",
+      "grade_from": 9,
+      "grade_to": 9,
+      "level": "base",
+      "material_kind": "textbook",
+      "authors": "Ю. Н. Макарычев, Н. Г. Миндюк, К. И. Нешков, С. Б. Суворова",
+      "publication_year": 2023,
+      "publisher": "Просвещение"
+    },
+    {
+      "external_key": "alg-9-advanced-makarychev-2025",
+      "filename_patterns": [
+        "58f94ec1a6_20260910_225448227.pdf",
+        "Алгебра_9_углубленный_2025_сжатый.pdf",
+        "алгебра 9 углубленный 2025",
+        "алгебра 9 углублённый 2025"
+      ],
+      "title": "Алгебра. 9 класс. Углублённый уровень",
+      "subject": "algebra",
+      "subject_title": "Алгебра",
+      "grade_from": 9,
+      "grade_to": 9,
+      "level": "advanced",
+      "material_kind": "textbook",
+      "authors": "Ю. Н. Макарычев, Н. Г. Миндюк, К. И. Нешков, И. Е. Феоктистов",
+      "publication_year": 2025,
+      "publisher": "Просвещение"
+    },
+    {
+      "external_key": "geometry-7-11-pogorelov-1995",
+      "filename_patterns": [
+        "f49a1222f3_geometrija_7_11_klass_a_v_pogorelov_1995_g_.pdf",
+        "geometrija 7 11 pogorelov 1995"
+      ],
+      "title": "Геометрия. 7–11 классы",
+      "subject": "geometry",
+      "subject_title": "Геометрия",
+      "grade_from": 7,
+      "grade_to": 11,
+      "level": "mixed",
+      "material_kind": "textbook",
+      "authors": "А. В. Погорелов",
+      "publication_year": 1995,
+      "publisher": "Просвещение"
+    },
+    {
+      "external_key": "alg-analysis-10-profile-mordkovich-semenov-2009-p1",
+      "filename_patterns": [
+        "1546595923_002_algebra-10-klass-uchebnik-mordkovich-semenov-chast-1.pdf",
+        "algebra 10 mordkovich semenov chast 1"
+      ],
+      "title": "Алгебра и начала математического анализа. 10 класс. Профильный уровень. Часть 1",
+      "subject": "algebra_analysis",
+      "subject_title": "Алгебра и начала анализа",
+      "grade_from": 10,
+      "grade_to": 10,
+      "level": "profile",
+      "material_kind": "textbook",
+      "authors": "А. Г. Мордкович, П. В. Семёнов",
+      "publication_year": 2009,
+      "part_no": "1",
+      "publisher": "Мнемозина"
+    },
+    {
+      "external_key": "alg-analysis-10-profile-mordkovich-2007-taskbook-p2",
+      "filename_patterns": [
+        "1601554518_26097_82dc6f81aa8a7a54c2573727f9f3aa08.pdf",
+        "algebra 10 zadachnik mordkovich"
+      ],
+      "title": "Алгебра и начала анализа. 10 класс. Профильный уровень. Задачник. Часть 2",
+      "subject": "algebra_analysis",
+      "subject_title": "Алгебра и начала анализа",
+      "grade_from": 10,
+      "grade_to": 10,
+      "level": "profile",
+      "material_kind": "taskbook",
+      "authors": "А. Г. Мордкович и др.",
+      "publication_year": 2007,
+      "part_no": "2",
+      "publisher": "Мнемозина"
+    },
+    {
+      "external_key": "alg-analysis-10-11-base-mordkovich-2013-p1",
+      "filename_patterns": [
+        "1546597750_005_algebra-10-11-klass-uchebnik-bazovyj-urove-ilovepdf-compressed.pdf",
+        "algebra 10 11 bazovyj mordkovich"
+      ],
+      "title": "Алгебра и начала математического анализа. 10–11 классы. Базовый уровень. Часть 1",
+      "subject": "algebra_analysis",
+      "subject_title": "Алгебра и начала анализа",
+      "grade_from": 10,
+      "grade_to": 11,
+      "level": "base",
+      "material_kind": "textbook",
+      "authors": "А. Г. Мордкович",
+      "publication_year": 2013,
+      "part_no": "1",
+      "publisher": "Мнемозина"
+    },
+    {
+      "external_key": "math-1-peterson-2022-p1",
+      "filename_patterns": [
+        "68cf6d2861_matematika_1_klass_ch_1_l_g_peterson_2022_g_.pdf",
+        "петерсон 1 класс часть 1",
+        "peterson 1 class part 1"
+      ],
+      "title": "Математика. 1 класс. Часть 1",
+      "subject": "mathematics",
+      "subject_title": "Математика",
+      "grade_from": 1,
+      "grade_to": 1,
+      "level": "base",
+      "material_kind": "textbook",
+      "authors": "Л. Г. Петерсон",
+      "publication_year": 2022,
+      "part_no": "1",
+      "publisher": "БИНОМ. Лаборатория знаний"
+    },
+    {
+      "external_key": "math-1-peterson-2022-p2",
+      "filename_patterns": [
+        "37e623fba2_matematika_1_klass_ch_2_l_g_peterson_2022_g_.pdf",
+        "петерсон 1 класс часть 2",
+        "peterson 1 class part 2"
+      ],
+      "title": "Математика. 1 класс. Часть 2",
+      "subject": "mathematics",
+      "subject_title": "Математика",
+      "grade_from": 1,
+      "grade_to": 1,
+      "level": "base",
+      "material_kind": "textbook",
+      "authors": "Л. Г. Петерсон",
+      "publication_year": 2022,
+      "part_no": "2",
+      "publisher": "БИНОМ. Лаборатория знаний"
+    },
+    {
+      "external_key": "math-1-peterson-2022-p3",
+      "filename_patterns": [
+        "566fa481fb_matematika_1_klass_ch_3_l_g_peterson_2022_g_.pdf",
+        "петерсон 1 класс часть 3",
+        "peterson 1 class part 3"
+      ],
+      "title": "Математика. 1 класс. Часть 3",
+      "subject": "mathematics",
+      "subject_title": "Математика",
+      "grade_from": 1,
+      "grade_to": 1,
+      "level": "base",
+      "material_kind": "textbook",
+      "authors": "Л. Г. Петерсон",
+      "publication_year": 2022,
+      "part_no": "3",
+      "publisher": "БИНОМ. Лаборатория знаний"
+    },
+    {
+      "external_key": "math-2-peterson-2019-p1",
+      "filename_patterns": [
+        "32936050b6_mat2k01-uc2019.pdf",
+        "петерсон 2 класс часть 1",
+        "peterson 2 class part 1"
+      ],
+      "title": "Математика. 2 класс. Часть 1",
+      "subject": "mathematics",
+      "subject_title": "Математика",
+      "grade_from": 2,
+      "grade_to": 2,
+      "level": "base",
+      "material_kind": "textbook",
+      "authors": "Л. Г. Петерсон",
+      "publication_year": 2019,
+      "part_no": "1",
+      "publisher": "БИНОМ. Лаборатория знаний"
+    },
+    {
+      "external_key": "math-2-peterson-2019-p2",
+      "filename_patterns": [
+        "8f559b8cf0_mat2k02-uc2019.pdf",
+        "петерсон 2 класс часть 2",
+        "peterson 2 class part 2"
+      ],
+      "title": "Математика. 2 класс. Часть 2",
+      "subject": "mathematics",
+      "subject_title": "Математика",
+      "grade_from": 2,
+      "grade_to": 2,
+      "level": "base",
+      "material_kind": "textbook",
+      "authors": "Л. Г. Петерсон",
+      "publication_year": 2019,
+      "part_no": "2",
+      "publisher": "БИНОМ. Лаборатория знаний"
+    },
+    {
+      "external_key": "math-2-peterson-2019-p3",
+      "filename_patterns": [
+        "8856badff0_mat2k03-uc2019.pdf",
+        "петерсон 2 класс часть 3",
+        "peterson 2 class part 3"
+      ],
+      "title": "Математика. 2 класс. Часть 3",
+      "subject": "mathematics",
+      "subject_title": "Математика",
+      "grade_from": 2,
+      "grade_to": 2,
+      "level": "base",
+      "material_kind": "textbook",
+      "authors": "Л. Г. Петерсон",
+      "publication_year": 2019,
+      "part_no": "3",
+      "publisher": "БИНОМ. Лаборатория знаний"
+    },
+    {
+      "external_key": "math-3-peterson-2019-p1",
+      "filename_patterns": [
+        "67950cf562_36a05a78f4_mat3k01-uc_2019.pdf",
+        "петерсон 3 класс часть 1",
+        "peterson 3 class part 1"
+      ],
+      "title": "Математика. 3 класс. Часть 1",
+      "subject": "mathematics",
+      "subject_title": "Математика",
+      "grade_from": 3,
+      "grade_to": 3,
+      "level": "base",
+      "material_kind": "textbook",
+      "authors": "Л. Г. Петерсон",
+      "publication_year": 2019,
+      "part_no": "1",
+      "publisher": "БИНОМ. Лаборатория знаний"
+    },
+    {
+      "external_key": "math-3-peterson-2019-p2",
+      "filename_patterns": [
+        "55324982c8_6d8af3c737_mat3k02-uc_2019.pdf",
+        "петерсон 3 класс часть 2",
+        "peterson 3 class part 2"
+      ],
+      "title": "Математика. 3 класс. Часть 2",
+      "subject": "mathematics",
+      "subject_title": "Математика",
+      "grade_from": 3,
+      "grade_to": 3,
+      "level": "base",
+      "material_kind": "textbook",
+      "authors": "Л. Г. Петерсон",
+      "publication_year": 2019,
+      "part_no": "2",
+      "publisher": "БИНОМ. Лаборатория знаний"
+    },
+    {
+      "external_key": "math-3-peterson-2019-p3",
+      "filename_patterns": [
+        "bafcfe13d2_54cd9f42e6_mat3k03-uc2019.pdf",
+        "петерсон 3 класс часть 3",
+        "peterson 3 class part 3"
+      ],
+      "title": "Математика. 3 класс. Часть 3",
+      "subject": "mathematics",
+      "subject_title": "Математика",
+      "grade_from": 3,
+      "grade_to": 3,
+      "level": "base",
+      "material_kind": "textbook",
+      "authors": "Л. Г. Петерсон",
+      "publication_year": 2019,
+      "part_no": "3",
+      "publisher": "БИНОМ. Лаборатория знаний"
+    },
+    {
+      "external_key": "math-4-peterson-2019-p1",
+      "filename_patterns": [
+        "a1fc2ea1fc_mat4-1_uch_2018.pdf",
+        "петерсон 4 класс часть 1",
+        "peterson 4 class part 1"
+      ],
+      "title": "Математика. 4 класс. Часть 1",
+      "subject": "mathematics",
+      "subject_title": "Математика",
+      "grade_from": 4,
+      "grade_to": 4,
+      "level": "base",
+      "material_kind": "textbook",
+      "authors": "Л. Г. Петерсон",
+      "publication_year": 2019,
+      "part_no": "1",
+      "publisher": "БИНОМ. Лаборатория знаний"
+    },
+    {
+      "external_key": "math-4-peterson-2019-p2",
+      "filename_patterns": [
+        "bf5adc4f50_mat4-2_uch_2018.pdf",
+        "петерсон 4 класс часть 2",
+        "peterson 4 class part 2"
+      ],
+      "title": "Математика. 4 класс. Часть 2",
+      "subject": "mathematics",
+      "subject_title": "Математика",
+      "grade_from": 4,
+      "grade_to": 4,
+      "level": "base",
+      "material_kind": "textbook",
+      "authors": "Л. Г. Петерсон",
+      "publication_year": 2019,
+      "part_no": "2",
+      "publisher": "БИНОМ. Лаборатория знаний"
+    },
+    {
+      "external_key": "math-4-peterson-2019-p3",
+      "filename_patterns": [
+        "60f247ced5_mat4-3_uch_2018.pdf",
+        "петерсон 4 класс часть 3",
+        "peterson 4 class part 3"
+      ],
+      "title": "Математика. 4 класс. Часть 3",
+      "subject": "mathematics",
+      "subject_title": "Математика",
+      "grade_from": 4,
+      "grade_to": 4,
+      "level": "base",
+      "material_kind": "textbook",
+      "authors": "Л. Г. Петерсон",
+      "publication_year": 2019,
+      "part_no": "3",
+      "publisher": "БИНОМ. Лаборатория знаний"
+    },
+    {
+      "external_key": "math-5-dorofeev-peterson-2019-p1",
+      "filename_patterns": [
+        "eb117fbddd_5-klass-1.pdf",
+        "дорофеев петерсон 5 класс часть 1"
+      ],
+      "title": "Математика. 5 класс. Часть 1",
+      "subject": "mathematics",
+      "subject_title": "Математика",
+      "grade_from": 5,
+      "grade_to": 5,
+      "level": "base",
+      "material_kind": "textbook",
+      "authors": "Г. В. Дорофеев, Л. Г. Петерсон",
+      "publication_year": 2019,
+      "part_no": "1",
+      "publisher": "БИНОМ. Лаборатория знаний"
+    },
+    {
+      "external_key": "math-5-dorofeev-peterson-2019-p2",
+      "filename_patterns": [
+        "cce32eb181_5-klass-2.pdf",
+        "дорофеев петерсон 5 класс часть 2"
+      ],
+      "title": "Математика. 5 класс. Часть 2",
+      "subject": "mathematics",
+      "subject_title": "Математика",
+      "grade_from": 5,
+      "grade_to": 5,
+      "level": "base",
+      "material_kind": "textbook",
+      "authors": "Г. В. Дорофеев, Л. Г. Петерсон",
+      "publication_year": 2019,
+      "part_no": "2",
+      "publisher": "БИНОМ. Лаборатория знаний"
+    },
+    {
+      "external_key": "math-6-dorofeev-peterson-2019-p1",
+      "filename_patterns": [
+        "3e22ad4264_1chast.pdf",
+        "дорофеев петерсон 6 класс часть 1"
+      ],
+      "title": "Математика. 6 класс. Часть 1",
+      "subject": "mathematics",
+      "subject_title": "Математика",
+      "grade_from": 6,
+      "grade_to": 6,
+      "level": "base",
+      "material_kind": "textbook",
+      "authors": "Г. В. Дорофеев, Л. Г. Петерсон",
+      "publication_year": 2019,
+      "part_no": "1",
+      "publisher": "БИНОМ. Лаборатория знаний"
+    },
+    {
+      "external_key": "math-6-dorofeev-peterson-2019-p2",
+      "filename_patterns": [
+        "34efb70f3a_2chast.pdf",
+        "дорофеев петерсон 6 класс часть 2"
+      ],
+      "title": "Математика. 6 класс. Часть 2",
+      "subject": "mathematics",
+      "subject_title": "Математика",
+      "grade_from": 6,
+      "grade_to": 6,
+      "level": "base",
+      "material_kind": "textbook",
+      "authors": "Г. В. Дорофеев, Л. Г. Петерсон",
+      "publication_year": 2019,
+      "part_no": "2",
+      "publisher": "БИНОМ. Лаборатория знаний"
+    },
+    {
+      "external_key": "math-6-dorofeev-peterson-2019-p3",
+      "filename_patterns": [
+        "07ca1a857a_85e2c6e32fc6913b00a002919307386a.pdf",
+        "дорофеев петерсон 6 класс часть 3"
+      ],
+      "title": "Математика. 6 класс. Часть 3",
+      "subject": "mathematics",
+      "subject_title": "Математика",
+      "grade_from": 6,
+      "grade_to": 6,
+      "level": "base",
+      "material_kind": "textbook",
+      "authors": "Г. В. Дорофеев, Л. Г. Петерсон",
+      "publication_year": 2019,
+      "part_no": "3",
+      "publisher": "БИНОМ. Лаборатория знаний"
+    },
+    {
+      "external_key": "math-5-vilenkin-p1",
+      "filename_patterns": [
+        "1700894255_matematika_-uchebnik_-1-ch_-5-kl_-vilenkin.pdf",
+        "виленкин 5 класс часть 1"
+      ],
+      "title": "Математика. 5 класс. Базовый уровень. Часть 1",
+      "subject": "mathematics",
+      "subject_title": "Математика",
+      "grade_from": 5,
+      "grade_to": 5,
+      "level": "base",
+      "material_kind": "textbook",
+      "authors": "Н. Я. Виленкин, В. И. Жохов, А. С. Чесноков, Л. А. Александрова, С. И. Шварцбурд",
+      "publication_year": 2023,
+      "part_no": "1",
+      "publisher": "Просвещение"
+    },
+    {
+      "external_key": "math-5-vilenkin-p2",
+      "filename_patterns": [
+        "1700894253_matematika_-uchebnik_-2-ch_-5-kl_-vilenkin.pdf",
+        "виленкин 5 класс часть 2"
+      ],
+      "title": "Математика. 5 класс. Базовый уровень. Часть 2",
+      "subject": "mathematics",
+      "subject_title": "Математика",
+      "grade_from": 5,
+      "grade_to": 5,
+      "level": "base",
+      "material_kind": "textbook",
+      "authors": "Н. Я. Виленкин, В. И. Жохов, А. С. Чесноков, Л. А. Александрова, С. И. Шварцбурд",
+      "publication_year": 2023,
+      "part_no": "2",
+      "publisher": "Просвещение"
+    },
+    {
+      "external_key": "math-6-vilenkin-2024-p1",
+      "filename_patterns": [
+        "1740052434__6_klass_ch_1_vilenkin_n_ja_2024 (1).pdf",
+        "виленкин 6 класс часть 1 2024"
+      ],
+      "title": "Математика. 6 класс. Базовый уровень. Часть 1",
+      "subject": "mathematics",
+      "subject_title": "Математика",
+      "grade_from": 6,
+      "grade_to": 6,
+      "level": "base",
+      "material_kind": "textbook",
+      "authors": "Н. Я. Виленкин, В. И. Жохов, А. С. Чесноков, Л. А. Александрова, С. И. Шварцбурд",
+      "publication_year": 2024,
+      "part_no": "1",
+      "publisher": "Просвещение"
+    },
+    {
+      "external_key": "math-6-vilenkin-2024-p2",
+      "filename_patterns": [
+        "1740052433__6_klass_ch_2_vilenkin_n_ja_2024.pdf",
+        "виленкин 6 класс часть 2 2024"
+      ],
+      "title": "Математика. 6 класс. Базовый уровень. Часть 2",
+      "subject": "mathematics",
+      "subject_title": "Математика",
+      "grade_from": 6,
+      "grade_to": 6,
+      "level": "base",
+      "material_kind": "textbook",
+      "authors": "Н. Я. Виленкин, В. И. Жохов, А. С. Чесноков, Л. А. Александрова, С. И. Шварцбурд",
+      "publication_year": 2024,
+      "part_no": "2",
+      "publisher": "Просвещение"
+    }
+  ]
+}
