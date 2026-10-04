@@ -18,6 +18,40 @@
     return d+` Q ${prev[0]} ${prev[1]} ${last[0]} ${last[1]}`;
   };
   const assetCache=new Map(), assetPending=new Map();
+  const LOCAL_ASSET_PREFIX='mr-local-asset:';
+  let localAssetDbPromise=null;
+
+  function openLocalAssetDb(){
+    if(localAssetDbPromise)return localAssetDbPromise;
+    localAssetDbPromise=new Promise((resolve,reject)=>{
+      if(!window.indexedDB)return reject(new Error('Браузер не поддерживает локальное хранилище файлов'));
+      const req=indexedDB.open('mathroom-board-assets',1);
+      req.onupgradeneeded=()=>{const db=req.result;if(!db.objectStoreNames.contains('assets'))db.createObjectStore('assets',{keyPath:'id'})};
+      req.onsuccess=()=>resolve(req.result);
+      req.onerror=()=>reject(req.error||new Error('Не удалось открыть локальное хранилище файлов'));
+    });
+    return localAssetDbPromise;
+  }
+  async function putLocalAsset(blob,mime='application/octet-stream',name=''){
+    const db=await openLocalAssetDb(),id=uid();
+    await new Promise((resolve,reject)=>{
+      const tx=db.transaction('assets','readwrite');
+      tx.objectStore('assets').put({id,blob,mime,name,createdAt:Date.now()});
+      tx.oncomplete=()=>resolve();
+      tx.onerror=()=>reject(tx.error||new Error('Не удалось сохранить материал локально'));
+      tx.onabort=()=>reject(tx.error||new Error('Локальное сохранение материала отменено'));
+    });
+    return LOCAL_ASSET_PREFIX+id;
+  }
+  async function getLocalAsset(path){
+    if(!String(path||'').startsWith(LOCAL_ASSET_PREFIX))return null;
+    const id=String(path).slice(LOCAL_ASSET_PREFIX.length),db=await openLocalAssetDb();
+    return await new Promise((resolve,reject)=>{
+      const tx=db.transaction('assets','readonly'),req=tx.objectStore('assets').get(id);
+      req.onsuccess=()=>resolve(req.result||null);
+      req.onerror=()=>reject(req.error||new Error('Не удалось прочитать локальный материал'));
+    });
+  }
 
   if(window.pdfjsLib){
     try{ window.pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js'; }catch{}
@@ -36,9 +70,17 @@
     if(assetCache.has(path)) return assetCache.get(path);
     if(assetPending.has(path)) return assetPending.get(path);
     const p=(async()=>{
-      const {data,error}=await sb.storage.from(ASSET_BUCKET).download(path);
-      if(error) throw error;
-      const url=URL.createObjectURL(data); assetCache.set(path,url); return url;
+      let blob=null;
+      if(String(path).startsWith(LOCAL_ASSET_PREFIX)){
+        const row=await getLocalAsset(path);
+        blob=row?.blob||null;
+        if(!blob)throw new Error('Локальный материал не найден');
+      }else{
+        const {data,error}=await sb.storage.from(ASSET_BUCKET).download(path);
+        if(error) throw error;
+        blob=data;
+      }
+      const url=URL.createObjectURL(blob); assetCache.set(path,url); return url;
     })().catch(e=>{console.error('asset',path,e);return null}).finally(()=>assetPending.delete(path));
     assetPending.set(path,p); return p;
   }
@@ -779,6 +821,10 @@
     async function redo(){const action=redoStack.pop();if(!action){syncHistoryButtons();return}busyHistory=true;try{if(action.type==='elements'){const p=pages.find(x=>x.id===action.pageId);if(!p)return;if(current.id!==p.id)await switchPage(p.id);undoStack.push({type:'elements',pageId:p.id,elements:clone(elements)});elements=clone(action.elements);changed()}else if(action.type==='deletePage'){const p=pages.find(x=>x.id===action.page.id);if(p){undoStack.push({type:'deletePage',page:clone(p)});await deletePageRecord(p.id);pages=pages.filter(x=>x.id!==p.id);current=pages[0];elements=clone(current.elements||[]);renderTabs();render();joinChannel();pagesChanged()}}else if(action.type==='createPage'){undoStack.push({type:'createPage',page:clone(action.page)});await restorePage(action.page)}}catch(e){fail(e)}finally{busyHistory=false;syncHistoryButtons()}}
 
     async function uploadBlob(blob,mime='image/png',ext='png'){
+      if(localOnly){
+        const path=await putLocalAsset(blob,mime,`${uid()}.${ext}`);
+        return path;
+      }
       const path=`${assetOwner}/${uid()}.${ext}`;const {error}=await sb.storage.from(ASSET_BUCKET).upload(path,blob,{contentType:mime,upsert:false,cacheControl:'3600'});if(error)throw error;return path;
     }
     async function importImage(file){
@@ -817,6 +863,7 @@
         canvas.width=Math.ceil(vp.width);canvas.height=Math.ceil(vp.height);ctx.fillStyle='#fff';ctx.fillRect(0,0,canvas.width,canvas.height);
         await page.render({canvasContext:ctx,viewport:vp}).promise;
         const rendered=await new Promise((res,rej)=>canvas.toBlob(b=>b?res(b):rej(new Error('Не удалось создать изображение страницы')),'image/jpeg',.9));
+        if(localOnly)status.textContent=`PDF: сохраняем страницу ${i} локально · ${i-pageFrom+1}/${count}`;
         const path=await uploadBlob(rendered,'image/jpeg','jpg'),scale=Math.min(1,980/canvas.width),w=Math.round(canvas.width*scale),h=Math.round(canvas.height*scale),obj={id:uid(),type:'image',assetPath:path,x,y,w,h,name:`${name} · стр. ${i}`};
         elements.push(obj);if(!first)first=obj;y+=h+gap;ensureAsset(path);
       }
