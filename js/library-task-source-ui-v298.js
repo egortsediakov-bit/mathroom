@@ -1,12 +1,12 @@
-/* Mathroom v29.8.1 — source/page badges for tasks imported from PDFs. */
+/* Mathroom v29.10.0 — source/page badges + full-library index loader. */
 (() => {
   'use strict';
   const MR=()=>window.MR||{}, S=()=>MR().S||{};
-  const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot',"'":'&#39;'}[c]));
   function metaOf(ex){try{const m=JSON.parse(ex?.generator_spec||'{}');return m?.type==='pdf_import'?m:null;}catch{return null}}
   async function openSource(meta){
     const book=(S().textbooks||[]).find(x=>String(x.id)===String(meta.textbook_id));const sb=MR().sb;if(!book||!sb)return MR().toast?.('Источник PDF не найден');
-    try{const {data,error}=await sb.storage.from('textbooks').createSignedUrl(book.file_path,3600);if(error)throw error;window.open(data.signedUrl+`#page=${Number(meta.page_no)||1}`,'_blank','noopener,noreferrer');}catch(e){MR().toast?.('Не удалось открыть PDF: '+String(e?.message||e));}
+    try{const {data,error}=await sb.storage.from('textbooks').createSignedUrl(book.file_path,3600);if(error)throw error;window.open(data.signedUrl+`#page=${Number(meta.page_no)||1}`,'_blank','noopener,noreferrer');}catch(e){MR().toast?.('Не удалось открыть PDF: '+String(e.message||e));}
   }
   function decorate(){
     const bank=document.getElementById('bankList');if(!bank)return;
@@ -19,6 +19,20 @@
       const actions=answer.parentElement;if(actions&&!actions.querySelector('[data-pdf-open-source]')){const b=document.createElement('button');b.className='btn sm';b.dataset.pdfOpenSource='1';b.textContent='Источник';b.onclick=()=>openSource(m);actions.insertBefore(b,answer);}
     }
   }
-  new MutationObserver(decorate).observe(document.documentElement,{childList:true,subtree:true});setTimeout(decorate,700);
-  window.MathroomPdfTaskSourceUI={decorate,openSource};
+
+  function loadScript(src,id){
+    if(document.getElementById(id))return Promise.resolve();
+    return new Promise((resolve,reject)=>{const s=document.createElement('script');s.id=id;s.src=src;s.onload=resolve;s.onerror=reject;document.body.appendChild(s);});
+  }
+  async function loadFullIndex(){
+    try{
+      await loadScript('./js/library-full-index-v2910.js?v=29.10.0','mathroomFullIndex2910');
+      await loadScript('./js/library-full-index-ui-v2910.js?v=29.10.0','mathroomFullIndexUI2910');
+    }catch(e){console.warn('[Mathroom 29.10 full-index loader]',e);}
+  }
+
+  new MutationObserver(decorate).observe(document.documentElement,{childList:true,subtree:true});
+  setTimeout(decorate,700);
+  setTimeout(loadFullIndex,900);
+  window.MathroomPdfTaskSourceUI={version:'29.10.0',decorate,openSource,loadFullIndex};
 })();
