@@ -1,4 +1,4 @@
-/* Mathroom v29.10.0 — source/page badges + full-library index loader. */
+/* Mathroom v29.11.0 — source/page badges + full-library index + PDF-task browser loader. */
 (() => {
   'use strict';
   const MR=()=>window.MR||{}, S=()=>MR().S||{};
@@ -24,15 +24,16 @@
     if(document.getElementById(id))return Promise.resolve();
     return new Promise((resolve,reject)=>{const s=document.createElement('script');s.id=id;s.src=src;s.onload=resolve;s.onerror=reject;document.body.appendChild(s);});
   }
-  async function loadFullIndex(){
+  async function loadExtras(){
     try{
-      await loadScript('./js/library-full-index-v2910.js?v=29.10.0','mathroomFullIndex2910');
-      await loadScript('./js/library-full-index-ui-v2910.js?v=29.10.0','mathroomFullIndexUI2910');
-    }catch(e){console.warn('[Mathroom 29.10 full-index loader]',e);}
+      await loadScript('./js/library-full-index-v2910.js?v=29.10.1','mathroomFullIndex2910');
+      await loadScript('./js/library-full-index-ui-v2910.js?v=29.10.1','mathroomFullIndexUI2910');
+      await loadScript('./js/library-pdf-tasks-browser-v2911.js?v=29.11.0','mathroomPdfTasksBrowser2911');
+    }catch(e){console.warn('[Mathroom 29.11 extras loader]',e);}
   }
 
   new MutationObserver(decorate).observe(document.documentElement,{childList:true,subtree:true});
   setTimeout(decorate,700);
-  setTimeout(loadFullIndex,900);
-  window.MathroomPdfTaskSourceUI={version:'29.10.0',decorate,openSource,loadFullIndex};
+  setTimeout(loadExtras,900);
+  window.MathroomPdfTaskSourceUI={version:'29.11.0',decorate,openSource,loadExtras};
 })();
