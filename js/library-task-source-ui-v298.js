@@ -1,4 +1,4 @@
-/* Mathroom v29.11.1 — source/page badges + full-library index + PDF-task browser + strict task gate. */
+/* Mathroom v29.12.0 — source/page badges + full index + PDF browser + strict reset tools. */
 (() => {
   'use strict';
   const MR=()=>window.MR||{}, S=()=>MR().S||{};
@@ -19,22 +19,17 @@
       const actions=answer.parentElement;if(actions&&!actions.querySelector('[data-pdf-open-source]')){const b=document.createElement('button');b.className='btn sm';b.dataset.pdfOpenSource='1';b.textContent='Источник';b.onclick=()=>openSource(m);actions.insertBefore(b,answer);}
     }
   }
-
-  function loadScript(src,id){
-    if(document.getElementById(id))return Promise.resolve();
-    return new Promise((resolve,reject)=>{const s=document.createElement('script');s.id=id;s.src=src;s.onload=resolve;s.onerror=reject;document.body.appendChild(s);});
-  }
+  function loadScript(src,id){if(document.getElementById(id))return Promise.resolve();return new Promise((resolve,reject)=>{const s=document.createElement('script');s.id=id;s.src=src;s.onload=resolve;s.onerror=reject;document.body.appendChild(s);});}
   async function loadExtras(){
     try{
       await loadScript('./js/library-full-index-v2910.js?v=29.10.1','mathroomFullIndex2910');
       await loadScript('./js/library-full-index-ui-v2910.js?v=29.10.1','mathroomFullIndexUI2910');
-      await loadScript('./js/library-pdf-tasks-browser-v2911.js?v=29.11.0','mathroomPdfTasksBrowser2911');
+      await loadScript('./js/library-pdf-tasks-browser-v2911.js?v=29.12.0','mathroomPdfTasksBrowser2911');
       await loadScript('./js/library-task-strict-gate-v29111.js?v=29.11.1','mathroomTaskStrictGate29111');
-    }catch(e){console.warn('[Mathroom 29.11.1 extras loader]',e);}
+      await loadScript('./js/library-pdf-reset-v2912.js?v=29.12.0','mathroomPdfReset2912');
+    }catch(e){console.warn('[Mathroom 29.12 extras loader]',e);}
   }
-
   new MutationObserver(decorate).observe(document.documentElement,{childList:true,subtree:true});
-  setTimeout(decorate,700);
-  setTimeout(loadExtras,900);
-  window.MathroomPdfTaskSourceUI={version:'29.11.1',decorate,openSource,loadExtras};
+  setTimeout(decorate,700);setTimeout(loadExtras,900);
+  window.MathroomPdfTaskSourceUI={version:'29.12.0',decorate,openSource,loadExtras};
 })();
