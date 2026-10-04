@@ -1,0 +1,2 @@
+.mauto-inline{margin-top:8px;font-size:13px;line-height:1.35;color:#6b7280}.mauto-inline.mauto-ok{color:#18794e}.mauto-inline.mauto-warn{color:#a15c00}.mauto-inline.mauto-work{color:#6b7280}
+.mauto-toast{position:fixed;right:20px;bottom:20px;z-index:999999;max-width:460px;padding:12px 16px;border-radius:14px;background:#17191c;color:#fff;font:600 14px/1.35 system-ui,-apple-system,sans-serif;box-shadow:0 12px 40px #0003}.mauto-toast.mauto-warn{background:#7a4100}.mauto-toast[hidden]{display:none}
