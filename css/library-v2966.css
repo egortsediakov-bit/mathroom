@@ -1,0 +1,9 @@
+/* Mathroom v29.6.6 */
+.m2966-extra-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px 20px;margin:18px 0 12px;padding-top:16px;border-top:1px solid rgba(20,22,28,.09)}
+.m2966-extra-grid label{display:flex;flex-direction:column;gap:8px;font-weight:800;color:#15171d;font-size:15px}
+.m2966-extra-grid input,.m2966-extra-grid select{width:100%;min-height:54px;padding:0 16px;border:1px solid #dededb;border-radius:15px;background:#fff;color:#16181d;font:inherit;font-weight:500;box-sizing:border-box}
+.m2966-publisher{grid-column:span 2}
+.m2966-status{margin:10px 0 14px;padding:11px 14px;border-radius:13px;font-size:14px;font-weight:700;background:#f1f2f0;color:#5c5f62}
+.m2966-status.m2966-work{background:#fff7e8;color:#9b6500}.m2966-status.m2966-ok{background:#eef8f0;color:#23733b}.m2966-status.m2966-warn{background:#fff0eb;color:#a74720}
+@media(max-width:900px){.m2966-extra-grid{grid-template-columns:1fr 1fr}.m2966-publisher{grid-column:span 2}}
+@media(max-width:620px){.m2966-extra-grid{grid-template-columns:1fr}.m2966-publisher{grid-column:auto}}
