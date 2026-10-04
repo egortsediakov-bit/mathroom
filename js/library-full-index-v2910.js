@@ -1,12 +1,12 @@
-/* Mathroom v29.10.0 — full-library PDF indexing coordinator. */
+/* Mathroom v29.10.1 — full-library PDF indexing coordinator. */
 (() => {
   'use strict';
 
   const api = window.MathroomTaskImportV298;
   if (!api || api.__fullIndex2910) return;
 
-  const VERSION = '29.10.0';
-  const state = { busy:false, last:null, monitor:null, lastAutoPages:0 };
+  const VERSION = '29.10.1';
+  const state = { busy:false, last:null, monitor:null, lastAutoPages:0, lastAutoScanAt:0 };
   const MR = () => window.MR || {};
   const S = () => MR().S || {};
   const sb = () => MR().sb || window.MathroomLibrary2968?.resolveClient?.() || null;
@@ -155,11 +155,16 @@
         if (st.indexedPages > state.lastAutoPages) {
           const delta = st.indexedPages - state.lastAutoPages;
           state.lastAutoPages = st.indexedPages;
-          if (delta >= 5) {
-            await previousScan({ force:false, onProgress:m=>MR().toast?.(m) });
+          if (delta >= 5 && Date.now()-state.lastAutoScanAt > 25000) {
+            state.lastAutoScanAt = Date.now();
+            MR().toast?.(`Новые PDF-страницы: +${delta}. Ищем новые задачи…`);
+            // force:true is intentional: OCR workers do not always update ocr_pages_done,
+            // while task_bank_ocr_pages already contains the new rows.
+            await previousScan({ force:true, onProgress:m=>MR().toast?.(m) });
             try { await window.MathroomTaskAutoReviewV2993?.run?.({silent:true}); } catch {}
             try { await window.MathroomTaskImportUIV2983?.render?.(true); } catch {}
             try { await window.MathroomBankPerformanceV2983?.refreshCount?.({force:true}); } catch {}
+            try { await window.MathroomPdfTasksBrowser2911?.refreshCount?.(); } catch {}
           }
         }
         if (st.complete >= st.matched && st.matched) {
@@ -167,7 +172,7 @@
           MR().toast?.(`PDF полностью проиндексированы: ${st.indexedPages}/${st.expectedPages} страниц.`);
         }
       } catch (e) { console.warn('[Mathroom full index monitor]', e); }
-    }, 45000);
+    }, 30000);
   }
 
   const previousScan = api.scanAndImport.bind(api);
@@ -175,7 +180,7 @@
     let full = null;
     try {
       full = await ensureFullIndex({ onProgress:opts?.onProgress });
-      if (full?.incomplete) MR().toast?.(`Полная индексация: ${full.indexedPages}/${full.expectedPages || '?'} страниц, в очереди ${full.incomplete} источников.`);
+      if (full?.incomplete) MR().toast?.(`Индексация идёт: ${full.indexedPages}/${full.expectedPages || '?'} страниц. Повторно нажимать не нужно.`);
     } catch (e) { console.warn('[Mathroom full index prepare]', e); }
     const result = await previousScan(opts || {});
     if (api.state?.last) api.state.last.fullIndex = full || state.last;
@@ -189,5 +194,5 @@
   api.__fullIndex2910 = true;
   window.MathroomLibraryFullIndex2910 = { version:VERSION, state, inspect, ensureFullIndex, matchSource };
 
-  setTimeout(() => ensureFullIndex().catch(e => console.warn('[Mathroom full index initial]', e)), 3500);
+  setTimeout(() => ensureFullIndex().then(st=>{ if(st?.incomplete){ state.lastAutoPages=Number(st.indexedPages||0); startMonitor(previousScan); } }).catch(e => console.warn('[Mathroom full index initial]', e)), 3500);
 })();
