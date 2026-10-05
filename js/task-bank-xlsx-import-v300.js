@@ -161,8 +161,16 @@
   }
 
   function mount(){
-    const panel=findPdfPanel() || document.getElementById('pdfTaskImportCard');
-    if(!panel) return;
+    let panel=findPdfPanel() || document.getElementById('pdfTaskImportCard');
+    if(!panel){
+      const list=document.getElementById('bankList');
+      if(!list) return;
+      panel=document.createElement('div');
+      panel.id='pdfTaskImportCard';
+      panel.className='notice';
+      panel.style.cssText='margin:0 0 12px;';
+      list.parentNode.insertBefore(panel,list);
+    }
     if(panel.dataset.xlsxImportV300==='1' && panel.querySelector('[data-xlsx-button]')) return;
     panel.dataset.xlsxImportV300='1';
     panel.innerHTML=`
