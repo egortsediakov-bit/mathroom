@@ -1588,8 +1588,9 @@
   }
 
   async function refreshBoardCompanion(ctx, queue, live) {
-    const boardRoot = document.querySelector('#lessonBoard');
-    if (!boardRoot) return;
+    const boardRoot=document.querySelector('#lessonBoard');
+    if(!boardRoot)return;
+
     let workspace=document.querySelector('#mrTeacherWorkspace');
     const boardWrap=boardRoot.parentElement;
     if(!workspace){
@@ -1608,61 +1609,78 @@
       host.id='mrBoardCompanion';
       host.className='mr-teacher-rail';
       workspace.appendChild(host);
-      host.innerHTML=`
-        <div class="mr-rail-tabs">
-          <button class="btn sm active" data-rail-tab="tasks">☷ <span>Задачи</span></button>
-          <button class="btn sm" data-rail-tab="notes">✎ <span>Заметки</span></button>
-          <button class="btn sm" data-rail-tab="timer">◷ <span>Таймер</span></button>
-          <button class="btn sm" data-rail-tab="materials">▤ <span>Материалы</span></button>
-          <button class="btn sm" data-rail-tab="lesson">••• <span>Урок</span></button>
-        </div>
-        <div class="mr-rail-panel active" data-rail-panel="tasks">
-          <div class="mr-rail-title"><b>Следующие задачи</b><span class="pill" id="mrRailQueueCount">0</span></div>
+      host.innerHTML=\`
+        <section class="mr-rail-home active" data-rail-home>
+          <div class="mr-rail-home-head">
+            <div><span class="small muted">Mathroom</span><h3>Помощь преподавателю</h3></div>
+          </div>
+          <div class="mr-rail-home-menu">
+            <button class="btn" data-rail-open="tasks"><span>☷</span><span><b>Задачи</b><small>очередь · подбор · оценка</small></span><span>›</span></button>
+            <button class="btn" data-rail-open="notes"><span>✎</span><span><b>Заметки</b><small>наблюдения об ученике</small></span><span>›</span></button>
+            <button class="btn" data-rail-open="timer"><span>◷</span><span><b>Таймер</b><small>время на самостоятельную работу</small></span><span>›</span></button>
+            <button class="btn" data-rail-open="materials"><span>▤</span><span><b>Материалы</b><small>учебник · план · история</small></span><span>›</span></button>
+            <button class="btn" data-rail-open="lesson"><span>•••</span><span><b>Урок</b><small>ссылка · фокус · завершение</small></span><span>›</span></button>
+          </div>
+        </section>
+
+        <section class="mr-rail-panel" data-rail-panel="tasks">
+          <div class="mr-rail-view-head"><button class="btn sm mr-rail-back" data-rail-back>←</button><div><b>Задачи</b><div class="small muted">Очередь и быстрый подбор</div></div><span class="pill" id="mrRailQueueCount">0</span></div>
           <select id="mrQueueSelect" class="search"></select>
           <div class="mr-rail-row"><button class="btn sm" id="mrPrevTask">←</button><button class="btn sm" id="mrNextTask">Следующая →</button><button class="btn sm" id="mrNextOpen">Нерешённая</button></div>
-          <div class="mr-rail-row compact"><button class="btn sm" id="mrMoveUp" title="Поднять в очереди">↑ Выше</button><button class="btn sm" id="mrMoveDown" title="Опустить в очереди">↓ Ниже</button></div>
+          <div class="mr-rail-row compact"><button class="btn sm" id="mrMoveUp">↑ Выше</button><button class="btn sm" id="mrMoveDown">↓ Ниже</button></div>
           <div class="mr-rail-section"><span class="small muted">Оценка текущей задачи</span><div class="mr-rail-status"><button class="btn sm" data-mr-status="solved">✓ Решено</button><button class="btn sm" data-mr-status="hard">⚠ Сложно</button><button class="btn sm" data-mr-status="later">↩ Позже</button><button class="btn sm" data-mr-status="pending">○ Сбросить</button></div></div>
           <div class="mr-rail-current" id="mrRailCurrent"></div>
-          <button class="btn sm" id="mrPinnedToBoard">На доску</button>
-        </div>
-        <div class="mr-rail-panel" data-rail-panel="notes">
-          <div class="mr-note-head"><div><b>Заметка об ученике</b><div class="small muted">Только преподавателю</div></div><span class="small muted" id="mrNotesStatus">Автосохранение</span></div>
+          <button class="btn sm" id="mrPinnedToBoard">На доску по центру</button>
+          <div class="mr-rail-suggest-head"><div><b>Предлагаемые задачи</b><div class="small muted">Перетащи карточку прямо на нужное место доски</div></div></div>
+          <div class="mr-suggest-task-list" id="mrSuggestedTasks"></div>
+        </section>
+
+        <section class="mr-rail-panel" data-rail-panel="notes">
+          <div class="mr-rail-view-head"><button class="btn sm mr-rail-back" data-rail-back>←</button><div><b>Заметки</b><div class="small muted">Только преподавателю</div></div></div>
+          <div class="mr-note-head"><span></span><span class="small muted" id="mrNotesStatus">Автосохранение</span></div>
           <textarea id="mrQuickTeacherNote" placeholder="Ошибки, наблюдения, что повторить, сильные стороны…"></textarea>
           <div class="mr-rail-row"><button class="btn sm" id="mrNoteTime">+ Время</button><button class="btn sm" id="mrNoteCurrent">+ Задача</button><button class="btn sm" id="mrNoteCheckpoint">В историю</button></div>
-        </div>
-        <div class="mr-rail-panel" data-rail-panel="timer">
-          <div class="mr-rail-title"><div><b>Таймер ученику</b><div class="small muted">Ученик видит обратный отсчёт</div></div></div>
+        </section>
+
+        <section class="mr-rail-panel" data-rail-panel="timer">
+          <div class="mr-rail-view-head"><button class="btn sm mr-rail-back" data-rail-back>←</button><div><b>Таймер ученику</b><div class="small muted">Обратный отсчёт виден ученику</div></div></div>
           <div class="mr-task-countdown" id="mrTaskCountdown">00:00</div>
           <div class="mr-timer-presets"><button class="btn sm" data-task-seconds="60">1 мин</button><button class="btn sm" data-task-seconds="180">3 мин</button><button class="btn sm primary" data-task-seconds="300">5 мин</button><button class="btn sm" data-task-seconds="600">10 мин</button></div>
           <div class="mr-timer-custom"><input id="mrCustomTaskMinutes" type="number" min="1" max="120" value="5"><button class="btn sm" id="mrStartCustomTimer">Запустить</button></div>
           <button class="btn sm danger" id="mrStopTaskTimer">Остановить таймер</button>
-        </div>
-        <div class="mr-rail-panel" data-rail-panel="materials">
-          <div class="mr-rail-title"><b>Материалы</b></div>
+        </section>
+
+        <section class="mr-rail-panel" data-rail-panel="materials">
+          <div class="mr-rail-view-head"><button class="btn sm mr-rail-back" data-rail-back>←</button><div><b>Материалы</b><div class="small muted">Учебник и подготовка урока</div></div></div>
           <div id="mrRailMaterials"></div>
           <div class="mr-rail-row"><button class="btn sm" id="mrQuickPlan">⚡ Подобрать задачи</button><button class="btn sm" id="mrQueueManager">Очередь</button></div>
           <div class="mr-rail-row"><button class="btn sm" id="mrLessonPlan">Цели и план</button><button class="btn sm" id="mrLessonHistory">История</button></div>
           <div class="mr-rail-row"><button class="btn sm" id="mrSaveTemplate">Сохранить очередь</button><button class="btn sm" id="mrOpenTemplates">Шаблоны</button></div>
-        </div>
-        <div class="mr-rail-panel" data-rail-panel="lesson">
-          <div class="mr-rail-title"><b>Урок</b></div>
+        </section>
+
+        <section class="mr-rail-panel" data-rail-panel="lesson">
+          <div class="mr-rail-view-head"><button class="btn sm mr-rail-back" data-rail-back>←</button><div><b>Урок</b><div class="small muted">Служебные действия</div></div></div>
           <button class="btn sm" id="mrRailFocus">Фокус ученика</button>
           <button class="btn sm" id="mrRailLink">Ссылка ученика</button>
           <button class="btn sm" id="mrRailSnapshot">Сохранить версию доски</button>
           <button class="btn sm" id="mrRailCommands">Команды · Alt K</button>
           <button class="btn sm" id="mrRailExit">← В кабинет</button>
           <button class="btn sm danger" id="mrRailFinish">Завершить урок</button>
-        </div>`;
+        </section>\`;
 
-      const setPanel=name=>{
-        const same=host.dataset.activePanel===name;
-        host.dataset.activePanel=same?'':name;
-        host.querySelectorAll('[data-rail-tab]').forEach(b=>b.classList.toggle('active',!same&&b.dataset.railTab===name));
-        host.querySelectorAll('[data-rail-panel]').forEach(p=>p.classList.toggle('active',!same&&p.dataset.railPanel===name));
-        host.classList.toggle('collapsed',same);
+      const showHome=()=>{
+        host.dataset.activePanel='home';
+        host.querySelector('[data-rail-home]')?.classList.add('active');
+        host.querySelectorAll('[data-rail-panel]').forEach(p=>p.classList.remove('active'));
       };
-      host.dataset.activePanel='tasks';
-      host.querySelectorAll('[data-rail-tab]').forEach(b=>b.onclick=()=>setPanel(b.dataset.railTab));
+      const showPanel=name=>{
+        host.dataset.activePanel=name;
+        host.querySelector('[data-rail-home]')?.classList.remove('active');
+        host.querySelectorAll('[data-rail-panel]').forEach(p=>p.classList.toggle('active',p.dataset.railPanel===name));
+      };
+      host.querySelectorAll('[data-rail-open]').forEach(b=>b.onclick=()=>showPanel(b.dataset.railOpen));
+      host.querySelectorAll('[data-rail-back]').forEach(b=>b.onclick=showHome);
+      showHome();
 
       host.querySelector('#mrQuickPlan').onclick=()=>quickPlan(ctx);
       host.querySelector('#mrLessonPlan').onclick=()=>openLessonPlan(ctx);
@@ -1699,10 +1717,10 @@
     const current=ordered.find(x=>x.id===live?.current_queue_item_id)||null;
     const count=host.querySelector('#mrRailQueueCount');if(count)count.textContent=String(ordered.length);
     const currentBox=host.querySelector('#mrRailCurrent');
-    if(currentBox)currentBox.innerHTML=current?`<b>${esc(current.title||'Задача')}</b><div class="small muted">${statusGlyph(current.status)} ${current.status==='solved'?'решено':current.status==='hard'?'сложно':current.status==='later'?'вернуться позже':'без оценки'}</div>`:'<span class="small muted">Текущая задача не выбрана</span>';
+    if(currentBox)currentBox.innerHTML=current?\`<b>\${esc(current.title||'Задача')}</b><div class="small muted">\${statusGlyph(current.status)} \${current.status==='solved'?'решено':current.status==='hard'?'сложно':current.status==='later'?'вернуться позже':'без оценки'}</div>\`:'<span class="small muted">Текущая задача не выбрана</span>';
 
     const select=host.querySelector('#mrQueueSelect');
-    const options=`<option value="">${ordered.length?'Выбрать задачу…':'Очередь пуста'}</option>`+ordered.map((x,i)=>`<option value="${x.id}" ${x.id===current?.id?'selected':''}>${statusGlyph(x.status)} ${i+1}. ${esc(x.title||'Задача')}</option>`).join('');
+    const options=\`<option value="">\${ordered.length?'Выбрать задачу…':'Очередь пуста'}</option>\`+ordered.map((x,i)=>\`<option value="\${x.id}" \${x.id===current?.id?'selected':''}>\${statusGlyph(x.status)} \${i+1}. \${esc(x.title||'Задача')}</option>\`).join('');
     if(select&&select.innerHTML!==options)select.innerHTML=options;
     if(select)select.onchange=async()=>{const item=ordered.find(x=>x.id===select.value);if(item)try{await setCurrentFromAddon(ctx,item)}catch(e){fail(e)}};
 
@@ -1722,7 +1740,31 @@
       b.classList.toggle('active',current?.status===b.dataset.mrStatus);
       b.onclick=async()=>{if(!current)return toast('Выбери текущую задачу');const{error}=await sb.from('lesson_queue_items').update({status:b.dataset.mrStatus}).eq('id',current.id);if(error)return fail(error);window.dispatchEvent(new Event('mathroom:refresh-lesson'))};
     });
-    host.querySelector('#mrPinnedToBoard').onclick=()=>{if(!current)return toast('Выбери текущую задачу');if(!S.boardController?.addText)return toast('Доска ещё загружается');S.boardController.addText(`${current.title||'Задача'}\\n${current.prompt||''}`,{fontSize:25})};
+    host.querySelector('#mrPinnedToBoard').onclick=()=>{if(!current)return toast('Выбери текущую задачу');if(!S.boardController?.addText)return toast('Доска ещё загружается');S.boardController.addText(\`\${current.title||'Задача'}\\n\${current.prompt||''}\`,{fontSize:25})};
+
+    const queueExerciseIds=new Set(ordered.map(x=>x.exercise_id).filter(Boolean));
+    const topicTasks=(S.exercises||[]).filter(x=>x.kind==='task'&&(!ctx.lesson?.topic_id||x.topic_id===ctx.lesson.topic_id)&&!queueExerciseIds.has(x.id));
+    const diffOrder={basic:0,medium:1,advanced:2};
+    const suggested=[...topicTasks].sort((a,b)=>Number(a.use_count||0)-Number(b.use_count||0)||(diffOrder[a.difficulty]??9)-(diffOrder[b.difficulty]??9)).slice(0,6);
+    const suggestHost=host.querySelector('#mrSuggestedTasks');
+    if(suggestHost){
+      suggestHost.innerHTML=suggested.length?suggested.map(x=>\`<article class="mr-suggest-task" draggable="true" data-suggest-task="\${x.id}"><div class="mr-suggest-task-head"><b>\${esc(x.title||'Задача')}</b><span class="pill">\${esc(MR.diffLabel?MR.diffLabel(x.difficulty):x.difficulty||'')}</span></div><div class="small muted">\${esc(x.category||'')}\${(x.tags||[]).length?' · '+(x.tags||[]).slice(0,2).map(t=>'#'+esc(t)).join(' '):''}</div><p>\${esc(String(x.content||'').replace(/\\s+/g,' ').slice(0,180))}</p><button class="btn xs" data-add-suggest="\${x.id}">+ В очередь</button></article>\`).join(''):'<div class="small muted">Подходящие задачи появятся после загрузки банка задач.</div>';
+      suggestHost.querySelectorAll('[data-suggest-task]').forEach(card=>{
+        card.addEventListener('dragstart',e=>{
+          const task=suggested.find(x=>x.id===card.dataset.suggestTask);if(!task)return;
+          const payload={exerciseId:task.id,title:task.title||'Задача',prompt:task.content||''};
+          e.dataTransfer.effectAllowed='copy';
+          e.dataTransfer.setData('application/x-mathroom-task',JSON.stringify(payload));
+          e.dataTransfer.setData('text/plain',\`\${payload.title}\\n\${payload.prompt}\`);
+          card.classList.add('dragging');
+        });
+        card.addEventListener('dragend',()=>card.classList.remove('dragging'));
+      });
+      suggestHost.querySelectorAll('[data-add-suggest]').forEach(btn=>btn.onclick=async()=>{
+        try{await applyExercisesToQueue(ctx,[btn.dataset.addSuggest])}catch(e){fail(e)}
+      });
+    }
+
     setupQuickNotes(ctx,host,current);
 
     host.dataset.taskTimerRunning=live?.task_timer_running?'1':'0';
