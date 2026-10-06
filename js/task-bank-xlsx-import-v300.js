@@ -1,10 +1,10 @@
-/* Mathroom v30.0 — XLSX task bank import
+/* Mathroom v30.0.1 — XLSX task bank import
  * Replaces legacy "Задачи из PDF" scanning controls with one XLSX importer.
  * Expected sheet: READY (falls back to first sheet).
  */
 (function(){
   'use strict';
-  const VERSION='30.0';
+  const VERSION='30.0.1';
   let importing=false;
 
   const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -19,9 +19,9 @@
   }
 
   function client(){
-    const c=[window.Mathroom?.supabase,window.supabaseClient,window.sb,window._supabase,window.appSupabase]
+    const c=[window.MR?.sb,window.Mathroom?.supabase,window.supabaseClient,window.sb,window._supabase,window.appSupabase]
       .find(x=>x&&typeof x.from==='function');
-    if(!c) throw new Error('Supabase client не найден');
+    if(!c) throw new Error('Supabase не инициализирован. Обновите страницу и попробуйте снова.');
     return c;
   }
 
@@ -65,7 +65,7 @@
 
   async function upsertSource(sb,source,grade){
     const external_key=`xlsx:${grade}:${source}`.toLowerCase().replace(/\s+/g,' ').slice(0,240);
-    const payload={external_key,title:source,grade,source_kind:'manual',meta:{importer:'xlsx-v30.0'}};
+    const payload={external_key,title:source,grade,source_kind:'manual',meta:{importer:'xlsx-v30.0.1'}};
     const {data,error}=await sb.from('task_bank_sources').upsert(payload,{onConflict:'external_key'}).select('id,title,grade').single();
     if(error) throw error;
     return data;
@@ -99,7 +99,7 @@
           verified:r.confidence>=0.90,
           status:'active',
           meta:{
-            importer:'xlsx-v30.0',
+            importer:'xlsx-v30.0.1',
             difficulty_score_10:r.score,
             group_id:r.group||null,
             subtask:r.sub||null,
