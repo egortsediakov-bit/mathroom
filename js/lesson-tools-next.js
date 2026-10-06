@@ -64,6 +64,12 @@
       this.micEnabled = localStorage.getItem(`mathroom.media.mic.${this.role}`) !== '0';
       this.cameraEnabled = localStorage.getItem(`mathroom.media.camera.${this.role}`) !== '0';
       this.minimized = localStorage.getItem(`mathroom.media.minimized.${this.role}`) === '1';
+      this.videoViewMode = localStorage.getItem(`mathroom.media.view.${this.role}`) || 'both';
+      if (!['remote','both','hidden'].includes(this.videoViewMode)) this.videoViewMode = 'both';
+      this.videoFloating = false;
+      this.videoHeroMount = null;
+      this.videoHeroHeight = 0;
+      this.onVideoScroll = null;
       this.selectedAudioInput = localStorage.getItem(`mathroom.media.audioinput.${this.role}`) || '';
       this.selectedVideoInput = localStorage.getItem(`mathroom.media.videoinput.${this.role}`) || '';
       this.selectedAudioOutput = localStorage.getItem(`mathroom.media.audiooutput.${this.role}`) || '';
