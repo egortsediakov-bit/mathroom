@@ -1890,3 +1890,41 @@ body{background:linear-gradient(180deg,#fbfbfa 0%,#f5f4f1 100%)!important;color:
   .mr-student-live-times{gap:10px}
   .mr-student-lesson-strip .lesson-live-top{align-items:flex-start}
 }
+
+
+/* Mathroom v31.3 — teacher workspace: board left, helper rail right */
+@media(min-width:901px){
+  .mr-teacher-workspace{
+    grid-template-columns:minmax(0,1fr) 318px!important;
+  }
+  .mr-teacher-workspace>.mr-lesson-board-main{
+    grid-column:1!important;
+    grid-row:1!important;
+    order:0!important;
+    width:100%!important;
+    min-width:0!important;
+    justify-self:stretch!important;
+  }
+  .mr-teacher-workspace>.mr-teacher-rail{
+    grid-column:2!important;
+    grid-row:1!important;
+    order:1!important;
+    width:318px!important;
+    max-width:318px!important;
+    justify-self:stretch!important;
+  }
+  .mr-teacher-workspace>.mr-teacher-rail.collapsed{
+    width:max-content!important;
+    max-width:318px!important;
+    justify-self:end!important;
+  }
+}
+@media(min-width:901px) and (max-width:1180px){
+  .mr-teacher-workspace{
+    grid-template-columns:minmax(0,1fr) 280px!important;
+  }
+  .mr-teacher-workspace>.mr-teacher-rail{
+    width:280px!important;
+    max-width:280px!important;
+  }
+}
