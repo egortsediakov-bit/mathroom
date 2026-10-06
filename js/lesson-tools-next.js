@@ -139,7 +139,7 @@
         .mr-native-call.floating.view-both .mr-call-person{display:none}
         .mr-native-call.floating.view-remote .mr-local-video{display:none!important}
         .mr-native-call.floating.view-hidden{width:auto!important;min-width:260px!important}
-        .mr-native-call.floating.view-hidden .mr-call-stage{display:none!important}
+        .mr-native-call.floating.view-hidden .mr-call-stage{display:flex!important;align-items:center;justify-content:flex-end;min-height:36px!important;height:36px!important;aspect-ratio:auto!important;background:#fff!important;overflow:visible!important}.mr-native-call.floating.view-hidden .mr-remote-video,.mr-native-call.floating.view-hidden .mr-local-video,.mr-native-call.floating.view-hidden .mr-call-person{display:none!important}
         .mr-native-call.floating.view-hidden .mr-floating-view-switch{position:static;margin-left:auto}
         .mr-native-call.floating.view-hidden .mr-call-head{display:none}
         .mr-native-call.floating.view-hidden .mr-call-actions{display:flex!important;max-height:none!important;opacity:1!important;flex-wrap:nowrap!important;overflow-x:auto!important}
@@ -1685,6 +1685,7 @@
       host.querySelector('#mrStopTaskTimer').onclick=()=>setStudentTaskTimer(ctx,0).catch(fail);
 
       host._timerTick=setInterval(()=>{
+        if(!document.body.contains(host)){clearInterval(host._timerTick);return}
         const out=host.querySelector('#mrTaskCountdown');
         if(!out)return;
         const end=host.dataset.taskTimerEnd;
