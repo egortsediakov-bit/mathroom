@@ -1,10 +1,10 @@
-/* Mathroom v30.0.1 — XLSX task bank import
+/* Mathroom v30.0.2 — XLSX task bank import
  * Replaces legacy "Задачи из PDF" scanning controls with one XLSX importer.
  * Expected sheet: READY (falls back to first sheet).
  */
 (function(){
   'use strict';
-  const VERSION='30.0.1';
+  const VERSION='30.0.2';
   let importing=false;
 
   const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -25,10 +25,36 @@
     return c;
   }
 
+  function fallbackHash(text){
+    const s=norm(text).toLowerCase();
+    const seeds=[0x811c9dc5,0x9e3779b9,0x85ebca6b,0xc2b2ae35,0x27d4eb2f,0x165667b1,0xd3a2646c,0xfd7046c5];
+    const out=[];
+    for(let k=0;k<seeds.length;k++){
+      let h=seeds[k]>>>0;
+      for(let i=0;i<s.length;i++){
+        h^=s.charCodeAt(i);
+        h=Math.imul(h,0x01000193)>>>0;
+        h^=h>>>13;
+        h=Math.imul(h,(0x5bd1e995+k*2+1)>>>0)>>>0;
+      }
+      h^=h>>>16;
+      out.push((h>>>0).toString(16).padStart(8,'0'));
+    }
+    return out.join('');
+  }
+
   async function sha256(text){
-    const bytes=new TextEncoder().encode(norm(text).toLowerCase());
-    const digest=await crypto.subtle.digest('SHA-256',bytes);
-    return [...new Uint8Array(digest)].map(x=>x.toString(16).padStart(2,'0')).join('');
+    const normalized=norm(text).toLowerCase();
+    if(globalThis.crypto?.subtle?.digest){
+      try{
+        const bytes=new TextEncoder().encode(normalized);
+        const digest=await globalThis.crypto.subtle.digest('SHA-256',bytes);
+        return [...new Uint8Array(digest)].map(x=>x.toString(16).padStart(2,'0')).join('');
+      }catch(e){
+        console.warn('[Task XLSX] WebCrypto digest unavailable, using fallback hash',e);
+      }
+    }
+    return fallbackHash(normalized);
   }
 
   async function loadXlsx(){
@@ -65,7 +91,7 @@
 
   async function upsertSource(sb,source,grade){
     const external_key=`xlsx:${grade}:${source}`.toLowerCase().replace(/\s+/g,' ').slice(0,240);
-    const payload={external_key,title:source,grade,source_kind:'manual',meta:{importer:'xlsx-v30.0.1'}};
+    const payload={external_key,title:source,grade,source_kind:'manual',meta:{importer:'xlsx-v30.0.2'}};
     const {data,error}=await sb.from('task_bank_sources').upsert(payload,{onConflict:'external_key'}).select('id,title,grade').single();
     if(error) throw error;
     return data;
@@ -99,7 +125,7 @@
           verified:r.confidence>=0.90,
           status:'active',
           meta:{
-            importer:'xlsx-v30.0.1',
+            importer:'xlsx-v30.0.2',
             difficulty_score_10:r.score,
             group_id:r.group||null,
             subtask:r.sub||null,
