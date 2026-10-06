@@ -1735,70 +1735,63 @@
   }
 
   function compactTeacherLessonChrome() {
-    const control = document.querySelector('#lessonControl');
-    if (!control) return;
-    control.classList.add('mr-lesson-control-compact');
-    const queue = control.querySelector('.lesson-queue');
-    if (queue && !queue.dataset.compactInit) { queue.removeAttribute('open'); queue.dataset.compactInit='1'; }
+    const control=document.querySelector('#lessonControl');
+    if(!control)return;
+    control.classList.add('mr-lesson-control-compact','mr-lesson-timer-strip');
 
-    const topActions = document.querySelector('#leaveLesson')?.closest('.actions');
-    if (topActions && !topActions.classList.contains('mr-lesson-top-actions')) {
-      topActions.classList.add('mr-lesson-top-actions');
-      const copy = topActions.querySelector('#copyLessonLink'), save = topActions.querySelector('#saveVersion');
-      if (copy || save) {
-        const more = document.createElement('details'); more.className='mr-lesson-top-more';
-        more.innerHTML='<summary class="btn">Ещё</summary><div class="mr-lesson-top-more-pop"></div>';
-        topActions.insertBefore(more, topActions.querySelector('#completeLesson'));
-        const pop = more.querySelector('.mr-lesson-top-more-pop'); if (copy) pop.appendChild(copy); if (save) pop.appendChild(save);
-      }
+    const topActions=document.querySelector('#leaveLesson')?.closest('.actions');
+    if(topActions)topActions.classList.add('mr-lesson-top-actions','mr-lesson-top-actions-hidden');
+
+    const layout=document.querySelector('.lesson-cloud-layout');
+    const material=layout?.querySelector(':scope > .lesson-cloud-material');
+    const boardRoot=document.querySelector('#lessonBoard');
+    const boardWrap=boardRoot?.parentElement;
+    if(layout&&boardWrap){
+      layout.classList.add('mr-lesson-layout-v2');
+      boardWrap.classList.add('mr-lesson-board-main');
     }
-
-    const layout = document.querySelector('.lesson-cloud-layout');
-    const material = layout?.querySelector(':scope > .lesson-cloud-material');
-    const boardRoot = document.querySelector('#lessonBoard');
-    const boardWrap = boardRoot?.parentElement;
-    if (layout && boardWrap) boardWrap.classList.add('mr-lesson-board-main');
-    if (layout && material && !layout.querySelector(':scope > .mr-lesson-materials-drawer')) {
-      const drawer = document.createElement('details'); drawer.className='mr-lesson-materials-drawer';
+    if(layout&&material&&!document.querySelector('.mr-lesson-materials-drawer')){
+      const drawer=document.createElement('details');
+      drawer.className='mr-lesson-materials-drawer';
       drawer.innerHTML='<summary><span><b>Материалы урока</b><small>теория · примеры · задачи</small></span><span>Открыть</span></summary>';
-      layout.appendChild(drawer); drawer.appendChild(material);
+      drawer.appendChild(material);
+      layout.appendChild(drawer);
     }
   }
 
   async function refreshTeacherAddon(ctx) {
-    if (addonBusy) return; addonBusy = true;
-    try {
-      const control = document.querySelector('#lessonControl'); if (!control) return;
+    if(addonBusy)return;addonBusy=true;
+    try{
+      const control=document.querySelector('#lessonControl');if(!control)return;
       compactTeacherLessonChrome();
-      let host = document.querySelector('#mrLessonAddon');
-      const [queue, live] = await Promise.all([getQueue(ctx.lessonId), getLiveState(ctx.lessonId)]);
-      observeLessonChanges(ctx, queue, live).catch(e => console.warn('[Mathroom history]', e));
-      if (!host) {
-        host = document.createElement('div'); host.id = 'mrLessonAddon'; host.className = 'mr-lesson-addon'; control.insertAdjacentElement('afterend', host);
-        host.innerHTML = `<div id="mrTeacherVideoMount"></div><details class="mr-lesson-tools-drawer"><summary><span>Дополнительные инструменты урока</span><small>план · очередь · история · шаблоны</small></summary><div class="mr-addon-toolbar"><div id="mrProgressMount"></div><div class="actions"><button class="btn sm" id="mrQuickPlan">⚡ Быстрый план</button><button class="btn sm" id="mrLessonPlan">◎ Цели и план</button><button class="btn sm" id="mrQueueManager">☷ Очередь</button><button class="btn sm" id="mrLessonHistory">История урока</button><button class="btn sm" id="mrSaveTemplate">Сохранить очередь</button><button class="btn sm" id="mrOpenTemplates">Шаблоны</button></div></div><div id="mrLessonPlanMount"></div></details>`;
-        host.querySelector('#mrQuickPlan').onclick = () => quickPlan(ctx);
-        host.querySelector('#mrLessonPlan').onclick = () => openLessonPlan(ctx);
-        host.querySelector('#mrQueueManager').onclick = () => openQueueManager(ctx);
-        host.querySelector('#mrLessonHistory').onclick = () => openLessonHistory(ctx);
-        host.querySelector('#mrSaveTemplate').onclick = () => saveCurrentTemplate(ctx);
-        host.querySelector('#mrOpenTemplates').onclick = () => openTemplates(ctx);
+      let host=document.querySelector('#mrLessonAddon');
+      const [queue,live]=await Promise.all([getQueue(ctx.lessonId),getLiveState(ctx.lessonId)]);
+      observeLessonChanges(ctx,queue,live).catch(e=>console.warn('[Mathroom history]',e));
+      if(!host){
+        host=document.createElement('div');
+        host.id='mrLessonAddon';
+        host.className='mr-lesson-addon mr-lesson-video-top';
+        host.innerHTML='<div id="mrTeacherVideoMount"></div>';
+        const content=document.querySelector('.content');
+        if(content)content.prepend(host);else control.parentElement?.insertBefore(host,control);
       }
-      const progress = host.querySelector('#mrProgressMount'); const progressMarkup = progressHtml(queue); if (progress && progress.innerHTML !== progressMarkup) progress.innerHTML = progressMarkup;
-      await renderLessonPlanMount(ctx, host);
-      await refreshBoardCompanion(ctx, queue, live);
-      call?.renderPanel(host.querySelector('#mrTeacherVideoMount'), false);
-    } catch (e) { console.error(e); } finally { addonBusy = false; }
+      await refreshBoardCompanion(ctx,queue,live);
+      call?.renderPanel(host.querySelector('#mrTeacherVideoMount'),false);
+    }catch(e){console.error(e)}finally{addonBusy=false}
   }
 
   function refreshStudentAddon() {
-    const home = document.querySelector('.student-home'); if (!home || !call) return;
-    let mount = document.querySelector('#mrStudentVideoMount');
-    if (!mount) {
-      mount = document.createElement('div'); mount.id = 'mrStudentVideoMount';
-      const live = home.querySelector('.student-live-mount');
-      if (live) live.insertAdjacentElement('afterend', mount); else home.prepend(mount);
+    const home=document.querySelector('.student-home');if(!home||!call)return;
+    let mount=document.querySelector('#mrStudentVideoMount');
+    if(!mount){
+      mount=document.createElement('div');
+      mount.id='mrStudentVideoMount';
+      mount.className='mr-student-video-top';
+      home.prepend(mount);
+    }else if(home.firstElementChild!==mount){
+      home.prepend(mount);
     }
-    call.renderPanel(mount, home.classList.contains('student-focus'));
+    call.renderPanel(mount,home.classList.contains('student-focus'));
   }
 
 
