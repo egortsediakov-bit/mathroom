@@ -1006,6 +1006,44 @@
       this.toggleSound();
     }
 
+
+    setVideoViewMode(mode) {
+      if (!['remote','both','hidden'].includes(mode)) return;
+      this.videoViewMode = mode;
+      localStorage.setItem(`mathroom.media.view.${this.role}`, mode);
+      this.paint();
+    }
+
+    attachVideoScroll() {
+      if (this.onVideoScroll || !this.videoHeroMount) return;
+      this.onVideoScroll = () => {
+        if (!this.joined || this.destroyed || !this.videoHeroMount) return;
+        const mountTop = this.videoHeroMount.getBoundingClientRect().top + window.scrollY;
+        const h = this.videoHeroHeight || this.videoHeroMount.offsetHeight || 520;
+        const shouldFloat = window.scrollY > mountTop + Math.min(h * .58, 430);
+        if (shouldFloat === this.videoFloating) return;
+        this.videoFloating = shouldFloat;
+        if (shouldFloat) {
+          this.videoHeroHeight = Math.max(this.videoHeroHeight, this.panel?.offsetHeight || h);
+          this.videoHeroMount.style.minHeight = this.videoHeroHeight + 'px';
+        } else {
+          this.videoHeroMount.style.minHeight = '';
+        }
+        this.paint();
+      };
+      window.addEventListener('scroll', this.onVideoScroll, { passive:true });
+      requestAnimationFrame(this.onVideoScroll);
+    }
+
+    async openVideoFullscreen() {
+      const stage = this.panel?.querySelector('#mrCallStage');
+      if (!stage) return;
+      try {
+        if (document.fullscreenElement) await document.exitFullscreen?.();
+        else await stage.requestFullscreen?.();
+      } catch {}
+    }
+
     toggleExpanded() {
       this.expanded = !this.expanded;
       if (this.expanded) this.minimized = false;
