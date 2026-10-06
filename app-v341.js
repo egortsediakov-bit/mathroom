@@ -714,7 +714,7 @@ function taskTimerRemaining(live){
 function studentLiveCard(active,live){
   if(!active||!live)return '';
   const taskLeft=taskTimerRemaining(live);
-  return \`<div class="student-live-mount"><div class="lesson-live-card mr-student-lesson-strip"><div class="lesson-live-top"><div><div class="lesson-task-kicker">Идёт урок</div><b>\${esc(active.topics?.title||'Урок')}</b></div><div class="mr-student-live-times"><div><span class="small muted">Урок</span><div class="lesson-timer" id="studentTimer">\${fmtTime(elapsedSeconds(live))}</div></div><div class="mr-student-task-timer \${live.task_timer_running?'active':''}" id="studentTaskTimerWrap"><span class="small muted">На задачу</span><div class="lesson-timer" id="studentTaskTimer">\${live.task_timer_running?fmtTime(taskLeft):'—'}</div></div></div></div></div></div>\`;
+  return `<div class="student-live-mount"><div class="lesson-live-card mr-student-lesson-strip"><div class="lesson-live-top"><div><div class="lesson-task-kicker">Идёт урок</div><b>${esc(active.topics?.title||'Урок')}</b></div><div class="mr-student-live-times"><div><span class="small muted">Урок</span><div class="lesson-timer" id="studentTimer">${fmtTime(elapsedSeconds(live))}</div></div><div class="mr-student-task-timer ${live.task_timer_running?'active':''}" id="studentTaskTimerWrap"><span class="small muted">На задачу</span><div class="lesson-timer" id="studentTaskTimer">${live.task_timer_running?fmtTime(taskLeft):'—'}</div></div></div></div></div></div>`;
 }
 function studentProgressHtml(d){
   const reports=d.reports||[],recent=reports.slice(0,8),vals=recent.map(r=>Number(r.solved_percent||0));
