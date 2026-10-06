@@ -1582,3 +1582,65 @@ body{background:linear-gradient(180deg,#fbfbfa 0%,#f5f4f1 100%)!important;color:
 .mr-textbook-sync-card h2{margin:7px 0 6px}
 .mr-textbook-sync-card .actions{flex-wrap:wrap}
 @media(max-width:800px){.mr-textbook-sync-card{align-items:flex-start;flex-direction:column}.mr-textbook-sync-card>div:last-child,.mr-textbook-sync-card>div:last-child .btn{width:100%}}
+
+
+/* Mathroom v30.7 — single-row compact board header */
+@media(min-width:901px){
+  .board-head{
+    flex-wrap:nowrap!important;
+    gap:8px!important;
+  }
+  .board-head-title{
+    flex:0 1 245px!important;
+    max-width:245px!important;
+    min-width:130px!important;
+  }
+  .board-head-title .board-status{
+    max-width:118px!important;
+  }
+  .board-head-actions{
+    flex:1 1 auto!important;
+    min-width:0!important;
+    display:flex!important;
+    align-items:center!important;
+    justify-content:flex-end!important;
+    flex-wrap:nowrap!important;
+    gap:5px!important;
+    overflow-x:auto!important;
+    overflow-y:hidden!important;
+    scrollbar-width:none!important;
+    padding-bottom:0!important;
+  }
+  .board-head-actions::-webkit-scrollbar{display:none!important}
+  .board-head-actions .btn{
+    flex:0 0 auto!important;
+    min-height:36px!important;
+    padding:6px 9px!important;
+    gap:5px!important;
+    font-size:12px!important;
+    white-space:nowrap!important;
+  }
+  .board-head-actions .board-head-icon{
+    width:auto!important;
+    min-width:36px!important;
+    padding:6px 8px!important;
+  }
+  .board-head-actions .board-head-label{
+    display:inline!important;
+    font-size:10.5px!important;
+    white-space:nowrap!important;
+  }
+  .board-head-actions .board-head-sep{
+    margin:0 1px!important;
+    height:24px!important;
+  }
+  .board-head-actions .board-shortcuts-btn{
+    padding:6px 8px!important;
+    gap:4px!important;
+    font-size:11px!important;
+  }
+  .board-head-actions .board-fullscreen-btn{
+    padding:6px 9px!important;
+    font-size:11.5px!important;
+  }
+}
