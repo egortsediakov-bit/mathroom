@@ -458,7 +458,20 @@
     async acquireMedia() {
       if (this.localStream?.getTracks?.().some(t => t.readyState === 'live')) return this.localStream;
       if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) throw new Error('Камера и микрофон доступны только по HTTPS в современном браузере.');
-      const audio = { echoCancellation:true, noiseSuppression:true, autoGainControl:true };
+
+      // Speech-first audio profile. Browser AEC remains the main echo suppressor;
+      // we request only constraints the current browser actually supports.
+      const supported = navigator.mediaDevices.getSupportedConstraints?.() || {};
+      const audio = {};
+      if (supported.echoCancellation !== false) audio.echoCancellation = { ideal:true };
+      if (supported.noiseSuppression !== false) audio.noiseSuppression = { ideal:true };
+      if (supported.autoGainControl !== false) audio.autoGainControl = { ideal:true };
+      if (supported.channelCount) audio.channelCount = { ideal:1 };
+      if (supported.sampleRate) audio.sampleRate = { ideal:48000 };
+      if (supported.sampleSize) audio.sampleSize = { ideal:16 };
+      if (supported.latency) audio.latency = { ideal:0.02 };
+      if (supported.voiceIsolation) audio.voiceIsolation = { ideal:true };
+
       try {
         this.localStream = await navigator.mediaDevices.getUserMedia({
           audio,
@@ -470,7 +483,23 @@
           this.cameraEnabled = false;
         } else throw e;
       }
-      const at = this.localStream.getAudioTracks()[0]; if (at) at.enabled = this.micEnabled;
+
+      const at = this.localStream.getAudioTracks()[0];
+      if (at) {
+        at.enabled = this.micEnabled;
+        try { at.contentHint = 'speech'; } catch {}
+        try {
+          const apply = {};
+          const caps = at.getCapabilities?.() || {};
+          if ('echoCancellation' in caps) apply.echoCancellation = true;
+          if ('noiseSuppression' in caps) apply.noiseSuppression = true;
+          if ('autoGainControl' in caps) apply.autoGainControl = true;
+          if ('channelCount' in caps) apply.channelCount = 1;
+          if (Object.keys(apply).length) await at.applyConstraints(apply);
+        } catch (e) {
+          console.warn('[Mathroom audio] speech constraints were partially unavailable', e);
+        }
+      }
       const vt = this.localStream.getVideoTracks()[0]; if (vt) vt.enabled = this.cameraEnabled;
       this.bindMedia();
       return this.localStream;
@@ -558,7 +587,11 @@
         if (this.role === 'student') {
           if (this.pendingOffer) { const offer = this.pendingOffer; this.pendingOffer = null; await this.acceptOffer(offer); }
           else await this.send('need-offer', { joined:true }, 'teacher');
-        } else if (this.remoteReady) await this.makeOffer(false);
+        } else {
+          // Create an offer immediately even when the student has not announced readiness yet.
+          // This removes the fragile "student joined first" timing dependency.
+          await this.makeOffer(false);
+        }
       } catch (e) { fail(e); }
     }
 
