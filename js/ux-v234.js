@@ -44,16 +44,8 @@
   }
 
   function ensureHelpButton(){
-    const seen=safeStoreGet(helpSeenKey())==='done';
-    let b = document.getElementById('mrHelpButton');
-    if(seen){b?.remove();return}
-    if (!b) {
-      b = document.createElement('button');
-      b.id = 'mrHelpButton'; b.className = 'mr-help-button';
-      b.innerHTML = '<b>?</b><span>Как пользоваться</span>';
-      b.type = 'button'; b.setAttribute('aria-label','Открыть справку Mathroom');
-      b.onclick = openGuide; document.body.appendChild(b);
-    }
+    // Floating "Как пользоваться" button intentionally disabled.
+    document.getElementById('mrHelpButton')?.remove();
   }
   function bindSidebarHelp(){
     const b=document.getElementById('sidebarHelp');
