@@ -29,7 +29,7 @@
         <article><b>4. Доска</b><p>Используй несколько листов, вставку Ctrl+V, PDF, шаблоны, черновик преподавателя и экспорт.</p><button class="btn sm" data-guide-go="board">Открыть доску</button></article>
       </div>
       <div class="mr-guide-section"><h3>Если видеосвязь не появилась сразу</h3><div class="mr-guide-steps"><span><i>1</i> Камера включена у обоих</span><span><i>2</i> В статусе есть «сигналинг DB»</span><span><i>3</i> Подожди 5–10 секунд</span><span><i>4</i> Если связи нет — «Переподключить»</span></div></div>
-      <div class="mr-guide-section"><h3>Полезные клавиши</h3><div class="mr-shortcuts"><span><kbd>Ctrl/⌘ K</kbd> быстрые команды</span><span><kbd>Alt M</kbd> микрофон</span><span><kbd>Alt V</kbd> камера</span><span><kbd>Alt S</kbd> демонстрация экрана</span><span><kbd>F1</kbd> эта справка</span></div></div>` : `
+      <div class="mr-guide-section"><h3>Полезные клавиши</h3><div class="mr-shortcuts"><span><kbd>Alt K</kbd> быстрые команды</span><span><kbd>Alt M</kbd> микрофон</span><span><kbd>Alt V</kbd> камера</span><span><kbd>Alt S</kbd> демонстрация экрана</span><span><kbd>F1</kbd> эта справка</span></div></div>` : `
       <div class="mr-guide-head"><div><span class="pill">Быстрый старт</span><h2>Как проходит урок</h2><p class="muted">Ничего настраивать заранее не нужно: когда преподаватель начнёт урок, Mathroom покажет его автоматически.</p></div></div>
       <div class="mr-guide-grid">
         <article><b>1. Дождись урока</b><p>Открытая страница сама увидит начало занятия. Обновлять её не требуется.</p><button class="btn sm" data-guide-student="today">На «Сегодня»</button></article>
