@@ -1928,3 +1928,175 @@ body{background:linear-gradient(180deg,#fbfbfa 0%,#f5f4f1 100%)!important;color:
     max-width:280px!important;
   }
 }
+
+
+/* Mathroom v31.4 — adaptive teacher rail + compact board chrome */
+@media(min-width:901px){
+  .mr-teacher-workspace{
+    grid-template-columns:minmax(0,1fr) clamp(220px,17vw,280px)!important;
+    gap:10px!important;
+  }
+  .mr-teacher-workspace>.mr-teacher-rail{
+    width:clamp(220px,17vw,280px)!important;
+    max-width:clamp(220px,17vw,280px)!important;
+  }
+}
+
+/* Teacher helper: home screen first, tools open as sub-pages. */
+.mr-teacher-rail{overflow:hidden!important}
+.mr-rail-home{display:none;padding:12px}
+.mr-rail-home.active{display:grid;gap:12px}
+.mr-rail-home-head h3{margin:2px 0 0;font-size:17px}
+.mr-rail-home-menu{display:grid;gap:6px}
+.mr-rail-home-menu>.btn{
+  width:100%;
+  min-height:52px;
+  display:grid!important;
+  grid-template-columns:24px minmax(0,1fr) 14px;
+  align-items:center;
+  gap:7px;
+  padding:8px 9px!important;
+  text-align:left;
+  justify-content:stretch!important;
+}
+.mr-rail-home-menu>.btn>span:nth-child(2){display:grid;gap:2px;min-width:0}
+.mr-rail-home-menu>.btn b{font-size:12px}
+.mr-rail-home-menu>.btn small{font-size:10px;color:var(--muted);white-space:normal;line-height:1.25}
+.mr-rail-home-menu>.btn>span:last-child{font-size:18px;color:#8a8f96}
+.mr-rail-view-head{
+  display:grid;
+  grid-template-columns:34px minmax(0,1fr) auto;
+  align-items:start;
+  gap:8px;
+  padding-bottom:8px;
+  border-bottom:1px solid var(--line);
+}
+.mr-rail-view-head .mr-rail-back{
+  width:34px!important;
+  min-width:34px!important;
+  height:34px!important;
+  padding:0!important;
+  justify-content:center!important;
+  font-size:18px!important;
+}
+.mr-rail-panel{padding:10px!important;gap:8px!important}
+.mr-rail-panel .btn{font-size:11px}
+.mr-rail-panel textarea{min-height:150px}
+.mr-rail-suggest-head{padding-top:6px;border-top:1px solid var(--line)}
+.mr-suggest-task-list{display:grid;gap:7px;max-height:42vh;overflow:auto;padding-right:2px}
+.mr-suggest-task{
+  display:grid;
+  gap:5px;
+  padding:8px;
+  border:1px solid var(--line);
+  border-radius:10px;
+  background:#fbfbfa;
+  cursor:grab;
+  user-select:none;
+  transition:.14s ease;
+}
+.mr-suggest-task:hover{border-color:#c9ccd1;box-shadow:0 5px 14px #00000008;transform:translateY(-1px)}
+.mr-suggest-task.dragging{opacity:.48;cursor:grabbing}
+.mr-suggest-task-head{display:flex;align-items:flex-start;justify-content:space-between;gap:6px}
+.mr-suggest-task-head b{font-size:11.5px;line-height:1.3}
+.mr-suggest-task p{margin:0;font-size:11px;line-height:1.35;color:#4f5660;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.mr-suggest-task .btn{justify-self:start}
+
+/* Board top row: keep every control selectable and visible on desktop. */
+@media(min-width:761px){
+  .board-head{
+    display:flex!important;
+    flex-wrap:nowrap!important;
+    gap:5px!important;
+    padding:7px 8px!important;
+  }
+  .board-head-title{
+    flex:0 0 92px!important;
+    width:92px!important;
+    max-width:92px!important;
+    min-width:72px!important;
+  }
+  .board-head-title strong{font-size:14px!important}
+  .board-head-title .board-status{display:none!important}
+  .board-head-actions{
+    flex:1 1 auto!important;
+    min-width:0!important;
+    overflow:visible!important;
+    gap:3px!important;
+    justify-content:flex-end!important;
+    flex-wrap:nowrap!important;
+  }
+  .board-head-actions .btn{
+    min-height:34px!important;
+    height:34px!important;
+    padding:5px 7px!important;
+    gap:4px!important;
+    font-size:10.5px!important;
+    border-radius:9px!important;
+  }
+  .board-head-actions .board-head-icon{
+    min-width:34px!important;
+    width:auto!important;
+    padding:5px 6px!important;
+  }
+  .board-head-actions #undo,
+  .board-head-actions #redo,
+  .board-head-actions #bringForward,
+  .board-head-actions #sendBackward{
+    width:34px!important;
+    min-width:34px!important;
+  }
+  .board-head-actions #addPage .board-head-label,
+  .board-head-actions #delPage .board-head-label{display:inline!important;font-size:10px!important}
+  .board-head-actions #quickCommands{min-width:auto!important;padding-inline:7px!important}
+  .board-head-actions #fullscreen{min-width:auto!important;padding-inline:8px!important}
+  .board-permission-select{
+    flex:0 0 108px!important;
+    width:108px!important;
+    min-width:108px!important;
+    max-width:108px!important;
+    height:34px!important;
+    padding:4px 22px 4px 7px!important;
+    font-size:10px!important;
+  }
+  #followTeacherToggle span{display:none!important}
+  #followTeacherToggle{width:34px!important;min-width:34px!important;padding:5px!important}
+  .board-head-sep{margin:0!important;height:20px!important}
+}
+
+/* Left board tools stay out of the way until the pointer reaches the left edge. */
+@media(min-width:761px){
+  .board-toolbar-side{
+    left:0!important;
+    transform:translateX(calc(-100% + 22px));
+    opacity:.38;
+    transition:transform .18s ease,opacity .18s ease,box-shadow .18s ease;
+    box-shadow:5px 8px 22px rgba(0,0,0,.06)!important;
+  }
+  .board-toolbar-side:hover,
+  .board-toolbar-side:focus-within,
+  .board-toolbar-side:has(.board-tool-group[open]){
+    transform:translateX(0);
+    opacity:.94;
+    box-shadow:0 12px 34px rgba(0,0,0,.11)!important;
+  }
+  .board-toolbar-side::after{
+    content:"";
+    position:absolute;
+    right:3px;
+    top:14px;
+    bottom:14px;
+    width:3px;
+    border-radius:999px;
+    background:rgba(237,89,26,.48);
+    pointer-events:none;
+  }
+  .board-card:fullscreen .board-toolbar-side{left:0!important}
+}
+
+@media(max-width:1100px) and (min-width:901px){
+  .mr-teacher-workspace{grid-template-columns:minmax(0,1fr) 230px!important}
+  .mr-teacher-workspace>.mr-teacher-rail{width:230px!important;max-width:230px!important}
+  .mr-rail-home-menu>.btn{min-height:48px}
+  .mr-rail-home-menu>.btn small{display:none}
+}
