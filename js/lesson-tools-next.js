@@ -1574,7 +1574,7 @@
 
   function formatCountdown(seconds){
     const s=Math.max(0,Number(seconds)||0),m=Math.floor(s/60),r=s%60;
-    return \`\${String(m).padStart(2,'0')}:\${String(r).padStart(2,'0')}\`;
+    return `${String(m).padStart(2,'0')}:${String(r).padStart(2,'0')}`;
   }
 
   async function setStudentTaskTimer(ctx, seconds){
@@ -1608,7 +1608,7 @@
       host.id='mrBoardCompanion';
       host.className='mr-teacher-rail';
       workspace.appendChild(host);
-      host.innerHTML=\`
+      host.innerHTML=`
         <div class="mr-rail-tabs">
           <button class="btn sm active" data-rail-tab="tasks">☷ <span>Задачи</span></button>
           <button class="btn sm" data-rail-tab="notes">✎ <span>Заметки</span></button>
@@ -1652,7 +1652,7 @@
           <button class="btn sm" id="mrRailCommands">Команды · Alt K</button>
           <button class="btn sm" id="mrRailExit">← В кабинет</button>
           <button class="btn sm danger" id="mrRailFinish">Завершить урок</button>
-        </div>\`;
+        </div>`;
 
       const setPanel=name=>{
         const same=host.dataset.activePanel===name;
@@ -1698,10 +1698,10 @@
     const current=ordered.find(x=>x.id===live?.current_queue_item_id)||null;
     const count=host.querySelector('#mrRailQueueCount');if(count)count.textContent=String(ordered.length);
     const currentBox=host.querySelector('#mrRailCurrent');
-    if(currentBox)currentBox.innerHTML=current?\`<b>\${esc(current.title||'Задача')}</b><div class="small muted">\${statusGlyph(current.status)} \${current.status==='solved'?'решено':current.status==='hard'?'сложно':current.status==='later'?'вернуться позже':'без оценки'}</div>\`:'<span class="small muted">Текущая задача не выбрана</span>';
+    if(currentBox)currentBox.innerHTML=current?`<b>${esc(current.title||'Задача')}</b><div class="small muted">${statusGlyph(current.status)} ${current.status==='solved'?'решено':current.status==='hard'?'сложно':current.status==='later'?'вернуться позже':'без оценки'}</div>`:'<span class="small muted">Текущая задача не выбрана</span>';
 
     const select=host.querySelector('#mrQueueSelect');
-    const options=\`<option value="">\${ordered.length?'Выбрать задачу…':'Очередь пуста'}</option>\`+ordered.map((x,i)=>\`<option value="\${x.id}" \${x.id===current?.id?'selected':''}>\${statusGlyph(x.status)} \${i+1}. \${esc(x.title||'Задача')}</option>\`).join('');
+    const options=`<option value="">${ordered.length?'Выбрать задачу…':'Очередь пуста'}</option>`+ordered.map((x,i)=>`<option value="${x.id}" ${x.id===current?.id?'selected':''}>${statusGlyph(x.status)} ${i+1}. ${esc(x.title||'Задача')}</option>`).join('');
     if(select&&select.innerHTML!==options)select.innerHTML=options;
     if(select)select.onchange=async()=>{const item=ordered.find(x=>x.id===select.value);if(item)try{await setCurrentFromAddon(ctx,item)}catch(e){fail(e)}};
 
@@ -1721,7 +1721,7 @@
       b.classList.toggle('active',current?.status===b.dataset.mrStatus);
       b.onclick=async()=>{if(!current)return toast('Выбери текущую задачу');const{error}=await sb.from('lesson_queue_items').update({status:b.dataset.mrStatus}).eq('id',current.id);if(error)return fail(error);window.dispatchEvent(new Event('mathroom:refresh-lesson'))};
     });
-    host.querySelector('#mrPinnedToBoard').onclick=()=>{if(!current)return toast('Выбери текущую задачу');if(!S.boardController?.addText)return toast('Доска ещё загружается');S.boardController.addText(\`\${current.title||'Задача'}\\n\${current.prompt||''}\`,{fontSize:25})};
+    host.querySelector('#mrPinnedToBoard').onclick=()=>{if(!current)return toast('Выбери текущую задачу');if(!S.boardController?.addText)return toast('Доска ещё загружается');S.boardController.addText(`${current.title||'Задача'}\\n${current.prompt||''}`,{fontSize:25})};
     setupQuickNotes(ctx,host,current);
 
     host.dataset.taskTimerRunning=live?.task_timer_running?'1':'0';
