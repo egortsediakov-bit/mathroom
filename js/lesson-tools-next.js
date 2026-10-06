@@ -1609,7 +1609,7 @@
       host.id='mrBoardCompanion';
       host.className='mr-teacher-rail';
       workspace.appendChild(host);
-      host.innerHTML=\`
+      host.innerHTML=`
         <section class="mr-rail-home active" data-rail-home>
           <div class="mr-rail-home-head">
             <div><span class="small muted">Mathroom</span><h3>Помощь преподавателю</h3></div>
@@ -1666,7 +1666,7 @@
           <button class="btn sm" id="mrRailCommands">Команды · Alt K</button>
           <button class="btn sm" id="mrRailExit">← В кабинет</button>
           <button class="btn sm danger" id="mrRailFinish">Завершить урок</button>
-        </section>\`;
+        </section>`;
 
       const showHome=()=>{
         host.dataset.activePanel='home';
@@ -1717,10 +1717,10 @@
     const current=ordered.find(x=>x.id===live?.current_queue_item_id)||null;
     const count=host.querySelector('#mrRailQueueCount');if(count)count.textContent=String(ordered.length);
     const currentBox=host.querySelector('#mrRailCurrent');
-    if(currentBox)currentBox.innerHTML=current?\`<b>\${esc(current.title||'Задача')}</b><div class="small muted">\${statusGlyph(current.status)} \${current.status==='solved'?'решено':current.status==='hard'?'сложно':current.status==='later'?'вернуться позже':'без оценки'}</div>\`:'<span class="small muted">Текущая задача не выбрана</span>';
+    if(currentBox)currentBox.innerHTML=current?`<b>${esc(current.title||'Задача')}</b><div class="small muted">${statusGlyph(current.status)} ${current.status==='solved'?'решено':current.status==='hard'?'сложно':current.status==='later'?'вернуться позже':'без оценки'}</div>`:'<span class="small muted">Текущая задача не выбрана</span>';
 
     const select=host.querySelector('#mrQueueSelect');
-    const options=\`<option value="">\${ordered.length?'Выбрать задачу…':'Очередь пуста'}</option>\`+ordered.map((x,i)=>\`<option value="\${x.id}" \${x.id===current?.id?'selected':''}>\${statusGlyph(x.status)} \${i+1}. \${esc(x.title||'Задача')}</option>\`).join('');
+    const options=`<option value="">${ordered.length?'Выбрать задачу…':'Очередь пуста'}</option>`+ordered.map((x,i)=>`<option value="${x.id}" ${x.id===current?.id?'selected':''}>${statusGlyph(x.status)} ${i+1}. ${esc(x.title||'Задача')}</option>`).join('');
     if(select&&select.innerHTML!==options)select.innerHTML=options;
     if(select)select.onchange=async()=>{const item=ordered.find(x=>x.id===select.value);if(item)try{await setCurrentFromAddon(ctx,item)}catch(e){fail(e)}};
 
@@ -1740,7 +1740,7 @@
       b.classList.toggle('active',current?.status===b.dataset.mrStatus);
       b.onclick=async()=>{if(!current)return toast('Выбери текущую задачу');const{error}=await sb.from('lesson_queue_items').update({status:b.dataset.mrStatus}).eq('id',current.id);if(error)return fail(error);window.dispatchEvent(new Event('mathroom:refresh-lesson'))};
     });
-    host.querySelector('#mrPinnedToBoard').onclick=()=>{if(!current)return toast('Выбери текущую задачу');if(!S.boardController?.addText)return toast('Доска ещё загружается');S.boardController.addText(\`\${current.title||'Задача'}\\n\${current.prompt||''}\`,{fontSize:25})};
+    host.querySelector('#mrPinnedToBoard').onclick=()=>{if(!current)return toast('Выбери текущую задачу');if(!S.boardController?.addText)return toast('Доска ещё загружается');S.boardController.addText(`${current.title||'Задача'}\\n${current.prompt||''}`,{fontSize:25})};
 
     const queueExerciseIds=new Set(ordered.map(x=>x.exercise_id).filter(Boolean));
     const topicTasks=(S.exercises||[]).filter(x=>x.kind==='task'&&(!ctx.lesson?.topic_id||x.topic_id===ctx.lesson.topic_id)&&!queueExerciseIds.has(x.id));
@@ -1748,14 +1748,14 @@
     const suggested=[...topicTasks].sort((a,b)=>Number(a.use_count||0)-Number(b.use_count||0)||(diffOrder[a.difficulty]??9)-(diffOrder[b.difficulty]??9)).slice(0,6);
     const suggestHost=host.querySelector('#mrSuggestedTasks');
     if(suggestHost){
-      suggestHost.innerHTML=suggested.length?suggested.map(x=>\`<article class="mr-suggest-task" draggable="true" data-suggest-task="\${x.id}"><div class="mr-suggest-task-head"><b>\${esc(x.title||'Задача')}</b><span class="pill">\${esc(MR.diffLabel?MR.diffLabel(x.difficulty):x.difficulty||'')}</span></div><div class="small muted">\${esc(x.category||'')}\${(x.tags||[]).length?' · '+(x.tags||[]).slice(0,2).map(t=>'#'+esc(t)).join(' '):''}</div><p>\${esc(String(x.content||'').replace(/\\s+/g,' ').slice(0,180))}</p><button class="btn xs" data-add-suggest="\${x.id}">+ В очередь</button></article>\`).join(''):'<div class="small muted">Подходящие задачи появятся после загрузки банка задач.</div>';
+      suggestHost.innerHTML=suggested.length?suggested.map(x=>`<article class="mr-suggest-task" draggable="true" data-suggest-task="${x.id}"><div class="mr-suggest-task-head"><b>${esc(x.title||'Задача')}</b><span class="pill">${esc(MR.diffLabel?MR.diffLabel(x.difficulty):x.difficulty||'')}</span></div><div class="small muted">${esc(x.category||'')}${(x.tags||[]).length?' · '+(x.tags||[]).slice(0,2).map(t=>'#'+esc(t)).join(' '):''}</div><p>${esc(String(x.content||'').replace(/\\s+/g,' ').slice(0,180))}</p><button class="btn xs" data-add-suggest="${x.id}">+ В очередь</button></article>`).join(''):'<div class="small muted">Подходящие задачи появятся после загрузки банка задач.</div>';
       suggestHost.querySelectorAll('[data-suggest-task]').forEach(card=>{
         card.addEventListener('dragstart',e=>{
           const task=suggested.find(x=>x.id===card.dataset.suggestTask);if(!task)return;
           const payload={exerciseId:task.id,title:task.title||'Задача',prompt:task.content||''};
           e.dataTransfer.effectAllowed='copy';
           e.dataTransfer.setData('application/x-mathroom-task',JSON.stringify(payload));
-          e.dataTransfer.setData('text/plain',\`\${payload.title}\\n\${payload.prompt}\`);
+          e.dataTransfer.setData('text/plain',`${payload.title}\\n${payload.prompt}`);
           card.classList.add('dragging');
         });
         card.addEventListener('dragend',()=>card.classList.remove('dragging'));
