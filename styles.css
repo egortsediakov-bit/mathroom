@@ -1753,3 +1753,140 @@ body{background:linear-gradient(180deg,#fbfbfa 0%,#f5f4f1 100%)!important;color:
     font-size:10.5px!important;
   }
 }
+
+
+/* Mathroom v31.2 — lesson-first video + teacher utility rail */
+.mr-lesson-video-top,.mr-student-video-top{width:100%;margin:0 0 12px}
+.mr-lesson-top-actions-hidden{display:none!important}
+#lessonControl.mr-lesson-timer-strip{
+  margin:0 0 12px!important;
+  padding:10px 12px!important;
+  border-radius:14px!important;
+  background:#fff!important;
+  box-shadow:0 8px 28px rgba(20,24,32,.045)!important;
+}
+#lessonControl.mr-lesson-timer-strip .lesson-current-task,
+#lessonControl.mr-lesson-timer-strip .lesson-task-status-actions,
+#lessonControl.mr-lesson-timer-strip .lesson-queue{display:none!important}
+#lessonControl.mr-lesson-timer-strip .lesson-live-top{margin:0!important}
+#lessonControl.mr-lesson-timer-strip .lesson-timer{font-size:24px!important}
+#lessonControl.mr-lesson-timer-strip .actions{gap:6px!important}
+#mrLessonProSuite{display:none!important}
+
+.mr-lesson-layout-v2{display:block!important}
+.mr-teacher-workspace{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) 318px;
+  gap:12px;
+  align-items:start;
+  width:100%;
+}
+.mr-teacher-workspace>.mr-lesson-board-main{min-width:0}
+.mr-teacher-rail{
+  position:sticky;
+  top:10px;
+  align-self:start;
+  background:#fff;
+  border:1px solid var(--mr-line,var(--line));
+  border-radius:16px;
+  box-shadow:0 12px 38px rgba(20,24,32,.07);
+  overflow:hidden;
+  z-index:24;
+}
+.mr-teacher-rail.collapsed{width:max-content;justify-self:end}
+.mr-rail-tabs{
+  display:grid;
+  grid-template-columns:repeat(5,minmax(0,1fr));
+  gap:4px;
+  padding:6px;
+  border-bottom:1px solid var(--mr-line,var(--line));
+  background:#fbfaf8;
+}
+.mr-rail-tabs .btn{
+  min-width:0!important;
+  min-height:36px!important;
+  padding:6px 5px!important;
+  border-radius:9px!important;
+  gap:4px!important;
+  font-size:10.5px!important;
+  justify-content:center!important;
+}
+.mr-rail-tabs .btn.active{
+  background:#17191c!important;
+  color:#fff!important;
+  border-color:#17191c!important;
+}
+.mr-teacher-rail.collapsed .mr-rail-tabs{display:flex}
+.mr-teacher-rail.collapsed .mr-rail-tabs .btn span{display:none}
+.mr-teacher-rail.collapsed .mr-rail-tabs .btn{width:38px!important}
+.mr-rail-panel{display:none;padding:11px}
+.mr-rail-panel.active{display:grid;gap:9px}
+.mr-rail-title,.mr-note-head{
+  display:flex;
+  justify-content:space-between;
+  align-items:flex-start;
+  gap:8px;
+}
+.mr-rail-row{display:flex;gap:5px;flex-wrap:wrap}
+.mr-rail-row.compact .btn{flex:1}
+.mr-rail-panel>.btn{width:100%;justify-content:flex-start}
+.mr-rail-panel .search{width:100%;min-width:0}
+.mr-rail-section{display:grid;gap:6px;padding-top:4px}
+.mr-rail-status{display:grid;grid-template-columns:1fr 1fr;gap:5px}
+.mr-rail-status .btn{width:100%;justify-content:center}
+.mr-rail-status .btn.active{background:#17191c!important;color:#fff!important;border-color:#17191c!important}
+.mr-rail-current{min-height:48px;padding:8px 9px;border:1px solid var(--line);border-radius:10px;background:#fafafa;display:grid;gap:3px}
+.mr-teacher-rail textarea{
+  width:100%;
+  min-height:170px;
+  resize:vertical;
+  border:1px solid #d8dce2;
+  border-radius:10px;
+  padding:9px 10px;
+  font:13px/1.48 inherit;
+  outline:none;
+}
+.mr-task-countdown{
+  font-variant-numeric:tabular-nums;
+  font-size:38px;
+  font-weight:800;
+  letter-spacing:.03em;
+  text-align:center;
+  padding:10px;
+  border-radius:12px;
+  background:#f5f5f3;
+}
+.mr-task-countdown.active{background:#17191c;color:#fff}
+.mr-timer-presets{display:grid;grid-template-columns:1fr 1fr;gap:5px}
+.mr-timer-custom{display:grid;grid-template-columns:70px 1fr;gap:6px}
+.mr-timer-custom input{width:100%;min-height:38px;border:1px solid var(--line);border-radius:9px;padding:6px 8px}
+#mrRailMaterials .mr-lesson-materials-drawer{margin:0;border:0!important;border-radius:0!important;background:transparent!important}
+#mrRailMaterials .mr-lesson-materials-drawer>summary{padding:8px!important;border:1px solid var(--line);border-radius:9px;background:#fafafa!important}
+#mrRailMaterials .lesson-cloud-material{max-height:52vh!important;padding:6px 0!important}
+
+.mr-student-lesson-strip{padding:10px 12px!important}
+.mr-student-live-times{display:flex;align-items:flex-end;gap:18px}
+.mr-student-live-times>div{display:grid;gap:2px;text-align:right}
+.mr-student-task-timer{opacity:.48}
+.mr-student-task-timer.active{opacity:1}
+.mr-student-task-timer.active .lesson-timer{color:var(--koto-orange,#f55a16)}
+.mr-student-lesson-strip .lesson-timer{font-size:23px!important}
+
+@media(max-width:1180px){
+  .mr-teacher-workspace{grid-template-columns:minmax(0,1fr) 280px}
+  .mr-rail-tabs .btn span{display:none}
+}
+@media(max-width:900px){
+  .mr-teacher-workspace{display:block}
+  .mr-teacher-rail{position:static;margin:10px 0 0}
+  .mr-rail-tabs .btn span{display:inline}
+  .mr-teacher-rail.collapsed{width:100%;justify-self:auto}
+  .mr-teacher-rail.collapsed .mr-rail-tabs{display:grid}
+  .mr-teacher-rail.collapsed .mr-rail-tabs .btn{width:auto!important}
+  .mr-teacher-rail.collapsed .mr-rail-tabs .btn span{display:inline}
+}
+@media(max-width:650px){
+  .mr-rail-tabs{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .mr-student-live-times{gap:10px}
+  .mr-student-lesson-strip .lesson-live-top{align-items:flex-start}
+}
