@@ -64,6 +64,18 @@
       this.micEnabled = localStorage.getItem(`mathroom.media.mic.${this.role}`) !== '0';
       this.cameraEnabled = localStorage.getItem(`mathroom.media.camera.${this.role}`) !== '0';
       this.minimized = localStorage.getItem(`mathroom.media.minimized.${this.role}`) === '1';
+      this.selectedAudioInput = localStorage.getItem(`mathroom.media.audioinput.${this.role}`) || '';
+      this.selectedVideoInput = localStorage.getItem(`mathroom.media.videoinput.${this.role}`) || '';
+      this.selectedAudioOutput = localStorage.getItem(`mathroom.media.audiooutput.${this.role}`) || '';
+      this.devices = { audioinput:[], videoinput:[], audiooutput:[] };
+      this.deviceModal = null;
+      this.deviceRefreshTimer = null;
+      this.outputSelectionSupported = typeof HTMLMediaElement !== 'undefined' && typeof HTMLMediaElement.prototype?.setSinkId === 'function';
+      this.onDeviceChange = () => {
+        clearTimeout(this.deviceRefreshTimer);
+        this.deviceRefreshTimer = setTimeout(() => this.handleDeviceChange().catch(e => console.warn('[Mathroom devices]', e)), 220);
+      };
+      navigator.mediaDevices?.addEventListener?.('devicechange', this.onDeviceChange);
       this.baseIceServers = Array.isArray(CFG?.WEBRTC_ICE_SERVERS) && CFG.WEBRTC_ICE_SERVERS.length
         ? CFG.WEBRTC_ICE_SERVERS
         : [
@@ -100,6 +112,7 @@
         .mr-native-call .mr-call-stage{display:none;position:relative;background:#101214;border-radius:14px;overflow:hidden;aspect-ratio:16/9;min-height:170px}.mr-native-call.joined .mr-call-stage{display:block}.mr-native-call .mr-remote-video{width:100%;height:100%;object-fit:contain;display:block;background:#101214}.mr-native-call .mr-local-video{position:absolute;right:10px;top:10px;width:104px;height:70px;object-fit:cover;border:2px solid rgba(255,255,255,.88);border-radius:10px;background:#1b1d20;box-shadow:0 6px 18px #0005;cursor:zoom-in}.mr-native-call.sharing .mr-local-video{object-fit:contain;background:#0b0d10}.mr-native-call .mr-call-person{position:absolute;left:10px;bottom:10px;background:#0009;color:#fff;padding:4px 8px;border-radius:8px;font-size:11px}.mr-native-call .mr-call-actions{display:flex;gap:7px;flex-wrap:wrap}.mr-native-call .mr-call-actions .btn{min-height:38px}.mr-native-call .mr-call-note{font-size:12px;color:var(--muted,#747b85);line-height:1.45}.mr-native-call .mr-call-quality{font-size:11px;color:var(--muted,#747b85)}
         .mr-native-call.joined{position:fixed;right:18px;bottom:18px;z-index:1250;width:320px;max-width:calc(100vw - 36px);padding:10px;box-shadow:0 18px 55px #0004;transition:width .18s ease,height .18s ease}.mr-native-call.joined .mr-call-head{cursor:move}.mr-native-call.joined.expanded{width:min(860px,calc(100vw - 36px));max-height:calc(100vh - 36px);overflow:auto}.mr-native-call.joined.expanded .mr-call-stage{min-height:360px;aspect-ratio:16/9}.mr-native-call.joined.expanded .mr-local-video{width:180px;height:110px}.mr-native-call.joined.minimized{width:260px}.mr-native-call.joined.minimized .mr-call-stage,.mr-native-call.joined.minimized .mr-call-note,.mr-native-call.joined.minimized .mr-call-quality{display:none}.mr-native-call.joined.minimized .mr-call-actions .mr-hide-min{display:none}
         .mr-native-prejoin-backdrop{position:fixed;inset:0;z-index:3000;background:rgba(8,11,16,.72);display:flex;align-items:center;justify-content:center;padding:18px}.mr-native-prejoin{width:min(720px,100%);background:#fff;border-radius:22px;padding:18px;box-shadow:0 28px 90px #0007;display:grid;gap:14px}.mr-native-prejoin h2{margin:0}.mr-native-prejoin-grid{display:grid;grid-template-columns:minmax(0,1fr) 250px;gap:14px}.mr-native-preview{position:relative;background:#111318;border-radius:16px;overflow:hidden;aspect-ratio:16/10}.mr-native-preview video{width:100%;height:100%;display:block;object-fit:cover}.mr-native-preview .mr-preview-name{position:absolute;left:10px;bottom:10px;background:#0009;color:#fff;padding:5px 8px;border-radius:8px;font-size:12px}.mr-native-prejoin-side{display:grid;align-content:start;gap:9px}.mr-native-prejoin-side .btn{min-height:44px}.mr-native-prejoin-footer{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}.mr-native-prejoin-error{display:none;padding:10px 12px;background:#fff4f2;color:#9a291d;border:1px solid #f0d3ce;border-radius:12px;font-size:13px}.mr-native-prejoin-error.show{display:block}
+        .mr-media-device-fields{display:grid;gap:9px;margin-top:2px}.mr-media-device-field{display:grid;gap:4px}.mr-media-device-field label{font-size:11px;font-weight:750;color:var(--muted,#747b85)}.mr-media-device-field select{width:100%;min-height:38px;border:1px solid var(--line,#e5e7eb);border-radius:10px;background:#fff;padding:7px 9px;color:inherit}.mr-media-device-field select:disabled{opacity:.55;background:#f6f6f5}.mr-device-count{font-size:11px;color:var(--muted,#747b85);line-height:1.4}.mr-device-modal-grid{display:grid;grid-template-columns:1fr;gap:12px;margin:14px 0}.mr-native-call .mr-device-btn{white-space:nowrap}
         @media(max-width:760px){.mr-native-prejoin{padding:14px}.mr-native-prejoin-grid{grid-template-columns:1fr}.mr-native-prejoin-side{grid-template-columns:1fr 1fr}.mr-native-prejoin-side .mr-prejoin-wide{grid-column:1/-1}.mr-native-prejoin-footer{display:grid;grid-template-columns:1fr;width:100%}.mr-native-prejoin-footer .btn{width:100%;min-height:50px}.mr-native-call.joined{position:relative;right:auto;bottom:auto;width:100%;max-width:none;box-shadow:none}.mr-native-call.joined.expanded{position:fixed;inset:8px;width:auto;max-width:none;max-height:none;z-index:3200;overflow:auto}.mr-native-call.joined.expanded .mr-call-stage{min-height:50vh}.mr-native-call.joined .mr-call-head{cursor:default}.mr-native-call .mr-call-stage{min-height:210px}.mr-native-call .mr-local-video{width:88px;height:62px}.mr-native-call.joined.expanded .mr-local-video{width:120px;height:80px}}
       `;
       document.head.appendChild(st);
@@ -455,14 +468,10 @@
       for (const row of rows) await this.acceptIce(row);
     }
 
-    async acquireMedia() {
-      if (this.localStream?.getTracks?.().some(t => t.readyState === 'live')) return this.localStream;
-      if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) throw new Error('Камера и микрофон доступны только по HTTPS в современном браузере.');
-
-      // Speech-first audio profile. Browser AEC remains the main echo suppressor;
-      // we request only constraints the current browser actually supports.
-      const supported = navigator.mediaDevices.getSupportedConstraints?.() || {};
+    audioConstraints(deviceId = this.selectedAudioInput) {
+      const supported = navigator.mediaDevices?.getSupportedConstraints?.() || {};
       const audio = {};
+      if (deviceId) audio.deviceId = { exact:deviceId };
       if (supported.echoCancellation !== false) audio.echoCancellation = { ideal:true };
       if (supported.noiseSuppression !== false) audio.noiseSuppression = { ideal:true };
       if (supported.autoGainControl !== false) audio.autoGainControl = { ideal:true };
@@ -471,40 +480,257 @@
       if (supported.sampleSize) audio.sampleSize = { ideal:16 };
       if (supported.latency) audio.latency = { ideal:0.02 };
       if (supported.voiceIsolation) audio.voiceIsolation = { ideal:true };
+      return audio;
+    }
 
+    videoConstraints(deviceId = this.selectedVideoInput) {
+      const video = { width:{ideal:960}, height:{ideal:540}, frameRate:{ideal:24,max:30} };
+      if (deviceId) video.deviceId = { exact:deviceId };
+      return video;
+    }
+
+    async configureSpeechTrack(track) {
+      if (!track) return;
+      try { track.contentHint = 'speech'; } catch {}
+      try {
+        const apply = {};
+        const caps = track.getCapabilities?.() || {};
+        if ('echoCancellation' in caps) apply.echoCancellation = true;
+        if ('noiseSuppression' in caps) apply.noiseSuppression = true;
+        if ('autoGainControl' in caps) apply.autoGainControl = true;
+        if ('channelCount' in caps) apply.channelCount = 1;
+        if (Object.keys(apply).length) await track.applyConstraints(apply);
+      } catch (e) {
+        console.warn('[Mathroom audio] speech constraints were partially unavailable', e);
+      }
+    }
+
+    currentInputDeviceId(kind) {
+      const track = kind === 'audioinput'
+        ? this.localStream?.getAudioTracks?.()[0]
+        : this.localStream?.getVideoTracks?.()[0];
+      return track?.getSettings?.().deviceId || '';
+    }
+
+    async refreshDevices() {
+      if (!navigator.mediaDevices?.enumerateDevices) return this.devices;
+      const list = await navigator.mediaDevices.enumerateDevices();
+      this.devices = {
+        audioinput:list.filter(x => x.kind === 'audioinput'),
+        videoinput:list.filter(x => x.kind === 'videoinput'),
+        audiooutput:list.filter(x => x.kind === 'audiooutput')
+      };
+      this.refreshDeviceUi();
+      return this.devices;
+    }
+
+    deviceOptionLabel(device, kind, index) {
+      if (device?.label) return device.label;
+      if (kind === 'audioinput') return `Микрофон ${index + 1}`;
+      if (kind === 'videoinput') return `Камера ${index + 1}`;
+      return `Динамики ${index + 1}`;
+    }
+
+    populateDeviceSelect(select, kind) {
+      if (!select) return;
+      const devices = this.devices[kind] || [];
+      const preferred = kind === 'audioinput'
+        ? (this.selectedAudioInput || this.currentInputDeviceId(kind))
+        : kind === 'videoinput'
+          ? (this.selectedVideoInput || this.currentInputDeviceId(kind))
+          : this.selectedAudioOutput;
+      const firstLabel = kind === 'audiooutput' ? 'Системный вывод звука' : (kind === 'audioinput' ? 'Системный микрофон' : 'Системная камера');
+      select.innerHTML = '';
+      const def = document.createElement('option');
+      def.value = '';
+      def.textContent = firstLabel;
+      select.appendChild(def);
+      devices.forEach((device,index) => {
+        const o=document.createElement('option');
+        o.value=device.deviceId || '';
+        o.textContent=this.deviceOptionLabel(device,kind,index);
+        select.appendChild(o);
+      });
+      if (preferred && [...select.options].some(o => o.value === preferred)) select.value = preferred;
+      else select.value = '';
+      if (kind === 'audiooutput' && !this.outputSelectionSupported) {
+        select.disabled = true;
+        select.title = 'Выбор динамиков не поддерживается этим браузером — используется системное устройство';
+      } else select.disabled = false;
+    }
+
+    refreshDeviceUi() {
+      const roots = [this.prejoin, this.deviceModal].filter(x => x && document.body.contains(x));
+      for (const root of roots) {
+        this.populateDeviceSelect(root.querySelector('[data-device-kind="audioinput"]'),'audioinput');
+        this.populateDeviceSelect(root.querySelector('[data-device-kind="videoinput"]'),'videoinput');
+        this.populateDeviceSelect(root.querySelector('[data-device-kind="audiooutput"]'),'audiooutput');
+        const count=root.querySelector('.mr-device-count');
+        if (count) count.textContent = `${this.devices.audioinput.length} микроф. · ${this.devices.videoinput.length} камер · ${this.devices.audiooutput.length} выходов${this.outputSelectionSupported ? '' : ' · выбор выхода управляется браузером/системой'}`;
+      }
+    }
+
+    bindDeviceSelects(root) {
+      if (!root) return;
+      const mic=root.querySelector('[data-device-kind="audioinput"]');
+      const cam=root.querySelector('[data-device-kind="videoinput"]');
+      const out=root.querySelector('[data-device-kind="audiooutput"]');
+      if (mic) mic.onchange = () => this.switchInputDevice('audio',mic.value).catch(fail);
+      if (cam) cam.onchange = () => this.switchInputDevice('video',cam.value).catch(fail);
+      if (out) out.onchange = () => this.setAudioOutput(out.value).catch(fail);
+    }
+
+    async setAudioOutput(deviceId = '', silent = false) {
+      this.selectedAudioOutput = deviceId || '';
+      localStorage.setItem(`mathroom.media.audiooutput.${this.role}`, this.selectedAudioOutput);
+      const audio=this.panel?.querySelector('#mrRemoteAudio');
+      if (!this.outputSelectionSupported || !audio?.setSinkId) {
+        this.refreshDeviceUi();
+        if (!silent) toast('Выбор вывода звука в этом браузере управляется системой');
+        return false;
+      }
+      try {
+        await audio.setSinkId(this.selectedAudioOutput);
+        audio.dataset.sinkId = this.selectedAudioOutput;
+        this.refreshDeviceUi();
+        if (!silent) toast('Устройство вывода звука изменено');
+        return true;
+      } catch (e) {
+        if (!silent) throw e;
+        return false;
+      }
+    }
+
+    async switchInputDevice(kind, deviceId = '', opts = {}) {
+      if (!navigator.mediaDevices?.getUserMedia) throw new Error('Браузер не поддерживает выбор устройств');
+      const isAudio = kind === 'audio';
+      const constraints = isAudio
+        ? { audio:this.audioConstraints(deviceId), video:false }
+        : { audio:false, video:this.videoConstraints(deviceId) };
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      const next = isAudio ? stream.getAudioTracks()[0] : stream.getVideoTracks()[0];
+      if (!next) throw new Error(isAudio ? 'Микрофон не найден' : 'Камера не найдена');
+      if (isAudio) {
+        next.enabled = this.micEnabled;
+        await this.configureSpeechTrack(next);
+      } else next.enabled = this.cameraEnabled;
+
+      if (!this.localStream) this.localStream = new MediaStream();
+      const old = isAudio ? this.localStream.getAudioTracks()[0] : this.localStream.getVideoTracks()[0];
+      if (old) this.localStream.removeTrack(old);
+      this.localStream.addTrack(next);
+
+      const sender = this.pc?.getSenders?.().find(s => s.track?.kind === kind)
+        || this.pc?.getTransceivers?.().find(t => t.receiver?.track?.kind === kind)?.sender;
+      if (sender && !(kind === 'video' && this.screenTrack)) {
+        try { await sender.replaceTrack(next); } catch (e) { console.warn('[Mathroom devices] replaceTrack', kind, e); }
+      }
+      old?.stop?.();
+
+      if (isAudio) {
+        this.selectedAudioInput = deviceId || '';
+        localStorage.setItem(`mathroom.media.audioinput.${this.role}`, this.selectedAudioInput);
+      } else {
+        this.selectedVideoInput = deviceId || '';
+        localStorage.setItem(`mathroom.media.videoinput.${this.role}`, this.selectedVideoInput);
+      }
+      this.bindMedia();
+      await this.refreshDevices().catch(()=>{});
+      this.paintPrejoin();
+      if (!opts.silent) toast(isAudio ? 'Микрофон переключён' : 'Камера переключена');
+      return next;
+    }
+
+    async handleDeviceChange() {
+      const before = {
+        audio:this.selectedAudioInput || this.currentInputDeviceId('audioinput'),
+        video:this.selectedVideoInput || this.currentInputDeviceId('videoinput'),
+        output:this.selectedAudioOutput
+      };
+      const list = await navigator.mediaDevices.enumerateDevices();
+      this.devices = {
+        audioinput:list.filter(x => x.kind === 'audioinput'),
+        videoinput:list.filter(x => x.kind === 'videoinput'),
+        audiooutput:list.filter(x => x.kind === 'audiooutput')
+      };
+      const has=(kind,id)=>!id || this.devices[kind].some(x => x.deviceId === id);
+      const micTrack=this.localStream?.getAudioTracks?.()[0];
+      const camTrack=this.localStream?.getVideoTracks?.()[0];
+      const lostMic=!!micTrack && (micTrack.readyState === 'ended' || !has('audioinput',before.audio));
+      const lostCam=!!camTrack && (camTrack.readyState === 'ended' || !has('videoinput',before.video));
+      const lostOut=!!before.output && !has('audiooutput',before.output);
+
+      if (lostMic && this.devices.audioinput.length) {
+        this.selectedAudioInput='';
+        localStorage.removeItem(`mathroom.media.audioinput.${this.role}`);
+        await this.switchInputDevice('audio','',{silent:true}).catch(()=>{});
+        toast('Микрофон отключён · Mathroom переключился на доступный');
+      }
+      if (lostCam && this.devices.videoinput.length) {
+        this.selectedVideoInput='';
+        localStorage.removeItem(`mathroom.media.videoinput.${this.role}`);
+        await this.switchInputDevice('video','',{silent:true}).catch(()=>{});
+        toast('Камера отключена · Mathroom переключился на доступную');
+      }
+      if (lostOut) {
+        this.selectedAudioOutput='';
+        localStorage.removeItem(`mathroom.media.audiooutput.${this.role}`);
+        await this.setAudioOutput('',true);
+        toast('Устройство звука отключено · используется системный вывод');
+      }
+      this.refreshDeviceUi();
+    }
+
+    async openDeviceSettings() {
+      await this.refreshDevices().catch(()=>{});
+      const m=modal(`<div class="mr-card-head"><div><span class="pill">Связь</span><h2 style="margin:8px 0 4px">Камера и звук</h2><p class="muted">Можно переключать устройства прямо во время урока — переподключаться не нужно.</p></div></div>
+        <div class="mr-device-modal-grid">
+          <div class="mr-media-device-field"><label>Микрофон</label><select data-device-kind="audioinput"></select></div>
+          <div class="mr-media-device-field"><label>Камера</label><select data-device-kind="videoinput"></select></div>
+          <div class="mr-media-device-field"><label>Вывод звука</label><select data-device-kind="audiooutput"></select></div>
+        </div>
+        <div class="notice"><b>Подключение устройств отслеживается автоматически.</b><br><span class="small">Если активная камера, микрофон или наушники отключатся, Mathroom обновит список и попробует перейти на доступное устройство.</span></div>
+        <div class="mr-device-count" style="margin-top:10px"></div>`,'wide-modal');
+      this.deviceModal=m;
+      this.bindDeviceSelects(m);
+      this.refreshDeviceUi();
+    }
+
+    async acquireMedia() {
+      if (this.localStream?.getTracks?.().some(t => t.readyState === 'live')) return this.localStream;
+      if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) throw new Error('Камера и микрофон доступны только по HTTPS в современном браузере.');
       try {
         this.localStream = await navigator.mediaDevices.getUserMedia({
-          audio,
-          video:{ width:{ideal:960}, height:{ideal:540}, frameRate:{ideal:24,max:30} }
+          audio:this.audioConstraints(),
+          video:this.videoConstraints()
         });
       } catch (e) {
-        if (e?.name === 'NotFoundError' || e?.name === 'OverconstrainedError') {
-          this.localStream = await navigator.mediaDevices.getUserMedia({ audio, video:false });
+        if ((e?.name === 'NotFoundError' || e?.name === 'OverconstrainedError') && (this.selectedAudioInput || this.selectedVideoInput)) {
+          this.selectedAudioInput=''; this.selectedVideoInput='';
+          localStorage.removeItem(`mathroom.media.audioinput.${this.role}`);
+          localStorage.removeItem(`mathroom.media.videoinput.${this.role}`);
+          this.localStream = await navigator.mediaDevices.getUserMedia({
+            audio:this.audioConstraints(''),
+            video:this.videoConstraints('')
+          }).catch(async fallbackError => {
+            if (fallbackError?.name === 'NotFoundError' || fallbackError?.name === 'OverconstrainedError') {
+              this.cameraEnabled=false;
+              return navigator.mediaDevices.getUserMedia({ audio:this.audioConstraints(''), video:false });
+            }
+            throw fallbackError;
+          });
+        } else if (e?.name === 'NotFoundError' || e?.name === 'OverconstrainedError') {
+          this.localStream = await navigator.mediaDevices.getUserMedia({ audio:this.audioConstraints(''), video:false });
           this.cameraEnabled = false;
         } else throw e;
       }
-
       const at = this.localStream.getAudioTracks()[0];
-      if (at) {
-        at.enabled = this.micEnabled;
-        try { at.contentHint = 'speech'; } catch {}
-        try {
-          const apply = {};
-          const caps = at.getCapabilities?.() || {};
-          if ('echoCancellation' in caps) apply.echoCancellation = true;
-          if ('noiseSuppression' in caps) apply.noiseSuppression = true;
-          if ('autoGainControl' in caps) apply.autoGainControl = true;
-          if ('channelCount' in caps) apply.channelCount = 1;
-          if (Object.keys(apply).length) await at.applyConstraints(apply);
-        } catch (e) {
-          console.warn('[Mathroom audio] speech constraints were partially unavailable', e);
-        }
-      }
+      if (at) { at.enabled = this.micEnabled; await this.configureSpeechTrack(at); }
       const vt = this.localStream.getVideoTracks()[0]; if (vt) vt.enabled = this.cameraEnabled;
+      await this.refreshDevices().catch(()=>{});
       this.bindMedia();
       return this.localStream;
     }
-
     async openPrejoin() {
       if (this.joined) return;
       if (this.prejoin) return;
@@ -517,7 +743,13 @@
           <div class="mr-native-prejoin-side">
             <button class="btn" id="mrPrejoinMic">🎙 Микрофон</button>
             <button class="btn" id="mrPrejoinCam">📹 Камера</button>
-            <div class="notice mr-prejoin-wide"><b>Доступ запрашивается один раз.</b><br><span class="small">Mathroom использует выбранное состояние сразу после входа — дополнительно включать устройства не нужно.</span></div>
+            <div class="mr-media-device-fields mr-prejoin-wide">
+              <div class="mr-media-device-field"><label>Микрофон</label><select data-device-kind="audioinput"></select></div>
+              <div class="mr-media-device-field"><label>Камера</label><select data-device-kind="videoinput"></select></div>
+              <div class="mr-media-device-field"><label>Вывод звука</label><select data-device-kind="audiooutput"></select></div>
+              <div class="mr-device-count"></div>
+            </div>
+            <div class="notice mr-prejoin-wide"><b>Устройства отслеживаются автоматически.</b><br><span class="small">Если подключить или отключить камеру, микрофон или наушники, список обновится без перезагрузки страницы.</span></div>
           </div>
         </div>
         <div class="mr-native-prejoin-error" id="mrPrejoinError"></div>
@@ -539,6 +771,9 @@
         video.srcObject = this.localStream;
         video.play().catch(() => {});
         join.disabled = false;
+        this.bindDeviceSelects(backdrop);
+        await this.refreshDevices().catch(()=>{});
+        this.refreshDeviceUi();
         this.paintPrejoin();
       } catch (e) {
         err.textContent = e?.name === 'NotAllowedError' ? 'Доступ к камере или микрофону запрещён. Разреши его в настройках браузера и попробуй снова.' : (e?.message || 'Не удалось открыть камеру и микрофон.');
@@ -716,6 +951,9 @@
       if (audio) {
         if (audio.srcObject !== this.remoteStream) audio.srcObject = this.remoteStream;
         audio.muted = !this.soundEnabled; audio.volume = 1;
+        if (this.outputSelectionSupported && audio.setSinkId && audio.dataset.sinkId !== this.selectedAudioOutput) {
+          audio.setSinkId(this.selectedAudioOutput || '').then(() => { audio.dataset.sinkId=this.selectedAudioOutput || ''; }).catch(() => {});
+        }
         if (this.remoteStream.getAudioTracks().length && this.soundEnabled) audio.play().catch(() => {
           this.status = 'Нажми 🔊, чтобы включить звук'; this.soundEnabled = false; this.paint();
         });
@@ -813,13 +1051,14 @@
         host.id = 'mrVideoPanel';
         host.innerHTML = `<div class="mr-call-head"><div><div class="mr-call-title"><span class="mr-call-dot"></span><b>Связь урока</b><span class="pill">Mathroom P2P + TURN</span></div><div class="small muted" id="mrVideoStatus"></div></div><button class="btn sm" id="mrVideoMin" hidden>—</button></div>
           <div class="mr-call-stage" id="mrCallStage" title="Двойной клик — полноэкранный режим"><video class="mr-remote-video" id="mrRemoteVideo" autoplay muted playsinline></video><audio id="mrRemoteAudio" autoplay></audio><video class="mr-local-video" id="mrLocalVideo" autoplay muted playsinline title="Ваше видео / ваш экран"></video><span class="mr-call-person">${this.role === 'teacher' ? 'Ученик' : 'Преподаватель'}</span></div>
-          <div class="mr-call-actions"><button class="btn primary" id="mrVideoJoin">Присоединиться к уроку</button><button class="btn mr-hide-min" id="mrVideoMic" hidden></button><button class="btn mr-hide-min" id="mrVideoCam" hidden></button><button class="btn mr-hide-min" id="mrVideoSound" hidden></button><button class="btn mr-hide-min" id="mrVideoScreen" hidden>🖥 Экран</button><button class="btn mr-hide-min" id="mrVideoExpand" hidden>⛶ Увеличить</button><button class="btn mr-hide-min" id="mrVideoReconnect" hidden>↻ Переподключить</button><button class="btn danger" id="mrVideoEnd" hidden>Выйти</button></div>
+          <div class="mr-call-actions"><button class="btn primary" id="mrVideoJoin">Присоединиться к уроку</button><button class="btn mr-hide-min" id="mrVideoMic" hidden></button><button class="btn mr-hide-min" id="mrVideoCam" hidden></button><button class="btn mr-hide-min" id="mrVideoSound" hidden></button><button class="btn mr-hide-min mr-device-btn" id="mrVideoDevices" hidden>⚙ Устройства</button><button class="btn mr-hide-min" id="mrVideoScreen" hidden>🖥 Экран</button><button class="btn mr-hide-min" id="mrVideoExpand" hidden>⛶ Увеличить</button><button class="btn mr-hide-min" id="mrVideoReconnect" hidden>↻ Переподключить</button><button class="btn danger" id="mrVideoEnd" hidden>Выйти</button></div>
           <div class="mr-call-quality" id="mrVideoQuality"></div><div class="mr-call-note" id="mrVideoNote">Камера и микрофон выбираются перед входом. Связь встроена прямо в Mathroom.</div>`;
         target.appendChild(host);
         host.querySelector('#mrVideoJoin').onclick = () => this.openPrejoin();
         host.querySelector('#mrVideoMic').onclick = () => this.toggleMic();
         host.querySelector('#mrVideoCam').onclick = () => this.toggleCamera();
         host.querySelector('#mrVideoSound').onclick = () => this.toggleSound();
+        host.querySelector('#mrVideoDevices').onclick = () => this.openDeviceSettings().catch(fail);
         host.querySelector('#mrVideoReconnect').onclick = () => { this.forceRelay = false; this.reconnect(true, false).catch(fail); };
         host.querySelector('#mrVideoEnd').onclick = () => this.end();
         host.querySelector('#mrVideoMin').onclick = () => this.toggleMinimized();
@@ -841,7 +1080,7 @@
       const status = host.querySelector('#mrVideoStatus'); if (status) status.textContent = this.status;
       const q = host.querySelector('#mrVideoQuality'); if (q) q.textContent = this.connectionQuality || (this.joined ? (this.hasTurn ? 'Автоматический прямой + резервный маршрут' : 'Прямой канал · резервный сервер пока недоступен') : '');
       const join = host.querySelector('#mrVideoJoin'); if (join) join.hidden = this.joined;
-      const ids = ['#mrVideoMic','#mrVideoCam','#mrVideoSound','#mrVideoReconnect','#mrVideoEnd','#mrVideoScreen','#mrVideoExpand'];
+      const ids = ['#mrVideoMic','#mrVideoCam','#mrVideoSound','#mrVideoDevices','#mrVideoReconnect','#mrVideoEnd','#mrVideoScreen','#mrVideoExpand'];
       ids.forEach(sel => { const el=host.querySelector(sel); if(el) el.hidden = !this.joined; });
       const min = host.querySelector('#mrVideoMin'); if (min) { min.hidden = !this.joined; min.textContent = this.minimized ? '□' : '—'; }
       const mic = host.querySelector('#mrVideoMic'); if (mic) mic.textContent = this.micEnabled ? '🎙 Вкл' : '🔇 Выкл';
@@ -871,6 +1110,10 @@
       this.screenTrack = null;
       this.screenPreviewStream = null;
       window.removeEventListener('online', this.onOnline);
+      clearTimeout(this.deviceRefreshTimer);
+      navigator.mediaDevices?.removeEventListener?.('devicechange', this.onDeviceChange);
+      if (this.deviceModal && document.body.contains(this.deviceModal)) this.deviceModal.remove();
+      this.deviceModal = null;
       if (this.fastChannel) sb.removeChannel(this.fastChannel).catch?.(() => {});
       this.fastChannel = null;
     }
