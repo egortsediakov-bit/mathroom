@@ -3803,7 +3803,7 @@
   function enhanceTeacherQuickJump(){
     if(S.access||!S.user)return;
     const top=document.querySelector('.topbar');if(!top||top.querySelector('#mrQuickJumpButton'))return;
-    const wrap=document.createElement('div');wrap.className='actions mr-topbar-tools';wrap.innerHTML='<button class="btn sm" id="mrQuickJumpButton"><span>⌕</span> Быстрый переход <kbd>Ctrl K</kbd></button>';top.appendChild(wrap);
+    const wrap=document.createElement('div');wrap.className='actions mr-topbar-tools';wrap.innerHTML='<button class="btn sm" id="mrQuickJumpButton"><span>⌕</span> Быстрый переход <kbd>Alt K</kbd></button>';top.appendChild(wrap);
     wrap.querySelector('#mrQuickJumpButton').onclick=openTeacherQuickJump;
   }
 
@@ -3912,8 +3912,8 @@
   }
 
   window.addEventListener('keydown', e => {
-    if (!S.access && (e.ctrlKey || e.metaKey) && !e.altKey && String(e.key||'').toLowerCase()==='k') {
-      e.preventDefault(); openTeacherQuickJump(); return;
+    if (!S.access && e.altKey && !e.ctrlKey && !e.metaKey && String(e.code||'')==='KeyK') {
+      e.preventDefault(); e.stopImmediatePropagation?.(); openTeacherQuickJump(); return;
     }
   });
 
