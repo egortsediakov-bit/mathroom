@@ -1118,8 +1118,8 @@
         host = document.createElement('section');
         host.id = 'mrVideoPanel';
         host.innerHTML = `<div class="mr-call-head"><div><div class="mr-call-title"><span class="mr-call-dot"></span><b>Связь урока</b><span class="pill">Mathroom P2P + TURN</span></div><div class="small muted" id="mrVideoStatus"></div></div><button class="btn sm" id="mrVideoMin" hidden>—</button></div>
-          <div class="mr-call-stage" id="mrCallStage" title="Двойной клик — полноэкранный режим"><video class="mr-remote-video" id="mrRemoteVideo" autoplay muted playsinline></video><audio id="mrRemoteAudio" autoplay></audio><video class="mr-local-video" id="mrLocalVideo" autoplay muted playsinline title="Ваше видео / ваш экран"></video><span class="mr-call-person">${this.role === 'teacher' ? 'Ученик' : 'Преподаватель'}</span></div>
-          <div class="mr-call-actions"><button class="btn primary" id="mrVideoJoin">Присоединиться к уроку</button><button class="btn mr-hide-min" id="mrVideoMic" hidden></button><button class="btn mr-hide-min" id="mrVideoCam" hidden></button><button class="btn mr-hide-min" id="mrVideoSound" hidden></button><button class="btn mr-hide-min mr-device-btn" id="mrVideoDevices" hidden>⚙ Устройства</button><button class="btn mr-hide-min" id="mrVideoScreen" hidden>🖥 Экран</button><button class="btn mr-hide-min" id="mrVideoExpand" hidden>⛶ Увеличить</button><button class="btn mr-hide-min" id="mrVideoReconnect" hidden>↻ Переподключить</button><button class="btn danger" id="mrVideoEnd" hidden>Выйти</button></div>
+          <div class="mr-call-stage" id="mrCallStage" title="Двойной клик — полноэкранный режим"><video class="mr-remote-video" id="mrRemoteVideo" autoplay muted playsinline></video><audio id="mrRemoteAudio" autoplay></audio><video class="mr-local-video" id="mrLocalVideo" autoplay muted playsinline title="Ваше видео / ваш экран"></video><span class="mr-call-person">${this.role === 'teacher' ? 'Ученик' : 'Преподаватель'}</span><div class="mr-floating-view-switch"><button data-video-view="remote" title="Только собеседник">1</button><button data-video-view="both" title="Оба видео">2</button><button data-video-view="hidden" title="Скрыть видео">—</button></div></div>
+          <div class="mr-call-actions"><button class="btn primary" id="mrVideoJoin">Присоединиться к уроку</button><button class="btn mr-hide-min" id="mrVideoMic" hidden></button><button class="btn mr-hide-min" id="mrVideoCam" hidden></button><button class="btn mr-hide-min" id="mrVideoSound" hidden></button><button class="btn mr-hide-min mr-device-btn" id="mrVideoDevices" hidden>⚙ Устройства</button><button class="btn mr-hide-min" id="mrVideoScreen" hidden>🖥 Экран</button><button class="btn mr-hide-min" id="mrVideoFullscreen" hidden>⛶ Весь экран</button><button class="btn mr-hide-min" id="mrVideoExpand" hidden>↗ Размер</button><button class="btn mr-hide-min" id="mrVideoReconnect" hidden>↻ Переподключить</button><button class="btn danger" id="mrVideoEnd" hidden>Выйти</button></div>
           <div class="mr-call-quality" id="mrVideoQuality"></div><div class="mr-call-note" id="mrVideoNote">Камера и микрофон выбираются перед входом. Связь встроена прямо в Mathroom.</div>`;
         target.appendChild(host);
         host.querySelector('#mrVideoJoin').onclick = () => this.openPrejoin();
@@ -1131,11 +1131,16 @@
         host.querySelector('#mrVideoEnd').onclick = () => this.end();
         host.querySelector('#mrVideoMin').onclick = () => this.toggleMinimized();
         const screen = host.querySelector('#mrVideoScreen'); if (screen) screen.onclick = () => this.shareScreen();
+        const full = host.querySelector('#mrVideoFullscreen'); if (full) full.onclick = () => this.openVideoFullscreen();
         const expand = host.querySelector('#mrVideoExpand'); if (expand) expand.onclick = () => this.toggleExpanded();
-        const stage = host.querySelector('#mrCallStage'); if (stage) stage.ondblclick = () => stage.requestFullscreen?.().catch?.(()=>{});
+        const stage = host.querySelector('#mrCallStage'); if (stage) stage.ondblclick = () => this.openVideoFullscreen();
+        host.querySelectorAll('[data-video-view]').forEach(b=>b.onclick=()=>this.setVideoViewMode(b.dataset.videoView));
         const localPreview = host.querySelector('#mrLocalVideo'); if (localPreview) localPreview.onclick = () => { if (this.screenTrack) this.toggleExpanded(); };
       }
       this.panel = host;
+      this.videoHeroMount = target;
+      target.classList.add('mr-video-hero-mount');
+      this.attachVideoScroll();
       this.attachDrag();
       this.bindMedia();
       this.paint();
@@ -1144,18 +1149,19 @@
     paint() {
       const host = this.panel;
       if (!host) return;
-      host.className = `mr-native-call ${this.joined ? 'joined' : ''} ${this.isConnected() ? 'connected' : ''} ${this.minimized ? 'minimized' : ''} ${this.expanded ? 'expanded' : ''} ${this.screenTrack ? 'sharing' : ''}`;
+      host.className = `mr-native-call ${this.joined ? 'joined' : ''} ${this.isConnected() ? 'connected' : ''} ${this.minimized ? 'minimized' : ''} ${this.expanded ? 'expanded' : ''} ${this.screenTrack ? 'sharing' : ''} ${this.videoFloating ? 'floating' : ''} view-${this.videoViewMode}`;
       const status = host.querySelector('#mrVideoStatus'); if (status) status.textContent = this.status;
       const q = host.querySelector('#mrVideoQuality'); if (q) q.textContent = this.connectionQuality || (this.joined ? (this.hasTurn ? 'Автоматический прямой + резервный маршрут' : 'Прямой канал · резервный сервер пока недоступен') : '');
       const join = host.querySelector('#mrVideoJoin'); if (join) join.hidden = this.joined;
-      const ids = ['#mrVideoMic','#mrVideoCam','#mrVideoSound','#mrVideoDevices','#mrVideoReconnect','#mrVideoEnd','#mrVideoScreen','#mrVideoExpand'];
+      const ids = ['#mrVideoMic','#mrVideoCam','#mrVideoSound','#mrVideoDevices','#mrVideoReconnect','#mrVideoEnd','#mrVideoScreen','#mrVideoFullscreen','#mrVideoExpand'];
       ids.forEach(sel => { const el=host.querySelector(sel); if(el) el.hidden = !this.joined; });
       const min = host.querySelector('#mrVideoMin'); if (min) { min.hidden = !this.joined; min.textContent = this.minimized ? '□' : '—'; }
       const mic = host.querySelector('#mrVideoMic'); if (mic) mic.textContent = this.micEnabled ? '🎙 Вкл' : '🔇 Выкл';
       const cam = host.querySelector('#mrVideoCam'); if (cam) cam.textContent = this.cameraEnabled ? '📹 Вкл' : '🚫 Выкл';
       const sound = host.querySelector('#mrVideoSound'); if (sound) sound.textContent = this.soundEnabled ? '🔊 Звук' : '🔇 Звук';
       const screen = host.querySelector('#mrVideoScreen'); if (screen) screen.textContent = this.screenTrack ? '■ Остановить экран' : '🖥 Экран';
-      const expand = host.querySelector('#mrVideoExpand'); if (expand) expand.textContent = this.expanded ? '↙ Уменьшить' : '⛶ Увеличить';
+      const expand = host.querySelector('#mrVideoExpand'); if (expand) expand.textContent = this.expanded ? '↙ Обычный размер' : '↗ Размер';
+      host.querySelectorAll('[data-video-view]').forEach(b=>b.classList.toggle('active',b.dataset.videoView===this.videoViewMode));
       const note = host.querySelector('#mrVideoNote'); if (note) note.textContent = this.joined
         ? (this.hasTurn ? 'Mathroom сначала использует прямую связь, а при проблемах автоматически переключается через резервный сервер.' : 'Резервный сервер сейчас недоступен: Mathroom использует прямое P2P-соединение.')
         : 'Камера и микрофон выбираются перед входом. Связь встроена прямо в Mathroom.';
@@ -1178,6 +1184,10 @@
       this.screenTrack = null;
       this.screenPreviewStream = null;
       window.removeEventListener('online', this.onOnline);
+      if (this.onVideoScroll) window.removeEventListener('scroll', this.onVideoScroll);
+      this.onVideoScroll = null;
+      if (this.videoHeroMount) this.videoHeroMount.style.minHeight = '';
+      this.videoHeroMount = null;
       clearTimeout(this.deviceRefreshTimer);
       navigator.mediaDevices?.removeEventListener?.('devicechange', this.onDeviceChange);
       if (this.deviceModal && document.body.contains(this.deviceModal)) this.deviceModal.remove();
