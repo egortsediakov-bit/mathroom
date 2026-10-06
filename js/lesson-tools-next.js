@@ -1567,71 +1567,171 @@
     };
   }
 
+  function taskCountdownSeconds(live){
+    if(!live?.task_timer_running||!live?.task_timer_end_at)return 0;
+    return Math.max(0,Math.ceil((new Date(live.task_timer_end_at).getTime()-Date.now())/1000));
+  }
+
+  function formatCountdown(seconds){
+    const s=Math.max(0,Number(seconds)||0),m=Math.floor(s/60),r=s%60;
+    return \`\${String(m).padStart(2,'0')}:\${String(r).padStart(2,'0')}\`;
+  }
+
+  async function setStudentTaskTimer(ctx, seconds){
+    const value=Math.max(0,Math.round(Number(seconds)||0));
+    const patch=value>0
+      ? {task_timer_running:true,task_timer_duration_seconds:value,task_timer_end_at:new Date(Date.now()+value*1000).toISOString(),updated_at:new Date().toISOString()}
+      : {task_timer_running:false,task_timer_duration_seconds:0,task_timer_end_at:null,updated_at:new Date().toISOString()};
+    const {error}=await sb.from('lesson_live_state').update(patch).eq('lesson_id',ctx.lessonId);
+    if(error)throw error;
+    window.dispatchEvent(new Event('mathroom:refresh-lesson'));
+  }
+
   async function refreshBoardCompanion(ctx, queue, live) {
     const boardRoot = document.querySelector('#lessonBoard');
     if (!boardRoot) return;
-    let host = document.querySelector('#mrBoardCompanion');
-    if (!host) {
-      host = document.createElement('div');
-      host.id = 'mrBoardCompanion';
-      host.className = 'mr-board-companion';
-      boardRoot.parentElement.insertBefore(host, boardRoot);
-      host.innerHTML = `
-        <section class="mr-pinned-task-card">
-          <div class="mr-pinned-head"><div><div class="lesson-task-kicker">Закреплено рядом с доской</div><b>Текущая задача</b></div><button class="btn sm" id="mrPinnedCollapse">Свернуть</button></div>
-          <div id="mrPinnedTaskBody"></div>
-          <div class="mr-queue-cockpit">
-            <select id="mrQueueSelect" class="search"></select>
-            <div class="actions mr-queue-nav">
-              <button class="btn sm" id="mrPrevTask">← Пред.</button><button class="btn sm" id="mrNextTask">След. →</button><button class="btn sm" id="mrNextOpen">След. нерешённая</button>
-              <button class="btn sm" id="mrMoveUp" title="Поднять в очереди">↑</button><button class="btn sm" id="mrMoveDown" title="Опустить в очереди">↓</button>
-            </div>
-            <div class="actions mr-quick-status">
-              <button class="btn sm" data-mr-status="solved">✓ Решено</button><button class="btn sm" data-mr-status="hard">⚠ Сложно</button><button class="btn sm" data-mr-status="later">↩ Позже</button><button class="btn sm" data-mr-status="pending">○ Сбросить</button><button class="btn sm" id="mrPinnedToBoard">На доску</button>
-            </div>
-          </div>
-        </section>
-        <section class="mr-quick-notes-card">
-          <div class="mr-note-head"><div><div class="lesson-task-kicker">Только преподавателю</div><b>Быстрые заметки</b></div><span class="small muted" id="mrNotesStatus">Автосохранение</span></div>
-          <textarea id="mrQuickTeacherNote" placeholder="Например: путает знаки; вернуться к №7; хорошо понял теорему Виета…"></textarea>
-          <div class="actions"><button class="btn sm" id="mrNoteTime">+ Время</button><button class="btn sm" id="mrNoteCurrent">+ Текущая задача</button><button class="btn sm" id="mrNoteCheckpoint">Зафиксировать</button></div>
-        </section>`;
-      const collapseKey = `mathroom.board-companion.collapsed.${S.user?.id || 'teacher'}`;
-      const applyCollapsed = () => { let collapsed = true; try { collapsed = localStorage.getItem(collapseKey) !== '0'; } catch {} host.classList.toggle('collapsed', collapsed); host.querySelector('#mrPinnedCollapse').textContent = collapsed ? 'Развернуть' : 'Свернуть'; };
-      host.querySelector('#mrPinnedCollapse').onclick = () => { try { localStorage.setItem(collapseKey, host.classList.contains('collapsed') ? '0' : '1'); } catch {} applyCollapsed(); };
-      applyCollapsed();
+    let workspace=document.querySelector('#mrTeacherWorkspace');
+    const boardWrap=boardRoot.parentElement;
+    if(!workspace){
+      workspace=document.createElement('div');
+      workspace.id='mrTeacherWorkspace';
+      workspace.className='mr-teacher-workspace';
+      boardWrap.parentElement.insertBefore(workspace,boardWrap);
+      workspace.appendChild(boardWrap);
+    }else if(boardWrap.parentElement!==workspace){
+      workspace.insertBefore(boardWrap,workspace.firstChild);
     }
 
-    const ordered = [...queue].sort((a,b) => (a.position || 0) - (b.position || 0));
-    const current = ordered.find(x => x.id === live?.current_queue_item_id) || null;
-    const body = host.querySelector('#mrPinnedTaskBody');
-    const bodyHtml = current ? `<h3>${esc(current.title || 'Задача')}</h3><div class="mr-pinned-prompt">${String(current.prompt || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>')}</div><div class="small muted">${statusGlyph(current.status)} ${current.status === 'solved' ? 'решено' : current.status === 'hard' ? 'сложно' : current.status === 'later' ? 'вернуться позже' : 'не отмечено'} · Ответ: ${esc(current.correct_answer || '—')}</div>` : '<div class="muted">Выбери задачу из очереди — она останется закреплена рядом с доской.</div>';
-    if (body && body.innerHTML !== bodyHtml) body.innerHTML = bodyHtml;
+    let host=document.querySelector('#mrBoardCompanion');
+    if(!host){
+      host=document.createElement('aside');
+      host.id='mrBoardCompanion';
+      host.className='mr-teacher-rail';
+      workspace.appendChild(host);
+      host.innerHTML=\`
+        <div class="mr-rail-tabs">
+          <button class="btn sm active" data-rail-tab="tasks">☷ <span>Задачи</span></button>
+          <button class="btn sm" data-rail-tab="notes">✎ <span>Заметки</span></button>
+          <button class="btn sm" data-rail-tab="timer">◷ <span>Таймер</span></button>
+          <button class="btn sm" data-rail-tab="materials">▤ <span>Материалы</span></button>
+          <button class="btn sm" data-rail-tab="lesson">••• <span>Урок</span></button>
+        </div>
+        <div class="mr-rail-panel active" data-rail-panel="tasks">
+          <div class="mr-rail-title"><b>Следующие задачи</b><span class="pill" id="mrRailQueueCount">0</span></div>
+          <select id="mrQueueSelect" class="search"></select>
+          <div class="mr-rail-row"><button class="btn sm" id="mrPrevTask">←</button><button class="btn sm" id="mrNextTask">Следующая →</button><button class="btn sm" id="mrNextOpen">Нерешённая</button></div>
+          <div class="mr-rail-row compact"><button class="btn sm" id="mrMoveUp" title="Поднять в очереди">↑ Выше</button><button class="btn sm" id="mrMoveDown" title="Опустить в очереди">↓ Ниже</button></div>
+          <div class="mr-rail-section"><span class="small muted">Оценка текущей задачи</span><div class="mr-rail-status"><button class="btn sm" data-mr-status="solved">✓ Решено</button><button class="btn sm" data-mr-status="hard">⚠ Сложно</button><button class="btn sm" data-mr-status="later">↩ Позже</button><button class="btn sm" data-mr-status="pending">○ Сбросить</button></div></div>
+          <div class="mr-rail-current" id="mrRailCurrent"></div>
+          <button class="btn sm" id="mrPinnedToBoard">На доску</button>
+        </div>
+        <div class="mr-rail-panel" data-rail-panel="notes">
+          <div class="mr-note-head"><div><b>Заметка об ученике</b><div class="small muted">Только преподавателю</div></div><span class="small muted" id="mrNotesStatus">Автосохранение</span></div>
+          <textarea id="mrQuickTeacherNote" placeholder="Ошибки, наблюдения, что повторить, сильные стороны…"></textarea>
+          <div class="mr-rail-row"><button class="btn sm" id="mrNoteTime">+ Время</button><button class="btn sm" id="mrNoteCurrent">+ Задача</button><button class="btn sm" id="mrNoteCheckpoint">В историю</button></div>
+        </div>
+        <div class="mr-rail-panel" data-rail-panel="timer">
+          <div class="mr-rail-title"><div><b>Таймер ученику</b><div class="small muted">Ученик видит обратный отсчёт</div></div></div>
+          <div class="mr-task-countdown" id="mrTaskCountdown">00:00</div>
+          <div class="mr-timer-presets"><button class="btn sm" data-task-seconds="60">1 мин</button><button class="btn sm" data-task-seconds="180">3 мин</button><button class="btn sm primary" data-task-seconds="300">5 мин</button><button class="btn sm" data-task-seconds="600">10 мин</button></div>
+          <div class="mr-timer-custom"><input id="mrCustomTaskMinutes" type="number" min="1" max="120" value="5"><button class="btn sm" id="mrStartCustomTimer">Запустить</button></div>
+          <button class="btn sm danger" id="mrStopTaskTimer">Остановить таймер</button>
+        </div>
+        <div class="mr-rail-panel" data-rail-panel="materials">
+          <div class="mr-rail-title"><b>Материалы</b></div>
+          <div id="mrRailMaterials"></div>
+          <div class="mr-rail-row"><button class="btn sm" id="mrQuickPlan">⚡ Подобрать задачи</button><button class="btn sm" id="mrQueueManager">Очередь</button></div>
+          <div class="mr-rail-row"><button class="btn sm" id="mrLessonPlan">Цели и план</button><button class="btn sm" id="mrLessonHistory">История</button></div>
+          <div class="mr-rail-row"><button class="btn sm" id="mrSaveTemplate">Сохранить очередь</button><button class="btn sm" id="mrOpenTemplates">Шаблоны</button></div>
+        </div>
+        <div class="mr-rail-panel" data-rail-panel="lesson">
+          <div class="mr-rail-title"><b>Урок</b></div>
+          <button class="btn sm" id="mrRailFocus">Фокус ученика</button>
+          <button class="btn sm" id="mrRailLink">Ссылка ученика</button>
+          <button class="btn sm" id="mrRailSnapshot">Сохранить версию доски</button>
+          <button class="btn sm" id="mrRailCommands">Команды · Alt K</button>
+          <button class="btn sm" id="mrRailExit">← В кабинет</button>
+          <button class="btn sm danger" id="mrRailFinish">Завершить урок</button>
+        </div>\`;
 
-    const select = host.querySelector('#mrQueueSelect');
-    const options = `<option value="">${ordered.length ? 'Выбрать задачу…' : 'Очередь пуста'}</option>` + ordered.map((x, i) => `<option value="${x.id}" ${x.id === current?.id ? 'selected' : ''}>${statusGlyph(x.status)} ${i + 1}. ${esc(x.title || 'Задача')}</option>`).join('');
-    if (select && select.innerHTML !== options) select.innerHTML = options;
-    select.onchange = async () => { const item = ordered.find(x => x.id === select.value); if (item) try { await setCurrentFromAddon(ctx, item); } catch (e) { fail(e); } };
+      const setPanel=name=>{
+        const same=host.dataset.activePanel===name;
+        host.dataset.activePanel=same?'':name;
+        host.querySelectorAll('[data-rail-tab]').forEach(b=>b.classList.toggle('active',!same&&b.dataset.railTab===name));
+        host.querySelectorAll('[data-rail-panel]').forEach(p=>p.classList.toggle('active',!same&&p.dataset.railPanel===name));
+        host.classList.toggle('collapsed',same);
+      };
+      host.dataset.activePanel='tasks';
+      host.querySelectorAll('[data-rail-tab]').forEach(b=>b.onclick=()=>setPanel(b.dataset.railTab));
 
-    const index = current ? ordered.findIndex(x => x.id === current.id) : -1;
-    const choose = async item => { if (!item) return; try { await setCurrentFromAddon(ctx, item); } catch (e) { fail(e); } };
-    host.querySelector('#mrPrevTask').onclick = () => choose(index > 0 ? ordered[index - 1] : ordered.at(-1));
-    host.querySelector('#mrNextTask').onclick = () => choose(index >= 0 ? ordered[(index + 1) % Math.max(ordered.length, 1)] : ordered[0]);
-    host.querySelector('#mrNextOpen').onclick = () => {
-      if (!ordered.length) return;
-      const start = index >= 0 ? index : -1;
-      for (let step = 1; step <= ordered.length; step++) { const item = ordered[(start + step) % ordered.length]; if (item.status !== 'solved') return choose(item); }
+      host.querySelector('#mrQuickPlan').onclick=()=>quickPlan(ctx);
+      host.querySelector('#mrLessonPlan').onclick=()=>openLessonPlan(ctx);
+      host.querySelector('#mrQueueManager').onclick=()=>openQueueManager(ctx);
+      host.querySelector('#mrLessonHistory').onclick=()=>openLessonHistory(ctx);
+      host.querySelector('#mrSaveTemplate').onclick=()=>saveCurrentTemplate(ctx);
+      host.querySelector('#mrOpenTemplates').onclick=()=>openTemplates(ctx);
+      host.querySelector('#mrRailLink').onclick=()=>document.querySelector('#copyLessonLink')?.click();
+      host.querySelector('#mrRailSnapshot').onclick=()=>document.querySelector('#saveVersion')?.click();
+      host.querySelector('#mrRailExit').onclick=()=>document.querySelector('#leaveLesson')?.click();
+      host.querySelector('#mrRailFinish').onclick=()=>document.querySelector('#completeLesson')?.click();
+      host.querySelector('#mrRailFocus').onclick=()=>document.querySelector('#focusToggle')?.click();
+      host.querySelector('#mrRailCommands').onclick=()=>window.MathroomLessonSuite?.openCommands?.();
+
+      host.querySelectorAll('[data-task-seconds]').forEach(b=>b.onclick=()=>setStudentTaskTimer(ctx,Number(b.dataset.taskSeconds)).catch(fail));
+      host.querySelector('#mrStartCustomTimer').onclick=()=>{
+        const mins=Math.max(1,Math.min(120,Number(host.querySelector('#mrCustomTaskMinutes').value||5)));
+        setStudentTaskTimer(ctx,mins*60).catch(fail);
+      };
+      host.querySelector('#mrStopTaskTimer').onclick=()=>setStudentTaskTimer(ctx,0).catch(fail);
+
+      host._timerTick=setInterval(()=>{
+        const out=host.querySelector('#mrTaskCountdown');
+        if(!out)return;
+        const end=host.dataset.taskTimerEnd;
+        const running=host.dataset.taskTimerRunning==='1';
+        out.textContent=running&&end?formatCountdown(Math.max(0,Math.ceil((new Date(end).getTime()-Date.now())/1000))):'00:00';
+        out.classList.toggle('active',running);
+      },500);
+    }
+
+    const ordered=[...queue].sort((a,b)=>(a.position||0)-(b.position||0));
+    const current=ordered.find(x=>x.id===live?.current_queue_item_id)||null;
+    const count=host.querySelector('#mrRailQueueCount');if(count)count.textContent=String(ordered.length);
+    const currentBox=host.querySelector('#mrRailCurrent');
+    if(currentBox)currentBox.innerHTML=current?\`<b>\${esc(current.title||'Задача')}</b><div class="small muted">\${statusGlyph(current.status)} \${current.status==='solved'?'решено':current.status==='hard'?'сложно':current.status==='later'?'вернуться позже':'без оценки'}</div>\`:'<span class="small muted">Текущая задача не выбрана</span>';
+
+    const select=host.querySelector('#mrQueueSelect');
+    const options=\`<option value="">\${ordered.length?'Выбрать задачу…':'Очередь пуста'}</option>\`+ordered.map((x,i)=>\`<option value="\${x.id}" \${x.id===current?.id?'selected':''}>\${statusGlyph(x.status)} \${i+1}. \${esc(x.title||'Задача')}</option>\`).join('');
+    if(select&&select.innerHTML!==options)select.innerHTML=options;
+    if(select)select.onchange=async()=>{const item=ordered.find(x=>x.id===select.value);if(item)try{await setCurrentFromAddon(ctx,item)}catch(e){fail(e)}};
+
+    const index=current?ordered.findIndex(x=>x.id===current.id):-1;
+    const choose=async item=>{if(!item)return;try{await setCurrentFromAddon(ctx,item)}catch(e){fail(e)}};
+    host.querySelector('#mrPrevTask').onclick=()=>choose(index>0?ordered[index-1]:ordered.at(-1));
+    host.querySelector('#mrNextTask').onclick=()=>choose(index>=0?ordered[(index+1)%Math.max(ordered.length,1)]:ordered[0]);
+    host.querySelector('#mrNextOpen').onclick=()=>{
+      if(!ordered.length)return;
+      const start=index>=0?index:-1;
+      for(let step=1;step<=ordered.length;step++){const item=ordered[(start+step)%ordered.length];if(item.status!=='solved')return choose(item)}
       toast('Все задачи отмечены как решённые');
     };
-    host.querySelector('#mrMoveUp').onclick = async () => { if (current) try { await moveQueueCurrent(ctx, ordered, current.id, -1); } catch (e) { fail(e); } };
-    host.querySelector('#mrMoveDown').onclick = async () => { if (current) try { await moveQueueCurrent(ctx, ordered, current.id, 1); } catch (e) { fail(e); } };
-    host.querySelectorAll('[data-mr-status]').forEach(b => {
-      b.classList.toggle('active', current?.status === b.dataset.mrStatus);
-      b.onclick = async () => { if (!current) return toast('Выбери текущую задачу'); const { error } = await sb.from('lesson_queue_items').update({ status: b.dataset.mrStatus }).eq('id', current.id); if (error) return fail(error); window.dispatchEvent(new Event('mathroom:refresh-lesson')); };
+    host.querySelector('#mrMoveUp').onclick=async()=>{if(current)try{await moveQueueCurrent(ctx,ordered,current.id,-1)}catch(e){fail(e)}};
+    host.querySelector('#mrMoveDown').onclick=async()=>{if(current)try{await moveQueueCurrent(ctx,ordered,current.id,1)}catch(e){fail(e)}};
+    host.querySelectorAll('[data-mr-status]').forEach(b=>{
+      b.classList.toggle('active',current?.status===b.dataset.mrStatus);
+      b.onclick=async()=>{if(!current)return toast('Выбери текущую задачу');const{error}=await sb.from('lesson_queue_items').update({status:b.dataset.mrStatus}).eq('id',current.id);if(error)return fail(error);window.dispatchEvent(new Event('mathroom:refresh-lesson'))};
     });
-    const toBoard = host.querySelector('#mrPinnedToBoard');
-    toBoard.onclick = () => { if (!current) return toast('Выбери текущую задачу'); if (!S.boardController?.addText) return toast('Доска ещё загружается'); S.boardController.addText(`${current.title || 'Задача'}\n${current.prompt || ''}`, { fontSize: 25 }); };
-    setupQuickNotes(ctx, host, current);
+    host.querySelector('#mrPinnedToBoard').onclick=()=>{if(!current)return toast('Выбери текущую задачу');if(!S.boardController?.addText)return toast('Доска ещё загружается');S.boardController.addText(\`\${current.title||'Задача'}\\n\${current.prompt||''}\`,{fontSize:25})};
+    setupQuickNotes(ctx,host,current);
+
+    host.dataset.taskTimerRunning=live?.task_timer_running?'1':'0';
+    host.dataset.taskTimerEnd=live?.task_timer_end_at||'';
+    const timerOut=host.querySelector('#mrTaskCountdown');
+    if(timerOut)timerOut.textContent=live?.task_timer_running?formatCountdown(taskCountdownSeconds(live)):'00:00';
+
+    const materials=host.querySelector('#mrRailMaterials');
+    const drawer=document.querySelector('.mr-lesson-materials-drawer');
+    if(materials&&drawer&&drawer.parentElement!==materials)materials.appendChild(drawer);
   }
 
   function compactTeacherLessonChrome() {
