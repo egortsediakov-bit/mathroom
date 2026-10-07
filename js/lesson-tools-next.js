@@ -64,8 +64,8 @@
       this.micEnabled = localStorage.getItem(`mathroom.media.mic.${this.role}`) !== '0';
       this.cameraEnabled = localStorage.getItem(`mathroom.media.camera.${this.role}`) !== '0';
       this.minimized = localStorage.getItem(`mathroom.media.minimized.${this.role}`) === '1';
-      this.videoViewMode = localStorage.getItem(`mathroom.media.view.${this.role}`) || 'both';
-      if (!['remote','both','hidden'].includes(this.videoViewMode)) this.videoViewMode = 'both';
+      this.videoViewMode = localStorage.getItem(`mathroom.media.view.${this.role}`) || 'remote';
+      if (!['remote','both','hidden'].includes(this.videoViewMode)) this.videoViewMode = 'remote';
       this.videoFloating = false;
       this.videoHeroMount = null;
       this.videoHeroHeight = 0;
@@ -131,26 +131,101 @@
         .mr-video-hero-mount>.mr-native-call.joined:not(.floating){position:relative!important;right:auto!important;bottom:auto!important;left:auto!important;top:auto!important;width:100%!important;max-width:none!important;padding:12px!important;border-radius:18px!important;box-shadow:0 16px 42px rgba(20,24,32,.08)!important}
         .mr-video-hero-mount>.mr-native-call.joined:not(.floating) .mr-call-stage{display:block;min-height:min(68vh,720px);max-height:760px;aspect-ratio:16/9}
         .mr-video-hero-mount>.mr-native-call.joined:not(.floating) .mr-local-video{width:190px;height:118px;right:16px;top:16px}
-        .mr-native-call .mr-floating-view-switch{display:none;position:absolute;right:8px;top:8px;z-index:8;gap:5px;padding:5px;border-radius:10px;background:rgba(10,12,16,.76);backdrop-filter:blur(8px)}
-        .mr-native-call .mr-floating-view-switch button{border:0;background:transparent;color:#fff;border-radius:7px;padding:5px 7px;font-size:11px;font-weight:750;cursor:pointer}
+        .mr-native-call .mr-floating-view-switch{display:none;position:absolute;left:50%;top:8px;transform:translateX(-50%);z-index:12;gap:4px;padding:4px;border-radius:10px;background:rgba(10,12,16,.78);backdrop-filter:blur(8px);white-space:nowrap}
+        .mr-native-call .mr-floating-view-switch button{border:0;background:transparent;color:#fff;border-radius:7px;padding:6px 8px;font-size:10.5px;font-weight:750;cursor:pointer;line-height:1}
         .mr-native-call .mr-floating-view-switch button.active,.mr-native-call .mr-floating-view-switch button:hover{background:#fff2}
-        .mr-native-call.floating{position:fixed!important;right:18px!important;bottom:18px!important;left:auto!important;top:auto!important;z-index:3250!important;width:300px!important;max-width:calc(100vw - 36px)!important;padding:8px!important;border-radius:16px!important;box-shadow:0 18px 54px rgba(0,0,0,.28)!important;background:#fff!important}
-        .mr-native-call.floating .mr-call-head{min-height:32px}.mr-native-call.floating .mr-call-title .pill,.mr-native-call.floating .mr-call-note,.mr-native-call.floating .mr-call-quality{display:none}
+        .mr-native-call.floating{
+          position:fixed!important;
+          right:clamp(10px,1.2vw,18px)!important;
+          bottom:clamp(10px,1.2vw,18px)!important;
+          left:auto!important;top:auto!important;
+          z-index:3250!important;
+          width:clamp(230px,22vw,360px)!important;
+          max-width:calc(100vw - 20px)!important;
+          height:auto!important;
+          max-height:calc(100vh - 20px)!important;
+          padding:7px!important;
+          border-radius:15px!important;
+          box-shadow:0 18px 54px rgba(0,0,0,.28)!important;
+          background:#fff!important;
+          overflow:visible!important
+        }
+        .mr-native-call.floating.expanded{width:clamp(230px,22vw,360px)!important;max-height:calc(100vh - 20px)!important;overflow:visible!important}
+        .mr-native-call.floating .mr-call-head{min-height:30px}
+        .mr-native-call.floating .mr-call-title .pill,.mr-native-call.floating .mr-call-note,.mr-native-call.floating .mr-call-quality{display:none}
         .mr-native-call.floating .mr-floating-view-switch{display:flex}
-        .mr-native-call.floating .mr-call-stage{display:block;min-height:164px;aspect-ratio:16/9;border-radius:11px}
+        .mr-native-call.floating .mr-call-stage{
+          display:block!important;
+          width:100%!important;
+          height:auto!important;
+          min-height:0!important;
+          max-height:none!important;
+          aspect-ratio:16/9!important;
+          border-radius:10px!important;
+          overflow:hidden!important;
+          background:#101214!important
+        }
+        .mr-native-call.floating .mr-remote-video{
+          position:absolute!important;
+          inset:0!important;
+          width:100%!important;
+          height:100%!important;
+          max-width:100%!important;
+          max-height:100%!important;
+          object-fit:contain!important;
+          object-position:50% 50%!important;
+          transform:none!important;
+          background:#101214!important
+        }
+        .mr-native-call.floating .mr-call-person{left:7px;bottom:7px;font-size:9.5px;padding:3px 6px}
         .mr-native-call.floating .mr-call-actions{gap:4px;max-height:0;opacity:0;overflow:hidden;transition:.16s ease}
-        .mr-native-call.floating:hover .mr-call-actions,.mr-native-call.floating.view-hidden .mr-call-actions{max-height:120px;opacity:1;padding-top:4px}
-        .mr-native-call.floating .mr-call-actions .btn{min-height:31px;padding:5px 7px;font-size:11px}
+        .mr-native-call.floating:hover .mr-call-actions,.mr-native-call.floating:focus-within .mr-call-actions,.mr-native-call.floating.view-hidden .mr-call-actions{max-height:140px;opacity:1;padding-top:4px}
+        .mr-native-call.floating .mr-call-actions .btn{min-height:30px;padding:5px 7px;font-size:10px}
         .mr-native-call.floating .mr-local-video{display:none}
-        .mr-native-call.floating.view-both .mr-call-stage{min-height:330px;display:grid;grid-template-rows:1fr 1fr;gap:4px;background:#101214;padding:4px}
-        .mr-native-call.floating.view-both .mr-remote-video,.mr-native-call.floating.view-both .mr-local-video{position:relative!important;inset:auto!important;display:block!important;width:100%!important;height:100%!important;border:0!important;border-radius:8px!important;object-fit:cover!important;box-shadow:none!important}
+        .mr-native-call.floating.view-both{width:clamp(230px,22vw,360px)!important}
+        .mr-native-call.floating.view-both .mr-call-stage{
+          display:grid!important;
+          grid-template-rows:minmax(0,1fr) minmax(0,1fr)!important;
+          gap:4px!important;
+          padding:4px!important;
+          width:100%!important;
+          height:auto!important;
+          min-height:0!important;
+          max-height:calc(100vh - 115px)!important;
+          aspect-ratio:8/9!important;
+          background:#101214!important
+        }
+        .mr-native-call.floating.view-both .mr-remote-video,.mr-native-call.floating.view-both .mr-local-video{
+          position:relative!important;
+          inset:auto!important;
+          display:block!important;
+          width:100%!important;
+          height:100%!important;
+          min-width:0!important;
+          min-height:0!important;
+          max-width:100%!important;
+          max-height:100%!important;
+          border:0!important;
+          border-radius:7px!important;
+          object-fit:contain!important;
+          object-position:50% 50%!important;
+          box-shadow:none!important;
+          background:#101214!important
+        }
+        .mr-native-call.floating.view-both .mr-local-video{transform:scaleX(-1)}
+        .mr-native-call.floating.view-both.sharing .mr-local-video{transform:none!important}
         .mr-native-call.floating.view-both .mr-call-person{display:none}
         .mr-native-call.floating.view-remote .mr-local-video{display:none!important}
-        .mr-native-call.floating.view-hidden{width:auto!important;min-width:260px!important}
-        .mr-native-call.floating.view-hidden .mr-call-stage{display:flex!important;align-items:center;justify-content:flex-end;min-height:36px!important;height:36px!important;aspect-ratio:auto!important;background:#fff!important;overflow:visible!important}.mr-native-call.floating.view-hidden .mr-remote-video,.mr-native-call.floating.view-hidden .mr-local-video,.mr-native-call.floating.view-hidden .mr-call-person{display:none!important}
-        .mr-native-call.floating.view-hidden .mr-floating-view-switch{position:static;margin-left:auto}
+        .mr-native-call.floating.view-hidden{width:clamp(250px,20vw,330px)!important;min-width:0!important}
+        .mr-native-call.floating.view-hidden .mr-call-stage{display:flex!important;align-items:center;justify-content:center;min-height:38px!important;height:38px!important;aspect-ratio:auto!important;background:#fff!important;overflow:visible!important}
+        .mr-native-call.floating.view-hidden .mr-remote-video,.mr-native-call.floating.view-hidden .mr-local-video,.mr-native-call.floating.view-hidden .mr-call-person{display:none!important}
+        .mr-native-call.floating.view-hidden .mr-floating-view-switch{position:static!important;left:auto!important;top:auto!important;transform:none!important;margin:auto}
         .mr-native-call.floating.view-hidden .mr-call-head{display:none}
         .mr-native-call.floating.view-hidden .mr-call-actions{display:flex!important;max-height:none!important;opacity:1!important;flex-wrap:nowrap!important;overflow-x:auto!important}
+        @media(max-width:1100px) and (min-width:761px){
+          .mr-native-call.floating{width:clamp(220px,28vw,310px)!important}
+          .mr-native-call.floating.view-both{width:clamp(220px,28vw,310px)!important}
+        }
         @media(max-width:760px){.mr-native-prejoin-backdrop{align-items:flex-start;padding:8px}.mr-native-prejoin{width:96vw;max-width:96vw;max-height:94vh;padding:11px;border-radius:16px;gap:8px;margin:auto}.mr-native-prejoin h2{font-size:23px}.mr-native-prejoin-grid{grid-template-columns:1fr;gap:8px}.mr-native-preview{max-height:34vh;aspect-ratio:16/9}.mr-native-prejoin-side{grid-template-columns:1fr 1fr;gap:6px}.mr-native-prejoin-side .mr-prejoin-wide{grid-column:1/-1}.mr-native-prejoin-side .btn{min-height:38px;font-size:12px}.mr-media-device-fields{gap:6px}.mr-media-device-field{gap:2px}.mr-media-device-field select{min-height:36px;padding:6px 8px}.mr-native-prejoin-side .notice{display:none}.mr-native-prejoin-footer{display:grid;grid-template-columns:1fr 1.2fr;width:100%;padding-top:7px}.mr-native-prejoin-footer .btn{width:100%;min-height:44px}.mr-native-prejoin-footer #mrPrejoinJoin{min-width:0}.mr-native-call.joined{position:relative;right:auto;bottom:auto;width:100%;max-width:none;box-shadow:none}.mr-native-call.joined.expanded{position:fixed;inset:8px;width:auto;max-width:none;max-height:none;z-index:3200;overflow:auto}.mr-native-call.joined.expanded .mr-call-stage{min-height:50vh}.mr-native-call.joined .mr-call-head{cursor:default}.mr-native-call .mr-call-stage{min-height:210px}.mr-native-call .mr-local-video{width:88px;height:62px}.mr-native-call.joined.expanded .mr-local-video{width:120px;height:80px}}
         @media(max-height:760px) and (min-width:761px){.mr-native-prejoin{width:min(78vw,940px);max-height:94vh;padding:11px;gap:8px}.mr-native-prejoin h2{font-size:24px}.mr-native-prejoin-grid{grid-template-columns:minmax(0,1.45fr) minmax(220px,.8fr);gap:10px}.mr-native-preview{max-height:48vh}.mr-native-prejoin-side{gap:5px}.mr-native-prejoin-side .btn{min-height:36px}.mr-media-device-fields{gap:5px}.mr-media-device-field{gap:2px}.mr-media-device-field select{min-height:34px;padding:5px 8px}.mr-native-prejoin-side .notice{display:none}.mr-native-prejoin-footer{padding-top:6px}.mr-native-prejoin-footer .btn{min-height:38px}}
       `;
@@ -1035,6 +1110,7 @@
         if (shouldFloat) {
           this.videoHeroHeight = Math.max(this.videoHeroHeight, this.panel?.offsetHeight || h);
           this.videoHeroMount.style.minHeight = this.videoHeroHeight + 'px';
+          this.expanded = false;
         } else {
           this.videoHeroMount.style.minHeight = '';
         }
@@ -1127,7 +1203,7 @@
         host = document.createElement('section');
         host.id = 'mrVideoPanel';
         host.innerHTML = `<div class="mr-call-head"><div><div class="mr-call-title"><span class="mr-call-dot"></span><b>Связь урока</b><span class="pill">Mathroom P2P + TURN</span></div><div class="small muted" id="mrVideoStatus"></div></div><button class="btn sm" id="mrVideoMin" hidden>—</button></div>
-          <div class="mr-call-stage" id="mrCallStage" title="Двойной клик — полноэкранный режим"><video class="mr-remote-video" id="mrRemoteVideo" autoplay muted playsinline></video><audio id="mrRemoteAudio" autoplay></audio><video class="mr-local-video" id="mrLocalVideo" autoplay muted playsinline title="Ваше видео / ваш экран"></video><span class="mr-call-person">${this.role === 'teacher' ? 'Ученик' : 'Преподаватель'}</span><div class="mr-floating-view-switch"><button data-video-view="remote" title="Только собеседник">1</button><button data-video-view="both" title="Оба видео">2</button><button data-video-view="hidden" title="Скрыть видео">—</button></div></div>
+          <div class="mr-call-stage" id="mrCallStage" title="Двойной клик — полноэкранный режим"><video class="mr-remote-video" id="mrRemoteVideo" autoplay muted playsinline></video><audio id="mrRemoteAudio" autoplay></audio><video class="mr-local-video" id="mrLocalVideo" autoplay muted playsinline title="Ваше видео / ваш экран"></video><span class="mr-call-person">${this.role === 'teacher' ? 'Ученик' : 'Преподаватель'}</span><div class="mr-floating-view-switch"><button data-video-view="remote" title="Показывать только собеседника">Собеседник</button><button data-video-view="both" title="Показывать обоих">Оба</button><button data-video-view="hidden" title="Скрыть видео">Скрыть</button></div></div>
           <div class="mr-call-actions"><button class="btn primary" id="mrVideoJoin">Присоединиться к уроку</button><button class="btn mr-hide-min" id="mrVideoMic" hidden></button><button class="btn mr-hide-min" id="mrVideoCam" hidden></button><button class="btn mr-hide-min" id="mrVideoSound" hidden></button><button class="btn mr-hide-min mr-device-btn" id="mrVideoDevices" hidden>⚙ Устройства</button><button class="btn mr-hide-min" id="mrVideoScreen" hidden>🖥 Экран</button><button class="btn mr-hide-min" id="mrVideoFullscreen" hidden>⛶ Весь экран</button><button class="btn mr-hide-min" id="mrVideoExpand" hidden>↗ Размер</button><button class="btn mr-hide-min" id="mrVideoReconnect" hidden>↻ Переподключить</button><button class="btn danger" id="mrVideoEnd" hidden>Выйти</button></div>
           <div class="mr-call-quality" id="mrVideoQuality"></div><div class="mr-call-note" id="mrVideoNote">Камера и микрофон выбираются перед входом. Связь встроена прямо в Mathroom.</div>`;
         target.appendChild(host);
