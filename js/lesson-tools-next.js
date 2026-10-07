@@ -70,6 +70,13 @@
       this.videoHeroMount = null;
       this.videoHeroHeight = 0;
       this.onVideoScroll = null;
+      this.floatingPosition = (() => {
+        try {
+          const raw = localStorage.getItem(`mathroom.media.floatpos.${this.role}`);
+          const value = raw ? JSON.parse(raw) : null;
+          return value && Number.isFinite(value.left) && Number.isFinite(value.top) ? value : null;
+        } catch { return null; }
+      })();
       this.selectedAudioInput = localStorage.getItem(`mathroom.media.audioinput.${this.role}`) || '';
       this.selectedVideoInput = localStorage.getItem(`mathroom.media.videoinput.${this.role}`) || '';
       this.selectedAudioOutput = localStorage.getItem(`mathroom.media.audiooutput.${this.role}`) || '';
@@ -106,6 +113,8 @@
         else this.send('need-offer', { joined: true }, 'teacher').catch(() => {});
       };
       window.addEventListener('online', this.onOnline);
+      this.onVideoResize=()=>{if(this.videoFloating&&this.floatingPosition)this.applyFloatingPosition()};
+      window.addEventListener('resize',this.onVideoResize);
     }
 
     ensureStyles() {
@@ -155,7 +164,11 @@
         .mr-native-call.floating.expanded{width:clamp(230px,20vw,340px)!important;max-height:none!important;overflow:visible!important}
         .mr-native-call.floating .mr-call-head{display:none!important}
         .mr-native-call.floating .mr-call-note,.mr-native-call.floating .mr-call-quality{display:none!important}
-        .mr-native-call.floating .mr-call-stage{
+                .mr-native-call.floating .mr-call-stage{cursor:grab;touch-action:none;user-select:none}
+        .mr-native-call.floating.dragging .mr-call-stage{cursor:grabbing}
+        .mr-native-call video::-webkit-media-controls-picture-in-picture-button{display:none!important}
+        .mr-native-call video::-webkit-media-controls-overlay-play-button{display:none!important}
+.mr-native-call.floating .mr-call-stage{
           display:block!important;
           width:100%!important;
           height:auto!important;
@@ -1063,11 +1076,13 @@
         if (this.screenTrack && !this.screenPreviewStream) this.screenPreviewStream = preview;
         if (local.srcObject !== preview) local.srcObject = preview;
         local.muted = true; local.playsInline = true;
+        try { local.disablePictureInPicture = true; local.disableRemotePlayback = true; } catch {}
         if (preview) local.play().catch(() => {});
       }
       if (remote) {
         if (remote.srcObject !== this.remoteStream) remote.srcObject = this.remoteStream;
         remote.muted = true; remote.playsInline = true;
+        try { remote.disablePictureInPicture = true; remote.disableRemotePlayback = true; } catch {}
         if (this.remoteStream.getVideoTracks().length) remote.play().catch(() => {});
       }
       if (audio) {
@@ -1124,8 +1139,10 @@
           this.expanded = false;
         } else {
           this.videoHeroMount.style.minHeight = '';
+          this.clearFloatingInlinePosition();
         }
         this.paint();
+        if(shouldFloat)requestAnimationFrame(()=>this.applyFloatingPosition());
       };
       window.addEventListener('scroll', this.onVideoScroll, { passive:true });
       requestAnimationFrame(this.onVideoScroll);
@@ -1186,25 +1203,82 @@
       this.paint();
     }
 
+    clampFloatingPosition(left, top) {
+      const host=this.panel;
+      if(!host)return {left,top};
+      const pad=8;
+      const maxLeft=Math.max(pad,window.innerWidth-host.offsetWidth-pad);
+      const maxTop=Math.max(pad,window.innerHeight-host.offsetHeight-pad);
+      return {
+        left:Math.max(pad,Math.min(maxLeft,left)),
+        top:Math.max(pad,Math.min(maxTop,top))
+      };
+    }
+
+    applyFloatingPosition() {
+      const host=this.panel;
+      if(!host||!this.videoFloating||!this.floatingPosition)return;
+      const pos=this.clampFloatingPosition(this.floatingPosition.left,this.floatingPosition.top);
+      this.floatingPosition=pos;
+      host.style.setProperty('left',pos.left+'px','important');
+      host.style.setProperty('top',pos.top+'px','important');
+      host.style.setProperty('right','auto','important');
+      host.style.setProperty('bottom','auto','important');
+    }
+
+    clearFloatingInlinePosition() {
+      const host=this.panel;
+      if(!host)return;
+      for(const prop of ['left','top','right','bottom'])host.style.removeProperty(prop);
+    }
+
     attachDrag() {
-      const host = this.panel;
-      const head = host?.querySelector('.mr-call-head');
-      if (!host || !head || host.dataset.dragBound === '1') return;
-      host.dataset.dragBound = '1';
-      let drag = null;
-      head.addEventListener('pointerdown', e => {
-        if (window.matchMedia?.('(max-width:760px)')?.matches || e.target.closest('button')) return;
-        const r = host.getBoundingClientRect();
-        drag = { x:e.clientX, y:e.clientY, left:r.left, top:r.top };
-        head.setPointerCapture?.(e.pointerId);
-      });
-      head.addEventListener('pointermove', e => {
-        if (!drag || !this.joined) return;
-        host.style.left = Math.max(6, Math.min(window.innerWidth - host.offsetWidth - 6, drag.left + e.clientX - drag.x)) + 'px';
-        host.style.top = Math.max(6, Math.min(window.innerHeight - host.offsetHeight - 6, drag.top + e.clientY - drag.y)) + 'px';
-        host.style.right = 'auto'; host.style.bottom = 'auto';
-      });
-      head.addEventListener('pointerup', () => drag = null);
+      const host=this.panel;
+      const head=host?.querySelector('.mr-call-head');
+      const stage=host?.querySelector('#mrCallStage');
+      if(!host||!head||!stage||host.dataset.dragBound==='1')return;
+      host.dataset.dragBound='1';
+      let drag=null;
+
+      const begin=e=>{
+        const floating=this.videoFloating||host.classList.contains('floating');
+        const allowed=floating?stage:head;
+        if(e.currentTarget!==allowed)return;
+        if(e.button!=null&&e.button!==0)return;
+        if(e.target.closest('button,input,select,textarea,.mr-floating-view-switch'))return;
+        const r=host.getBoundingClientRect();
+        drag={pointerId:e.pointerId,x:e.clientX,y:e.clientY,left:r.left,top:r.top,moved:false};
+        allowed.setPointerCapture?.(e.pointerId);
+        if(floating)host.classList.add('dragging');
+      };
+      const move=e=>{
+        if(!drag||!this.joined)return;
+        const dx=e.clientX-drag.x,dy=e.clientY-drag.y;
+        if(Math.abs(dx)+Math.abs(dy)>4)drag.moved=true;
+        if(!drag.moved)return;
+        const pos=this.clampFloatingPosition(drag.left+dx,drag.top+dy);
+        host.style.setProperty('left',pos.left+'px','important');
+        host.style.setProperty('top',pos.top+'px','important');
+        host.style.setProperty('right','auto','important');
+        host.style.setProperty('bottom','auto','important');
+        this.floatingPosition=pos;
+      };
+      const finish=e=>{
+        if(!drag)return;
+        if(drag.moved&&this.videoFloating){
+          try{localStorage.setItem(`mathroom.media.floatpos.${this.role}`,JSON.stringify(this.floatingPosition))}catch{}
+          this.videoDraggedAt=Date.now();
+        }
+        drag=null;
+        host.classList.remove('dragging');
+      };
+
+      for(const el of [head,stage]){
+        el.addEventListener('pointerdown',begin);
+        el.addEventListener('pointermove',move);
+        el.addEventListener('pointerup',finish);
+        el.addEventListener('pointercancel',finish);
+      }
     }
 
     renderPanel(target) {
@@ -1214,7 +1288,7 @@
         host = document.createElement('section');
         host.id = 'mrVideoPanel';
         host.innerHTML = `<div class="mr-call-head"><div><div class="mr-call-title"><span class="mr-call-dot"></span><b>Связь урока</b><span class="pill">Mathroom P2P + TURN</span></div><div class="small muted" id="mrVideoStatus"></div></div><button class="btn sm" id="mrVideoMin" hidden>—</button></div>
-          <div class="mr-call-stage" id="mrCallStage" title="Двойной клик — полноэкранный режим"><video class="mr-remote-video" id="mrRemoteVideo" autoplay muted playsinline></video><audio id="mrRemoteAudio" autoplay></audio><video class="mr-local-video" id="mrLocalVideo" autoplay muted playsinline title="Ваше видео / ваш экран"></video><span class="mr-call-person">${this.role === 'teacher' ? 'Ученик' : 'Преподаватель'}</span><div class="mr-floating-view-switch"><button data-video-view="remote" title="Показывать только собеседника">Собеседник</button><button data-video-view="both" title="Показывать обоих">Оба</button><button data-video-view="hidden" title="Скрыть видео">Скрыть</button></div></div>
+          <div class="mr-call-stage" id="mrCallStage" title="Двойной клик — полноэкранный режим"><video class="mr-remote-video" id="mrRemoteVideo" autoplay muted playsinline webkit-playsinline disablepictureinpicture disableremoteplayback controlslist="nodownload noplaybackrate noremoteplayback"></video><audio id="mrRemoteAudio" autoplay></audio><video class="mr-local-video" id="mrLocalVideo" autoplay muted playsinline webkit-playsinline disablepictureinpicture disableremoteplayback controlslist="nodownload noplaybackrate noremoteplayback" title="Ваше видео / ваш экран"></video><span class="mr-call-person">${this.role === 'teacher' ? 'Ученик' : 'Преподаватель'}</span><div class="mr-floating-view-switch"><button data-video-view="remote" title="Показывать только собеседника">Собеседник</button><button data-video-view="both" title="Показывать обоих">Оба</button><button data-video-view="hidden" title="Скрыть видео">Скрыть</button></div></div>
           <div class="mr-call-actions"><button class="btn primary" id="mrVideoJoin">Присоединиться к уроку</button><button class="btn mr-hide-min" id="mrVideoMic" hidden></button><button class="btn mr-hide-min" id="mrVideoCam" hidden></button><button class="btn mr-hide-min" id="mrVideoSound" hidden></button><button class="btn mr-hide-min mr-device-btn" id="mrVideoDevices" hidden>⚙ Устройства</button><button class="btn mr-hide-min" id="mrVideoScreen" hidden>🖥 Экран</button><button class="btn mr-hide-min" id="mrVideoFullscreen" hidden>⛶ Весь экран</button><button class="btn mr-hide-min" id="mrVideoExpand" hidden>↗ Размер</button><button class="btn mr-hide-min" id="mrVideoReconnect" hidden>↻ Переподключить</button><button class="btn danger" id="mrVideoEnd" hidden>Выйти</button></div>
           <div class="mr-call-quality" id="mrVideoQuality"></div><div class="mr-call-note" id="mrVideoNote">Камера и микрофон выбираются перед входом. Связь встроена прямо в Mathroom.</div>`;
         target.appendChild(host);
@@ -1229,7 +1303,7 @@
         const screen = host.querySelector('#mrVideoScreen'); if (screen) screen.onclick = () => this.shareScreen();
         const full = host.querySelector('#mrVideoFullscreen'); if (full) full.onclick = () => this.openVideoFullscreen();
         const expand = host.querySelector('#mrVideoExpand'); if (expand) expand.onclick = () => this.videoViewMode === 'hidden' ? this.setVideoViewMode('remote') : this.toggleExpanded();
-        const stage = host.querySelector('#mrCallStage'); if (stage) stage.ondblclick = () => this.openVideoFullscreen();
+        const stage = host.querySelector('#mrCallStage'); if (stage) stage.ondblclick = () => { if(Date.now()-(this.videoDraggedAt||0)>300)this.openVideoFullscreen(); };
         host.querySelectorAll('[data-video-view]').forEach(b=>b.onclick=()=>this.setVideoViewMode(b.dataset.videoView));
         const localPreview = host.querySelector('#mrLocalVideo'); if (localPreview) localPreview.onclick = () => { if (this.screenTrack) this.toggleExpanded(); };
       }
@@ -1280,6 +1354,8 @@
       this.screenTrack = null;
       this.screenPreviewStream = null;
       window.removeEventListener('online', this.onOnline);
+      if(this.onVideoResize)window.removeEventListener('resize',this.onVideoResize);
+      this.onVideoResize=null;
       if (this.onVideoScroll) window.removeEventListener('scroll', this.onVideoScroll);
       this.onVideoScroll = null;
       if (this.videoHeroMount) this.videoHeroMount.style.minHeight = '';
