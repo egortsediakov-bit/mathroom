@@ -124,7 +124,18 @@
       st.textContent = `
         .mr-native-call{border:1px solid var(--line,#e5e7eb);background:#fff;border-radius:18px;padding:14px;display:grid;gap:10px;box-shadow:0 8px 26px rgba(20,24,32,.05)}
         .mr-native-call .mr-call-head{display:flex;align-items:center;justify-content:space-between;gap:12px}.mr-native-call .mr-call-title{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.mr-native-call .mr-call-dot{width:9px;height:9px;border-radius:50%;background:#aeb4bd;box-shadow:0 0 0 4px rgba(120,125,135,.1)}.mr-native-call.connected .mr-call-dot{background:#25a464;box-shadow:0 0 0 4px rgba(37,164,100,.12)}
-        .mr-native-call .mr-call-stage{display:none;position:relative;background:#101214;border-radius:14px;overflow:hidden;aspect-ratio:16/9;min-height:170px}.mr-native-call.joined .mr-call-stage{display:block}.mr-native-call .mr-remote-video{width:100%;height:100%;object-fit:contain;display:block;background:#101214}.mr-native-call .mr-local-video{position:absolute;right:10px;top:10px;width:104px;height:70px;object-fit:cover;border:2px solid rgba(255,255,255,.88);border-radius:10px;background:#1b1d20;box-shadow:0 6px 18px #0005;cursor:zoom-in}.mr-native-call.sharing .mr-local-video{object-fit:contain;background:#0b0d10}.mr-native-call .mr-call-person{position:absolute;left:10px;bottom:10px;background:#0009;color:#fff;padding:4px 8px;border-radius:8px;font-size:11px}.mr-native-call .mr-call-actions{display:flex;gap:7px;flex-wrap:wrap}.mr-native-call .mr-call-actions .btn{min-height:38px}.mr-native-call [hidden]{display:none!important}.mr-native-call .mr-call-note{font-size:12px;color:var(--muted,#747b85);line-height:1.45}.mr-native-call .mr-call-quality{font-size:11px;color:var(--muted,#747b85)}
+        .mr-native-call .mr-call-stage{display:none;position:relative;background:#101214;border-radius:14px;overflow:hidden;aspect-ratio:16/9;min-height:170px}.mr-native-call.joined .mr-call-stage{display:block}.mr-native-call .mr-remote-video{width:100%;height:100%;object-fit:contain;display:block;background:#101214}.mr-native-call .mr-local-video{position:absolute;right:10px;top:10px;width:104px;height:70px;object-fit:cover;border:2px solid rgba(255,255,255,.88);border-radius:10px;background:#1b1d20;box-shadow:0 6px 18px #0005;cursor:zoom-in}.mr-native-call.sharing .mr-local-video{object-fit:contain;background:#0b0d10}.mr-native-call .mr-call-person{position:absolute;left:10px;bottom:10px;background:#0009;color:#fff;padding:4px 8px;border-radius:8px;font-size:11px}.mr-native-call .mr-call-actions{display:flex;gap:7px;flex-wrap:wrap}.mr-native-call .mr-call-actions .btn{min-height:38px}.mr-native-call [hidden]{display:none!important}
+        .mr-duo-icon{width:20px;height:20px;display:block;flex:0 0 20px;color:#17191c;overflow:visible}
+        .mr-duo-icon .mr-duo-main{stroke:currentColor;fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+        .mr-duo-icon .mr-duo-accent{stroke:var(--koto-orange,#ED591A);fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+        .mr-duo-icon .mr-duo-accent-fill{fill:var(--koto-orange,#ED591A);stroke:none}
+        .mr-call-actions .btn,.mr-native-prejoin-side>.btn{display:inline-flex;align-items:center;justify-content:center;gap:7px}
+        .mr-call-actions .btn.is-on,.mr-native-prejoin-side>.btn.is-on{border-color:#ffd0ba;background:#fff7f2}
+        .mr-call-actions .btn.is-off,.mr-native-prejoin-side>.btn.is-off{background:#fff}
+        .mr-call-actions #mrVideoEnd .mr-duo-icon{color:var(--koto-orange,#ED591A)}
+        .mr-call-actions #mrVideoEnd{color:#b94212;border-color:#f2c9b7;background:#fffaf7}
+        .mr-call-actions #mrVideoScreen.sharing{border-color:#ffd0ba;background:#fff7f2}
+.mr-native-call .mr-call-note{font-size:12px;color:var(--muted,#747b85);line-height:1.45}.mr-native-call .mr-call-quality{font-size:11px;color:var(--muted,#747b85)}
         .mr-native-call.joined{position:fixed;right:18px;bottom:18px;z-index:1250;width:320px;max-width:calc(100vw - 36px);padding:10px;box-shadow:0 18px 55px #0004;transition:width .18s ease,height .18s ease}.mr-native-call.joined .mr-call-head{cursor:move}.mr-native-call.joined.expanded{width:min(860px,calc(100vw - 36px));max-height:calc(100vh - 36px);overflow:auto}.mr-native-call.joined.expanded .mr-call-stage{min-height:360px;aspect-ratio:16/9}.mr-native-call.joined.expanded .mr-local-video{width:180px;height:110px}.mr-native-call.joined.minimized{width:260px}.mr-native-call.joined.minimized .mr-call-stage,.mr-native-call.joined.minimized .mr-call-note,.mr-native-call.joined.minimized .mr-call-quality{display:none}.mr-native-call.joined.minimized .mr-call-actions .mr-hide-min{display:none}
         .mr-native-prejoin-backdrop{position:fixed;inset:0;z-index:3000;background:rgba(8,11,16,.72);display:flex;align-items:center;justify-content:center;padding:clamp(10px,2vh,20px);overflow:auto}
         .mr-native-prejoin{width:clamp(560px,72vw,980px);max-width:calc(100vw - 24px);max-height:88vh;background:#fff;border-radius:clamp(16px,1.5vw,22px);padding:clamp(12px,1.4vw,18px);box-shadow:0 28px 90px #0007;display:grid;gap:clamp(9px,1.1vh,14px);overflow:auto;overscroll-behavior:contain}
@@ -603,6 +614,42 @@
       for (const row of rows) await this.acceptIce(row);
     }
 
+    mediaIcon(name, active = true) {
+      const open='<svg class="mr-duo-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">';
+      const close='</svg>';
+      if(name==='mic') return open+
+        '<rect class="mr-duo-main" x="9" y="3.5" width="6" height="10.5" rx="3"/>'+
+        '<path class="mr-duo-main" d="M6.8 11.5v.7a5.2 5.2 0 0 0 10.4 0v-.7M12 17.4V21M9.5 21h5"/>'+
+        (active?'<rect class="mr-duo-accent-fill" x="10.7" y="5.1" width="2.6" height="7.2" rx="1.3"/>':'<path class="mr-duo-accent" d="M4.7 4.7 19.3 19.3"/>')+close;
+      if(name==='camera') return open+
+        '<rect class="mr-duo-main" x="3.5" y="6.5" width="12.5" height="11" rx="2.2"/>'+
+        '<path class="mr-duo-main" d="M16 10l4.5-2.4v8.8L16 14"/>'+
+        (active?'<circle class="mr-duo-accent-fill" cx="9.8" cy="12" r="2.1"/>':'<path class="mr-duo-accent" d="M4.5 4.5 19.5 19.5"/>')+close;
+      if(name==='sound') return open+
+        '<path class="mr-duo-main" d="M4 10h3.2L11 6.7v10.6L7.2 14H4z"/>'+
+        (active?'<path class="mr-duo-accent" d="M15 9.2a4 4 0 0 1 0 5.6M17.7 6.8a7.4 7.4 0 0 1 0 10.4"/>':'<path class="mr-duo-accent" d="M4.8 4.8 19.2 19.2"/>')+close;
+      if(name==='devices') return open+
+        '<path class="mr-duo-main" d="M12 3.5l1.1 2.1 2.4.5 1.8-1.4 2 2-1.4 1.8.5 2.4 2.1 1.1v2.8l-2.1 1.1-.5 2.4 1.4 1.8-2 2-1.8-1.4-2.4.5L12 20.5l-1.1-2.1-2.4-.5-1.8 1.4-2-2 1.4-1.8-.5-2.4L3.5 12V9.2l2.1-1.1.5-2.4-1.4-1.8 2-2 1.8 1.4 2.4-.5z"/>'+
+        '<circle class="mr-duo-accent-fill" cx="12" cy="11.9" r="2.1"/>'+close;
+      if(name==='screen') return open+
+        '<rect class="mr-duo-main" x="3.5" y="4.5" width="17" height="12" rx="1.8"/>'+
+        '<path class="mr-duo-main" d="M9 20h6"/><path class="mr-duo-accent" d="M8.3 17.8h7.4"/>'+close;
+      if(name==='fullscreen') return open+
+        '<path class="mr-duo-accent" d="M8.2 4H4v4.2M15.8 4H20v4.2M20 15.8V20h-4.2M8.2 20H4v-4.2"/>'+close;
+      if(name==='video') return open+
+        '<rect class="mr-duo-main" x="3.5" y="5" width="17" height="14" rx="2.2"/>'+
+        '<path class="mr-duo-accent-fill" d="M10 9l5 3-5 3z"/>'+close;
+      if(name==='reconnect') return open+
+        '<path class="mr-duo-main" d="M19 8a7.5 7.5 0 1 0 .3 7.4"/>'+
+        '<path class="mr-duo-accent" d="M19 4.8V8h-3.2"/>'+close;
+      if(name==='exit') return open+
+        '<path class="mr-duo-accent" d="M10 4H5.5A1.5 1.5 0 0 0 4 5.5v13A1.5 1.5 0 0 0 5.5 20H10M13.5 8.2 17.3 12l-3.8 3.8M9.5 12h7.8"/>'+close;
+      return open+'<path class="mr-duo-main" d="M5 12h14"/>'+close;
+    }
+
+    mediaButton(icon, label, active = true) {
+      return this.mediaIcon(icon,active)+'<span>'+esc(label)+'</span>';
+    }
     audioConstraints(deviceId = this.selectedAudioInput) {
       const supported = navigator.mediaDevices?.getSupportedConstraints?.() || {};
       const audio = {};
@@ -876,8 +923,8 @@
         <div class="mr-native-prejoin-grid">
           <div class="mr-native-preview"><video id="mrPrejoinVideo" autoplay muted playsinline></video><span class="mr-preview-name">Вы</span></div>
           <div class="mr-native-prejoin-side">
-            <button class="btn" id="mrPrejoinMic">🎙 Микрофон</button>
-            <button class="btn" id="mrPrejoinCam">📹 Камера</button>
+            <button class="btn" id="mrPrejoinMic">${this.mediaButton('mic','Микрофон',this.micEnabled)}</button>
+            <button class="btn" id="mrPrejoinCam">${this.mediaButton('camera','Камера',this.cameraEnabled)}</button>
             <div class="mr-media-device-fields mr-prejoin-wide">
               <div class="mr-media-device-field"><label>Микрофон</label><select data-device-kind="audioinput"></select></div>
               <div class="mr-media-device-field"><label>Камера</label><select data-device-kind="videoinput"></select></div>
@@ -922,9 +969,17 @@
       const cam = this.prejoin.querySelector('#mrPrejoinCam');
       const hasMic = !!this.localStream?.getAudioTracks?.().length;
       const hasCam = !!this.localStream?.getVideoTracks?.().length;
-      if (mic) mic.textContent = `${this.micEnabled && hasMic ? '🎙' : '🔇'} Микрофон ${this.micEnabled && hasMic ? 'включён' : 'выключен'}`;
-      if (cam) cam.textContent = `${this.cameraEnabled && hasCam ? '📹' : '🚫'} Камера ${this.cameraEnabled && hasCam ? 'включена' : 'выключена'}`;
-      if (cam) cam.disabled = !hasCam;
+      if (mic) {
+        const on=this.micEnabled && hasMic;
+        mic.innerHTML=this.mediaButton('mic',on?'Микрофон включён':'Микрофон выключен',on);
+        mic.classList.toggle('is-on',on); mic.classList.toggle('is-off',!on);
+      }
+      if (cam) {
+        const on=this.cameraEnabled && hasCam;
+        cam.innerHTML=this.mediaButton('camera',on?'Камера включена':'Камера выключена',on);
+        cam.classList.toggle('is-on',on); cam.classList.toggle('is-off',!on);
+        cam.disabled = !hasCam;
+      }
     }
 
     closePrejoin(stopMedia = false) {
@@ -1289,7 +1344,7 @@
         host.id = 'mrVideoPanel';
         host.innerHTML = `<div class="mr-call-head"><div><div class="mr-call-title"><span class="mr-call-dot"></span><b>Связь урока</b><span class="pill">Mathroom P2P + TURN</span></div><div class="small muted" id="mrVideoStatus"></div></div><button class="btn sm" id="mrVideoMin" hidden>—</button></div>
           <div class="mr-call-stage" id="mrCallStage" title="Двойной клик — полноэкранный режим"><video class="mr-remote-video" id="mrRemoteVideo" autoplay muted playsinline webkit-playsinline disablepictureinpicture disableremoteplayback controlslist="nodownload noplaybackrate noremoteplayback"></video><audio id="mrRemoteAudio" autoplay></audio><video class="mr-local-video" id="mrLocalVideo" autoplay muted playsinline webkit-playsinline disablepictureinpicture disableremoteplayback controlslist="nodownload noplaybackrate noremoteplayback" title="Ваше видео / ваш экран"></video><span class="mr-call-person">${this.role === 'teacher' ? 'Ученик' : 'Преподаватель'}</span><div class="mr-floating-view-switch"><button data-video-view="remote" title="Показывать только собеседника">Собеседник</button><button data-video-view="both" title="Показывать обоих">Оба</button><button data-video-view="hidden" title="Скрыть видео">Скрыть</button></div></div>
-          <div class="mr-call-actions"><button class="btn primary" id="mrVideoJoin">Присоединиться к уроку</button><button class="btn mr-hide-min" id="mrVideoMic" hidden></button><button class="btn mr-hide-min" id="mrVideoCam" hidden></button><button class="btn mr-hide-min" id="mrVideoSound" hidden></button><button class="btn mr-hide-min mr-device-btn" id="mrVideoDevices" hidden>⚙ Устройства</button><button class="btn mr-hide-min" id="mrVideoScreen" hidden>🖥 Экран</button><button class="btn mr-hide-min" id="mrVideoFullscreen" hidden>⛶ Весь экран</button><button class="btn mr-hide-min" id="mrVideoExpand" hidden>↗ Размер</button><button class="btn mr-hide-min" id="mrVideoReconnect" hidden>↻ Переподключить</button><button class="btn danger" id="mrVideoEnd" hidden>Выйти</button></div>
+          <div class="mr-call-actions"><button class="btn primary" id="mrVideoJoin">Присоединиться к уроку</button><button class="btn mr-hide-min" id="mrVideoMic" hidden></button><button class="btn mr-hide-min" id="mrVideoCam" hidden></button><button class="btn mr-hide-min" id="mrVideoSound" hidden></button><button class="btn mr-hide-min mr-device-btn" id="mrVideoDevices" hidden>${this.mediaButton('devices','Устройства')}</button><button class="btn mr-hide-min" id="mrVideoScreen" hidden>${this.mediaButton('screen','Экран')}</button><button class="btn mr-hide-min" id="mrVideoFullscreen" hidden>${this.mediaButton('fullscreen','Весь экран')}</button><button class="btn mr-hide-min" id="mrVideoExpand" hidden>${this.mediaButton('video','Видео')}</button><button class="btn mr-hide-min" id="mrVideoReconnect" hidden>${this.mediaButton('reconnect','Переподключить')}</button><button class="btn danger" id="mrVideoEnd" hidden>${this.mediaButton('exit','Выйти')}</button></div>
           <div class="mr-call-quality" id="mrVideoQuality"></div><div class="mr-call-note" id="mrVideoNote">Камера и микрофон выбираются перед входом. Связь встроена прямо в Mathroom.</div>`;
         target.appendChild(host);
         host.querySelector('#mrVideoJoin').onclick = () => this.openPrejoin();
@@ -1326,11 +1381,28 @@
       const ids = ['#mrVideoMic','#mrVideoCam','#mrVideoSound','#mrVideoDevices','#mrVideoReconnect','#mrVideoEnd','#mrVideoScreen','#mrVideoFullscreen','#mrVideoExpand'];
       ids.forEach(sel => { const el=host.querySelector(sel); if(el) el.hidden = !this.joined; });
       const min = host.querySelector('#mrVideoMin'); if (min) { min.hidden = !this.joined; min.textContent = this.minimized ? '□' : '—'; }
-      const mic = host.querySelector('#mrVideoMic'); if (mic) mic.textContent = this.micEnabled ? '🎙 Вкл' : '🔇 Выкл';
-      const cam = host.querySelector('#mrVideoCam'); if (cam) cam.textContent = this.cameraEnabled ? '📹 Вкл' : '🚫 Выкл';
-      const sound = host.querySelector('#mrVideoSound'); if (sound) sound.textContent = this.soundEnabled ? '🔊 Звук' : '🔇 Звук';
-      const screen = host.querySelector('#mrVideoScreen'); if (screen) screen.textContent = this.screenTrack ? '■ Остановить экран' : '🖥 Экран';
-      const expand = host.querySelector('#mrVideoExpand'); if (expand) expand.textContent = this.videoViewMode === 'hidden' ? '▣ Видео' : (this.expanded ? '↙ Обычный размер' : '↗ Размер');
+      const mic = host.querySelector('#mrVideoMic'); if (mic) {
+        mic.innerHTML=this.mediaButton('mic',this.micEnabled?'Вкл':'Выкл',this.micEnabled);
+        mic.classList.toggle('is-on',this.micEnabled); mic.classList.toggle('is-off',!this.micEnabled);
+        mic.title=this.micEnabled?'Выключить микрофон':'Включить микрофон';
+      }
+      const cam = host.querySelector('#mrVideoCam'); if (cam) {
+        cam.innerHTML=this.mediaButton('camera',this.cameraEnabled?'Вкл':'Выкл',this.cameraEnabled);
+        cam.classList.toggle('is-on',this.cameraEnabled); cam.classList.toggle('is-off',!this.cameraEnabled);
+        cam.title=this.cameraEnabled?'Выключить камеру':'Включить камеру';
+      }
+      const sound = host.querySelector('#mrVideoSound'); if (sound) {
+        sound.innerHTML=this.mediaButton('sound',this.soundEnabled?'Звук':'Звук выкл',this.soundEnabled);
+        sound.classList.toggle('is-on',this.soundEnabled); sound.classList.toggle('is-off',!this.soundEnabled);
+        sound.title=this.soundEnabled?'Выключить звук собеседника':'Включить звук собеседника';
+      }
+      const screen = host.querySelector('#mrVideoScreen'); if (screen) {
+        screen.innerHTML=this.mediaButton('screen',this.screenTrack?'Остановить экран':'Экран',!!this.screenTrack);
+        screen.classList.toggle('sharing',!!this.screenTrack);
+      }
+      const expand = host.querySelector('#mrVideoExpand'); if (expand) {
+        expand.innerHTML=this.mediaButton('video',this.videoViewMode === 'hidden'?'Видео':(this.expanded?'Обычный размер':'Видео'),true);
+      }
       host.querySelectorAll('[data-video-view]').forEach(b=>b.classList.toggle('active',b.dataset.videoView===this.videoViewMode));
       const note = host.querySelector('#mrVideoNote'); if (note) note.textContent = this.joined
         ? (this.hasTurn ? 'Mathroom сначала использует прямую связь, а при проблемах автоматически переключается через резервный сервер.' : 'Резервный сервер сейчас недоступен: Mathroom использует прямое P2P-соединение.')
