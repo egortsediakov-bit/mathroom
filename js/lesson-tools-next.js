@@ -1415,7 +1415,13 @@
       backdrop.innerHTML = `<div class="mr-native-prejoin">
         <div><div class="pill">Встроенная связь Mathroom</div><h2>Подключиться к уроку</h2><p class="small muted">Выбери состояние камеры и микрофона. После входа собеседника будет слышно сразу.</p></div>
         <div class="mr-native-prejoin-grid">
-          <div class="mr-native-preview"><video id="mrPrejoinVideo" autoplay muted playsinline></video><span class="mr-preview-name">Вы</span></div>
+          <div class="mr-prejoin-media-col">
+            <div class="mr-native-preview"><video id="mrPrejoinVideo" autoplay muted playsinline></video><span class="mr-preview-name">Вы</span></div>
+            <div class="mr-native-prejoin-footer">
+              <button class="btn" id="mrPrejoinCancel">Отмена</button>
+              <button class="btn primary" id="mrPrejoinJoin">Войти в урок</button>
+            </div>
+          </div>
           <div class="mr-native-prejoin-side">
             <button class="btn" id="mrPrejoinMic">${this.mediaButton('mic','Микрофон',this.micEnabled)}</button>
             <button class="btn" id="mrPrejoinCam">${this.mediaButton('camera','Камера',this.cameraEnabled)}</button>
@@ -1430,7 +1436,6 @@
           </div>
         </div>
         <div class="mr-native-prejoin-error" id="mrPrejoinError"></div>
-        <div class="mr-native-prejoin-footer"><button class="btn" id="mrPrejoinCancel">Отмена</button><button class="btn primary" id="mrPrejoinJoin">Войти в урок</button></div>
       </div>`;
       document.body.appendChild(backdrop);
       this.prejoin = backdrop;
