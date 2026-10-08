@@ -134,6 +134,9 @@
       window.addEventListener('online', this.onOnline);
       this.onVideoResize=()=>{if(this.videoFloating&&this.floatingPosition)this.applyFloatingPosition()};
       window.addEventListener('resize',this.onVideoResize);
+
+      this.onBoardVideoRestored=()=>this.recoverAfterBoardFullscreen();
+      window.addEventListener('mathroom:board-video-restored',this.onBoardVideoRestored);
     }
 
     ensureStyles() {
@@ -1694,6 +1697,60 @@
     }
 
 
+    bindCoreVideoActions() {
+      const host=this.panel;
+      if(!host)return;
+      const mic=host.querySelector('#mrVideoMic'); if(mic)mic.onclick=()=>this.toggleMic();
+      const cam=host.querySelector('#mrVideoCam'); if(cam)cam.onclick=()=>this.toggleCamera();
+      const sound=host.querySelector('#mrVideoSound'); if(sound)sound.onclick=()=>this.toggleSound();
+      const devices=host.querySelector('#mrVideoDevices'); if(devices)devices.onclick=()=>this.openDeviceSettings().catch(fail);
+      const reconnect=host.querySelector('#mrVideoReconnect'); if(reconnect)reconnect.onclick=()=>{this.forceRelay=false;this.reconnect(true,false).catch(fail)};
+      const end=host.querySelector('#mrVideoEnd'); if(end)end.onclick=()=>this.end();
+      const screen=host.querySelector('#mrVideoScreen'); if(screen)screen.onclick=()=>this.shareScreen();
+      const full=host.querySelector('#mrVideoFullscreen'); if(full)full.onclick=()=>this.openVideoFullscreen();
+      const expand=host.querySelector('#mrVideoExpand'); if(expand)expand.onclick=e=>{
+        e.preventDefault();
+        e.stopPropagation();
+        if(this.videoViewMode==='hidden')this.showVideoFromHidden();
+      };
+      host.querySelectorAll('[data-video-view]').forEach(b=>b.onclick=()=>this.setVideoViewMode(b.dataset.videoView));
+    }
+
+    recoverAfterBoardFullscreen() {
+      if(!this.joined||!this.panel)return;
+
+      const host=this.panel;
+      host.classList.remove('mr-board-fullscreen-video','dragging');
+
+      // Hidden mode must always return as a live compact control strip.
+      if(this.videoViewMode==='hidden'){
+        this.videoFloating=true;
+        this.expanded=false;
+        this.minimized=false;
+        localStorage.setItem(`mathroom.media.expanded.${this.role}`,'0');
+        localStorage.setItem(`mathroom.media.minimized.${this.role}`,'0');
+      }
+
+      this.bindCoreVideoActions();
+      this.paint();
+
+      requestAnimationFrame(()=>{
+        if(this.videoFloating){
+          if(!this.floatingPosition){
+            const r=host.getBoundingClientRect();
+            this.floatingPosition={
+              left:Math.max(8,Math.min(window.innerWidth-host.offsetWidth-8,r.left||window.innerWidth-host.offsetWidth-18)),
+              top:Math.max(8,Math.min(window.innerHeight-host.offsetHeight-8,r.top||82))
+            };
+          }
+          this.applyFloatingPosition();
+        }
+        host.style.pointerEvents='auto';
+        host.querySelectorAll('button').forEach(b=>b.style.pointerEvents='auto');
+        this.bindCoreVideoActions();
+      });
+    }
+
     setVideoViewMode(mode) {
       if (!['remote','both','hidden'].includes(mode)) return;
       this.videoViewMode = mode;
@@ -1953,6 +2010,7 @@
         const localPreview = host.querySelector('#mrLocalVideo'); if (localPreview) localPreview.onclick = () => { if (this.screenTrack) this.toggleExpanded(); };
       }
       this.panel = host;
+      this.bindCoreVideoActions();
 
       // Defensive cleanup for stale duplicate panels left by an older build.
       // The current live host is preserved; any second copy is removed.
@@ -2041,6 +2099,8 @@
       window.removeEventListener('online', this.onOnline);
       if(this.onVideoResize)window.removeEventListener('resize',this.onVideoResize);
       this.onVideoResize=null;
+      if(this.onBoardVideoRestored)window.removeEventListener('mathroom:board-video-restored',this.onBoardVideoRestored);
+      this.onBoardVideoRestored=null;
       if (this.onVideoScroll) window.removeEventListener('scroll', this.onVideoScroll);
       this.onVideoScroll = null;
       if (this.videoHeroMount) this.videoHeroMount.style.minHeight = '';
