@@ -1045,10 +1045,21 @@
       if (old) this.localStream.removeTrack(old);
       this.localStream.addTrack(next);
 
+      if(!isAudio && this.virtualBgMode!=='none'){
+        try{await this.startVirtualBackground()}
+        catch(e){
+          console.warn('[Mathroom virtual background] restart after camera switch',e);
+          this.virtualBgMode='none';
+          localStorage.setItem(`mathroom.media.bg.${this.role}`,'none');
+          this.stopVirtualBackground();
+        }
+      }
+
       const sender = this.pc?.getSenders?.().find(s => s.track?.kind === kind)
         || this.pc?.getTransceivers?.().find(t => t.receiver?.track?.kind === kind)?.sender;
+      const outgoing = isAudio ? next : this.effectiveCameraTrack();
       if (sender && !(kind === 'video' && this.screenTrack)) {
-        try { await sender.replaceTrack(next); } catch (e) { console.warn('[Mathroom devices] replaceTrack', kind, e); }
+        try { await sender.replaceTrack(outgoing); } catch (e) { console.warn('[Mathroom devices] replaceTrack', kind, e); }
       }
       old?.stop?.();
 
@@ -1266,6 +1277,7 @@
       if (stopMedia && !this.joined) {
         this.localStream?.getTracks?.().forEach(t => t.stop());
         this.localStream = null;
+        this.stopVirtualBackground();
       }
     }
 
@@ -1322,6 +1334,7 @@
       if (!t) return toast('Камера недоступна');
       this.cameraEnabled = !this.cameraEnabled;
       t.enabled = this.cameraEnabled;
+      if(this.virtualBgTrack)this.virtualBgTrack.enabled=this.cameraEnabled;
       localStorage.setItem(`mathroom.media.camera.${this.role}`, this.cameraEnabled?'1':'0');
       this.paint();
     }
