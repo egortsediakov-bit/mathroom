@@ -2862,3 +2862,98 @@ input[type="file"]{font-size:11px!important}
     grid-template-columns:repeat(2,minmax(0,1fr))!important;
   }
 }
+
+
+/* ===== Saved custom virtual backgrounds ===== */
+.mr-bg-saved[hidden]{display:none!important}
+.mr-bg-saved{
+  display:grid!important;
+  gap:6px!important;
+  padding-top:3px!important;
+}
+.mr-bg-saved-title{
+  font-size:10px!important;
+  font-weight:850!important;
+  color:#69727d!important;
+  text-transform:uppercase!important;
+  letter-spacing:.055em!important;
+}
+.mr-bg-saved-grid{
+  display:grid!important;
+  grid-template-columns:repeat(4,minmax(0,1fr))!important;
+  gap:6px!important;
+}
+.mr-bg-saved-item{
+  position:relative!important;
+  min-width:0!important;
+  height:70px!important;
+  padding:0!important;
+  display:block!important;
+  overflow:hidden!important;
+  border:1px solid var(--pg-line-2)!important;
+  border-radius:7px!important;
+  background:#111318!important;
+  cursor:pointer!important;
+  box-shadow:none!important;
+}
+.mr-bg-saved-item:hover{
+  border-color:#aeb6c0!important;
+}
+.mr-bg-saved-item.active{
+  border-color:var(--pg-orange)!important;
+  box-shadow:0 0 0 2px rgba(255,115,0,.16)!important;
+}
+.mr-bg-saved-thumb{
+  position:absolute!important;
+  inset:0!important;
+  display:block!important;
+}
+.mr-bg-saved-thumb img{
+  width:100%!important;
+  height:100%!important;
+  display:block!important;
+  object-fit:cover!important;
+}
+.mr-bg-saved-name{
+  position:absolute!important;
+  left:5px!important;
+  right:24px!important;
+  bottom:5px!important;
+  z-index:2!important;
+  padding:3px 5px!important;
+  overflow:hidden!important;
+  text-overflow:ellipsis!important;
+  white-space:nowrap!important;
+  border-radius:4px!important;
+  background:rgba(0,0,0,.62)!important;
+  color:#fff!important;
+  font-size:8.5px!important;
+  font-weight:750!important;
+  text-align:left!important;
+}
+.mr-bg-saved-remove{
+  position:absolute!important;
+  top:5px!important;
+  right:5px!important;
+  z-index:3!important;
+  width:20px!important;
+  height:20px!important;
+  display:grid!important;
+  place-items:center!important;
+  border:1px solid rgba(255,255,255,.28)!important;
+  border-radius:5px!important;
+  background:rgba(12,15,18,.72)!important;
+  color:#fff!important;
+  font-size:15px!important;
+  line-height:1!important;
+}
+.mr-bg-saved-remove:hover{
+  background:#e54848!important;
+  border-color:#e54848!important;
+}
+@media(max-width:820px){
+  .mr-bg-saved-grid{grid-template-columns:repeat(3,minmax(0,1fr))!important}
+}
+@media(max-width:560px){
+  .mr-bg-saved-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+}
