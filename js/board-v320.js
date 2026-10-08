@@ -1127,6 +1127,9 @@
         if(op.pageId!==current?.id)continue;
         const idx=elements.findIndex(x=>x.id===op.id),existing=idx>=0?elements[idx]:null;
         if(!remoteOpAllowed(op,existing))continue;
+        /* Once the durable object op arrives, retire its transient live-stroke
+           preview. Until this moment the preview remains visible. */
+        if(op.id)remoteLiveStrokes.delete(op.id);
         if(op.type==='delete'){
           const incomingRev=Math.max(1,Number(op.rev||0));
           if(existing&&incomingRev>=Number(existing._rev||0)){
@@ -1151,6 +1154,9 @@
     }
     function applyStateSnapshot(raw){
       const incoming=(Array.isArray(raw)?raw:[]).map(normalizeElement).filter(Boolean);
+      /* A full state snapshot is also authoritative for strokes that were
+         previously shown only as live previews. */
+      for(const o of incoming)if(o?.id)remoteLiveStrokes.delete(o.id);
       if(!incoming.length&&elements.length)return;
       const im=new Map(incoming.map(x=>[x.id,x])),cm=new Map(elements.map(x=>[x.id,x]));
       const order=[...elements.map(x=>x.id),...incoming.map(x=>x.id).filter(id=>!cm.has(id))],next=[];
@@ -1724,11 +1730,18 @@
             if(sid){
               if(payload.phase==='start'){
                 const s=normalizeElement(payload.stroke||{id:sid,type:'path',points:[]});
-                if(s)remoteLiveStrokes.set(sid,{...s,points:[...(s.points||[])],expires:Date.now()+3500});
+                if(s)remoteLiveStrokes.set(sid,{...s,points:[...(s.points||[])],expires:Date.now()+15000,finished:false});
               }else if(payload.phase==='chunk'){
                 const s=remoteLiveStrokes.get(sid);
-                if(s){s.points.push(...(payload.points||[]));s.expires=Date.now()+3500}
-              }else if(payload.phase==='end')remoteLiveStrokes.delete(sid);
+                if(s){s.points.push(...(payload.points||[]));s.expires=Date.now()+15000}
+              }else if(payload.phase==='end'){
+                /* Do not remove the just-finished remote stroke immediately.
+                   The durable realtime op can arrive a moment later. Keeping
+                   the transient copy bridges that gap, so the previous word
+                   never flashes/disappears when the student starts the next one. */
+                const s=remoteLiveStrokes.get(sid);
+                if(s){s.finished=true;s.expires=Date.now()+15000}
+              }
             }
           }
           if(payload.kind==='marker'&&payload.mark){const i=remoteTempMarks.findIndex(x=>x.id===payload.mark.id),mark={...payload.mark,expires:Date.now()+5000};if(i>=0)remoteTempMarks[i]=mark;else remoteTempMarks.push(mark);setTimeout(render,5100)}
