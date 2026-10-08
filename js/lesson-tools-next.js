@@ -1033,6 +1033,15 @@
       // With alpha:false the mask became fully opaque, so the original room
       // always won and blur/replacement backgrounds looked like they did nothing.
       const ctx=canvas.getContext('2d',{alpha:true,desynchronized:true});
+      /* Mobile browsers may ignore or poorly implement Canvas2D filter: blur().
+         Keep a tiny offscreen buffer as a reliable blur fallback: heavy
+         downscale + bilinear upscale produces a soft background without filter. */
+      const blurCanvas=document.createElement('canvas');
+      const blurScale=isMobile?0.055:0.085;
+      blurCanvas.width=Math.max(20,Math.round(w*blurScale));
+      blurCanvas.height=Math.max(20,Math.round(h*blurScale));
+      const blurCtx=blurCanvas.getContext('2d',{alpha:false});
+      if(blurCtx)blurCtx.imageSmoothingEnabled=true;
       const output=canvas.captureStream(isMobile?20:24);
       const outTrack=output.getVideoTracks()[0];
       if(!outTrack) throw new Error('Не удалось создать обработанный видеопоток');
@@ -1063,10 +1072,25 @@
 
         ctx.globalCompositeOperation='destination-over';
         if(this.virtualBgMode==='blur'){
-          ctx.save();
-          ctx.filter=isMobile?'blur(18px)':'blur(22px)';
-          ctx.drawImage(results.image,0,0,cw,ch);
-          ctx.restore();
+          if(isMobile&&blurCtx){
+            // Reliable mobile blur: aggressively downsample then upscale.
+            // Two passes make the result visibly softer while avoiding
+            // Canvas2D filter, which is broken/ignored on some phones.
+            blurCtx.clearRect(0,0,blurCanvas.width,blurCanvas.height);
+            blurCtx.drawImage(results.image,0,0,blurCanvas.width,blurCanvas.height);
+            ctx.save();
+            ctx.imageSmoothingEnabled=true;
+            ctx.imageSmoothingQuality='high';
+            ctx.drawImage(blurCanvas,0,0,blurCanvas.width,blurCanvas.height,0,0,cw,ch);
+            ctx.globalAlpha=.96;
+            ctx.drawImage(blurCanvas,0,0,blurCanvas.width,blurCanvas.height,0,0,cw,ch);
+            ctx.restore();
+          }else{
+            ctx.save();
+            ctx.filter='blur(22px)';
+            ctx.drawImage(results.image,0,0,cw,ch);
+            ctx.restore();
+          }
         }else if(this.virtualBgMode==='custom'&&this.virtualBgCustomImage){
           this.drawCover(ctx,this.virtualBgCustomImage,cw,ch);
         }else{
