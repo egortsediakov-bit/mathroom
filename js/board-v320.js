@@ -1190,21 +1190,35 @@
     const moveLessonVideoIntoFullscreen=()=>{
       const card=root.querySelector('.board-card');
       const video=document.querySelector('#mrVideoPanel');
-      if(!card||!video||card.contains(video))return;
-      boardFullscreenVideoState={video,parent:video.parentNode,next:video.nextSibling};
+      if(!card||!video||card.contains(video)||!video.classList.contains('joined'))return;
+      const savedPosition={};
+      for(const prop of ['left','top','right','bottom']){
+        savedPosition[prop]={
+          value:video.style.getPropertyValue(prop),
+          priority:video.style.getPropertyPriority(prop)
+        };
+        video.style.removeProperty(prop);
+      }
+      boardFullscreenVideoState={video,parent:video.parentNode,next:video.nextSibling,savedPosition};
       video.classList.add('mr-board-fullscreen-video');
       card.appendChild(video);
     };
     const restoreLessonVideoAfterFullscreen=()=>{
       const state=boardFullscreenVideoState;
       if(!state)return;
-      const {video,parent,next}=state;
+      const {video,parent,next,savedPosition}=state;
       video.classList.remove('mr-board-fullscreen-video');
       if(parent?.isConnected){
         if(next&&next.parentNode===parent)parent.insertBefore(video,next);
         else parent.appendChild(video);
       }
+      for(const prop of ['left','top','right','bottom']){
+        video.style.removeProperty(prop);
+        const saved=savedPosition?.[prop];
+        if(saved?.value)video.style.setProperty(prop,saved.value,saved.priority||'');
+      }
       boardFullscreenVideoState=null;
+      requestAnimationFrame(()=>window.dispatchEvent(new Event('scroll')));
     };
     const toggleBoardFullscreen=async()=>{
       const card=root.querySelector('.board-card');
