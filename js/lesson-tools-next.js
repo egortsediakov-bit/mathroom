@@ -358,7 +358,6 @@
           .mr-native-call.joined.expanded .mr-local-video{width:120px!important;height:80px!important}
         }
         @media(max-height:760px) and (min-width:761px){.mr-native-prejoin{width:min(78vw,940px);max-height:94vh;padding:11px;gap:8px}.mr-native-prejoin h2{font-size:24px}.mr-native-prejoin-grid{grid-template-columns:minmax(0,1.45fr) minmax(220px,.8fr);gap:10px}.mr-native-preview{max-height:48vh}.mr-native-prejoin-side{gap:5px}.mr-native-prejoin-side .btn{min-height:36px}.mr-media-device-fields{gap:5px}.mr-media-device-field{gap:2px}.mr-media-device-field select{min-height:34px;padding:5px 8px}.mr-native-prejoin-side .notice{display:none}.mr-native-prejoin-footer{padding-top:6px}.mr-native-prejoin-footer .btn{min-height:38px}}
-      `;
         html.mr-video-call-open,body.mr-video-call-open{overflow:hidden!important}
         .mr-native-call.mr-call-fullscreen{
           position:fixed!important;inset:0!important;z-index:10000!important;
@@ -409,6 +408,7 @@
           .mr-native-call.mr-call-fullscreen .mr-call-actions{gap:6px!important;padding:7px!important}
           .mr-native-call.mr-call-fullscreen .mr-call-actions .btn{min-width:44px!important;min-height:44px!important;padding:7px!important}
         }
+      `;
       document.head.appendChild(st);
     }
 
