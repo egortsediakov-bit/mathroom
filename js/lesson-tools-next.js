@@ -135,18 +135,27 @@
       };
       window.addEventListener('online', this.onOnline);
       this.onVideoResize=()=>{
-        const phone=window.matchMedia?.('(max-width: 760px)')?.matches;
-        if(phone&&this.videoFloating){
+        const ua=String(navigator.userAgent||'');
+        const coarse=window.matchMedia?.('(pointer: coarse)')?.matches||false;
+        const touch=Number(navigator.maxTouchPoints||0)>0;
+        const shortSide=Math.min(Number(screen?.width||0),Number(screen?.height||0));
+        const phoneDevice=/iPhone|Android.*Mobile|Mobile/i.test(ua)||((coarse||touch)&&shortSide>0&&shortSide<=600);
+        if(phoneDevice){
           this.videoFloating=false;
           this.floatingPosition=null;
           if(this.videoHeroMount)this.videoHeroMount.style.minHeight='';
           this.clearFloatingInlinePosition?.();
+          if(!this.callFullscreen&&this.panel&&this.videoHeroMount&&this.panel.parentNode!==this.videoHeroMount){
+            this.videoHeroMount.appendChild(this.panel);
+          }
           this.paint();
+          requestAnimationFrame(()=>this.bindMedia());
           return;
         }
         if(this.videoFloating&&this.floatingPosition)this.applyFloatingPosition();
       };
       window.addEventListener('resize',this.onVideoResize);
+      window.addEventListener('orientationchange',this.onVideoResize);
 
       this.onBoardVideoRestored=()=>this.recoverAfterBoardFullscreen();
       window.addEventListener('mathroom:board-video-restored',this.onBoardVideoRestored);
@@ -2373,7 +2382,10 @@
       this.screenTrack = null;
       this.screenPreviewStream = null;
       window.removeEventListener('online', this.onOnline);
-      if(this.onVideoResize)window.removeEventListener('resize',this.onVideoResize);
+      if(this.onVideoResize){
+        window.removeEventListener('resize',this.onVideoResize);
+        window.removeEventListener('orientationchange',this.onVideoResize);
+      }
       this.onVideoResize=null;
       if(this.onBoardVideoRestored)window.removeEventListener('mathroom:board-video-restored',this.onBoardVideoRestored);
       this.onBoardVideoRestored=null;
