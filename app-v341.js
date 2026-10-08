@@ -743,11 +743,60 @@ function studentProgressHtml(d){
   const lessonName=id=>d.lessons.find(l=>l.id===id)?.topics?.title||'Урок';
   return `<div class="grid cols4 profile-metrics"><div class="card"><div class="muted">Уроков с отчётом</div><div class="metric">${reports.length}</div></div><div class="card"><div class="muted">Последние 3 урока</div><div class="metric">${last3==null?'—':last3+'%'}</div><div class="small ${delta>0?'good':delta<0?'warn':''}">${delta==null?'Нужно больше уроков':`${delta>0?'↑':delta<0?'↓':'→'} ${delta>0?'+':''}${delta} п.п.`}</div></div><div class="card"><div class="muted">Домашние</div><div class="metric">${avg(d.homeworks.map(x=>x.score))??'—'}${avg(d.homeworks.map(x=>x.score))!=null?'%':''}</div></div><div class="card"><div class="muted">Тесты</div><div class="metric">${avg(d.tests.map(x=>x.score))??'—'}${avg(d.tests.map(x=>x.score))!=null?'%':''}</div></div></div><div class="grid cols2" style="margin-top:16px"><div class="card"><h2>Что получается лучше</h2>${topStrength.length?`<div class="mr-tag-cloud">${topStrength.map(([n,v])=>`<span class="pill good">${esc(n)} · ${v}</span>`).join('')}</div>`:'<div class="empty">Пока недостаточно данных.</div>'}<div class="mr-student-insights">${reports.filter(r=>r.public_highlights).slice(0,3).map(r=>`<div class="notice"><b>${esc(lessonName(r.lesson_id))}</b><br>${nl(r.public_highlights)}</div>`).join('')}</div></div><div class="card"><h2>Что повторить</h2>${topFocus.length?`<div class="mr-tag-cloud">${topFocus.map(([n,v])=>`<span class="pill warn">${esc(n)} · ${v}</span>`).join('')}</div>`:'<div class="empty">Сложные места пока не отмечены.</div>'}<div class="mr-student-insights">${reports.filter(r=>r.public_focus).slice(0,3).map(r=>`<div class="notice"><b>${esc(lessonName(r.lesson_id))}</b><br>${nl(r.public_focus)}</div>`).join('')}</div></div></div><div class="card" style="margin-top:16px"><div class="mr-card-head"><h2>Динамика</h2><span class="pill">последние ${recent.length}</span></div>${recent.length?`<div class="mr-trend-chart student">${[...recent].reverse().map(r=>{const p=Math.max(0,Math.min(100,Number(r.solved_percent||0)));return `<div class="mr-trend-col" title="${esc(lessonName(r.lesson_id))} · ${p}%"><span>${p}%</span><div class="mr-trend-track"><i style="height:${Math.max(4,p)}%"></i></div><small>${new Date(r.created_at).toLocaleDateString('ru-RU',{day:'2-digit',month:'2-digit'})}</small></div>`}).join('')}</div>`:'<div class="empty">После следующих уроков здесь появится график прогресса.</div>'}</div>`;
 }
+function studentMobileNavIcon(name){
+  const icons={
+    home:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11.2 12 4l8 7.2"/><path d="M6.5 10.3V20h11v-9.7"/><path d="M9.5 20v-5.5h5V20"/></svg>',
+    tasks:'<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="4" width="14" height="16" rx="2"/><path d="m8 10 1.6 1.6L12.5 8.7M8 15h8"/></svg>',
+    board:'<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="13" rx="2"/><path d="M8 21h8M12 17.5V21"/><path d="m8 13 2.1-2.1 1.8 1.8L16 8.6"/></svg>',
+    more:'<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="19" cy="12" r="1.4"/></svg>',
+    progress:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 19V9M12 19V5M19 19v-7"/></svg>',
+    lessons:'<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M8 3v4M16 3v4M4 10h16"/></svg>'
+  };
+  return icons[name]||icons.more;
+}
+function studentMobileAssignmentsHtml(d){
+  const all=[...d.homeworks.map(x=>({...x,kind:'homework'})),...d.tests.map(x=>({...x,kind:'test'}))].sort((a,b)=>String(b.created_at).localeCompare(String(a.created_at)));
+  const open=all.filter(x=>x.status==='assigned'),done=all.filter(x=>x.status!=='assigned');
+  const card=x=>{
+    const revision=x.kind==='homework'&&x.status==='assigned'&&x.revision_requested_at;
+    const overdue=x.kind==='homework'&&x.due_at&&x.status==='assigned'&&!revision&&new Date(x.due_at).getTime()<Date.now();
+    const meta=[x.topics?.title||'',x.kind==='homework'&&x.due_at?`до ${new Date(x.due_at).toLocaleDateString('ru-RU',{day:'2-digit',month:'2-digit'})}`:'',x.score!=null?`${x.score}%`:''].filter(Boolean).join(' · ');
+    return `<article class="mr-mobile-assignment ${revision?'revision':''} ${overdue?'overdue':''}">
+      <div class="mr-mobile-assignment-main"><span class="mr-mobile-kicker">${x.kind==='homework'?'Домашняя работа':'Тест'}${revision?' · доработка':overdue?' · просрочено':''}</span><h3>${esc(x.title)}</h3><p>${esc(meta||statusLabel(x.status))}</p></div>
+      <button class="btn ${x.status==='assigned'?'primary':''}" data-student-assignment="${x.kind}:${x.id}">${x.status==='assigned'?(revision?'Исправить':'Открыть'):'Посмотреть'}</button>
+    </article>`;
+  };
+  return `<section class="mr-mobile-page-head"><div><span class="mr-mobile-kicker">Мои задания</span><h1>Задания</h1></div><span class="mr-mobile-count">${open.length}</span></section>
+    <section class="mr-mobile-section"><div class="mr-mobile-section-title"><h2>Нужно сделать</h2><span>${open.length}</span></div><div class="mr-mobile-list">${open.length?open.map(card).join(''):'<div class="mr-mobile-empty">Сейчас активных заданий нет.</div>'}</div></section>
+    ${done.length?`<section class="mr-mobile-section"><div class="mr-mobile-section-title"><h2>Готово</h2><span>${done.length}</span></div><div class="mr-mobile-list compact">${done.slice(0,8).map(card).join('')}</div></section>`:''}`;
+}
+function studentMobileLessonsHtml(d){
+  const lessons=[...d.lessons].sort((a,b)=>String(b.scheduled_at||'').localeCompare(String(a.scheduled_at||'')));
+  return `<section class="mr-mobile-subhead"><button class="mr-mobile-back" data-mobile-tab="more">←</button><div><span class="mr-mobile-kicker">История</span><h1>Уроки</h1></div></section><div class="mr-mobile-list">${lessons.length?lessons.map(l=>{
+    const r=(d.reports||[]).find(x=>x.lesson_id===l.id);
+    return `<article class="mr-mobile-lesson-card"><div><span class="mr-mobile-kicker">${esc(dateLong(l.scheduled_at))}</span><h3>${esc(l.topics?.title||'Урок')}</h3><p>${l.duration_minutes} мин · ${esc(statusLabel(l.status))}</p></div>${r?`<div class="mr-mobile-lesson-score"><b>${Math.round(Number(r.solved_percent||0))}%</b><span>уверенно</span></div>`:''}${r?.public_highlights?`<div class="mr-mobile-lesson-note"><b>Получилось</b><p>${nl(r.public_highlights)}</p></div>`:''}${r?.public_focus?`<div class="mr-mobile-lesson-note warn"><b>Повторить</b><p>${nl(r.public_focus)}</p></div>`:''}</article>`;
+  }).join(''):'<div class="mr-mobile-empty">Уроков пока нет.</div>'}</div>`;
+}
+function studentMobileMoreHtml(){
+  return `<section class="mr-mobile-page-head"><div><span class="mr-mobile-kicker">Кабинет</span><h1>Ещё</h1></div></section>
+    <section class="mr-mobile-profile-card"><div class="mr-mobile-avatar">${esc(String(S.student.name||'?').trim().charAt(0).toUpperCase())}</div><div><b>${esc(S.student.name)}</b><span>${esc(String(S.student.grade))} класс</span></div></section>
+    <div class="mr-mobile-menu-list">
+      <button data-mobile-tab="progress"><span class="mr-mobile-menu-icon">${studentMobileNavIcon('progress')}</span><span><b>Прогресс</b><small>результаты, сильные темы и что повторить</small></span><i>›</i></button>
+      <button data-mobile-tab="lessons"><span class="mr-mobile-menu-icon">${studentMobileNavIcon('lessons')}</span><span><b>История уроков</b><small>прошедшие занятия и отчёты преподавателя</small></span><i>›</i></button>
+    </div>`;
+}
+function studentMobileBottomNav(activeTab){
+  const moreActive=['more','progress','lessons'].includes(activeTab);
+  return `<nav class="mr-mobile-student-nav" aria-label="Навигация кабинета">
+    <button data-mobile-tab="today" class="${activeTab==='today'?'active':''}">${studentMobileNavIcon('home')}<span>Главная</span></button>
+    <button data-mobile-tab="tasks" class="${activeTab==='tasks'?'active':''}">${studentMobileNavIcon('tasks')}<span>Задания</span></button>
+    <button data-mobile-tab="board" class="${activeTab==='board'?'active':''}">${studentMobileNavIcon('board')}<span>Доска</span></button>
+    <button data-mobile-tab="more" class="${moreActive?'active':''}">${studentMobileNavIcon('more')}<span>Ещё</span></button>
+  </nav>`;
+}
 async function renderStudent(){
   cleanupAll();const d=await getStudentData(),{active,live}=await currentStudentLive(d.lessons);S.studentLive=live;
 
-  // Dedicated lesson workspace is only for phones and tablets.
-  // Desktop keeps the original student cabinet / lesson layout.
   const ua=String(navigator.userAgent||'');
   const coarse=window.matchMedia?.('(pointer: coarse)')?.matches||false;
   const touch=Number(navigator.maxTouchPoints||0)>0;
@@ -755,16 +804,8 @@ async function renderStudent(){
   const sh=Math.min(Number(screen?.width||0),Number(screen?.height||0));
   const mobileUA=/iPhone|iPad|iPod|Android|Mobile|Tablet/i.test(ua);
   const iPadOS=/Macintosh/i.test(ua)&&touch;
-  /* Use physical device characteristics, not current viewport width.
-     Rotating a phone must never turn the live lesson into desktop mode. */
   const compactLessonUI=(mobileUA||iPadOS||((coarse||touch)&&sw<=1366&&sh<=1024));
-  /* On phones/tablets the first student view after every page load is Board.
-     Keep it as an in-memory one-shot so the student can still switch tabs
-     afterwards without being forced back to Board on every render. */
-  if(compactLessonUI&&!S.mobileBoardDefaultApplied){
-    S.studentTab='board';
-    S.mobileBoardDefaultApplied=true;
-  }
+
   if(active&&live&&compactLessonUI){
     S.studentTab='board';
     app.innerHTML=`<div class="student-home student-lesson-mode"><div id="studentLessonTaskMount">${studentLessonTaskCard(live)}</div><div id="studentLessonBoard"></div></div>`;
@@ -774,7 +815,39 @@ async function renderStudent(){
     return;
   }
 
-  // Original desktop focus mode.
+  if(compactLessonUI){
+    if(!S.mobileStudentShellInitialized){
+      S.studentTab='today';
+      S.mobileStudentShellInitialized=true;
+    }
+    if(!['today','tasks','board','more','progress','lessons'].includes(S.studentTab))S.studentTab='today';
+    const tab=S.studentTab;
+    app.innerHTML=`<div class="student-home student-mobile-shell tab-${tab}">
+      <header class="mr-mobile-web-head"><div><span class="brand">Mathroom</span><small>Кабинет ученика</small></div><div class="mr-mobile-student-mini"><b>${esc(S.student.name)}</b><span>${esc(String(S.student.grade))} класс</span></div></header>
+      <main id="studentContent" class="mr-mobile-student-content"></main>
+      ${studentMobileBottomNav(tab)}
+    </div>`;
+    const content=document.getElementById('studentContent');
+    if(tab==='today'){
+      content.innerHTML=`<section class="mr-mobile-welcome"><span>Привет, ${esc(String(S.student.name||'').split(/\s+/)[0]||'')}</span><h1>Что сегодня?</h1><p>Урок, задания и следующий шаг — в одном месте.</p></section><div id="mrStudentToday" class="mr-student-today"><div class="mr-mobile-skeleton-card"></div><div class="mr-mobile-skeleton-card small"></div></div>`;
+    }else if(tab==='tasks'){
+      content.innerHTML=studentMobileAssignmentsHtml(d);
+      content.querySelectorAll('[data-student-assignment]').forEach(b=>b.onclick=()=>openStudentAssignment(...b.dataset.studentAssignment.split(':')));
+    }else if(tab==='board'){
+      content.innerHTML='<section class="mr-mobile-board-head"><div><span class="mr-mobile-kicker">Рабочее пространство</span><h1>Доска</h1></div></section><div id="mrMobileStudentBoard"></div>';
+      await mountBoard(document.getElementById('mrMobileStudentBoard'),S.student.id,false);
+    }else if(tab==='progress'){
+      content.innerHTML=`<section class="mr-mobile-subhead"><button class="mr-mobile-back" data-mobile-tab="more">←</button><div><span class="mr-mobile-kicker">Результаты</span><h1>Прогресс</h1></div></section><div class="mr-mobile-progress-wrap">${studentProgressHtml(d)}</div>`;
+    }else if(tab==='lessons'){
+      content.innerHTML=studentMobileLessonsHtml(d);
+    }else{
+      content.innerHTML=studentMobileMoreHtml();
+    }
+    app.querySelectorAll('[data-mobile-tab]').forEach(b=>b.onclick=()=>{S.studentTab=b.dataset.mobileTab;renderStudent()});
+    return;
+  }
+
+  // Original desktop focus mode and cabinet remain unchanged.
   if(active&&live?.focus_enabled){
     app.innerHTML=`<div class="student-home student-focus">${studentLiveCard(active,live)}<div id="focusBoard"></div></div>`;
     await mountBoard(document.getElementById('focusBoard'),S.student.id,false);
@@ -782,12 +855,11 @@ async function renderStudent(){
     return;
   }
 
-  // Original desktop/student cabinet layout.
   app.innerHTML=`<div class="student-home"><div class="student-top"><div><div class="brand">Mathroom</div><h1>${esc(S.student.name)}</h1><p class="muted">${S.student.grade} класс · персональный кабинет</p></div><div class="tabs"><button id="studentTodayTab" class="${S.studentTab==='today'?'active':''}">Сегодня</button><button id="studentBoardTab" class="${S.studentTab==='board'?'active':''}">Доска</button><button id="studentTasksTab" class="${S.studentTab==='tasks'?'active':''}">Задания</button><button id="studentLessonsTab" class="${S.studentTab==='lessons'?'active':''}">Уроки</button><button id="studentProgressTab" class="${S.studentTab==='progress'?'active':''}">Прогресс</button></div></div>${studentLiveCard(active,live)}<div id="studentContent"></div></div>`;
   document.getElementById('studentTodayTab').onclick=()=>{S.studentTab='today';renderStudent()};document.getElementById('studentBoardTab').onclick=()=>{S.studentTab='board';renderStudent()};document.getElementById('studentTasksTab').onclick=()=>{S.studentTab='tasks';renderStudent()};document.getElementById('studentLessonsTab').onclick=()=>{S.studentTab='lessons';renderStudent()};document.getElementById('studentProgressTab').onclick=()=>{S.studentTab='progress';renderStudent()};
-  const c=document.getElementById('studentContent');if(S.studentTab==='today')c.innerHTML=`<div id="mrStudentToday" class="mr-student-today"><div class="card"><h2>Сегодня</h2><p class="muted">Собираем ближайший урок и следующий шаг…</p></div></div>`;else if(S.studentTab==='progress')c.innerHTML=studentProgressHtml(d);else if(S.studentTab==='lessons')c.innerHTML=`<div class="list">${d.lessons.length?d.lessons.map(l=>{const r=(d.reports||[]).find(x=>x.lesson_id===l.id);return `<div class="row student-lesson"><div><h3>${esc(l.topics?.title||'Урок')}</h3><p>${dateLong(l.scheduled_at)} · ${l.duration_minutes} мин · ${statusLabel(l.status)}</p>${l.rescheduled_from&&Math.abs(new Date(l.rescheduled_from)-new Date(l.scheduled_at))>60000?`<div class="small warn">Перенесено с ${dateLong(l.rescheduled_from)}</div>`:''}${r?`<div class="mr-student-report"><div class="actions"><span class="pill">✓ ${r.solved_count}/${r.queue_total}</span><span class="pill">${Math.round(Number(r.solved_percent||0))}% уверенно</span></div>${r.public_highlights?`<div><b>Получилось:</b> ${nl(r.public_highlights)}</div>`:''}${r.public_focus?`<div><b>Повторить:</b> ${nl(r.public_focus)}</div>`:''}</div>`:''}${l.public_summary?`<div class="notice">${nl(l.public_summary)}</div>`:''}${l.homework_plan?`<div class="small"><b>К следующему уроку:</b> ${esc(l.homework_plan)}</div>`:''}</div></div>`}).join(''):'<div class="empty">Уроков пока нет.</div>'}</div>`;
-  else if(S.studentTab==='tasks'){const all=[...d.homeworks.map(x=>({...x,kind:'homework'})),...d.tests.map(x=>({...x,kind:'test'}))].sort((a,b)=>String(b.created_at).localeCompare(String(a.created_at)));c.innerHTML=`<div class="list">${all.length?all.map(x=>{const revision=x.kind==='homework'&&x.status==='assigned'&&x.revision_requested_at;const overdue=x.kind==='homework'&&x.due_at&&x.status==='assigned'&&!revision&&new Date(x.due_at).getTime()<Date.now();return `<div class="row"><div><h3>${x.kind==='homework'?'Домашняя':'Тест'} · ${esc(x.title)}</h3><p>${esc(x.topics?.title||'')} · ${revision?'нужна доработка':statusLabel(x.status)}${x.score!=null?` · ${x.score}%`:''}${x.kind==='homework'&&x.due_at?` · срок ${new Date(x.due_at).toLocaleDateString('ru-RU',{day:'2-digit',month:'2-digit'})}`:''}${x.kind==='homework'&&x.attempt_count?` · попыток ${x.attempt_count}`:''}</p>${revision?`<div class="notice warn"><b>Преподаватель вернул работу на доработку.</b>${x.revision_message?`<br>${nl(x.revision_message)}`:''}</div>`:''}${overdue?`<div class="small warn">Срок выполнения прошёл</div>`:''}${x.comment?`<div class="small muted">Комментарий: ${esc(x.comment)}</div>`:''}</div><button class="btn sm primary" data-student-assignment="${x.kind}:${x.id}">${x.status==='assigned'?(revision?'Исправить':'Выполнить'):'Посмотреть'}</button></div>`}).join(''):'<div class="empty">Заданий пока нет.</div>'}</div>`;c.querySelectorAll('[data-student-assignment]').forEach(b=>b.onclick=()=>openStudentAssignment(...b.dataset.studentAssignment.split(':')))}
-  else await mountBoard(c,S.student.id,false);
+  const cc=document.getElementById('studentContent');if(S.studentTab==='today')cc.innerHTML=`<div id="mrStudentToday" class="mr-student-today"><div class="card"><h2>Сегодня</h2><p class="muted">Собираем ближайший урок и следующий шаг…</p></div></div>`;else if(S.studentTab==='progress')cc.innerHTML=studentProgressHtml(d);else if(S.studentTab==='lessons')cc.innerHTML=`<div class="list">${d.lessons.length?d.lessons.map(l=>{const r=(d.reports||[]).find(x=>x.lesson_id===l.id);return `<div class="row student-lesson"><div><h3>${esc(l.topics?.title||'Урок')}</h3><p>${dateLong(l.scheduled_at)} · ${l.duration_minutes} мин · ${statusLabel(l.status)}</p>${l.rescheduled_from&&Math.abs(new Date(l.rescheduled_from)-new Date(l.scheduled_at))>60000?`<div class="small warn">Перенесено с ${dateLong(l.rescheduled_from)}</div>`:''}${r?`<div class="mr-student-report"><div class="actions"><span class="pill">✓ ${r.solved_count}/${r.queue_total}</span><span class="pill">${Math.round(Number(r.solved_percent||0))}% уверенно</span></div>${r.public_highlights?`<div><b>Получилось:</b> ${nl(r.public_highlights)}</div>`:''}${r.public_focus?`<div><b>Повторить:</b> ${nl(r.public_focus)}</div>`:''}</div>`:''}${l.public_summary?`<div class="notice">${nl(l.public_summary)}</div>`:''}${l.homework_plan?`<div class="small"><b>К следующему уроку:</b> ${esc(l.homework_plan)}</div>`:''}</div></div>`}).join(''):'<div class="empty">Уроков пока нет.</div>'}</div>`;
+  else if(S.studentTab==='tasks'){const all=[...d.homeworks.map(x=>({...x,kind:'homework'})),...d.tests.map(x=>({...x,kind:'test'}))].sort((a,b)=>String(b.created_at).localeCompare(String(a.created_at)));cc.innerHTML=`<div class="list">${all.length?all.map(x=>{const revision=x.kind==='homework'&&x.status==='assigned'&&x.revision_requested_at;const overdue=x.kind==='homework'&&x.due_at&&x.status==='assigned'&&!revision&&new Date(x.due_at).getTime()<Date.now();return `<div class="row"><div><h3>${x.kind==='homework'?'Домашняя':'Тест'} · ${esc(x.title)}</h3><p>${esc(x.topics?.title||'')} · ${revision?'нужна доработка':statusLabel(x.status)}${x.score!=null?` · ${x.score}%`:''}${x.kind==='homework'&&x.due_at?` · срок ${new Date(x.due_at).toLocaleDateString('ru-RU',{day:'2-digit',month:'2-digit'})}`:''}${x.kind==='homework'&&x.attempt_count?` · попыток ${x.attempt_count}`:''}</p>${revision?`<div class="notice warn"><b>Преподаватель вернул работу на доработку.</b>${x.revision_message?`<br>${nl(x.revision_message)}`:''}</div>`:''}${overdue?`<div class="small warn">Срок выполнения прошёл</div>`:''}${x.comment?`<div class="small muted">Комментарий: ${esc(x.comment)}</div>`:''}</div><button class="btn sm primary" data-student-assignment="${x.kind}:${x.id}">${x.status==='assigned'?(revision?'Исправить':'Выполнить'):'Посмотреть'}</button></div>`}).join(''):'<div class="empty">Заданий пока нет.</div>'}</div>`;cc.querySelectorAll('[data-student-assignment]').forEach(b=>b.onclick=()=>openStudentAssignment(...b.dataset.studentAssignment.split(':')))}
+  else await mountBoard(cc,S.student.id,false);
   if(active)subscribeStudentLive(active.id);
 }
 window.renderStudent=renderStudent;
