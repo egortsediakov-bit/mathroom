@@ -1218,7 +1218,10 @@
         if(saved?.value)video.style.setProperty(prop,saved.value,saved.priority||'');
       }
       boardFullscreenVideoState=null;
-      requestAnimationFrame(()=>window.dispatchEvent(new Event('scroll')));
+      requestAnimationFrame(()=>{
+        window.dispatchEvent(new Event('scroll'));
+        window.dispatchEvent(new CustomEvent('mathroom:board-video-restored'));
+      });
     };
     const toggleBoardFullscreen=async()=>{
       const card=root.querySelector('.board-card');
