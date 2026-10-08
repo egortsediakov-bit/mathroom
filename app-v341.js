@@ -702,7 +702,16 @@ async function bootStudent(){
 }
 async function getStudentData(){
   const [{data:lessons},{data:homeworks},{data:tests},{data:reports}]=await Promise.all([sb.rpc('get_my_lessons'),sb.from('homeworks').select('id,title,status,score,comment,created_at,submitted_at,due_at,source,attempt_count,last_attempt_at,reviewed_at,revision_requested_at,revision_message,topics(title)').eq('student_id',S.student.id).order('created_at',{ascending:false}),sb.from('tests').select('id,title,status,score,source,created_at,submitted_at,topics(title)').eq('student_id',S.student.id).order('created_at',{ascending:false}),sb.rpc('get_my_lesson_reports')]);
-  return {lessons:Array.isArray(lessons)?lessons:[],homeworks:homeworks||[],tests:tests||[],reports:Array.isArray(reports)?reports:[]};
+  const lessonRows=Array.isArray(lessons)?lessons:[];
+  let versions=[];
+  try{
+    const ids=lessonRows.filter(x=>x.status==='completed').map(x=>x.id);
+    if(ids.length){
+      const vr=await sb.from('lesson_board_versions').select('id,lesson_id,title,note,pages,created_at').in('lesson_id',ids).order('created_at',{ascending:false});
+      if(!vr.error)versions=vr.data||[];
+    }
+  }catch(e){console.info('[Mathroom student board archive] unavailable',e)}
+  return {lessons:lessonRows,homeworks:homeworks||[],tests:tests||[],reports:Array.isArray(reports)?reports:[],versions};
 }
 async function currentStudentLive(lessons){
   const active=lessons.find(x=>x.status==='in_progress');if(!active)return {active:null,live:null};const {data}=await sb.from('lesson_live_state').select('*').eq('lesson_id',active.id).maybeSingle();return {active,live:data};
@@ -770,27 +779,50 @@ function studentMobileAssignmentsHtml(d){
     <section class="mr-mobile-section"><div class="mr-mobile-section-title"><h2>Нужно сделать</h2><span>${open.length}</span></div><div class="mr-mobile-list">${open.length?open.map(card).join(''):'<div class="mr-mobile-empty">Сейчас активных заданий нет.</div>'}</div></section>
     ${done.length?`<section class="mr-mobile-section"><div class="mr-mobile-section-title"><h2>Готово</h2><span>${done.length}</span></div><div class="mr-mobile-list compact">${done.slice(0,8).map(card).join('')}</div></section>`:''}`;
 }
+function studentLessonRecordingUrl(l){
+  const raw=String(l?.recording_url||l?.video_url||l?.recordingUrl||'').trim();
+  return /^https?:\/\//i.test(raw)?raw:'';
+}
+function openStudentLessonBoardArchive(version){
+  if(!version)return;
+  const m=modal(`<div class="mr-card-head"><div><span class="koto-eyebrow">ДОСКА УРОКА</span><h2>${esc(version.title||'Доска урока')}</h2><p class="muted">${esc(version.note||'Сохранено преподавателем после занятия')}</p></div></div><div id="studentLessonSnapshot"></div>`,'snapshot-modal');
+  mountSnapshot(m.querySelector('#studentLessonSnapshot'),version.pages||[]);
+}
 function studentMobileLessonsHtml(d){
-  const lessons=[...d.lessons].sort((a,b)=>String(b.scheduled_at||'').localeCompare(String(a.scheduled_at||'')));
-  return `<section class="mr-mobile-subhead"><button class="mr-mobile-back" data-mobile-tab="more">←</button><div><span class="mr-mobile-kicker">История</span><h1>Уроки</h1></div></section><div class="mr-mobile-list">${lessons.length?lessons.map(l=>{
-    const r=(d.reports||[]).find(x=>x.lesson_id===l.id);
-    return `<article class="mr-mobile-lesson-card"><div><span class="mr-mobile-kicker">${esc(dateLong(l.scheduled_at))}</span><h3>${esc(l.topics?.title||'Урок')}</h3><p>${l.duration_minutes} мин · ${esc(statusLabel(l.status))}</p></div>${r?`<div class="mr-mobile-lesson-score"><b>${Math.round(Number(r.solved_percent||0))}%</b><span>уверенно</span></div>`:''}${r?.public_highlights?`<div class="mr-mobile-lesson-note"><b>Получилось</b><p>${nl(r.public_highlights)}</p></div>`:''}${r?.public_focus?`<div class="mr-mobile-lesson-note warn"><b>Повторить</b><p>${nl(r.public_focus)}</p></div>`:''}</article>`;
-  }).join(''):'<div class="mr-mobile-empty">Уроков пока нет.</div>'}</div>`;
+  const lessons=[...d.lessons].filter(x=>x.status==='completed').sort((a,b)=>String(b.completed_at||b.scheduled_at||'').localeCompare(String(a.completed_at||a.scheduled_at||'')));
+  const versions=d.versions||[];
+  return `<section class="mr-mobile-page-head"><div><span class="mr-mobile-kicker">Архив занятий</span><h1>Уроки</h1></div><span class="mr-mobile-count">${lessons.length}</span></section>
+    <p class="mr-mobile-page-intro">Здесь остаются материалы после занятия: запись урока, сохранённая доска и короткий итог преподавателя.</p>
+    <div class="mr-mobile-list">${lessons.length?lessons.map(l=>{
+      const r=(d.reports||[]).find(x=>x.lesson_id===l.id);
+      const boardVersions=versions.filter(v=>v.lesson_id===l.id);
+      const board=boardVersions[0]||null;
+      const recording=studentLessonRecordingUrl(l);
+      return `<article class="mr-mobile-lesson-card archive">
+        <div class="mr-mobile-lesson-main"><span class="mr-mobile-kicker">${esc(dateLong(l.completed_at||l.scheduled_at))}</span><h3>${esc(l.topics?.title||'Урок')}</h3><p>${l.duration_minutes||60} мин · занятие завершено</p></div>
+        ${r?`<div class="mr-mobile-lesson-score"><b>${Math.round(Number(r.solved_percent||0))}%</b><span>уверенно</span></div>`:''}
+        <div class="mr-mobile-lesson-assets">
+          ${recording?`<button class="mr-mobile-lesson-asset video ready" data-lesson-recording="${esc(recording)}"><span>▶</span><div><b>Видеозапись</b><small>Посмотреть урок</small></div><i>›</i></button>`:`<div class="mr-mobile-lesson-asset video disabled"><span>▶</span><div><b>Видеозапись</b><small>Ещё не загружена</small></div></div>`}
+          ${board?`<button class="mr-mobile-lesson-asset board ready" data-lesson-board-version="${board.id}"><span>⌁</span><div><b>Доска урока</b><small>${boardVersions.length>1?`${boardVersions.length} версии`:'Открыть сохранённую доску'}</small></div><i>›</i></button>`:`<div class="mr-mobile-lesson-asset board disabled"><span>⌁</span><div><b>Доска урока</b><small>Версия не сохранена</small></div></div>`}
+        </div>
+        ${r?.public_highlights?`<div class="mr-mobile-lesson-note"><b>Получилось</b><p>${nl(r.public_highlights)}</p></div>`:''}
+        ${r?.public_focus?`<div class="mr-mobile-lesson-note warn"><b>Повторить</b><p>${nl(r.public_focus)}</p></div>`:''}
+      </article>`;
+    }).join(''):'<div class="mr-mobile-empty">После первого завершённого урока здесь появятся его материалы.</div>'}</div>`;
 }
 function studentMobileMoreHtml(){
   return `<section class="mr-mobile-page-head"><div><span class="mr-mobile-kicker">Кабинет</span><h1>Ещё</h1></div></section>
     <section class="mr-mobile-profile-card"><div class="mr-mobile-avatar">${esc(String(S.student.name||'?').trim().charAt(0).toUpperCase())}</div><div><b>${esc(S.student.name)}</b><span>${esc(String(S.student.grade))} класс</span></div></section>
     <div class="mr-mobile-menu-list">
       <button data-mobile-tab="progress"><span class="mr-mobile-menu-icon">${studentMobileNavIcon('progress')}</span><span><b>Прогресс</b><small>результаты, сильные темы и что повторить</small></span><i>›</i></button>
-      <button data-mobile-tab="lessons"><span class="mr-mobile-menu-icon">${studentMobileNavIcon('lessons')}</span><span><b>История уроков</b><small>прошедшие занятия и отчёты преподавателя</small></span><i>›</i></button>
     </div>`;
 }
 function studentMobileBottomNav(activeTab){
-  const moreActive=['more','progress','lessons'].includes(activeTab);
+  const moreActive=['more','progress'].includes(activeTab);
   return `<nav class="mr-mobile-student-nav" aria-label="Навигация кабинета">
     <button data-mobile-tab="today" class="${activeTab==='today'?'active':''}">${studentMobileNavIcon('home')}<span>Главная</span></button>
     <button data-mobile-tab="tasks" class="${activeTab==='tasks'?'active':''}">${studentMobileNavIcon('tasks')}<span>Задания</span></button>
-    <button data-mobile-tab="board" class="${activeTab==='board'?'active':''}">${studentMobileNavIcon('board')}<span>Доска</span></button>
+    <button data-mobile-tab="lessons" class="${activeTab==='lessons'?'active':''}">${studentMobileNavIcon('lessons')}<span>Уроки</span></button>
     <button data-mobile-tab="more" class="${moreActive?'active':''}">${studentMobileNavIcon('more')}<span>Ещё</span></button>
   </nav>`;
 }
@@ -820,7 +852,7 @@ async function renderStudent(){
       S.studentTab='today';
       S.mobileStudentShellInitialized=true;
     }
-    if(!['today','tasks','board','more','progress','lessons'].includes(S.studentTab))S.studentTab='today';
+    if(!['today','tasks','more','progress','lessons'].includes(S.studentTab))S.studentTab='today';
     const tab=S.studentTab;
     app.innerHTML=`<div class="student-home student-mobile-shell tab-${tab}">
       <header class="mr-mobile-web-head"><div><span class="brand">Mathroom</span><small>Кабинет ученика</small></div><div class="mr-mobile-student-mini"><b>${esc(S.student.name)}</b><span>${esc(String(S.student.grade))} класс</span></div></header>
@@ -833,17 +865,16 @@ async function renderStudent(){
     }else if(tab==='tasks'){
       content.innerHTML=studentMobileAssignmentsHtml(d);
       content.querySelectorAll('[data-student-assignment]').forEach(b=>b.onclick=()=>openStudentAssignment(...b.dataset.studentAssignment.split(':')));
-    }else if(tab==='board'){
-      content.innerHTML='<section class="mr-mobile-board-head"><div><span class="mr-mobile-kicker">Рабочее пространство</span><h1>Доска</h1></div></section><div id="mrMobileStudentBoard"></div>';
-      await mountBoard(document.getElementById('mrMobileStudentBoard'),S.student.id,false);
     }else if(tab==='progress'){
-      content.innerHTML=`<section class="mr-mobile-subhead"><button class="mr-mobile-back" data-mobile-tab="more">←</button><div><span class="mr-mobile-kicker">Результаты</span><h1>Прогресс</h1></div></section><div class="mr-mobile-progress-wrap">${studentProgressHtml(d)}</div>`;
+      content.innerHTML=`<section class="mr-mobile-subhead"><button class="mr-mobile-back wide" data-mobile-tab="more">← Ещё</button><div><span class="mr-mobile-kicker">Результаты</span><h1>Прогресс</h1></div></section><div class="mr-mobile-progress-wrap">${studentProgressHtml(d)}</div>`;
     }else if(tab==='lessons'){
       content.innerHTML=studentMobileLessonsHtml(d);
     }else{
       content.innerHTML=studentMobileMoreHtml();
     }
     app.querySelectorAll('[data-mobile-tab]').forEach(b=>b.onclick=()=>{S.studentTab=b.dataset.mobileTab;renderStudent()});
+    app.querySelectorAll('[data-lesson-board-version]').forEach(b=>b.onclick=()=>openStudentLessonBoardArchive((d.versions||[]).find(v=>v.id===b.dataset.lessonBoardVersion)));
+    app.querySelectorAll('[data-lesson-recording]').forEach(b=>b.onclick=()=>{const url=b.dataset.lessonRecording;if(/^https?:\/\//i.test(url||''))window.open(url,'_blank','noopener')});
     return;
   }
 
