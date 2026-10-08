@@ -184,3 +184,67 @@
   setTimeout(sync,0);
   setInterval(sync,1200);
 })();
+
+/* Micro Grid Tech Compact — top board bar, lesson connection card, quick jump */
+(()=> {
+  const S=(body,cls='')=>'<span class="'+cls+'"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round">'+body+'</svg></span>';
+  const ico={
+    pen:'<path d="m4 20 4.5-1 10-10-3.5-3.5-10 10z"/><path d="m13.5 7 3.5 3.5"/>',
+    terminal:'<path d="m5 7 5 5-5 5"/><path d="M12 17h7"/>',
+    camera:'<rect x="3" y="6" width="13" height="12" rx="2"/><path d="m16 10 5-3v10l-5-3z"/>',
+    arrowRight:'<path d="M5 12h14"/><path d="m14 7 5 5-5 5"/>',
+    info:'<circle cx="12" cy="12" r="9"/><path d="M12 10v6M12 7h.01"/>'
+  };
+
+  function decorateBoardMode(){
+    document.querySelectorAll('.board-permission-select').forEach(sel=>{
+      if(sel.closest('.mr-board-mode-control'))return;
+      const wrap=document.createElement('span');
+      wrap.className='mr-board-mode-control';
+      sel.parentNode.insertBefore(wrap,sel);
+      wrap.insertAdjacentHTML('beforeend',S(ico.pen,'mr-board-mode-icon'));
+      wrap.appendChild(sel);
+    });
+  }
+
+  function decorateBoardCommands(){
+    document.querySelectorAll('#quickCommands').forEach(b=>{
+      if(b.dataset.microCompact)return;
+      b.dataset.microCompact='1';
+      b.innerHTML=S(ico.terminal,'mr-board-command-icon')+'<span>Команды</span>';
+    });
+  }
+
+  function decorateVideoCard(){
+    document.querySelectorAll('#mrVideoPanel').forEach(host=>{
+      host.classList.add('mr-micro-connection-card');
+      const join=host.querySelector('#mrVideoJoin');
+      if(join&&!join.dataset.microCompact){
+        join.dataset.microCompact='1';
+        join.innerHTML=S(ico.camera,'mr-video-join-icon')+'<span>Присоединиться к уроку</span>'+S(ico.arrowRight,'mr-video-join-arrow');
+      }
+      const note=host.querySelector('#mrVideoNote');
+      if(note&&!note.dataset.microCompact){
+        note.dataset.microCompact='1';
+        note.innerHTML=S(ico.info,'mr-video-note-icon')+'<span>'+note.textContent.trim()+'</span>';
+      }
+    });
+  }
+
+  function decorateQuickJump(){
+    const b=document.querySelector('#mrQuickJumpButton');
+    if(!b)return;
+    b.classList.add('mr-quickjump-compact');
+  }
+
+  function sync(){
+    decorateBoardMode();
+    decorateBoardCommands();
+    decorateVideoCard();
+    decorateQuickJump();
+  }
+  new MutationObserver(()=>requestAnimationFrame(sync)).observe(document.documentElement,{childList:true,subtree:true});
+  document.addEventListener('DOMContentLoaded',sync);
+  setTimeout(sync,0);
+  setInterval(sync,1400);
+})();
