@@ -686,7 +686,7 @@
     const collabQueueKey=`mathroom.board.pendingOps.${studentId||'local'}.${S.user?.id||actorId}`;
     const offlineSnapshotKey=`mathroom.board.offlineSnapshot.${studentId||'local'}.${S.user?.id||actorId}`;
     let collabBaseline=clone(elements),channelSubscribed=false,lastStateBroadcast=0,lastOpSent=0;
-    let pendingOps=[],deleteJournal=new Map(),remoteLiveStrokes=new Map(),strokeSentIndex=0,lastStrokeSent=0;
+    let pendingOps=[],dbPendingOps=[],deleteJournal=new Map(),remoteLiveStrokes=new Map(),strokeSentIndex=0,lastStrokeSent=0,seenOps=new Set();
     let boardNetworkOnline=navigator.onLine!==false,saveInFlight=false,lastServerSaveAt=0;
     let penActiveUntil=0,touchPointers=new Map(),touchGesture=null;
     try{const q=JSON.parse(localStorage.getItem(collabQueueKey)||'[]');if(Array.isArray(q))pendingOps=q.slice(-800)}catch{}
