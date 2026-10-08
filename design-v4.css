@@ -3126,3 +3126,53 @@ input[type="file"]{font-size:11px!important}
 .board-card:fullscreen > #mrVideoPanel.joined.view-hidden .mr-floating-view-switch *{
   pointer-events:auto!important;
 }
+
+
+/* ===== Mathroom Board reliability / collaboration ===== */
+.board-head-title .board-status{
+  display:inline-block!important;
+  width:8px!important;
+  height:8px!important;
+  min-width:8px!important;
+  margin-left:5px!important;
+  border-radius:50%!important;
+  font-size:0!important;
+  line-height:0!important;
+  vertical-align:middle!important;
+  background:#aeb6c0!important;
+  box-shadow:0 0 0 3px rgba(126,136,148,.10)!important;
+}
+.board-head-title .board-status[data-sync="online"],
+.board-head-title .board-status[data-sync="saved"]{
+  background:#20a86f!important;
+  box-shadow:0 0 0 3px rgba(32,168,111,.11)!important;
+}
+.board-head-title .board-status[data-sync="syncing"],
+.board-head-title .board-status[data-sync="connecting"]{
+  background:var(--pg-orange)!important;
+  box-shadow:0 0 0 3px rgba(255,115,0,.12)!important;
+  animation:mrBoardSyncPulse 1.25s ease-in-out infinite!important;
+}
+.board-head-title .board-status[data-sync="offline"]{
+  background:#8d96a1!important;
+  box-shadow:0 0 0 3px rgba(99,109,120,.10)!important;
+}
+.board-head-title .board-status[data-sync="error"]{
+  background:#e54848!important;
+  box-shadow:0 0 0 3px rgba(229,72,72,.12)!important;
+}
+@keyframes mrBoardSyncPulse{
+  0%,100%{opacity:1;transform:scale(1)}
+  50%{opacity:.62;transform:scale(.82)}
+}
+
+#boardSvg{
+  touch-action:none!important;
+  user-select:none!important;
+  -webkit-user-select:none!important;
+  -webkit-touch-callout:none!important;
+}
+
+@media (prefers-reduced-motion: reduce){
+  .board-head-title .board-status{animation:none!important}
+}
