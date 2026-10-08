@@ -790,6 +790,7 @@ async function renderStudent(){
   else await mountBoard(c,S.student.id,false);
   if(active)subscribeStudentLive(active.id);
 }
+window.renderStudent=renderStudent;
 function subscribeStudentLive(lessonId){
   cleanupLive();let timerInt=setInterval(()=>{const el=document.getElementById('studentTimer');if(el)el.textContent=fmtTime(elapsedSeconds(S.studentLive));const tt=document.getElementById('studentTaskTimer');if(tt)tt.textContent=S.studentLive?.task_timer_running?fmtTime(taskTimerRemaining(S.studentLive)):'—';const tw=document.getElementById('studentTaskTimerWrap');if(tw)tw.classList.toggle('active',!!S.studentLive?.task_timer_running)},1000);const ch=sb.channel(`student-live:${lessonId}`).on('postgres_changes',{event:'UPDATE',schema:'public',table:'lesson_live_state',filter:`lesson_id=eq.${lessonId}`},payload=>{const prev=S.studentLive||{};const next=payload.new||{};S.studentLive=next;const structural=prev.focus_enabled!==next.focus_enabled||prev.current_queue_item_id!==next.current_queue_item_id||prev.current_title!==next.current_title||prev.current_prompt!==next.current_prompt;if(structural)renderStudent();else{const el=document.getElementById('studentTimer');if(el)el.textContent=fmtTime(elapsedSeconds(next));const tt=document.getElementById('studentTaskTimer');if(tt)tt.textContent=next.task_timer_running?fmtTime(taskTimerRemaining(next)):'—';const tw=document.getElementById('studentTaskTimerWrap');if(tw)tw.classList.toggle('active',!!next.task_timer_running)}}).subscribe();S.liveCleanup=()=>{clearInterval(timerInt);sb.removeChannel(ch)};
 }
@@ -800,6 +801,11 @@ async function openStudentAssignment(kind,id){
   const m=modal(`<h2>${esc(data.title)}</h2>${meta}${revisionNotice}${data.score!=null?`<div class="score">${data.score}%</div>`:''}<form id="studentAnswerForm" class="answers">${(data.items||[]).map((x,i)=>`<div class="answer-item ${x.is_correct===true?'correct':x.is_correct===false?'wrong':''}"><b>${i+1}. ${esc(x.prompt)}</b><div class="field"><label>Ответ</label><input name="ans_${x.id}" value="${esc(x.student_answer||'')}" ${assigned?'':'disabled'}></div>${x.is_correct!==null&&x.is_correct!==undefined?`<div class="small">${x.is_correct?'✓ Верно':'✕ Нужно исправить'}</div>`:''}${x.teacher_feedback?`<div class="notice"><b>Комментарий к задаче</b><br>${nl(x.teacher_feedback)}</div>`:''}</div>`).join('')}${assigned?`<button class="btn primary">${revision?'Отправить исправления':'Отправить'}</button>`:''}</form>${data.comment?`<div class="notice"><b>Комментарий преподавателя</b><br>${nl(data.comment)}</div>`:''}`,'wide-modal');if(assigned)m.querySelector('#studentAnswerForm').onsubmit=async e=>{e.preventDefault();const answers={};for(const x of data.items||[])answers[x.id]=m.querySelector(`[name="ans_${x.id}"]`).value;const submitRpc=kind==='homework'?'submit_homework':'submit_test',args=kind==='homework'?{p_homework_id:id,p_answers:answers}:{p_test_id:id,p_answers:answers};const {data:res,error:er}=await sb.rpc(submitRpc,args);if(er)return fail(er);toast(kind==='homework'?`Работа отправлена · ${res.score}%`:`Результат: ${res.score}%`);m.remove();renderStudent()};
 }
 
+window.addEventListener('mathroom:lesson-ended',async()=>{
+  if(!S.access||!S.student)return;
+  S.studentLive=null;
+  try{await renderStudent()}catch(err){console.warn('[Mathroom lesson end render]',err)}
+});
 window.addEventListener('mathroom:refresh-lesson',()=>{if(S.view==='lesson'&&S.activeLesson)renderLesson()});
 
 boot().catch(e=>{console.error(e);app.innerHTML=`<div class="center-page"><div class="auth-card"><h1>Ошибка запуска</h1><p>${esc(e.message)}</p></div></div>`});
