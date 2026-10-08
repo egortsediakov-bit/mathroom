@@ -1807,29 +1807,58 @@
 
     attachVideoScroll() {
       if (this.onVideoScroll || !this.videoHeroMount) return;
+
+      // Hero-first behaviour:
+      // 1) immediately after joining, the large in-page video remains visible;
+      // 2) only after the user scrolls past that video does it become floating;
+      // 3) scrolling back to the video restores the large in-page version.
+      //
+      // Separate enter/leave thresholds create hysteresis and prevent flicker
+      // around the exact point where the hero leaves the viewport.
       this.onVideoScroll = () => {
-        if (!this.joined || this.destroyed || !this.videoHeroMount) return;
+        if (!this.joined || this.destroyed || !this.videoHeroMount || !this.panel) return;
+
         const heroRect = this.videoHeroMount.getBoundingClientRect();
-        const board = document.querySelector('#lessonBoard');
-        const boardTop = board?.getBoundingClientRect?.().top;
-        const shouldFloat = board
-          ? boardTop < window.innerHeight * .82
-          : heroRect.bottom < window.innerHeight * .52;
+        const enterFloatingAt = Math.max(72, Math.min(128, window.innerHeight * .12));
+        const leaveFloatingAt = Math.max(210, Math.min(320, window.innerHeight * .30));
+
+        const shouldFloat = this.videoFloating
+          ? heroRect.bottom < leaveFloatingAt
+          : heroRect.bottom < enterFloatingAt;
+
         if (shouldFloat === this.videoFloating) return;
+
         this.videoFloating = shouldFloat;
+
         if (shouldFloat) {
-          this.videoHeroHeight = Math.max(this.videoHeroHeight, this.panel?.offsetHeight || this.videoHeroMount.offsetHeight || 520);
+          this.videoHeroHeight = Math.max(
+            this.videoHeroHeight,
+            this.panel.offsetHeight || this.videoHeroMount.offsetHeight || Math.round(window.innerHeight * .64)
+          );
           this.videoHeroMount.style.minHeight = this.videoHeroHeight + 'px';
           this.expanded = false;
+          localStorage.setItem(`mathroom.media.expanded.${this.role}`, '0');
         } else {
           this.videoHeroMount.style.minHeight = '';
           this.clearFloatingInlinePosition();
         }
+
         this.paint();
-        if(shouldFloat)requestAnimationFrame(()=>this.applyFloatingPosition());
+
+        if (shouldFloat) {
+          requestAnimationFrame(() => this.applyFloatingPosition());
+        }
       };
+
       window.addEventListener('scroll', this.onVideoScroll, { passive:true });
-      requestAnimationFrame(this.onVideoScroll);
+
+      // Do not force floating on mount. The initial joined state is always the
+      // large hero video unless the page is already genuinely scrolled past it.
+      requestAnimationFrame(() => {
+        if (!this.joined || !this.videoHeroMount) return;
+        const heroRect = this.videoHeroMount.getBoundingClientRect();
+        if (heroRect.bottom < 72) this.onVideoScroll();
+      });
     }
 
     async openVideoFullscreen() {
