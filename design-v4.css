@@ -712,3 +712,322 @@ button,input,select,textarea{font-family:inherit!important}
   .mr-rail-home-menu>.btn{min-height:50px!important}
   .video-controls{grid-template-columns:1fr 1fr!important}
 }
+
+
+/* ===== Pro Grid screenshot refinement pass — 2026-10-08 ===== */
+
+/* The legacy app still contains an auto-collapsing sidebar. Pro Grid keeps it visible on desktop. */
+@media(min-width:901px){
+  .layout.auto-sidebar{
+    display:grid!important;
+    grid-template-columns:210px minmax(0,1fr)!important;
+    min-height:100dvh!important;
+  }
+  .auto-sidebar .sidebar,
+  .workspace-mode .sidebar{
+    position:sticky!important;
+    left:auto!important;top:0!important;bottom:auto!important;
+    width:auto!important;
+    height:100vh!important;
+    max-height:100vh!important;
+    transform:none!important;
+    overflow:hidden!important;
+    padding:13px 10px!important;
+    box-shadow:none!important;
+  }
+  .auto-sidebar .sidebar:hover,
+  .auto-sidebar .sidebar:focus-within,
+  .workspace-mode .sidebar:hover,
+  .workspace-mode .sidebar:focus-within{
+    transform:none!important;
+    box-shadow:none!important;
+  }
+  .auto-sidebar .sidebar::after,
+  .workspace-mode .sidebar::after{display:none!important}
+  .auto-sidebar .sidebar>.brand{margin-bottom:6px!important}
+  .auto-sidebar .nav{
+    overflow-y:auto!important;
+    overflow-x:hidden!important;
+    padding-bottom:6px!important;
+  }
+  .auto-sidebar .nav button{
+    min-height:36px!important;
+    margin:0 0 2px!important;
+  }
+  .auto-sidebar .sidebar-footer{
+    position:relative!important;
+    bottom:auto!important;
+    margin-top:auto!important;
+    padding:7px!important;
+    display:grid!important;
+    grid-template-columns:1fr 1fr!important;
+    gap:4px!important;
+    background:#151a20!important;
+    border:1px solid #242a32!important;
+  }
+  .auto-sidebar .sidebar-footer .btn{
+    min-height:30px!important;
+    background:transparent!important;
+  }
+  .auto-sidebar .content{
+    max-width:1800px!important;
+    width:100%!important;
+    margin:0 auto!important;
+    padding:16px 18px 24px!important;
+  }
+  .auto-sidebar .topbar{
+    margin:-16px -18px 12px!important;
+    padding:10px 18px!important;
+  }
+}
+
+/* Remove old Kotomatika top notches and oversized display-font headings. */
+.card::before,.form-card::before{display:none!important}
+.topbar::after{display:none!important}
+.brand,.topbar h1,.section-title h2,.card>h2,.form-card>h2,.modal h2,
+.mr-card-head h2,.mr-curriculum-head h2,.mr-curriculum-track-head h2,
+.board-head-title strong,.history-tools h2,.mr-rail-home-head h3{
+  font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif!important;
+}
+.topbar h1{
+  font-size:30px!important;
+  line-height:1.02!important;
+  letter-spacing:-.045em!important;
+  font-weight:900!important;
+}
+.topbar p{font-size:12.5px!important}
+.card>h2,.form-card>h2,.mr-card-head h2,.history-tools h2{
+  font-size:18px!important;
+  line-height:1.15!important;
+  letter-spacing:-.025em!important;
+  font-weight:850!important;
+}
+
+/* Metric blocks: Pro Grid uses a left index bar instead of decorative top marks. */
+.mr-ops-metrics>div,.mr-action-metrics>div,.mr-comms-stats>div,.profile-metrics>.card{
+  position:relative!important;
+  border:1px solid var(--pg-line)!important;
+  border-left:3px solid var(--pg-orange)!important;
+  border-radius:6px!important;
+  background:#fff!important;
+  padding:10px 11px!important;
+}
+.mr-ops-metrics>div b,.mr-action-metrics>div b,.mr-comms-stats>div b{
+  display:block!important;
+  margin:2px 0!important;
+  font-size:25px!important;
+  line-height:1!important;
+  font-weight:900!important;
+  letter-spacing:-.04em!important;
+}
+.mr-ops-metrics>div small,.mr-action-metrics>div small,.mr-comms-stats>div small{font-size:10px!important;color:var(--pg-muted)!important}
+.mr-ops-metrics>div span,.mr-action-metrics>div span{font-size:10.5px!important;color:var(--pg-muted)!important}
+
+/* Dashboard */
+.mr-workday,.mr-action-center,.mr-preparation-center,.mr-homework-watch,.mr-after-lesson{
+  margin-bottom:9px!important;
+  padding:11px!important;
+  border-radius:8px!important;
+}
+.mr-card-head{
+  display:flex!important;
+  align-items:center!important;
+  justify-content:space-between!important;
+  gap:10px!important;
+  margin-bottom:8px!important;
+}
+.mr-card-head p{margin:2px 0 0!important}
+.mr-ops-metrics,.mr-action-metrics{gap:6px!important;margin-top:8px!important}
+.mr-next-lesson{
+  margin-top:8px!important;
+  padding:9px 10px!important;
+  border:1px solid var(--pg-line)!important;
+  border-left:3px solid var(--pg-orange)!important;
+  border-radius:6px!important;
+  background:#fbfcfd!important;
+}
+.mr-next-lesson h3{font-size:16px!important;margin:6px 0 2px!important}
+.mr-reminder-list{gap:5px!important;margin-top:6px!important}
+
+/* Students */
+.form-grid{
+  grid-template-columns:minmax(0,1fr) 120px auto!important;
+  gap:7px!important;
+}
+.form-card{padding:11px!important}
+.form-card>h2{margin:0 0 8px!important}
+.token-link{
+  display:inline-block!important;
+  max-width:min(760px,70vw)!important;
+  padding:5px 8px!important;
+  border-radius:5px!important;
+  background:#f3f5f7!important;
+  font-size:10.5px!important;
+  white-space:nowrap!important;
+  overflow:hidden!important;
+  text-overflow:ellipsis!important;
+}
+.list{gap:6px!important}
+.row>.actions{gap:4px!important}
+.row>.actions .btn{min-height:29px!important;padding:4px 8px!important}
+
+/* Curriculum / topics */
+.mr-curriculum-head{
+  display:grid!important;
+  grid-template-columns:minmax(0,1fr) auto!important;
+  align-items:center!important;
+  gap:14px!important;
+  padding:12px!important;
+  margin-bottom:12px!important;
+}
+.mr-curriculum-head h2{font-size:18px!important;margin:0 0 4px!important}
+.mr-curriculum-head p{margin:0!important;max-width:760px!important;font-size:12px!important;line-height:1.45!important}
+.mr-grade-tabs{display:flex!important;gap:4px!important;flex-wrap:wrap!important;justify-content:flex-end!important}
+.mr-grade-tabs .btn{width:34px!important;min-width:34px!important;height:30px!important;padding:0!important}
+.mr-curriculum-track{margin-top:10px!important}
+.mr-curriculum-track-head{margin:0 0 6px!important}
+.mr-curriculum-track-head h2{font-size:18px!important;margin:6px 0 0!important}
+.mr-curriculum-list{display:grid!important;gap:5px!important}
+.mr-curriculum-row{
+  min-height:68px!important;
+  padding:8px 10px!important;
+  border:1px solid var(--pg-line)!important;
+  border-radius:7px!important;
+  background:#fff!important;
+}
+.mr-curriculum-step{
+  width:34px!important;height:34px!important;
+  border-radius:6px!important;
+  font-size:11px!important;
+}
+.mr-curriculum-main h3{font-size:14px!important;margin:2px 0!important}
+.mr-curriculum-main .small{font-size:10px!important}
+.mr-row-arrow{color:#9aa3ad!important}
+
+/* Textbook/library page */
+.mr-library-sync,.mr-library-hero,.library-sync-card{
+  padding:11px!important;border-radius:8px!important
+}
+.textbook-card,.library-book-card{
+  border-radius:7px!important;
+  box-shadow:none!important;
+}
+input[type="file"]{font-size:11px!important}
+.form-card .grid{gap:7px!important}
+
+/* Bank / assignments / history */
+.task-bank-filters,.history-tools{
+  padding:11px!important;
+  margin-bottom:8px!important;
+  border-radius:8px!important;
+}
+.task-bank-row,.history-row{
+  border-radius:7px!important;
+  border-left:3px solid #d9dee5!important;
+}
+.task-bank-row:hover,.history-row:hover{border-left-color:var(--pg-orange)!important}
+.empty{
+  min-height:72px!important;
+  padding:22px!important;
+  border-radius:8px!important;
+  font-size:12.5px!important;
+}
+
+/* Schedule */
+.mr-schedule-enhanced{gap:9px!important;margin-top:8px!important}
+.mr-schedule-toolbar,.mr-week-load-card,.mr-schedule-create{padding:11px!important;border-radius:8px!important}
+.mr-schedule-toolbar h2,.mr-week-load-card h2,.mr-schedule-create h2{font-size:18px!important}
+.mr-schedule-metrics{gap:6px!important}
+.mr-schedule-metrics>div{
+  border:1px solid var(--pg-line)!important;
+  border-left:3px solid var(--pg-orange)!important;
+  border-radius:6px!important;
+  padding:9px 10px!important;
+  background:#fff!important;
+}
+.mr-week-load{gap:5px!important;margin-top:8px!important}
+.mr-week-load-day{grid-template-columns:34px 1fr 54px!important;gap:8px!important;font-size:10.5px!important}
+.mr-week-load-day>div{height:5px!important}
+.mr-schedule-form{gap:6px!important}
+.mr-calendar-week{gap:6px!important}
+.mr-calendar-day{
+  min-height:250px!important;
+  border-radius:7px!important;
+  background:#f7f8fa!important;
+}
+.mr-calendar-day>header{padding:7px 8px!important}
+.mr-calendar-day>header b{font-size:15px!important}
+.mr-calendar-day-body{padding:5px!important;gap:5px!important}
+.mr-calendar-lesson{padding:7px!important;border-radius:6px!important;box-shadow:none!important}
+
+/* Board header conflicts from legacy CSS */
+.board-head{
+  padding:6px 8px!important;
+  gap:5px!important;
+  border-radius:0!important;
+}
+.board-head-title strong{font-size:12px!important}
+.board-head-actions{gap:3px!important}
+.board-head-actions .btn{
+  min-height:30px!important;
+  height:30px!important;
+  border-radius:6px!important;
+  padding:4px 6px!important;
+}
+.board-head-actions .board-head-icon{
+  min-width:30px!important;
+  height:30px!important;
+  padding:4px 5px!important;
+}
+.board-head-actions #undo,.board-head-actions #redo,
+.board-head-actions #bringForward,.board-head-actions #sendBackward{
+  width:30px!important;min-width:30px!important
+}
+.board-head-actions #delPage .board-head-label{font-size:10px!important}
+.board-head-actions #delPage .board-head-label::after{content:none!important}
+.board-head-actions #quickCommands::after{content:none!important}
+.board-head-actions #quickCommands span{display:inline!important}
+.board-page-tabs{padding:5px 7px!important}
+.board-page-tabs .btn,.board-page-tab{
+  min-height:30px!important;
+  height:30px!important;
+  border-radius:6px!important;
+}
+.board-floating{
+  border-radius:7px!important;
+  box-shadow:none!important;
+}
+
+/* Lesson page */
+.mr-lesson-video-top,.mr-student-video-top{margin-bottom:8px!important}
+#lessonControl.mr-lesson-timer-strip{
+  margin-bottom:8px!important;
+  padding:8px 10px!important;
+  border-radius:8px!important;
+  box-shadow:none!important;
+  border:1px solid var(--pg-line)!important;
+}
+#lessonControl.mr-lesson-timer-strip .lesson-timer{font-size:22px!important}
+.mr-teacher-workspace{grid-template-columns:minmax(0,1fr) 280px!important;gap:8px!important}
+.mr-teacher-workspace>.mr-teacher-rail{width:280px!important;max-width:280px!important}
+.mr-teacher-rail{top:8px!important}
+
+/* Connection card should not dominate the lesson. */
+.mr-lesson-video-top .video-card,.mr-video-panel{
+  margin-bottom:8px!important;
+}
+.mr-video-head{padding:7px 9px!important}
+.mr-video-coach{padding:7px 9px!important}
+.video-stage{max-height:310px!important}
+
+/* Desktop sizing */
+@media(min-width:1400px){
+  .layout.auto-sidebar{grid-template-columns:220px minmax(0,1fr)!important}
+  .auto-sidebar .content{padding-left:20px!important;padding-right:20px!important}
+}
+@media(max-width:1100px) and (min-width:901px){
+  .layout.auto-sidebar{grid-template-columns:72px minmax(0,1fr)!important}
+  .auto-sidebar .sidebar .brand{font-size:0!important;justify-content:center!important}
+  .auto-sidebar .nav button{font-size:0!important;justify-content:center!important}
+  .auto-sidebar .sidebar-footer{grid-template-columns:1fr!important}
+}
