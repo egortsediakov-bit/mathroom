@@ -2613,3 +2613,14 @@ input[type="file"]{font-size:11px!important}
 .board-card:fullscreen > #mrVideoPanel .mr-floating-view-switch *{
   pointer-events:auto!important;
 }
+
+
+/* ===== Lesson header belongs to page flow, not viewport ===== */
+.view-lesson .topbar{
+  position:relative!important;
+  top:auto!important;
+  z-index:auto!important;
+  backdrop-filter:none!important;
+  -webkit-backdrop-filter:none!important;
+  background:var(--pg-bg)!important;
+}
