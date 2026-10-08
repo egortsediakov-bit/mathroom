@@ -2624,3 +2624,51 @@ input[type="file"]{font-size:11px!important}
   -webkit-backdrop-filter:none!important;
   background:var(--pg-bg)!important;
 }
+
+
+/* ===== Four-state lesson connection indicator ===== */
+@keyframes mrConnectionPulse{
+  0%,100%{box-shadow:0 0 0 4px rgba(255,115,0,.12),0 0 0 0 rgba(255,115,0,.26)}
+  50%{box-shadow:0 0 0 4px rgba(255,115,0,.12),0 0 0 6px rgba(255,115,0,0)}
+}
+
+#mrVideoPanel .mr-call-dot{
+  width:10px!important;
+  height:10px!important;
+  flex:0 0 10px!important;
+  border-radius:50%!important;
+  transition:background-color .18s ease,box-shadow .18s ease!important;
+}
+
+/* Grey — idle / not connected */
+#mrVideoPanel.connection-idle .mr-call-dot{
+  background:#aeb6c0!important;
+  box-shadow:0 0 0 4px rgba(126,136,148,.13)!important;
+  animation:none!important;
+}
+
+/* Orange — connecting / reconnecting / switching route */
+#mrVideoPanel.connection-connecting .mr-call-dot{
+  background:var(--pg-orange)!important;
+  box-shadow:0 0 0 4px rgba(255,115,0,.12)!important;
+  animation:mrConnectionPulse 1.35s ease-in-out infinite!important;
+}
+
+/* Green — live connection established */
+#mrVideoPanel.connection-connected .mr-call-dot{
+  background:#20a86f!important;
+  box-shadow:0 0 0 4px rgba(32,168,111,.13)!important;
+  animation:none!important;
+}
+
+/* Red — connection failed and requires user action */
+#mrVideoPanel.connection-error .mr-call-dot{
+  background:#e54848!important;
+  box-shadow:0 0 0 4px rgba(229,72,72,.12)!important;
+  animation:none!important;
+}
+
+/* Respect reduced-motion preferences. */
+@media (prefers-reduced-motion: reduce){
+  #mrVideoPanel.connection-connecting .mr-call-dot{animation:none!important}
+}
