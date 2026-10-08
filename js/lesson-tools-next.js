@@ -1341,7 +1341,18 @@
 
     renderPanel(target) {
       if (!target) return;
-      let host = target.querySelector(':scope > #mrVideoPanel');
+
+      // Reuse the one live media panel even while it is temporarily moved inside
+      // the fullscreen whiteboard. Creating a second #mrVideoPanel here used to
+      // leave a duplicate mini-player behind after exiting fullscreen.
+      let host = (this.panel && this.panel.isConnected)
+        ? this.panel
+        : (target.querySelector(':scope > #mrVideoPanel') || document.querySelector('#mrVideoPanel'));
+
+      if (host && host.parentNode !== target && !host.closest('.board-card:fullscreen')) {
+        target.appendChild(host);
+      }
+
       if (!host) {
         host = document.createElement('section');
         host.id = 'mrVideoPanel';
@@ -1366,6 +1377,13 @@
         const localPreview = host.querySelector('#mrLocalVideo'); if (localPreview) localPreview.onclick = () => { if (this.screenTrack) this.toggleExpanded(); };
       }
       this.panel = host;
+
+      // Defensive cleanup for stale duplicate panels left by an older build.
+      // The current live host is preserved; any second copy is removed.
+      document.querySelectorAll('#mrVideoPanel').forEach(el=>{
+        if(el!==host) el.remove();
+      });
+
       this.videoHeroMount = target;
       target.classList.add('mr-video-hero-mount');
       this.attachVideoScroll();
