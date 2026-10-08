@@ -59,6 +59,7 @@
       this.connectionQuality = '';
       this.screenTrack = null;
       this.screenPreviewStream = null;
+      this.remoteScreenSharing = false;
       this.soundEnabled = localStorage.getItem(`mathroom.media.sound.${this.role}`) !== '0';
       this.expanded = localStorage.getItem(`mathroom.media.expanded.${this.role}`) === '1';
       this.micEnabled = localStorage.getItem(`mathroom.media.mic.${this.role}`) !== '0';
@@ -458,8 +459,14 @@
         await this.acceptIce(data);
         return;
       }
+      if (kind === 'screen-state') {
+        this.remoteScreenSharing = !!data?.sharing;
+        this.bindMedia();
+        return;
+      }
       if (kind === 'hangup') {
         this.remoteReady = false;
+        this.remoteScreenSharing = false;
         this.closePeer(false);
         this.status = 'Собеседник вышел из звонка';
         this.paint();
@@ -504,6 +511,7 @@
           clearTimeout(this.pollTimer);
           this.pollTimer = null;
           this.bindMedia();
+          this.send('screen-state',{sharing:!!this.screenTrack},this.otherRole()).catch(()=>{});
           this.startStats();
         } else if (st === 'connecting' || st === 'new') {
           this.status = 'Подключаемся…';
@@ -1624,12 +1632,14 @@
         if (sender) await sender.replaceTrack(track);
         this.screenTrack = track;
         this.screenPreviewStream = new MediaStream([track]);
+        this.send('screen-state',{sharing:true},this.otherRole()).catch(()=>{});
         this.bindMedia();
         track.onended = async () => {
           const camera = this.effectiveCameraTrack();
           try { if (sender) await sender.replaceTrack(camera); } catch {}
           this.screenTrack = null;
           this.screenPreviewStream = null;
+          this.send('screen-state',{sharing:false},this.otherRole()).catch(()=>{});
           this.bindMedia();
           this.paint();
         };
@@ -1708,6 +1718,11 @@
       if (remote) {
         if (remote.srcObject !== this.remoteStream) remote.srcObject = this.remoteStream;
         remote.muted = true; remote.playsInline = true;
+        /* Camera frames arriving from the peer need the same horizontal
+           correction as the local camera preview. Screen sharing must stay
+           unmirrored so text and UI remain readable. Use !important because
+           floating-player CSS previously forced transform:none. */
+        remote.style.setProperty('transform',this.remoteScreenSharing?'none':'scaleX(-1)','important');
         try { remote.disablePictureInPicture = true; remote.disableRemotePlayback = true; } catch {}
         if (this.remoteStream.getVideoTracks().length) remote.play().catch(() => {});
       }
