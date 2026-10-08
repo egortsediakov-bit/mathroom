@@ -2337,3 +2337,49 @@ body{background:linear-gradient(180deg,#fbfbfa 0%,#f5f4f1 100%)!important;color:
     bottom:70px!important;max-height:calc(100dvh - 86px)!important
   }
 }
+
+
+/* Mathroom v31.8 — student mobile tool availability */
+.board-mobile-extra{display:none!important}
+
+/* Phones and tablets: selection is intentionally removed; direct tools + hand are clearer. */
+@media (pointer:coarse) and (max-width:1366px){
+  .student-lesson-mode .board-toolbar-side [data-tool="select"]{display:none!important}
+  .student-lesson-mode .board-mobile-extra{display:flex!important}
+  .student-lesson-mode details.board-mobile-extra{display:block!important}
+
+  /* Keep the mobile rail compact even after exposing geometry + figures. */
+  .student-lesson-mode .board-toolbar-side .board-tool-groups{
+    justify-content:space-between!important
+  }
+  .student-lesson-mode .board-toolbar-side .board-tool-group,
+  .student-lesson-mode .board-toolbar-side #eraserRail,
+  .student-lesson-mode .board-toolbar-side .board-rail-quick .btn{
+    flex-shrink:0!important
+  }
+
+  /* Figure palette needs real touch-sized tiles. */
+  .student-lesson-mode .board-shapes-popover .board-palette-grid{
+    display:grid!important;
+    grid-template-columns:repeat(2,minmax(0,1fr))!important;
+    gap:8px!important
+  }
+  .student-lesson-mode .board-shapes-popover [data-shape-template],
+  .student-lesson-mode .board-shapes-popover [data-solid-template]{
+    min-height:58px!important;
+    width:100%!important;
+    touch-action:manipulation
+  }
+
+  .student-lesson-mode .board-toolbar-side summary,
+  .student-lesson-mode .board-toolbar-side button{
+    touch-action:manipulation
+  }
+}
+
+/* iPad can report a fine pointer when a trackpad is attached; keep the same lesson UI. */
+@media (max-width:1100px){
+  .student-lesson-mode .board-toolbar-side [data-tool="select"]{display:none!important}
+  .student-lesson-mode .board-mobile-extra{display:flex!important}
+  .student-lesson-mode details.board-mobile-extra{display:block!important}
+}
