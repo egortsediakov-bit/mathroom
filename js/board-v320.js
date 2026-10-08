@@ -775,6 +775,20 @@
       const g=svgEl('g',{transform:`scale(${camera.zoom}) translate(${-camera.x} ${-camera.y})`});svg.appendChild(g);const now=Date.now();
       tempMarks=tempMarks.filter(x=>x.expires>now);remoteTempMarks=remoteTempMarks.filter(x=>x.expires>now);
       for(const m of [...remoteTempMarks,...tempMarks])g.appendChild(svgEl('path',{d:smoothPathD(m.points||[]),fill:'none',stroke:m.color||'#f59e0b','stroke-width':m.width||12,'stroke-linecap':'round','stroke-linejoin':'round','shape-rendering':'geometricPrecision',opacity:.45}));
+
+      for(const [id,s] of [...remoteLiveStrokes]){
+        if((s.expires||0)<=now){remoteLiveStrokes.delete(id);continue}
+        g.appendChild(svgEl('path',{d:smoothPathD(s.points||[]),fill:'none',stroke:s.color||'#15171a','stroke-width':s.width||3,'stroke-linecap':'round','stroke-linejoin':'round','shape-rendering':'geometricPrecision',opacity:s.opacity==null?1:s.opacity,'pointer-events':'none'}));
+      }
+
+      if(remoteCursor&&remoteCursor.expires>now){
+        const x=remoteCursor.x,y=remoteCursor.y,accent=remoteCursor.role==='teacher'?'#ED591A':'#2563eb';
+        g.appendChild(svgEl('circle',{cx:x,cy:y,r:5/camera.zoom,fill:accent,stroke:'#fff','stroke-width':1.5/camera.zoom,'pointer-events':'none'}));
+        const label=String(remoteCursor.label||'Участник').slice(0,24),bw=Math.max(54,label.length*6.4+16)/camera.zoom,bh=22/camera.zoom;
+        g.appendChild(svgEl('rect',{x:x+9/camera.zoom,y:y+8/camera.zoom,width:bw,height:bh,rx:7/camera.zoom,fill:accent,opacity:.94,'pointer-events':'none'}));
+        const tx=svgEl('text',{x:x+17/camera.zoom,y:y+23/camera.zoom,fill:'#fff','font-size':10.5/camera.zoom,'font-weight':800,'font-family':'Inter,Arial,sans-serif','pointer-events':'none'});tx.textContent=label;g.appendChild(tx);
+      }
+
       for(const p of [remoteLaser,laserPoint].filter(Boolean)){g.appendChild(svgEl('circle',{cx:p.x,cy:p.y,r:9/camera.zoom,fill:'#ef4444',opacity:.9}));g.appendChild(svgEl('circle',{cx:p.x,cy:p.y,r:18/camera.zoom,fill:'none',stroke:'#ef4444','stroke-width':2/camera.zoom,opacity:.35}))}
       const f=remoteFocusRect||focusRect;if(f){const x0=f.x,y0=f.y,x1=f.x+f.w,y1=f.y+f.h,M=100000,attrs={fill:'#0f172a',opacity:.56,'pointer-events':'none'};g.appendChild(svgEl('rect',{x:-M,y:-M,width:2*M,height:y0+M,...attrs}));g.appendChild(svgEl('rect',{x:-M,y:y1,width:2*M,height:M-y1,...attrs}));g.appendChild(svgEl('rect',{x:-M,y:y0,width:x0+M,height:Math.max(0,f.h),...attrs}));g.appendChild(svgEl('rect',{x:x1,y:y0,width:M-x1,height:Math.max(0,f.h),...attrs}));g.appendChild(svgEl('rect',{x:x0,y:y0,width:f.w,height:f.h,fill:'none',stroke:'#fff','stroke-width':2/camera.zoom,'stroke-dasharray':`${7/camera.zoom} ${5/camera.zoom}`}))}
 
