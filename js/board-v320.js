@@ -883,7 +883,24 @@
     function persistClassroom(){if(!isTeacher||!classroomKey)return;try{localStorage.setItem(classroomKey,JSON.stringify({mode:classroomMode,follow:followTeacher}))}catch{}broadcastTransient('classroom',{mode:classroomMode,follow:followTeacher});pagesChannel?.send({type:'broadcast',event:'classroom',payload:{mode:classroomMode,follow:followTeacher,pageId:current?.id,camera:{...camera}}}).catch(()=>{})}
     function syncClassroomUi(){const sel=root.querySelector('#studentBoardMode'),btn=root.querySelector('#followTeacherToggle');if(sel)sel.value=classroomMode;if(btn){btn.classList.toggle('active',followTeacher);btn.querySelector('span')&&(btn.querySelector('span').textContent=followTeacher?'Ведение: вкл':'Ведение: выкл')}if(!isTeacher)root.querySelectorAll('[data-tool]').forEach(b=>b.disabled=!canUseTool(b.dataset.tool));if(followBadge)followBadge.hidden=isTeacher||!followTeacher||!lessonId}
     function sendViewport(force=false){if(!isTeacher||!followTeacher||!channel)return;const now=Date.now();if(!force&&now-lastViewSent<60)return;lastViewSent=now;broadcastTransient('viewport',{camera:{...camera}})}
-    function sendCursor(){/* Ordinary cursors are intentionally local-only. Use Laser or Focus to point something out. */}
+    function sendCursor(x,y){
+      if(localOnly||!channelSubscribed||!Number.isFinite(x)||!Number.isFinite(y))return;
+      const now=Date.now();if(now-lastCursorSent<45)return;lastCursorSent=now;
+      broadcastTransient('cursor',{point:{x,y},role:actorRole,label:isTeacher?'Преподаватель':(options.studentName||'Ученик')});
+    }
+    function sendStrokeStart(stroke){
+      if(!stroke||stroke.type!=='path')return;
+      strokeSentIndex=(stroke.points||[]).length;lastStrokeSent=Date.now();
+      broadcastTransient('stroke',{phase:'start',strokeId:stroke.id,stroke:{...clone(stroke),points:clone(stroke.points||[])}});
+    }
+    function sendStrokeChunk(stroke,force=false){
+      if(!stroke||stroke.type!=='path')return;
+      const now=Date.now();if(!force&&now-lastStrokeSent<32)return;
+      const pts=(stroke.points||[]).slice(strokeSentIndex);if(!pts.length&&!force)return;
+      if(pts.length)broadcastTransient('stroke',{phase:'chunk',strokeId:stroke.id,points:clone(pts)});
+      strokeSentIndex=(stroke.points||[]).length;lastStrokeSent=now;
+      if(force)broadcastTransient('stroke',{phase:'end',strokeId:stroke.id});
+    }
     function render(){applyBackground();drawElements(svg,elements,camera,selectionList(),grid,needAsset,isTeacher);drawTransient();syncSelectionButtons();syncHistoryButtons();syncSolidHud();syncObjectHud();syncClassroomUi()}
     function clearPendingPlanePoints(){for(const o of elements){if(o?.type==='solid3d'&&Array.isArray(o.solidPoints))for(const p of o.solidPoints)p.pendingPlane=false}}
     function cancelCompassDraft(){if(!compassDraft)return;const id=compassDraft.id;if(id)elements=elements.filter(z=>z.id!==id);compassDraft=null;const last=undoStack[undoStack.length-1];if(last?.type==='elements'&&last.pageId===current.id)undoStack.pop();syncHistoryButtons();render()}
