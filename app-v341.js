@@ -758,6 +758,13 @@ async function renderStudent(){
   /* Use physical device characteristics, not current viewport width.
      Rotating a phone must never turn the live lesson into desktop mode. */
   const compactLessonUI=(mobileUA||iPadOS||((coarse||touch)&&sw<=1366&&sh<=1024));
+  /* On phones/tablets the first student view after every page load is Board.
+     Keep it as an in-memory one-shot so the student can still switch tabs
+     afterwards without being forced back to Board on every render. */
+  if(compactLessonUI&&!S.mobileBoardDefaultApplied){
+    S.studentTab='board';
+    S.mobileBoardDefaultApplied=true;
+  }
   if(active&&live&&compactLessonUI){
     S.studentTab='board';
     app.innerHTML=`<div class="student-home student-lesson-mode"><div id="studentLessonTaskMount">${studentLessonTaskCard(live)}</div><div id="studentLessonBoard"></div></div>`;
