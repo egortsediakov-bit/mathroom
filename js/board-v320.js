@@ -995,6 +995,62 @@
       channel.send({type:'broadcast',event:'state',payload:{pageId:current.id,elements,protocol:2,actor:actorKey}}).catch(()=>{});
     }
     function changed(){render();broadcast();scheduleSave();sendViewport()}
+    function remoteOpAllowed(op,existing){
+      if(!op||op.actor===actorKey)return false;
+      if(op.role!=='student')return true;
+      if(classroomMode==='view')return false;
+      if(op.type==='create'){
+        if(classroomMode==='pen')return op.element?.type==='path';
+        return true;
+      }
+      if(!existing)return op.type==='delete';
+      if(classroomMode==='pen')return existing._ownerRole==='student'&&String(existing._ownerId||'')===String(op.actorId||'');
+      return !existing.locked;
+    }
+    function applyRemoteOps(ops){
+      if(!Array.isArray(ops)||!ops.length)return;
+      let dirty=false;
+      for(const op of ops){
+        if(!op?.opId||seenOps.has(op.opId))continue;
+        seenOps.add(op.opId);if(seenOps.size>2500)seenOps=new Set([...seenOps].slice(-1500));
+        if(op.pageId!==current?.id)continue;
+        const idx=elements.findIndex(x=>x.id===op.id),existing=idx>=0?elements[idx]:null;
+        if(!remoteOpAllowed(op,existing))continue;
+        if(op.type==='delete'){
+          const incomingRev=Math.max(1,Number(op.rev||0));
+          if(existing&&incomingRev>=Number(existing._rev||0)){
+            elements.splice(idx,1);deleteJournal.set(op.id,{actor:op.actor,rev:incomingRev,at:Number(op.at||Date.now())});dirty=true;
+          }
+          continue;
+        }
+        const incoming=normalizeElement(op.element);if(!incoming)continue;
+        const tomb=deleteJournal.get(incoming.id);if(tomb&&Number(tomb.rev||0)>Number(incoming._rev||0))continue;
+        if(!existing){
+          const pos=Number.isFinite(op.index)?Math.max(0,Math.min(elements.length,op.index)):elements.length;
+          elements.splice(pos,0,incoming);dirty=true;
+        }else{
+          const winner=newerElement(existing,incoming);
+          if(winner===incoming&&elementSignature(existing)!==elementSignature(incoming)){elements[idx]=incoming;dirty=true}
+        }
+      }
+      if(!dirty)return;
+      collabBaseline=clone(elements);
+      const p=pages.find(x=>x.id===current.id);if(p)p.elements=clone(elements);
+      render();scheduleSave();setSyncState(boardNetworkOnline?'online':'offline');
+    }
+    function applyStateSnapshot(raw){
+      const incoming=(Array.isArray(raw)?raw:[]).map(normalizeElement).filter(Boolean);
+      if(!incoming.length&&elements.length)return;
+      const im=new Map(incoming.map(x=>[x.id,x])),cm=new Map(elements.map(x=>[x.id,x]));
+      const order=[...elements.map(x=>x.id),...incoming.map(x=>x.id).filter(id=>!cm.has(id))],next=[];
+      for(const id of order){
+        const local=cm.get(id),remote=im.get(id),tomb=deleteJournal.get(id),winner=newerElement(local,remote);
+        if(!winner)continue;if(tomb&&Number(tomb.rev||0)>Number(winner._rev||0))continue;next.push(winner);
+      }
+      elements=next;collabBaseline=clone(elements);
+      const p=pages.find(x=>x.id===current.id);if(p)p.elements=clone(elements);
+      render();
+    }
     function pushElementsHistory(){if(busyHistory)return;undoStack.push({type:'elements',pageId:current.id,elements:clone(elements)});if(undoStack.length>140)undoStack.shift();redoStack.length=0;syncHistoryButtons()}
     async function switchPage(id,{skipSave=false,fromLeader=false}={}){if(current?.id===id)return;if(!skipSave)await save();const p=pages.find(x=>x.id===id);if(!p)return;current=p;elements=clone(p.elements||[]);clearSelection();camera={x:0,y:0,zoom:1};zoomLabel.textContent='100%';renderTabs();render();joinChannel();if(isTeacher&&followTeacher&&!fromLeader)pagesChannel?.send({type:'broadcast',event:'navigate',payload:{pageId:id}}).catch(()=>{});sendViewport(true)}
     function hit(x,y){for(let i=elements.length-1;i>=0;i--){const o=elements[i];if(o.type==='board-bg')continue;if(o.teacherOnly&&!isTeacher)continue;const b=bounds(o);if(x>=b.x-20&&x<=b.x+b.w+20&&y>=b.y-20&&y<=b.y+b.h+20)return o}return null}
