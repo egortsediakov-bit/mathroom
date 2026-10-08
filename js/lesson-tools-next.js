@@ -1395,8 +1395,23 @@
     paint() {
       const host = this.panel;
       if (!host) return;
-      host.className = `mr-native-call role-${this.role} ${this.joined ? 'joined' : ''} ${this.isConnected() ? 'connected' : ''} ${this.minimized ? 'minimized' : ''} ${this.expanded ? 'expanded' : ''} ${this.screenTrack ? 'sharing' : ''} ${this.videoFloating ? 'floating' : ''} view-${this.videoViewMode}`;
+
+      const finalError = /Не удалось подключиться|Резервный сервер связи недоступен|Проверь интернет/i.test(this.status || '');
+      const indicatorState = !this.joined
+        ? 'idle'
+        : (this.isConnected()
+          ? 'connected'
+          : (finalError ? 'error' : 'connecting'));
+
+      host.className = `mr-native-call role-${this.role} ${this.joined ? 'joined' : ''} ${this.isConnected() ? 'connected' : ''} connection-${indicatorState} ${this.minimized ? 'minimized' : ''} ${this.expanded ? 'expanded' : ''} ${this.screenTrack ? 'sharing' : ''} ${this.videoFloating ? 'floating' : ''} view-${this.videoViewMode}`;
       const status = host.querySelector('#mrVideoStatus'); if (status) status.textContent = this.status;
+      const dot = host.querySelector('.mr-call-dot'); if (dot) {
+        dot.title = indicatorState === 'connected' ? 'Соединено'
+          : indicatorState === 'connecting' ? 'Подключение'
+          : indicatorState === 'error' ? 'Ошибка связи'
+          : 'Не подключено';
+        dot.setAttribute('aria-label', dot.title);
+      }
       const q = host.querySelector('#mrVideoQuality'); if (q) q.textContent = this.connectionQuality || (this.joined ? (this.hasTurn ? 'Автоматический прямой + резервный маршрут' : 'Прямой канал · резервный сервер пока недоступен') : '');
       const join = host.querySelector('#mrVideoJoin'); if (join) join.hidden = this.joined;
       const ids = ['#mrVideoMic','#mrVideoCam','#mrVideoSound','#mrVideoDevices','#mrVideoReconnect','#mrVideoEnd','#mrVideoScreen','#mrVideoFullscreen','#mrVideoExpand'];
