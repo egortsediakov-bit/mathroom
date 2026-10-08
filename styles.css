@@ -2417,3 +2417,23 @@ body{background:linear-gradient(180deg,#fbfbfa 0%,#f5f4f1 100%)!important;color:
 [data-phone-student-board="1"] .board-solid-hud{
   display:none!important;
 }
+
+
+/* Mathroom v32.1 — phone 3D actions + photo upload */
+@media (pointer:coarse) and (max-width:1366px){
+  .student-lesson-mode .board-mobile-solid-actions{
+    display:block!important;
+    margin-top:12px!important;
+    padding-top:12px!important;
+    border-top:1px solid var(--line)!important;
+  }
+  .student-lesson-mode .board-mobile-solid-actions>.board-action-grid{
+    margin-top:8px!important;
+  }
+  .student-lesson-mode #mobilePhotoUpload{
+    display:flex!important;
+  }
+}
+@media (max-width:1100px){
+  .student-lesson-mode .board-mobile-solid-actions{display:block!important}
+}
