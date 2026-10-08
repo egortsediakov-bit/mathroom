@@ -2379,3 +2379,196 @@ input[type="file"]{font-size:11px!important}
     bottom:10px!important;
   }
 }
+
+
+/* ===== Adaptive expanded lesson video =====
+   Fixes the visual split caused by the expanded player competing with the
+   hero-mount sizing rules. The expanded player now uses the viewport itself. */
+#mrVideoPanel.joined.expanded:not(.floating):not(.mr-board-fullscreen-video){
+  position:fixed!important;
+  inset:clamp(8px,1.2vw,18px)!important;
+  left:clamp(8px,1.2vw,18px)!important;
+  right:clamp(8px,1.2vw,18px)!important;
+  top:clamp(8px,1.2vw,18px)!important;
+  bottom:clamp(8px,1.2vw,18px)!important;
+
+  width:auto!important;
+  max-width:none!important;
+  height:auto!important;
+  max-height:none!important;
+
+  margin:0!important;
+  padding:8px!important;
+  z-index:3600!important;
+
+  display:grid!important;
+  grid-template-rows:auto minmax(0,1fr) auto!important;
+  gap:7px!important;
+
+  overflow:hidden!important;
+  background:#fff!important;
+  border:1px solid var(--pg-line)!important;
+  border-radius:12px!important;
+  box-shadow:0 24px 70px rgba(0,0,0,.28)!important;
+}
+
+/* Defeat the old "hero" rule that forced the player back into page flow. */
+.mr-video-hero-mount > #mrVideoPanel.joined.expanded:not(.floating):not(.mr-board-fullscreen-video){
+  position:fixed!important;
+  inset:clamp(8px,1.2vw,18px)!important;
+  width:auto!important;
+  max-width:none!important;
+  height:auto!important;
+  max-height:none!important;
+  padding:8px!important;
+  border-radius:12px!important;
+  box-shadow:0 24px 70px rgba(0,0,0,.28)!important;
+}
+
+/* Expanded mode gets one continuous video surface. */
+#mrVideoPanel.joined.expanded:not(.floating):not(.mr-board-fullscreen-video) .mr-call-stage,
+.mr-video-hero-mount > #mrVideoPanel.joined.expanded:not(.floating):not(.mr-board-fullscreen-video) .mr-call-stage{
+  display:block!important;
+  position:relative!important;
+  width:100%!important;
+  height:100%!important;
+  min-width:0!important;
+  min-height:0!important;
+  max-width:none!important;
+  max-height:none!important;
+  aspect-ratio:auto!important;
+  margin:0!important;
+  padding:0!important;
+  overflow:hidden!important;
+  border-radius:9px!important;
+  background:#101214!important;
+}
+
+/* The remote image fills available browser space but keeps the whole frame visible. */
+#mrVideoPanel.joined.expanded:not(.floating):not(.mr-board-fullscreen-video) .mr-remote-video{
+  position:absolute!important;
+  inset:0!important;
+  width:100%!important;
+  height:100%!important;
+  min-width:0!important;
+  min-height:0!important;
+  object-fit:contain!important;
+  object-position:center center!important;
+  background:#101214!important;
+}
+
+/* Local preview scales relative to the expanded window. */
+#mrVideoPanel.joined.expanded:not(.floating):not(.mr-board-fullscreen-video) .mr-local-video{
+  position:absolute!important;
+  right:clamp(8px,1vw,16px)!important;
+  top:clamp(8px,1vw,16px)!important;
+  width:clamp(92px,13vw,180px)!important;
+  height:auto!important;
+  aspect-ratio:16/10!important;
+  object-fit:cover!important;
+  border-radius:8px!important;
+}
+
+/* Keep controls as one compact footer, never in the middle of the video. */
+#mrVideoPanel.joined.expanded:not(.floating):not(.mr-board-fullscreen-video) .mr-call-head{
+  min-height:34px!important;
+  padding:4px 6px!important;
+  margin:0!important;
+  cursor:default!important;
+}
+#mrVideoPanel.joined.expanded:not(.floating):not(.mr-board-fullscreen-video) .mr-call-actions{
+  display:flex!important;
+  align-items:center!important;
+  justify-content:flex-start!important;
+  gap:5px!important;
+  flex-wrap:wrap!important;
+
+  margin:0!important;
+  padding:0!important;
+  background:#fff!important;
+}
+#mrVideoPanel.joined.expanded:not(.floating):not(.mr-board-fullscreen-video) .mr-call-actions .btn{
+  min-height:34px!important;
+  height:34px!important;
+  padding:0 10px!important;
+  border-radius:7px!important;
+  font-size:11px!important;
+}
+
+/* Hide diagnostic lines in expanded mode so they cannot create another band. */
+#mrVideoPanel.joined.expanded:not(.floating):not(.mr-board-fullscreen-video) .mr-call-quality,
+#mrVideoPanel.joined.expanded:not(.floating):not(.mr-board-fullscreen-video) .mr-call-note{
+  display:none!important;
+}
+
+/* Both mode stays adaptive to the actual viewport. */
+#mrVideoPanel.joined.expanded.view-both:not(.floating):not(.mr-board-fullscreen-video) .mr-call-stage{
+  display:grid!important;
+  grid-template-columns:minmax(0,1fr) minmax(0,1fr)!important;
+  grid-template-rows:1fr!important;
+  gap:6px!important;
+  padding:6px!important;
+}
+#mrVideoPanel.joined.expanded.view-both:not(.floating):not(.mr-board-fullscreen-video) .mr-remote-video,
+#mrVideoPanel.joined.expanded.view-both:not(.floating):not(.mr-board-fullscreen-video) .mr-local-video{
+  position:relative!important;
+  inset:auto!important;
+  display:block!important;
+  width:100%!important;
+  height:100%!important;
+  min-width:0!important;
+  min-height:0!important;
+  border:0!important;
+  border-radius:7px!important;
+  object-fit:contain!important;
+  object-position:center center!important;
+  box-shadow:none!important;
+  background:#101214!important;
+}
+#mrVideoPanel.joined.expanded.view-both:not(.floating):not(.mr-board-fullscreen-video) .mr-local-video{
+  transform:scaleX(-1)!important;
+}
+#mrVideoPanel.joined.expanded.view-both.sharing:not(.floating):not(.mr-board-fullscreen-video) .mr-local-video{
+  transform:none!important;
+}
+
+/* For narrow windows stack the two feeds vertically instead of squeezing them. */
+@media(max-width:760px){
+  #mrVideoPanel.joined.expanded.view-both:not(.floating):not(.mr-board-fullscreen-video) .mr-call-stage{
+    grid-template-columns:1fr!important;
+    grid-template-rows:minmax(0,1fr) minmax(0,1fr)!important;
+  }
+}
+
+/* Short browser windows: reserve room for controls first, video receives the rest. */
+@media(max-height:620px){
+  #mrVideoPanel.joined.expanded:not(.floating):not(.mr-board-fullscreen-video){
+    inset:6px!important;
+    padding:6px!important;
+    gap:5px!important;
+    border-radius:9px!important;
+    grid-template-rows:minmax(0,1fr) auto!important;
+  }
+  #mrVideoPanel.joined.expanded:not(.floating):not(.mr-board-fullscreen-video) .mr-call-head{
+    display:none!important;
+  }
+  #mrVideoPanel.joined.expanded:not(.floating):not(.mr-board-fullscreen-video) .mr-call-actions{
+    gap:4px!important;
+  }
+  #mrVideoPanel.joined.expanded:not(.floating):not(.mr-board-fullscreen-video) .mr-call-actions .btn{
+    min-height:32px!important;
+    height:32px!important;
+    padding-inline:8px!important;
+    font-size:10.5px!important;
+  }
+}
+
+/* Very small windows: buttons can flow into two compact rows while the video remains visible. */
+@media(max-width:700px){
+  #mrVideoPanel.joined.expanded:not(.floating):not(.mr-board-fullscreen-video){
+    inset:5px!important;
+  }
+  #mrVideoPanel.joined.expanded:not(.floating):not(.mr-board-fullscreen-video) .mr-call-actions .btn{
+    flex:0 1 auto!important;
+  }
+}
