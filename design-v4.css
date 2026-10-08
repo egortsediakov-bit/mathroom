@@ -1716,3 +1716,85 @@ input[type="file"]{font-size:11px!important}
   .mr-board-mode-control .board-permission-select{width:120px!important;min-width:120px!important}
   .mr-micro-connection-card .mr-call-actions{flex-wrap:wrap!important}
 }
+
+
+/* ===== Board top bar overlap fix ===== */
+.board-head-actions{
+  justify-content:flex-start!important;
+  gap:8px!important;
+  flex-wrap:nowrap!important;
+  overflow-x:auto!important;
+  overflow-y:hidden!important;
+  scrollbar-width:none!important;
+}
+.board-head-actions::-webkit-scrollbar{display:none!important}
+
+.board-head-actions .btn{
+  flex:0 0 auto!important;
+  white-space:nowrap!important;
+  width:auto!important;
+  min-width:auto!important;
+  box-sizing:border-box!important;
+}
+
+.board-head-actions #undo,
+.board-head-actions #redo,
+.board-head-actions #bringForward,
+.board-head-actions #sendBackward,
+.board-head-actions #followTeacherToggle{
+  width:36px!important;
+  min-width:36px!important;
+  max-width:36px!important;
+  padding:0!important;
+}
+
+.board-head-actions #addPage,
+.board-head-actions #delPage,
+.board-head-actions #quickCommands,
+.board-head-actions #fullscreen{
+  width:auto!important;
+  min-width:max-content!important;
+  max-width:none!important;
+  padding:0 12px!important;
+}
+
+.board-head-actions #undo .board-head-label,
+.board-head-actions #redo .board-head-label,
+.board-head-actions #bringForward .board-head-label,
+.board-head-actions #sendBackward .board-head-label{
+  display:none!important;
+}
+
+.board-head-actions #addPage .board-head-label,
+.board-head-actions #delPage .board-head-label{
+  display:inline!important;
+  white-space:nowrap!important;
+}
+
+.board-head-actions #addPage .mr-ui-icon,
+.board-head-actions #delPage .mr-ui-icon,
+.board-head-actions #quickCommands .mr-board-command-icon,
+.board-head-actions #fullscreen .mr-ui-icon{
+  flex:0 0 auto!important;
+}
+
+.board-head-actions .board-head-sep{
+  flex:0 0 1px!important;
+  width:1px!important;
+  min-width:1px!important;
+  height:28px!important;
+  margin:0 2px!important;
+  background:var(--pg-line)!important;
+}
+
+@media(max-width:1050px) and (min-width:651px){
+  .board-head-actions{
+    gap:6px!important;
+  }
+  .board-head-actions #addPage,
+  .board-head-actions #delPage,
+  .board-head-actions #quickCommands,
+  .board-head-actions #fullscreen{
+    padding:0 10px!important;
+  }
+}
