@@ -5265,6 +5265,7 @@
     const el=document.getElementById(ids[tab]||'');
     if(el){el.click();return}
     S.studentTab=tab;
+    if(typeof window.renderStudent==='function')window.renderStudent().catch?.(e=>console.warn('[Mathroom mobile student navigation]',e));
   }
 
   function relativeStudentDate(value){
