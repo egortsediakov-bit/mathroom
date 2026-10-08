@@ -2437,3 +2437,151 @@ body{background:linear-gradient(180deg,#fbfbfa 0%,#f5f4f1 100%)!important;color:
 @media (max-width:1100px){
   .student-lesson-mode .board-mobile-solid-actions{display:block!important}
 }
+
+
+/* Mathroom v32.2 — compact phone tool popovers */
+@media (pointer:coarse) and (max-width:760px){
+  .student-lesson-mode .board-toolbar-side .board-tool-popover{
+    left:50%!important;
+    right:auto!important;
+    width:min(92vw,420px)!important;
+    max-width:min(92vw,420px)!important;
+    transform:translateX(-50%)!important;
+    bottom:calc(72px + env(safe-area-inset-bottom))!important;
+    max-height:min(42dvh,360px)!important;
+    padding:10px!important;
+    border-radius:16px!important;
+    overflow:auto!important;
+  }
+
+  .student-lesson-mode .board-tool-popover .board-popover-head{
+    margin-bottom:7px!important;
+    padding-bottom:7px!important;
+  }
+  .student-lesson-mode .board-tool-popover .board-popover-title{
+    font-size:15px!important;
+    line-height:1.15!important;
+  }
+  .student-lesson-mode .board-tool-popover .board-popover-subtitle,
+  .student-lesson-mode .board-tool-popover .board-tool-help{
+    font-size:10px!important;
+    line-height:1.3!important;
+  }
+
+  /* Writing: 3 compact actions in one row. */
+  .student-lesson-mode .board-writing-grid{
+    grid-template-columns:repeat(3,minmax(0,1fr))!important;
+    gap:6px!important;
+  }
+  .student-lesson-mode .board-writing-grid .btn{
+    min-height:42px!important;
+    padding:6px 7px!important;
+    gap:5px!important;
+    font-size:11px!important;
+    justify-content:center!important;
+  }
+  .student-lesson-mode .board-writing-grid .mr-ui-icon{
+    width:18px!important;height:18px!important;
+  }
+  .student-lesson-mode .board-style-row{
+    margin-top:8px!important;
+    gap:7px!important;
+  }
+  .student-lesson-mode .board-color-row{
+    justify-content:space-between!important;
+    gap:5px!important;
+    flex-wrap:nowrap!important;
+  }
+  .student-lesson-mode .board-color-row .color-dot{
+    width:28px!important;height:28px!important;
+    min-width:28px!important;min-height:28px!important;
+    border-width:2px!important;
+  }
+  .student-lesson-mode .board-width-select{
+    min-height:36px!important;
+    height:36px!important;
+    padding:5px 8px!important;
+    font-size:11px!important;
+  }
+
+  /* Shapes: denser gallery with internal scrolling. */
+  .student-lesson-mode .board-shapes-popover{
+    max-height:min(48dvh,410px)!important;
+  }
+  .student-lesson-mode .board-shapes-popover .board-palette-section{
+    margin-top:7px!important;
+  }
+  .student-lesson-mode .board-shapes-popover .board-palette-section>b{
+    font-size:11px!important;
+    margin-bottom:5px!important;
+    display:block!important;
+  }
+  .student-lesson-mode .board-shapes-popover .board-palette-grid{
+    grid-template-columns:repeat(3,minmax(0,1fr))!important;
+    gap:6px!important;
+  }
+  .student-lesson-mode .board-shapes-popover .board-shape-icon,
+  .student-lesson-mode .board-shapes-popover [data-shape-template],
+  .student-lesson-mode .board-shapes-popover [data-solid-template]{
+    min-height:54px!important;
+    height:54px!important;
+    padding:4px!important;
+    border-radius:10px!important;
+    gap:2px!important;
+  }
+  .student-lesson-mode .board-shapes-popover .board-shape-icon>svg{
+    width:28px!important;
+    height:28px!important;
+    max-height:28px!important;
+  }
+  .student-lesson-mode .board-shapes-popover .board-shape-label{
+    font-size:8.5px!important;
+    line-height:1.05!important;
+  }
+  .student-lesson-mode .board-shapes-popover .board-mobile-extra{
+    margin-top:8px!important;
+    padding-top:8px!important;
+  }
+  .student-lesson-mode .board-shapes-popover .board-mobile-extra .board-action-grid{
+    grid-template-columns:repeat(2,minmax(0,1fr))!important;
+    gap:6px!important;
+  }
+  .student-lesson-mode .board-shapes-popover .board-mobile-extra .btn{
+    min-height:38px!important;
+    padding:5px 7px!important;
+    font-size:10.5px!important;
+  }
+
+  /* More menu: compact 2x2 action palette. */
+  .student-lesson-mode .board-more-popover{
+    width:min(88vw,360px)!important;
+    max-width:min(88vw,360px)!important;
+    max-height:260px!important;
+  }
+  .student-lesson-mode .board-more-grid{
+    grid-template-columns:repeat(2,minmax(0,1fr))!important;
+    gap:6px!important;
+  }
+  .student-lesson-mode .board-more-grid .btn{
+    min-height:40px!important;
+    padding:6px 8px!important;
+    font-size:11px!important;
+    gap:6px!important;
+  }
+  .student-lesson-mode .board-more-grid .mr-ui-icon{
+    width:17px!important;height:17px!important;
+  }
+}
+
+/* Landscape phone: keep compact menus above the fixed toolbar. */
+@media (pointer:coarse) and (orientation:landscape) and (max-height:600px){
+  .student-lesson-mode .board-toolbar-side .board-tool-popover{
+    width:min(72vw,520px)!important;
+    max-width:min(72vw,520px)!important;
+    max-height:calc(100dvh - 90px)!important;
+    bottom:70px!important;
+  }
+  .student-lesson-mode .board-shapes-popover .board-palette-grid{
+    grid-template-columns:repeat(4,minmax(0,1fr))!important;
+  }
+}
