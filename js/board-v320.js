@@ -650,7 +650,24 @@
     const localOnly=!!options.localOnly;
     const localKey=options.localKey||`mathroom.board.scratch.${S.user?.id||'teacher'}`;
     const assetOwner=localOnly?`scratch/${S.user?.id||'teacher'}`:studentId;
-    const normalizeElement=o=>{if(!o||typeof o!=='object'||Array.isArray(o)||typeof o.type!=='string')return null;const x={...o,id:o.id||uid()};if((x.type==='path'||x.type==='polygon')&&!Array.isArray(x.points))x.points=[];if(x.type==='solid3d'){if(!Array.isArray(x.solidPoints))x.solidPoints=[];if(!Array.isArray(x.planes))x.planes=[]}return x};
+    const normalizeElement=o=>{
+      if(!o||typeof o!=='object'||Array.isArray(o)||typeof o.type!=='string')return null;
+      const x={...o,id:o.id||uid()};
+      if((x.type==='path'||x.type==='polygon')&&!Array.isArray(x.points))x.points=[];
+      if(x.type==='solid3d'){
+        if(!Array.isArray(x.solidPoints))x.solidPoints=[];
+        if(!Array.isArray(x.planes))x.planes=[];
+      }
+      /* Collaboration metadata is deliberately stored with the object so
+         reconnects and cross-device saves preserve authorship/versioning.
+         Legacy objects are treated as teacher-owned. */
+      x._ownerRole=x._ownerRole||'teacher';
+      x._ownerId=String(x._ownerId||x.teacher_id||'teacher');
+      x._rev=Math.max(0,Number(x._rev)||0);
+      x._updatedAt=Math.max(0,Number(x._updatedAt)||0);
+      x._updatedBy=String(x._updatedBy||'');
+      return x;
+    };
     const normalizePage=(p,i=0)=>{const now=new Date().toISOString(),src=p&&typeof p==='object'&&!Array.isArray(p)?p:{};return {...src,id:src.id||uid(),teacher_id:src.teacher_id||S.user?.id||'',student_id:src.student_id??(localOnly?null:studentId),title:String(src.title||`${localOnly?'Черновик':'Лист'} ${i+1}`),sort_order:Number.isFinite(Number(src.sort_order))?Number(src.sort_order):i,elements:(Array.isArray(src.elements)?src.elements:[]).map(normalizeElement).filter(Boolean),created_at:src.created_at||now,updated_at:src.updated_at||now}};
     const readLocal=()=>{try{const raw=JSON.parse(localStorage.getItem(localKey)||'[]');return Array.isArray(raw)?raw.map(normalizePage):[]}catch(e){console.warn('[Mathroom scratch migrate]',e);try{localStorage.setItem(`${localKey}.broken.${Date.now()}`,localStorage.getItem(localKey)||'')}catch{}return []}};
     const writeLocal=()=>{if(!localOnly)return;try{localStorage.setItem(localKey,JSON.stringify(pages.map((x,i)=>normalizePage({...x,sort_order:i,updated_at:new Date().toISOString()},i))))}catch(e){console.warn('[Mathroom board scratch]',e)}};
@@ -662,6 +679,20 @@
     let current=pages[0],elements=clone(current.elements||[]),tool='pen',color='#15171a',width=3,camera={x:0,y:0,zoom:1},drawing=null,selected=null,selectedIds=new Set(),saveTimer=null,channel=null,pagesChannel=null,grid=true;
     let panStart=null,moveStart=null,resizeStart=null,rotationStart=null,solidRotateStart=null,marqueeSelect=null,clipboardElement=null,transformDirty=false;const undoStack=[],redoStack=[];let busyHistory=false,importBusy=false;
     let snapEnabled=true,laserPoint=null,remoteLaser=null,tempMarks=[],remoteTempMarks=[],focusRect=null,remoteFocusRect=null,focusDraft=null,eraserPoint=null,eraserDown=false,eraserTrail=[],boardFocused=false,compassDraft=null,solidPlanePick=null,remoteCursor=null,lastCursorSent=0,lastViewSent=0,classroomMode=options.permissionMode||'open',followTeacher=options.followTeacher!==false;
+
+    const actorRole=isTeacher?'teacher':'student';
+    const actorId=String(isTeacher?(S.user?.id||'teacher'):(studentId||S.user?.id||'student'));
+    const actorKey=`${actorRole}:${actorId}`;
+    const collabQueueKey=`mathroom.board.pendingOps.${studentId||'local'}.${S.user?.id||actorId}`;
+    const offlineSnapshotKey=`mathroom.board.offlineSnapshot.${studentId||'local'}.${S.user?.id||actorId}`;
+    let collabBaseline=clone(elements),channelSubscribed=false,lastStateBroadcast=0,lastOpSent=0;
+    let pendingOps=[],deleteJournal=new Map(),remoteLiveStrokes=new Map(),strokeSentIndex=0,lastStrokeSent=0;
+    let boardNetworkOnline=navigator.onLine!==false,saveInFlight=false,lastServerSaveAt=0;
+    let penActiveUntil=0,touchPointers=new Map(),touchGesture=null;
+    try{const q=JSON.parse(localStorage.getItem(collabQueueKey)||'[]');if(Array.isArray(q))pendingOps=q.slice(-800)}catch{}
+    const persistPendingOps=()=>{try{if(pendingOps.length)localStorage.setItem(collabQueueKey,JSON.stringify(pendingOps.slice(-800)));else localStorage.removeItem(collabQueueKey)}catch{}};
+    const localOwns=o=>!!o&&o._ownerRole===actorRole&&String(o._ownerId||'')===actorId;
+    const lastUpdatedByMe=o=>!!o&&o._updatedBy===actorKey;
     const selectionList=()=>{const out=[];if(selected&&elements.some(o=>o.id===selected))out.push(selected);for(const id of selectedIds)if(id!==selected&&elements.some(o=>o.id===id))out.push(id);return out};
     const selectionCount=()=>selectionList().length;
     const selectionHas=id=>!!id&&(selected===id||selectedIds.has(id));
