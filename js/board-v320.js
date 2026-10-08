@@ -1541,11 +1541,17 @@
     };
     const finishPointer=e=>{
       if(e?.pointerType==='touch'){
-        touchPointers.delete(e.pointerId);
-        const pts=[...touchPointers.values()];
-        if(!pts.length)touchGesture=null;
-        else if(pts.length===1){const p=pts[0];touchGesture={mode:'pan',startX:p.x,startY:p.y,camera:{...camera}}}
-        return;
+        const wasTouchGesture=touchPointers.has(e.pointerId);
+        if(wasTouchGesture){
+          touchPointers.delete(e.pointerId);
+          const pts=[...touchPointers.values()];
+          if(!pts.length)touchGesture=null;
+          else if(pts.length===1){const p=pts[0];touchGesture={mode:'pan',startX:p.x,startY:p.y,camera:{...camera}}}
+          return;
+        }
+        /* Touch used as pen/pencil/marker/eraser must continue through the
+           normal pointer-up path below, otherwise the stroke is never
+           finalized, broadcast as a durable op, or saved. */
       }
       if(marqueeSelect){
         const m=marqueeSelect;marqueeSelect=null;const x0=Math.min(m.x0,m.x1),y0=Math.min(m.y0,m.y1),x1=Math.max(m.x0,m.x1),y1=Math.max(m.y0,m.y1),tiny=Math.abs(x1-x0)<3/camera.zoom&&Math.abs(y1-y0)<3/camera.zoom;
