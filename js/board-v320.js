@@ -957,6 +957,7 @@
       if(!status)return;
       status.dataset.sync=state;
       status.textContent=text||(state==='online'?'Онлайн':state==='syncing'?'Синхронизация…':state==='offline'?'Офлайн · изменения локально':state==='error'?'Ошибка синхронизации':state==='saved'?'Сохранено':'Подключение…');
+      status.title=status.textContent;
     }
     function elementSignature(o){
       if(!o)return'';
