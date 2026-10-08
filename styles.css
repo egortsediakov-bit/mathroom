@@ -2863,3 +2863,500 @@ body{background:linear-gradient(180deg,#fbfbfa 0%,#f5f4f1 100%)!important;color:
   justify-content:center!important;
   font-weight:750!important;
 }
+
+
+/* =========================================================
+   Mathroom v33.0 — mobile student website
+   Web-first student cabinet; desktop remains unchanged.
+   ========================================================= */
+.student-mobile-shell{
+  --ms-orange:#f55a16;
+  --ms-ink:#171823;
+  --ms-muted:#777982;
+  --ms-bg:#f6f5f2;
+  --ms-card:#fff;
+  width:100%!important;
+  max-width:none!important;
+  min-height:100dvh;
+  margin:0!important;
+  padding:0 0 calc(92px + env(safe-area-inset-bottom))!important;
+  box-sizing:border-box;
+  background:linear-gradient(180deg,#fbfaf8 0,#f4f3ef 100%);
+  color:var(--ms-ink);
+}
+.mr-mobile-web-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:14px;
+  padding:15px 16px 10px;
+  border-bottom:1px solid rgba(30,31,36,.06);
+  background:rgba(251,250,248,.94);
+}
+.mr-mobile-web-head>div:first-child{display:grid;gap:1px}
+.mr-mobile-web-head .brand{
+  font-size:19px!important;
+  line-height:1;
+  color:var(--ms-orange)!important;
+}
+.mr-mobile-web-head small{
+  font-size:10px;
+  color:var(--ms-muted);
+}
+.mr-mobile-student-mini{
+  display:grid;
+  justify-items:end;
+  gap:1px;
+  min-width:0;
+}
+.mr-mobile-student-mini b{
+  max-width:160px;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  font-size:12px;
+}
+.mr-mobile-student-mini span{
+  font-size:10px;
+  color:var(--ms-muted);
+}
+.mr-mobile-student-content{
+  width:100%;
+  max-width:760px;
+  margin:0 auto;
+  padding:12px 12px 24px;
+  box-sizing:border-box;
+}
+.mr-mobile-welcome{
+  padding:7px 4px 14px;
+}
+.mr-mobile-welcome>span{
+  display:block;
+  margin-bottom:2px;
+  font-size:12px;
+  color:var(--ms-muted);
+}
+.mr-mobile-welcome h1,
+.mr-mobile-page-head h1,
+.mr-mobile-subhead h1,
+.mr-mobile-board-head h1{
+  margin:0;
+  font-size:27px;
+  line-height:1.05;
+  letter-spacing:-.045em;
+}
+.mr-mobile-welcome p{
+  margin:6px 0 0;
+  font-size:12px;
+  color:var(--ms-muted);
+  line-height:1.45;
+}
+.mr-mobile-kicker{
+  display:block;
+  margin-bottom:4px;
+  color:#8b8d95;
+  font-size:9px;
+  line-height:1.2;
+  font-weight:850;
+  text-transform:uppercase;
+  letter-spacing:.08em;
+}
+.mr-mobile-page-head,
+.mr-mobile-subhead,
+.mr-mobile-board-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  padding:5px 2px 14px;
+}
+.mr-mobile-subhead{justify-content:flex-start}
+.mr-mobile-back{
+  appearance:none;
+  width:38px;
+  height:38px;
+  border:1px solid #dfddd8;
+  border-radius:12px;
+  background:#fff;
+  color:#171823;
+  font-size:20px;
+  cursor:pointer;
+}
+.mr-mobile-count{
+  min-width:36px;
+  height:36px;
+  padding:0 9px;
+  border-radius:12px;
+  background:#171823;
+  color:#fff;
+  display:grid;
+  place-items:center;
+  font-weight:850;
+  font-size:13px;
+}
+
+/* Website bottom navigation: a floating web control, not native-app chrome. */
+.mr-mobile-student-nav{
+  position:fixed;
+  left:max(10px,env(safe-area-inset-left));
+  right:max(10px,env(safe-area-inset-right));
+  bottom:max(10px,env(safe-area-inset-bottom));
+  z-index:6800;
+  height:62px;
+  padding:5px;
+  border:1px solid rgba(20,21,25,.10);
+  border-radius:18px;
+  background:rgba(255,255,255,.96);
+  box-shadow:0 14px 44px rgba(18,20,26,.14);
+  display:grid;
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:3px;
+  box-sizing:border-box;
+}
+.mr-mobile-student-nav button{
+  appearance:none;
+  border:0;
+  border-radius:13px;
+  background:transparent;
+  color:#777982;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  gap:2px;
+  min-width:0;
+  font:750 9px/1.1 system-ui,sans-serif;
+  cursor:pointer;
+}
+.mr-mobile-student-nav button svg{
+  width:20px;
+  height:20px;
+  fill:none;
+  stroke:currentColor;
+  stroke-width:1.8;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+}
+.mr-mobile-student-nav button.active{
+  color:var(--ms-orange);
+  background:#fff3ec;
+}
+.mr-mobile-student-nav button.active span{font-weight:850}
+
+/* Mobile assignment list */
+.mr-mobile-section{display:grid;gap:8px;margin-bottom:18px}
+.mr-mobile-section-title{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:0 2px;
+}
+.mr-mobile-section-title h2{margin:0;font-size:15px}
+.mr-mobile-section-title span{
+  min-width:24px;height:24px;padding:0 7px;border-radius:999px;
+  display:grid;place-items:center;background:#ecebe7;color:#676971;font-size:10px;font-weight:800;
+}
+.mr-mobile-list{display:grid;gap:8px}
+.mr-mobile-assignment,
+.mr-mobile-lesson-card{
+  border:1px solid #e4e2dd;
+  border-radius:17px;
+  background:#fff;
+  padding:12px;
+  box-shadow:0 5px 18px rgba(25,27,34,.035);
+}
+.mr-mobile-assignment{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto;
+  gap:10px;
+  align-items:center;
+}
+.mr-mobile-assignment-main{min-width:0}
+.mr-mobile-assignment h3,
+.mr-mobile-lesson-card h3{
+  margin:2px 0 4px;
+  font-size:14px;
+  line-height:1.25;
+}
+.mr-mobile-assignment p,
+.mr-mobile-lesson-card p{
+  margin:0;
+  color:var(--ms-muted);
+  font-size:10.5px;
+  line-height:1.4;
+}
+.mr-mobile-assignment .btn{
+  min-height:38px!important;
+  padding:7px 10px!important;
+  font-size:10px!important;
+}
+.mr-mobile-assignment.revision{border-color:#efb28f;background:#fffaf7}
+.mr-mobile-assignment.overdue{border-color:#efc1b8}
+.mr-mobile-list.compact .mr-mobile-assignment{opacity:.82}
+
+/* More / profile */
+.mr-mobile-profile-card{
+  display:flex;align-items:center;gap:12px;
+  padding:14px;
+  border-radius:18px;
+  border:1px solid #e4e2dd;
+  background:#fff;
+  margin-bottom:10px;
+}
+.mr-mobile-avatar{
+  width:46px;height:46px;border-radius:15px;
+  display:grid;place-items:center;
+  background:linear-gradient(145deg,#171823,#343640);
+  color:#fff;
+  box-shadow:inset 0 -3px 0 var(--ms-orange);
+  font-size:18px;font-weight:900;
+}
+.mr-mobile-profile-card>div:last-child{display:grid;gap:2px}
+.mr-mobile-profile-card b{font-size:15px}
+.mr-mobile-profile-card span{font-size:11px;color:var(--ms-muted)}
+.mr-mobile-menu-list{display:grid;gap:8px}
+.mr-mobile-menu-list>button{
+  width:100%;
+  min-height:70px;
+  padding:10px 12px;
+  border:1px solid #e4e2dd;
+  border-radius:17px;
+  background:#fff;
+  display:grid;
+  grid-template-columns:38px minmax(0,1fr) auto;
+  gap:10px;
+  align-items:center;
+  color:inherit;
+  text-align:left;
+  cursor:pointer;
+}
+.mr-mobile-menu-icon{
+  width:38px;height:38px;border-radius:12px;
+  background:#fff3ec;color:var(--ms-orange);
+  display:grid;place-items:center;
+}
+.mr-mobile-menu-icon svg{
+  width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;
+}
+.mr-mobile-menu-list>button>span:nth-child(2){display:grid;gap:3px}
+.mr-mobile-menu-list b{font-size:13px}
+.mr-mobile-menu-list small{font-size:10px;line-height:1.35;color:var(--ms-muted)}
+.mr-mobile-menu-list i{font-style:normal;font-size:22px;color:#a0a1a6}
+
+/* Lessons / progress */
+.mr-mobile-lesson-card{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto;
+  gap:10px;
+}
+.mr-mobile-lesson-score{
+  width:58px;height:58px;border-radius:16px;
+  background:#fff3ec;color:var(--ms-orange);
+  display:grid;place-items:center;align-content:center;
+}
+.mr-mobile-lesson-score b{font-size:16px}
+.mr-mobile-lesson-score span{font-size:8px}
+.mr-mobile-lesson-note{
+  grid-column:1/-1;
+  padding:9px 10px;
+  border-radius:11px;
+  background:#f6f7f6;
+}
+.mr-mobile-lesson-note.warn{background:#fff6ef}
+.mr-mobile-lesson-note b{font-size:10px}
+.mr-mobile-lesson-note p{margin-top:3px!important}
+.mr-mobile-empty{
+  padding:22px 14px;
+  border:1px dashed #d8d5d0;
+  border-radius:16px;
+  text-align:center;
+  color:#85878f;
+  font-size:12px;
+  background:rgba(255,255,255,.55);
+}
+.mr-mobile-progress-wrap .profile-metrics{
+  grid-template-columns:1fr 1fr!important;
+  gap:8px!important;
+}
+.mr-mobile-progress-wrap .grid.cols2{grid-template-columns:1fr!important}
+.mr-mobile-progress-wrap .card{
+  border-radius:17px!important;
+  padding:12px!important;
+  box-shadow:none!important;
+}
+.mr-mobile-progress-wrap .metric{font-size:24px!important}
+.mr-mobile-progress-wrap .mr-trend-chart{overflow-x:auto}
+
+/* Today page uses the existing live data/enhancement engine but gets a mobile skin. */
+.student-mobile-shell #mrStudentToday{display:grid;gap:9px}
+.student-mobile-shell #mrStudentToday>.card,
+.student-mobile-shell #mrStudentToday section.card{
+  border-radius:18px!important;
+  padding:13px!important;
+  box-shadow:0 5px 18px rgba(25,27,34,.035)!important;
+}
+.student-mobile-shell .mr-today-hero{
+  grid-template-columns:1fr!important;
+  gap:12px!important;
+  background:linear-gradient(145deg,#171823 0%,#252730 100%)!important;
+  color:#fff!important;
+  border-color:#171823!important;
+}
+.student-mobile-shell .mr-today-hero h2{font-size:20px!important;line-height:1.15!important;color:#fff!important}
+.student-mobile-shell .mr-today-hero p,
+.student-mobile-shell .mr-today-hero small,
+.student-mobile-shell .mr-today-hero span{color:#d6d7dc!important}
+.student-mobile-shell .mr-today-hero .pill{
+  width:max-content;
+  background:rgba(255,255,255,.1)!important;
+  color:#fff!important;
+  border-color:rgba(255,255,255,.14)!important;
+}
+.student-mobile-shell .mr-today-hero .btn.primary{
+  width:100%;
+  min-height:43px!important;
+}
+.student-mobile-shell .mr-today-next{
+  background:rgba(255,255,255,.075)!important;
+  border-color:rgba(255,255,255,.1)!important;
+  border-radius:14px!important;
+}
+.student-mobile-shell .mr-today-metrics{grid-template-columns:1fr 1fr!important;gap:7px!important}
+.student-mobile-shell .mr-today-grid{grid-template-columns:1fr!important;gap:8px!important}
+.student-mobile-shell .mr-week-plan>div{grid-template-columns:72px minmax(0,1fr)!important}
+.student-mobile-shell .mr-today-calm{align-items:flex-start!important;flex-direction:column!important}
+.student-mobile-shell .mr-today-calm .btn{width:100%!important}
+.mr-mobile-skeleton-card{
+  height:190px;border-radius:18px;
+  background:linear-gradient(90deg,#eceae6 25%,#f5f4f1 38%,#eceae6 63%);
+  background-size:300% 100%;
+  animation:mr-mobile-skeleton 1.2s ease infinite;
+}
+.mr-mobile-skeleton-card.small{height:92px}
+@keyframes mr-mobile-skeleton{0%{background-position:100% 0}100%{background-position:0 0}}
+
+/* Standalone mobile board tab. */
+.student-mobile-shell.tab-board{
+  padding-bottom:calc(92px + env(safe-area-inset-bottom))!important;
+}
+.student-mobile-shell.tab-board .mr-mobile-student-content{
+  max-width:none;
+  padding:8px 0 0;
+}
+.student-mobile-shell.tab-board .mr-mobile-board-head{padding:5px 12px 10px}
+.student-mobile-shell.tab-board .board-card{
+  border-left:0!important;border-right:0!important;
+  border-radius:0!important;
+  box-shadow:none!important;
+}
+.student-mobile-shell.tab-board .board-head{
+  padding:7px 8px!important;
+  gap:5px!important;
+}
+.student-mobile-shell.tab-board .board-head-actions{
+  width:auto!important;
+  flex:1!important;
+  justify-content:flex-end!important;
+  gap:4px!important;
+}
+.student-mobile-shell.tab-board .board-head-label,
+.student-mobile-shell.tab-board .board-head-sep,
+.student-mobile-shell.tab-board #quickCommands,
+.student-mobile-shell.tab-board .board-shortcuts-btn{display:none!important}
+.student-mobile-shell.tab-board .board-page-tabs{
+  display:flex!important;gap:5px!important;
+  overflow-x:auto!important;scrollbar-width:none;
+  padding:6px 8px!important;
+}
+.student-mobile-shell.tab-board .board-page-tabs::-webkit-scrollbar{display:none}
+.student-mobile-shell.tab-board .board-page-tabs button{flex:0 0 auto}
+.student-mobile-shell.tab-board .board-stage{
+  width:100%!important;
+  height:calc(100dvh - 245px)!important;
+  min-height:440px!important;
+  overflow:hidden!important;
+}
+.student-mobile-shell.tab-board .board-toolbar-side{
+  position:fixed!important;
+  left:10px!important;
+  right:10px!important;
+  bottom:calc(80px + env(safe-area-inset-bottom))!important;
+  top:auto!important;
+  width:auto!important;
+  height:58px!important;
+  max-height:58px!important;
+  display:flex!important;
+  flex-direction:row!important;
+  align-items:center!important;
+  padding:6px!important;
+  border-radius:16px!important;
+  z-index:7000!important;
+  transform:none!important;
+  overflow:visible!important;
+}
+.student-mobile-shell.tab-board .board-toolbar-side .board-tool-groups{
+  display:flex!important;
+  flex-direction:row!important;
+  align-items:center!important;
+  justify-content:space-between!important;
+  width:100%!important;
+  gap:4px!important;
+}
+.student-mobile-shell.tab-board .board-toolbar-side .board-rail-quick{
+  display:flex!important;flex-direction:row!important;gap:4px!important
+}
+.student-mobile-shell.tab-board .board-toolbar-side .board-rail-divider,
+.student-mobile-shell.tab-board .board-toolbar-side .board-side-label{display:none!important}
+.student-mobile-shell.tab-board .board-toolbar-side .board-rail-quick .btn,
+.student-mobile-shell.tab-board .board-toolbar-side #eraserRail,
+.student-mobile-shell.tab-board .board-toolbar-side .board-tool-group>summary{
+  width:44px!important;height:44px!important;min-width:44px!important;max-width:44px!important;
+  min-height:44px!important;max-height:44px!important;padding:0!important;
+  border-radius:12px!important;display:grid!important;place-items:center!important;
+}
+.student-mobile-shell.tab-board .board-toolbar-side .board-tool-group{
+  position:static!important;width:44px!important;min-width:44px!important;flex:0 0 44px!important
+}
+.student-mobile-shell.tab-board .board-floating{
+  right:8px!important;top:8px!important;bottom:auto!important
+}
+
+/* Tablets: same web information architecture, roomier cards. */
+@media (min-width:761px) and (max-width:1100px){
+  .student-mobile-shell .mr-mobile-student-content{max-width:850px;padding:18px 20px 30px}
+  .mr-mobile-student-nav{
+    left:50%;right:auto;width:520px;transform:translateX(-50%);
+  }
+  .student-mobile-shell .mr-today-grid{grid-template-columns:1fr 1fr!important}
+  .mr-mobile-list{gap:10px}
+}
+
+/* Phone tuning */
+@media(max-width:760px){
+  body:has(.student-mobile-shell){overflow-x:hidden}
+  .mr-mobile-web-head{padding-top:max(13px,env(safe-area-inset-top))}
+  .mr-mobile-student-content{padding-left:10px;padding-right:10px}
+  .student-mobile-shell.tab-board .mr-mobile-web-head{display:none}
+  .student-mobile-shell.tab-board .mr-mobile-board-head{padding-top:max(10px,env(safe-area-inset-top))}
+  .student-mobile-shell.tab-board .board-floating #zoomOut,
+  .student-mobile-shell.tab-board .board-floating #zoomIn,
+  .student-mobile-shell.tab-board .board-floating #zoomLabel{display:none!important}
+}
+
+/* Landscape phone keeps website navigation + board tools separated. */
+@media (orientation:landscape) and (max-height:600px){
+  .student-mobile-shell{padding-bottom:74px!important}
+  .mr-mobile-web-head{padding:6px 12px}
+  .mr-mobile-student-content{padding-top:7px}
+  .mr-mobile-student-nav{
+    height:52px;
+    bottom:max(6px,env(safe-area-inset-bottom));
+  }
+  .mr-mobile-student-nav button{flex-direction:row;gap:5px;font-size:9px}
+  .mr-mobile-student-nav button svg{width:17px;height:17px}
+  .student-mobile-shell.tab-board .board-toolbar-side{
+    bottom:calc(64px + env(safe-area-inset-bottom))!important
+  }
+  .student-mobile-shell.tab-board .board-stage{
+    height:calc(100dvh - 150px)!important;
+    min-height:280px!important;
+  }
+}
