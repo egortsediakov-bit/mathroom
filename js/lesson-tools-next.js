@@ -82,7 +82,10 @@
       this.selectedAudioOutput = localStorage.getItem(`mathroom.media.audiooutput.${this.role}`) || '';
 
       this.virtualBgMode = localStorage.getItem(`mathroom.media.bg.${this.role}`) || 'none';
-      if (!['none','blur','mathroom','light'].includes(this.virtualBgMode)) this.virtualBgMode = 'none';
+      if (!['none','blur','mathroom','light','custom'].includes(this.virtualBgMode)) this.virtualBgMode = 'none';
+      this.virtualBgCustomId = localStorage.getItem(`mathroom.media.bgCustom.${this.role}`) || '';
+      this.virtualBgSaved = [];
+      this.virtualBgDbPromise = null;
       this.virtualBgCustomImage = null;
       this.virtualBgProcessor = null;
       this.virtualBgSourceVideo = null;
@@ -705,8 +708,147 @@
           <button class="btn sm" type="button" data-bg-mode="light"><span class="mr-bg-swatch mr-bg-swatch-light"></span><span>Светлый</span></button>
           <label class="btn sm mr-bg-upload"><span class="mr-bg-swatch mr-bg-swatch-upload">+</span><span>Загрузить</span><input data-bg-file type="file" accept="image/png,image/jpeg,image/webp" hidden></label>
         </div>
-        <div class="mr-bg-hint small muted">Переключение фона не разрывает видеосвязь.</div>
+        <div class="mr-bg-saved" data-bg-saved></div>
+        <div class="mr-bg-hint small muted">Загруженные фоны сохраняются в этом браузере и доступны в следующих уроках.</div>
       </div>`;
+    }
+
+    openVirtualBgDb() {
+      if(this.virtualBgDbPromise)return this.virtualBgDbPromise;
+      if(!window.indexedDB){
+        this.virtualBgDbPromise=Promise.reject(new Error('Браузер не поддерживает локальное сохранение фонов'));
+        return this.virtualBgDbPromise;
+      }
+      this.virtualBgDbPromise=new Promise((resolve,reject)=>{
+        const req=indexedDB.open('mathroom-media',1);
+        req.onupgradeneeded=()=>{
+          const db=req.result;
+          if(!db.objectStoreNames.contains('virtual-backgrounds')){
+            const store=db.createObjectStore('virtual-backgrounds',{keyPath:'id'});
+            store.createIndex('createdAt','createdAt');
+          }
+        };
+        req.onsuccess=()=>resolve(req.result);
+        req.onerror=()=>reject(req.error||new Error('Не удалось открыть хранилище фонов'));
+      });
+      return this.virtualBgDbPromise;
+    }
+
+    async loadSavedVirtualBackgrounds() {
+      const db=await this.openVirtualBgDb();
+      const rows=await new Promise((resolve,reject)=>{
+        const tx=db.transaction('virtual-backgrounds','readonly');
+        const req=tx.objectStore('virtual-backgrounds').getAll();
+        req.onsuccess=()=>resolve(req.result||[]);
+        req.onerror=()=>reject(req.error||new Error('Не удалось загрузить сохранённые фоны'));
+      });
+      this.virtualBgSaved=rows.sort((a,b)=>(b.createdAt||0)-(a.createdAt||0)).slice(0,12);
+
+      if(this.virtualBgMode==='custom'){
+        const selected=this.virtualBgSaved.find(x=>x.id===this.virtualBgCustomId);
+        if(selected){
+          try{this.virtualBgCustomImage=await this.imageFromBlob(selected.blob)}
+          catch(e){console.warn('[Mathroom virtual background] saved image decode',e)}
+        }
+        if(!this.virtualBgCustomImage){
+          this.virtualBgMode='none';
+          localStorage.setItem(`mathroom.media.bg.${this.role}`,'none');
+        }
+      }
+      this.renderSavedVirtualBgOptions(this.prejoin);
+      this.renderSavedVirtualBgOptions(this.deviceModal);
+      return this.virtualBgSaved;
+    }
+
+    imageFromBlob(blob) {
+      return new Promise((resolve,reject)=>{
+        const url=URL.createObjectURL(blob);
+        const img=new Image();
+        img.decoding='async';
+        img.onload=()=>{URL.revokeObjectURL(url);resolve(img)};
+        img.onerror=()=>{URL.revokeObjectURL(url);reject(new Error('Не удалось прочитать изображение'))};
+        img.src=url;
+      });
+    }
+
+    async saveVirtualBackground(file) {
+      const db=await this.openVirtualBgDb();
+      const current=await this.loadSavedVirtualBackgrounds().catch(()=>[]);
+      if(current.length>=12)throw new Error('Можно сохранить до 12 своих фонов. Удали один из старых и попробуй снова.');
+      const id=(crypto.randomUUID?.()||`bg-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+      const row={id,name:(file.name||'Свой фон').slice(0,80),type:file.type||'image/jpeg',blob:file,createdAt:Date.now()};
+      await new Promise((resolve,reject)=>{
+        const tx=db.transaction('virtual-backgrounds','readwrite');
+        tx.objectStore('virtual-backgrounds').put(row);
+        tx.oncomplete=()=>resolve();
+        tx.onerror=()=>reject(tx.error||new Error('Не удалось сохранить фон'));
+      });
+      await this.loadSavedVirtualBackgrounds();
+      return row;
+    }
+
+    async deleteSavedVirtualBackground(id) {
+      const db=await this.openVirtualBgDb();
+      await new Promise((resolve,reject)=>{
+        const tx=db.transaction('virtual-backgrounds','readwrite');
+        tx.objectStore('virtual-backgrounds').delete(id);
+        tx.oncomplete=()=>resolve();
+        tx.onerror=()=>reject(tx.error||new Error('Не удалось удалить фон'));
+      });
+      if(this.virtualBgCustomId===id){
+        this.virtualBgCustomId='';
+        this.virtualBgCustomImage=null;
+        localStorage.removeItem(`mathroom.media.bgCustom.${this.role}`);
+        if(this.virtualBgMode==='custom')await this.setVirtualBackground('none');
+      }
+      await this.loadSavedVirtualBackgrounds();
+      this.paintAllVirtualBgControls();
+    }
+
+    async selectSavedVirtualBackground(id) {
+      const row=this.virtualBgSaved.find(x=>x.id===id);
+      if(!row)return;
+      this.virtualBgCustomImage=await this.imageFromBlob(row.blob);
+      this.virtualBgCustomId=id;
+      localStorage.setItem(`mathroom.media.bgCustom.${this.role}`,id);
+      await this.setVirtualBackground('custom');
+      this.renderSavedVirtualBgOptions(this.prejoin);
+      this.renderSavedVirtualBgOptions(this.deviceModal);
+    }
+
+    renderSavedVirtualBgOptions(root) {
+      if(!root)return;
+      const holder=root.querySelector('[data-bg-saved]');
+      if(!holder)return;
+      (holder._mrBgUrls||[]).forEach(url=>URL.revokeObjectURL(url));
+      holder._mrBgUrls=[];
+
+      if(!this.virtualBgSaved.length){
+        holder.innerHTML='';
+        holder.hidden=true;
+        return;
+      }
+      holder.hidden=false;
+      holder.innerHTML='<div class="mr-bg-saved-title">Мои фоны</div><div class="mr-bg-saved-grid"></div>';
+      const grid=holder.querySelector('.mr-bg-saved-grid');
+      this.virtualBgSaved.forEach(row=>{
+        const url=URL.createObjectURL(row.blob);
+        holder._mrBgUrls.push(url);
+        const item=document.createElement('button');
+        item.type='button';
+        item.className='mr-bg-saved-item';
+        item.dataset.bgSavedId=row.id;
+        if(this.virtualBgMode==='custom'&&this.virtualBgCustomId===row.id)item.classList.add('active');
+        item.innerHTML=`<span class="mr-bg-saved-thumb"><img alt="" src="${url}"></span><span class="mr-bg-saved-name"></span><span class="mr-bg-saved-remove" title="Удалить фон" aria-label="Удалить фон">×</span>`;
+        item.querySelector('.mr-bg-saved-name').textContent=row.name||'Свой фон';
+        item.onclick=()=>this.selectSavedVirtualBackground(row.id).catch(e=>toast(e?.message||'Не удалось открыть фон'));
+        const remove=item.querySelector('.mr-bg-saved-remove');
+        remove.onclick=e=>{
+          e.stopPropagation();
+          this.deleteSavedVirtualBackground(row.id).catch(err=>toast(err?.message||'Не удалось удалить фон'));
+        };
+        grid.appendChild(item);
+      });
     }
 
     bindVirtualBgControls(root) {
@@ -721,12 +863,14 @@
         file.value='';
       };
       this.paintVirtualBgControls(root);
+      this.renderSavedVirtualBgOptions(root);
     }
 
     paintVirtualBgControls(root) {
       if(!root)return;
       root.querySelectorAll('[data-bg-mode]').forEach(b=>b.classList.toggle('active',b.dataset.bgMode===this.virtualBgMode));
-      root.querySelectorAll('.mr-bg-upload').forEach(b=>b.classList.toggle('active',this.virtualBgMode==='custom'));
+      root.querySelectorAll('.mr-bg-upload').forEach(b=>b.classList.remove('active'));
+      root.querySelectorAll('.mr-bg-saved-item').forEach(b=>b.classList.toggle('active',this.virtualBgMode==='custom'&&b.dataset.bgSavedId===this.virtualBgCustomId));
       root.querySelectorAll('[data-bg-status]').forEach(status=>{
         status.textContent=this.virtualBgBusy ? 'Обработка…'
           : this.virtualBgMode==='none' ? 'Без обработки'
@@ -740,6 +884,8 @@
     paintAllVirtualBgControls() {
       this.paintVirtualBgControls(this.prejoin);
       this.paintVirtualBgControls(this.deviceModal);
+      this.renderSavedVirtualBgOptions(this.prejoin);
+      this.renderSavedVirtualBgOptions(this.deviceModal);
     }
 
     effectiveCameraTrack() {
@@ -960,8 +1106,8 @@
 
       const previous=this.virtualBgMode;
       this.virtualBgMode=mode;
-      if(mode==='custom')localStorage.removeItem(`mathroom.media.bg.${this.role}`);
-      else localStorage.setItem(`mathroom.media.bg.${this.role}`,mode);
+      localStorage.setItem(`mathroom.media.bg.${this.role}`,mode);
+      if(mode==='custom'&&this.virtualBgCustomId)localStorage.setItem(`mathroom.media.bgCustom.${this.role}`,this.virtualBgCustomId);
       this.paintAllVirtualBgControls();
 
       try{
@@ -996,16 +1142,12 @@
       if(!file)return;
       if(!file.type?.startsWith('image/'))throw new Error('Выбери изображение JPG, PNG или WEBP');
       if(file.size>8*1024*1024)throw new Error('Файл фона должен быть меньше 8 МБ');
-      const url=URL.createObjectURL(file);
-      try{
-        const img=new Image();
-        img.decoding='async';
-        await new Promise((resolve,reject)=>{img.onload=resolve;img.onerror=()=>reject(new Error('Не удалось прочитать изображение'));img.src=url});
-        this.virtualBgCustomImage=img;
-        await this.setVirtualBackground('custom');
-      }finally{
-        URL.revokeObjectURL(url);
-      }
+
+      // Validate the image before writing it to IndexedDB.
+      await this.imageFromBlob(file);
+      const saved=await this.saveVirtualBackground(file);
+      await this.selectSavedVirtualBackground(saved.id);
+      toast('Фон сохранён');
     }
 
     async configureSpeechTrack(track) {
@@ -1212,6 +1354,7 @@
     }
 
     async openDeviceSettings() {
+      await this.loadSavedVirtualBackgrounds().catch(e=>console.warn('[Mathroom virtual background storage]',e));
       await this.refreshDevices().catch(()=>{});
       const m=modal(`<div class="mr-card-head"><div><span class="pill">Связь</span><h2 style="margin:8px 0 4px">Камера и звук</h2><p class="muted">Можно переключать устройства прямо во время урока — переподключаться не нужно.</p></div></div>
         <div class="mr-device-modal-grid">
@@ -1266,6 +1409,7 @@
     async openPrejoin() {
       if (this.joined) return;
       if (this.prejoin) return;
+      await this.loadSavedVirtualBackgrounds().catch(e=>console.warn('[Mathroom virtual background storage]',e));
       const backdrop = document.createElement('div');
       backdrop.className = 'mr-native-prejoin-backdrop';
       backdrop.innerHTML = `<div class="mr-native-prejoin">
