@@ -1798,3 +1798,170 @@ input[type="file"]{font-size:11px!important}
     padding:0 10px!important;
   }
 }
+
+
+/* ===== Adaptive whiteboard header — fit controls to board width ===== */
+.board-head{
+  container-type:inline-size!important;
+  display:grid!important;
+  grid-template-columns:auto minmax(0,1fr)!important;
+  align-items:center!important;
+  gap:clamp(5px,.6cqw,10px)!important;
+  overflow:hidden!important;
+}
+.board-head-title{
+  min-width:clamp(48px,5.5cqw,72px)!important;
+  max-width:clamp(58px,7cqw,90px)!important;
+  padding-right:clamp(6px,.7cqw,10px)!important;
+}
+.board-head-actions{
+  min-width:0!important;
+  width:100%!important;
+  gap:clamp(3px,.5cqw,8px)!important;
+  overflow:hidden!important;
+  flex-wrap:nowrap!important;
+  justify-content:flex-start!important;
+  --pg-board-control:clamp(30px,3.25cqw,36px);
+  --pg-board-icon:clamp(14px,1.5cqw,18px);
+  --pg-board-font:clamp(9.5px,.9cqw,11px);
+  --pg-board-pad:clamp(6px,.75cqw,12px);
+}
+.board-head-actions .btn{
+  height:var(--pg-board-control)!important;
+  min-height:var(--pg-board-control)!important;
+  font-size:var(--pg-board-font)!important;
+  gap:clamp(4px,.45cqw,6px)!important;
+}
+.board-head-actions .mr-ui-icon,
+.board-head-actions .mr-board-command-icon,
+.board-head-actions .mr-board-command-icon svg{
+  width:var(--pg-board-icon)!important;
+  height:var(--pg-board-icon)!important;
+  flex:0 0 var(--pg-board-icon)!important;
+}
+.board-head-actions #undo,
+.board-head-actions #redo,
+.board-head-actions #bringForward,
+.board-head-actions #sendBackward,
+.board-head-actions #followTeacherToggle{
+  width:var(--pg-board-control)!important;
+  min-width:var(--pg-board-control)!important;
+  max-width:var(--pg-board-control)!important;
+  height:var(--pg-board-control)!important;
+}
+.board-head-actions #addPage,
+.board-head-actions #delPage,
+.board-head-actions #quickCommands,
+.board-head-actions #fullscreen{
+  min-width:0!important;
+  padding-inline:var(--pg-board-pad)!important;
+  flex:0 1 auto!important;
+}
+.board-head-actions #addPage .board-head-label,
+.board-head-actions #delPage .board-head-label,
+.board-head-actions #quickCommands span,
+.board-head-actions #fullscreen span{
+  white-space:nowrap!important;
+}
+.board-head-actions .board-head-sep{
+  height:clamp(22px,2.4cqw,28px)!important;
+  margin-inline:clamp(0px,.15cqw,2px)!important;
+}
+.mr-board-mode-control{
+  height:var(--pg-board-control)!important;
+  min-width:0!important;
+  flex:0 1 auto!important;
+}
+.mr-board-mode-icon{
+  width:var(--pg-board-control)!important;
+  height:calc(var(--pg-board-control) - 2px)!important;
+  flex:0 0 var(--pg-board-control)!important;
+}
+.mr-board-mode-icon svg{
+  width:var(--pg-board-icon)!important;
+  height:var(--pg-board-icon)!important;
+}
+.mr-board-mode-control .board-permission-select{
+  width:clamp(88px,9.5cqw,132px)!important;
+  min-width:clamp(88px,9.5cqw,132px)!important;
+  max-width:clamp(88px,9.5cqw,132px)!important;
+  height:calc(var(--pg-board-control) - 2px)!important;
+  min-height:calc(var(--pg-board-control) - 2px)!important;
+  padding-left:clamp(6px,.65cqw,9px)!important;
+  padding-right:clamp(20px,2.2cqw,28px)!important;
+  font-size:var(--pg-board-font)!important;
+}
+
+/* Medium board: shorten labels before allowing any control to leave the row. */
+@container (max-width: 1080px){
+  .board-head-actions #addPage .board-head-label,
+  .board-head-actions #delPage .board-head-label{
+    font-size:0!important;
+  }
+  .board-head-actions #addPage .board-head-label::after{
+    content:"Новый";
+    font-size:var(--pg-board-font)!important;
+  }
+  .board-head-actions #delPage .board-head-label::after{
+    content:"Удалить";
+    font-size:var(--pg-board-font)!important;
+  }
+  .board-head-actions #fullscreen span{
+    font-size:0!important;
+  }
+  .board-head-actions #fullscreen span::after{
+    content:"Экран";
+    font-size:var(--pg-board-font)!important;
+  }
+}
+
+/* Narrow board: icon-first mode. All controls still stay visible. */
+@container (max-width: 880px){
+  .board-head-title{
+    min-width:44px!important;
+    max-width:52px!important;
+    padding-right:5px!important;
+  }
+  .board-head-title strong{font-size:11px!important}
+  .mr-board-mode-control .board-permission-select{
+    width:82px!important;
+    min-width:82px!important;
+    max-width:82px!important;
+  }
+  .board-head-actions #quickCommands span,
+  .board-head-actions #fullscreen span{
+    display:none!important;
+  }
+  .board-head-actions #quickCommands,
+  .board-head-actions #fullscreen{
+    width:var(--pg-board-control)!important;
+    min-width:var(--pg-board-control)!important;
+    max-width:var(--pg-board-control)!important;
+    padding:0!important;
+    justify-content:center!important;
+  }
+}
+
+/* Very narrow board: add/delete become icon-only as well, preserving every action. */
+@container (max-width: 700px){
+  .board-head-actions #addPage .board-head-label,
+  .board-head-actions #delPage .board-head-label{
+    display:none!important;
+  }
+  .board-head-actions #addPage,
+  .board-head-actions #delPage{
+    width:var(--pg-board-control)!important;
+    min-width:var(--pg-board-control)!important;
+    max-width:var(--pg-board-control)!important;
+    padding:0!important;
+    justify-content:center!important;
+  }
+  .mr-board-mode-control .board-permission-select{
+    width:72px!important;
+    min-width:72px!important;
+    max-width:72px!important;
+  }
+  .board-head-actions .board-head-sep{
+    display:none!important;
+  }
+}
