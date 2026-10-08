@@ -2957,3 +2957,77 @@ input[type="file"]{font-size:11px!important}
 @media(max-width:560px){
   .mr-bg-saved-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important}
 }
+
+
+/* ===== Prejoin actions directly below camera preview ===== */
+.mr-prejoin-media-col{
+  min-width:0!important;
+  display:grid!important;
+  grid-template-rows:auto auto!important;
+  align-content:start!important;
+  gap:8px!important;
+}
+
+.mr-prejoin-media-col .mr-native-prejoin-footer{
+  position:static!important;
+  bottom:auto!important;
+  z-index:auto!important;
+
+  width:auto!important;
+  min-width:0!important;
+  margin:0!important;
+  padding:0!important;
+  border:0!important;
+  background:transparent!important;
+
+  display:flex!important;
+  align-items:center!important;
+  justify-content:flex-start!important;
+  gap:7px!important;
+  flex-wrap:wrap!important;
+}
+
+.mr-prejoin-media-col .mr-native-prejoin-footer .btn{
+  width:auto!important;
+  min-width:112px!important;
+  min-height:38px!important;
+  height:38px!important;
+  padding:0 14px!important;
+  border-radius:7px!important;
+  flex:0 0 auto!important;
+}
+
+.mr-prejoin-media-col .mr-native-prejoin-footer #mrPrejoinJoin{
+  min-width:150px!important;
+}
+
+.mr-prejoin-media-col .mr-native-prejoin-footer #mrPrejoinCancel{
+  color:#515b66!important;
+  background:#fff!important;
+}
+
+/* Keep the video and its actions visually one unit. */
+.mr-prejoin-media-col .mr-native-preview{
+  width:100%!important;
+  margin:0!important;
+}
+
+@media(max-width:760px){
+  .mr-prejoin-media-col{
+    gap:6px!important;
+  }
+
+  .mr-prejoin-media-col .mr-native-prejoin-footer{
+    display:grid!important;
+    grid-template-columns:minmax(0,.8fr) minmax(0,1.2fr)!important;
+    gap:6px!important;
+  }
+
+  .mr-prejoin-media-col .mr-native-prejoin-footer .btn,
+  .mr-prejoin-media-col .mr-native-prejoin-footer #mrPrejoinJoin{
+    width:100%!important;
+    min-width:0!important;
+    min-height:40px!important;
+    height:40px!important;
+  }
+}
