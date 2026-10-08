@@ -1185,7 +1185,48 @@
     bind('#strokeWidth','change',e=>width=Number(e.target.value));
     bind('#undo','click',()=>undo());bind('#redo','click',()=>redo());bind('#copySelected','click',copySelected);bind('#pasteSelected','click',pasteSelected);bind('#duplicateSelected','click',duplicateSelected);bind('#lockSelected','click',toggleLockSelected);bind('#bringForward','click',()=>reorderSelected('forward'));bind('#sendBackward','click',()=>reorderSelected('backward'));bind('#bringFront','click',()=>reorderSelected('front'));bind('#sendBack','click',()=>reorderSelected('back'));bind('#pasteSystemClipboard','click',readSystemClipboard);bind('#deleteSelected','click',deleteSelected);
     bind('#gridToggle','click',()=>{grid=!grid;ctl('#gridToggle')?.classList.toggle('active',grid);render()});ctl('#gridToggle')?.classList.add('active');bind('#snapToggle','click',()=>{snapEnabled=!snapEnabled;ctl('#snapToggle')?.classList.toggle('active',snapEnabled);toast(snapEnabled?'Привязка включена':'Привязка выключена')});bind('#fitView','click',fitAll);
-    bind('#zoomIn','click',()=>{camera.zoom=clamp(camera.zoom*1.2,.25,3);zoomLabel.textContent=Math.round(camera.zoom*100)+'%';render();sendViewport(true)});bind('#zoomOut','click',()=>{camera.zoom=clamp(camera.zoom/1.2,.25,3);zoomLabel.textContent=Math.round(camera.zoom*100)+'%';render();sendViewport(true)});bind('#homeView','click',()=>{camera={x:0,y:0,zoom:1};zoomLabel.textContent='100%';render();sendViewport(true)});bind('#quickCommands','click',openQuickCommands);bind('#fullscreen','click',()=>{if(!document.fullscreenElement)root.querySelector('.board-card')?.requestFullscreen?.();else document.exitFullscreen?.()});
+
+    let boardFullscreenVideoState=null;
+    const moveLessonVideoIntoFullscreen=()=>{
+      const card=root.querySelector('.board-card');
+      const video=document.querySelector('#mrVideoPanel');
+      if(!card||!video||card.contains(video))return;
+      boardFullscreenVideoState={video,parent:video.parentNode,next:video.nextSibling};
+      video.classList.add('mr-board-fullscreen-video');
+      card.appendChild(video);
+    };
+    const restoreLessonVideoAfterFullscreen=()=>{
+      const state=boardFullscreenVideoState;
+      if(!state)return;
+      const {video,parent,next}=state;
+      video.classList.remove('mr-board-fullscreen-video');
+      if(parent?.isConnected){
+        if(next&&next.parentNode===parent)parent.insertBefore(video,next);
+        else parent.appendChild(video);
+      }
+      boardFullscreenVideoState=null;
+    };
+    const toggleBoardFullscreen=async()=>{
+      const card=root.querySelector('.board-card');
+      if(!card)return;
+      if(!document.fullscreenElement){
+        moveLessonVideoIntoFullscreen();
+        try{await card.requestFullscreen?.()}
+        catch(e){restoreLessonVideoAfterFullscreen();throw e}
+      }else{
+        await document.exitFullscreen?.();
+      }
+    };
+    document.addEventListener('fullscreenchange',()=>{
+      const card=root.querySelector('.board-card');
+      if(document.fullscreenElement===card){
+        card.querySelector('#mrVideoPanel')?.classList.add('mr-board-fullscreen-video');
+      }else{
+        restoreLessonVideoAfterFullscreen();
+      }
+    });
+
+    bind('#zoomIn','click',()=>{camera.zoom=clamp(camera.zoom*1.2,.25,3);zoomLabel.textContent=Math.round(camera.zoom*100)+'%';render();sendViewport(true)});bind('#zoomOut','click',()=>{camera.zoom=clamp(camera.zoom/1.2,.25,3);zoomLabel.textContent=Math.round(camera.zoom*100)+'%';render();sendViewport(true)});bind('#homeView','click',()=>{camera={x:0,y:0,zoom:1};zoomLabel.textContent='100%';render();sendViewport(true)});bind('#quickCommands','click',openQuickCommands);bind('#fullscreen','click',()=>{toggleBoardFullscreen().catch(fail)});
     root.querySelectorAll('[data-object-action]').forEach(b=>b.onclick=()=>{const a=b.dataset.objectAction;if(a==='duplicate')duplicateSelected();else if(a==='lock')toggleLockSelected();else if(a==='front')reorderSelected('front');else if(a==='back')reorderSelected('back');else if(a==='fill')fillSelected();else if(a==='edit')editSelected();else if(a==='delete')deleteSelected()});
     const isMathroomTaskDrag=e=>[...(e.dataTransfer?.types||[])].includes('application/x-mathroom-task');
     stage.addEventListener('dragenter',e=>{if(!isTeacher||(!isFileDrag(e)&&!isMathroomTaskDrag(e)))return;e.preventDefault();fileDragDepth++;stage.classList.add('drag-active')});
