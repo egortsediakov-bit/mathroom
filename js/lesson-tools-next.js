@@ -704,7 +704,9 @@
     bindPrejoinPreview() {
       const video = this.prejoin?.querySelector('#mrPrejoinVideo');
       if (!video) return;
-      const stream = this.previewCameraStream();
+      const track=this.effectiveCameraTrack();
+      const current=video.srcObject?.getVideoTracks?.()[0];
+      const stream=track ? (current===track ? video.srcObject : new MediaStream([track])) : null;
       if (video.srcObject !== stream) video.srcObject = stream;
       if (stream) video.play().catch(()=>{});
     }
@@ -1420,8 +1422,14 @@
       const audio = this.panel?.querySelector('#mrRemoteAudio');
       if (local) {
         const previewTrack=this.screenTrack || this.effectiveCameraTrack();
-        const preview = previewTrack ? (this.screenTrack ? (this.screenPreviewStream || new MediaStream([this.screenTrack])) : new MediaStream([previewTrack])) : null;
-        if (this.screenTrack && !this.screenPreviewStream) this.screenPreviewStream = preview;
+        let preview=null;
+        if(this.screenTrack){
+          preview=this.screenPreviewStream || new MediaStream([this.screenTrack]);
+          if(!this.screenPreviewStream)this.screenPreviewStream=preview;
+        }else if(previewTrack){
+          const current=local.srcObject?.getVideoTracks?.()[0];
+          preview=current===previewTrack ? local.srcObject : new MediaStream([previewTrack]);
+        }
         if (local.srcObject !== preview) local.srcObject = preview;
         local.muted = true; local.playsInline = true;
         try { local.disablePictureInPicture = true; local.disableRemotePlayback = true; } catch {}
