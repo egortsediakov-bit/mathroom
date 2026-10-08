@@ -2848,3 +2848,18 @@ body{background:linear-gradient(180deg,#fbfbfa 0%,#f5f4f1 100%)!important;color:
   .mr-student-board-task-timer.active small{display:none!important}
   .mr-student-board-task-timer.active b{font-size:15px!important}
 }
+
+
+/* Mathroom v32.5 — persistent teacher finish action */
+.mr-rail-persistent-footer{
+  flex:0 0 auto;
+  padding:8px 10px 10px;
+  border-top:1px solid var(--line);
+  background:#fff;
+}
+.mr-rail-persistent-footer .btn{
+  width:100%!important;
+  min-height:40px!important;
+  justify-content:center!important;
+  font-weight:750!important;
+}
