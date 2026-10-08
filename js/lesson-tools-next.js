@@ -92,6 +92,8 @@
       this.virtualBgRaf = 0;
       this.virtualBgBusy = false;
       this.virtualBgLastFrame = 0;
+      this.virtualBgFrameInterval = 50;
+      this.virtualBgAvgProcessMs = 0;
       this.virtualBgLibPromise = null;
 
       this.devices = { audioinput:[], videoinput:[], audiooutput:[] };
@@ -690,6 +692,56 @@
       return video;
     }
 
+    virtualBgControlsHtml() {
+      return `<div class="mr-prejoin-bg mr-prejoin-wide">
+        <div class="mr-prejoin-bg-head">
+          <div><b>Фон камеры</b><div class="small muted">Обрабатывается локально в браузере</div></div>
+          <span class="small muted" data-bg-status></span>
+        </div>
+        <div class="mr-bg-options">
+          <button class="btn sm" type="button" data-bg-mode="none"><span class="mr-bg-swatch mr-bg-swatch-original"></span><span>Оригинал</span></button>
+          <button class="btn sm" type="button" data-bg-mode="blur"><span class="mr-bg-swatch mr-bg-swatch-blur"></span><span>Размытие</span></button>
+          <button class="btn sm" type="button" data-bg-mode="mathroom"><span class="mr-bg-swatch mr-bg-swatch-mathroom"></span><span>Mathroom</span></button>
+          <button class="btn sm" type="button" data-bg-mode="light"><span class="mr-bg-swatch mr-bg-swatch-light"></span><span>Светлый</span></button>
+          <label class="btn sm mr-bg-upload"><span class="mr-bg-swatch mr-bg-swatch-upload">+</span><span>Загрузить</span><input data-bg-file type="file" accept="image/png,image/jpeg,image/webp" hidden></label>
+        </div>
+        <div class="mr-bg-hint small muted">Переключение фона не разрывает видеосвязь.</div>
+      </div>`;
+    }
+
+    bindVirtualBgControls(root) {
+      if(!root)return;
+      root.querySelectorAll('[data-bg-mode]').forEach(b=>{
+        b.onclick=()=>this.setVirtualBackground(b.dataset.bgMode);
+      });
+      const file=root.querySelector('[data-bg-file]');
+      if(file)file.onchange=()=>{
+        const picked=file.files?.[0];
+        if(picked)this.setCustomVirtualBackground(picked).catch(e=>toast(e?.message||'Не удалось загрузить фон'));
+        file.value='';
+      };
+      this.paintVirtualBgControls(root);
+    }
+
+    paintVirtualBgControls(root) {
+      if(!root)return;
+      root.querySelectorAll('[data-bg-mode]').forEach(b=>b.classList.toggle('active',b.dataset.bgMode===this.virtualBgMode));
+      root.querySelectorAll('.mr-bg-upload').forEach(b=>b.classList.toggle('active',this.virtualBgMode==='custom'));
+      root.querySelectorAll('[data-bg-status]').forEach(status=>{
+        status.textContent=this.virtualBgBusy ? 'Обработка…'
+          : this.virtualBgMode==='none' ? 'Без обработки'
+          : this.virtualBgMode==='blur' ? 'Размытие включено'
+          : this.virtualBgMode==='mathroom' ? 'Фон Mathroom'
+          : this.virtualBgMode==='light' ? 'Светлый фон'
+          : 'Свой фон';
+      });
+    }
+
+    paintAllVirtualBgControls() {
+      this.paintVirtualBgControls(this.prejoin);
+      this.paintVirtualBgControls(this.deviceModal);
+    }
+
     effectiveCameraTrack() {
       return this.virtualBgTrack?.readyState === 'live'
         ? this.virtualBgTrack
@@ -817,6 +869,7 @@
       const outTrack=output.getVideoTracks()[0];
       if(!outTrack) throw new Error('Не удалось создать обработанный видеопоток');
       outTrack.enabled=this.cameraEnabled;
+      try{outTrack.contentHint='motion'}catch{}
 
       const processor=new Seg({
         locateFile:file=>`https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/${file}`
@@ -828,15 +881,22 @@
         ctx.save();
         ctx.clearRect(0,0,cw,ch);
 
+        // Slight mask feathering keeps hair/shoulder edges from looking cut out.
+        ctx.filter='blur(1.35px)';
         ctx.drawImage(results.segmentationMask,0,0,cw,ch);
+        ctx.filter='none';
+
         ctx.globalCompositeOperation='source-in';
         this.drawCover(ctx,results.image,cw,ch);
 
         ctx.globalCompositeOperation='destination-over';
         if(this.virtualBgMode==='blur'){
-          ctx.filter='blur(18px)';
-          this.drawCover(ctx,results.image,cw,ch);
-          ctx.filter='none';
+          // Overscan the blurred source so canvas edges never show a dark halo.
+          ctx.save();
+          ctx.filter='blur(22px)';
+          ctx.translate(-12,-12);
+          this.drawCover(ctx,results.image,cw+24,ch+24);
+          ctx.restore();
         }else if(this.virtualBgMode==='custom'&&this.virtualBgCustomImage){
           this.drawCover(ctx,this.virtualBgCustomImage,cw,ch);
         }else{
@@ -854,12 +914,27 @@
       const loop=async ts=>{
         if(!this.virtualBgProcessor||this.destroyed)return;
         this.virtualBgRaf=requestAnimationFrame(loop);
-        if(ts-this.virtualBgLastFrame<48||this.virtualBgBusy||source.readyState<2)return;
+
+        const hidden=document.visibilityState==='hidden';
+        const interval=hidden ? Math.max(140,this.virtualBgFrameInterval) : this.virtualBgFrameInterval;
+        if(this.screenTrack||ts-this.virtualBgLastFrame<interval||this.virtualBgBusy||source.readyState<2)return;
+
         this.virtualBgLastFrame=ts;
         this.virtualBgBusy=true;
+        const t0=performance.now();
         try{await processor.send({image:source})}
         catch(e){console.warn('[Mathroom virtual background]',e)}
-        finally{this.virtualBgBusy=false}
+        finally{
+          const elapsed=performance.now()-t0;
+          this.virtualBgAvgProcessMs=this.virtualBgAvgProcessMs
+            ? this.virtualBgAvgProcessMs*.82+elapsed*.18
+            : elapsed;
+          this.virtualBgFrameInterval=this.virtualBgAvgProcessMs>85 ? 84
+            : this.virtualBgAvgProcessMs>62 ? 66
+            : 50;
+          this.virtualBgBusy=false;
+          this.paintAllVirtualBgControls();
+        }
       };
       this.virtualBgRaf=requestAnimationFrame(loop);
       return outTrack;
@@ -881,24 +956,37 @@
     async setVirtualBackground(mode) {
       if(!['none','blur','mathroom','light','custom'].includes(mode))return;
       if(mode==='custom'&&!this.virtualBgCustomImage)return;
+
+      const previous=this.virtualBgMode;
       this.virtualBgMode=mode;
       if(mode==='custom')localStorage.removeItem(`mathroom.media.bg.${this.role}`);
       else localStorage.setItem(`mathroom.media.bg.${this.role}`,mode);
+      this.paintAllVirtualBgControls();
 
-      const status=this.prejoin?.querySelector('#mrBgStatus');
-      if(status)status.textContent=mode==='none'?'Без обработки':'Подготавливаем фон…';
       try{
-        if(mode==='none')this.stopVirtualBackground();
-        else await this.startVirtualBackground();
-        await this.syncOutgoingCameraTrack();
+        if(mode==='none'){
+          if(this.virtualBgProcessor||this.virtualBgTrack)this.stopVirtualBackground();
+          await this.syncOutgoingCameraTrack();
+        }else{
+          // Switching between blur / built-ins / custom only changes compositing.
+          // Keep the same processed track to avoid a visible freeze or WebRTC track swap.
+          if(!this.virtualBgProcessor||!this.virtualBgTrack||this.virtualBgTrack.readyState!=='live'){
+            await this.startVirtualBackground();
+            await this.syncOutgoingCameraTrack();
+          }
+        }
         this.paintPrejoin();
+        this.paintAllVirtualBgControls();
       }catch(e){
         console.warn('[Mathroom virtual background]',e);
-        this.virtualBgMode='none';
-        localStorage.setItem(`mathroom.media.bg.${this.role}`,'none');
-        this.stopVirtualBackground();
-        await this.syncOutgoingCameraTrack();
+        this.virtualBgMode=previous==='none'?'none':previous;
+        if(this.virtualBgMode==='none'){
+          localStorage.setItem(`mathroom.media.bg.${this.role}`,'none');
+          this.stopVirtualBackground();
+          await this.syncOutgoingCameraTrack();
+        }
         this.paintPrejoin();
+        this.paintAllVirtualBgControls();
         toast(e?.message||'Не удалось включить виртуальный фон');
       }
     }
@@ -1130,10 +1218,12 @@
           <div class="mr-media-device-field"><label>Камера</label><select data-device-kind="videoinput"></select></div>
           <div class="mr-media-device-field"><label>Вывод звука</label><select data-device-kind="audiooutput"></select></div>
         </div>
+        ${this.virtualBgControlsHtml()}
         <div class="notice"><b>Подключение устройств отслеживается автоматически.</b><br><span class="small">Если активная камера, микрофон или наушники отключатся, Mathroom обновит список и попробует перейти на доступное устройство.</span></div>
         <div class="mr-device-count" style="margin-top:10px"></div>`,'wide-modal');
       this.deviceModal=m;
       this.bindDeviceSelects(m);
+      this.bindVirtualBgControls(m);
       this.refreshDeviceUi();
     }
 
@@ -1190,16 +1280,7 @@
               <div class="mr-media-device-field"><label>Вывод звука</label><select data-device-kind="audiooutput"></select></div>
               <div class="mr-device-count"></div>
             </div>
-            <div class="mr-prejoin-bg mr-prejoin-wide">
-              <div class="mr-prejoin-bg-head"><div><b>Фон камеры</b><div class="small muted">Обрабатывается локально в браузере</div></div><span class="small muted" id="mrBgStatus"></span></div>
-              <div class="mr-bg-options">
-                <button class="btn sm" type="button" data-bg-mode="none">Оригинал</button>
-                <button class="btn sm" type="button" data-bg-mode="blur">Размытие</button>
-                <button class="btn sm" type="button" data-bg-mode="mathroom">Mathroom</button>
-                <button class="btn sm" type="button" data-bg-mode="light">Светлый</button>
-                <label class="btn sm mr-bg-upload">Загрузить<input id="mrBgFile" type="file" accept="image/png,image/jpeg,image/webp" hidden></label>
-              </div>
-            </div>
+            ${this.virtualBgControlsHtml()}
             <div class="notice mr-prejoin-wide"><b>Устройства отслеживаются автоматически.</b><br><span class="small">Если подключить или отключить камеру, микрофон или наушники, список обновится без перезагрузки страницы.</span></div>
           </div>
         </div>
@@ -1220,9 +1301,7 @@
         if(this.virtualBgTrack)this.virtualBgTrack.enabled=this.cameraEnabled;
         this.paintPrejoin();
       };
-      backdrop.querySelectorAll('[data-bg-mode]').forEach(b=>b.onclick=()=>this.setVirtualBackground(b.dataset.bgMode));
-      const bgFile=backdrop.querySelector('#mrBgFile');
-      if(bgFile)bgFile.onchange=()=>this.setCustomVirtualBackground(bgFile.files?.[0]).catch(e=>toast(e?.message||'Не удалось загрузить фон'));
+      this.bindVirtualBgControls(backdrop);
       join.onclick = () => this.joinCall();
       try {
         await this.acquireMedia();
@@ -1264,15 +1343,7 @@
         cam.classList.toggle('is-on',on); cam.classList.toggle('is-off',!on);
         cam.disabled = !hasCam;
       }
-      this.prejoin.querySelectorAll('[data-bg-mode]').forEach(b=>b.classList.toggle('active',b.dataset.bgMode===this.virtualBgMode));
-      const upload=this.prejoin.querySelector('.mr-bg-upload');
-      if(upload)upload.classList.toggle('active',this.virtualBgMode==='custom');
-      const status=this.prejoin.querySelector('#mrBgStatus');
-      if(status)status.textContent=this.virtualBgMode==='none'?'Без обработки'
-        : this.virtualBgMode==='blur'?'Размытие включено'
-        : this.virtualBgMode==='mathroom'?'Фон Mathroom'
-        : this.virtualBgMode==='light'?'Светлый фон'
-        : 'Свой фон';
+      this.paintVirtualBgControls(this.prejoin);
       this.bindPrejoinPreview();
     }
 
