@@ -941,7 +941,11 @@
       const events=samples.length?samples:[e],minStep=.7/Math.max(.25,camera.zoom);
       for(const ev of events){
         const [px,py]=screenToWorld(ev.clientX,ev.clientY),last=target.points[target.points.length-1];
-        if(!last||Math.hypot(px-last[0],py-last[1])>=minStep)target.points.push([px,py]);
+        if(!last||Math.hypot(px-last[0],py-last[1])>=minStep){
+          const isPen=ev.pointerType==='pen',pressure=isPen?Math.max(.05,Math.min(1,Number(ev.pressure)||.5)):.5;
+          if(isPen){target.pressureSensitive=true;target.baseWidth=target.baseWidth||target.width||3;penActiveUntil=Date.now()+1200}
+          target.points.push([px,py,pressure]);
+        }
       }
     }
     let interactiveFrame=0;
@@ -1369,9 +1373,17 @@
           delete compassDraft.stage;delete compassDraft.lastRaw;delete compassDraft.total;compassDraft=null;changed();toast('Дуга построена');return;
         }
       }
-      pushElementsHistory();drawing={id:uid(),type:tool,color,width};
-      if(tool==='pen'||tool==='pencil'){drawing.type='path';drawing.points=[[x,y]];if(tool==='pencil'){drawing.color=color==='#15171a'?'#4b5563':color;drawing.width=Math.max(1.5,width*.72);drawing.opacity=.72}}else Object.assign(drawing,{x1:x,y1:y,x2:x,y2:y});
-      elements.push(drawing);render();
+      pushElementsHistory();drawing={id:uid(),type:tool,color,width,_ownerRole:actorRole,_ownerId:actorId};
+      if(tool==='pen'||tool==='pencil'){
+        drawing.type='path';
+        const isPen=e.pointerType==='pen',pressure=isPen?Math.max(.05,Math.min(1,Number(e.pressure)||.5)):.5;
+        if(isPen){drawing.pressureSensitive=true;drawing.baseWidth=width;penActiveUntil=Date.now()+1200}
+        drawing.points=[[x,y,pressure]];
+        if(tool==='pencil'){drawing.color=color==='#15171a'?'#4b5563':color;drawing.width=Math.max(1.5,width*.72);drawing.baseWidth=drawing.width;drawing.opacity=.72}
+      }else Object.assign(drawing,{x1:x,y1:y,x2:x,y2:y});
+      elements.push(drawing);
+      if(drawing.type==='path')sendStrokeStart(drawing);
+      render();
     };
     svg.onpointermove=e=>{
       let[x,y]=screenToWorld(e.clientX,e.clientY);sendCursor(x,y);
@@ -1404,7 +1416,7 @@
       }
       if(moveStart&&selected){let dx=x-moveStart.x,dy=y-moveStart.y;if(Math.abs(dx)>.01||Math.abs(dy)>.01)transformDirty=true;if(snapEnabled){dx=Math.round(dx/10)*10;dy=Math.round(dy/10)*10}if(Array.isArray(moveStart.group)){for(const item of moveStart.group){const idx=elements.findIndex(z=>z.id===item.id);if(idx>=0)elements[idx]=translated(item.orig,dx,dy)}}else{const idx=elements.findIndex(z=>z.id===selected);if(idx<0)return;elements[idx]=translated(moveStart.orig,dx,dy)}render();broadcast();return}
       if(!drawing)return;
-      if(drawing.type==='path'){appendFreehandPoints(drawing,e);renderInteractive();broadcast();return}
+      if(drawing.type==='path'){appendFreehandPoints(drawing,e);renderInteractive();sendStrokeChunk(drawing);return}
       if(drawing.type==='compass')drawing.r=Math.max(1,Math.hypot(x-drawing.cx,y-drawing.cy));else{let xx=x,yy=y;if(e.shiftKey&&['line','arrow','ruler'].includes(drawing.type)){const dx=x-drawing.x1,dy=y-drawing.y1,a=Math.atan2(dy,dx),step=Math.PI/4,aa=Math.round(a/step)*step,len=Math.hypot(dx,dy);xx=drawing.x1+Math.cos(aa)*len;yy=drawing.y1+Math.sin(aa)*len}drawing.x2=xx;drawing.y2=yy}render();broadcast();
     };
     const finishPointer=()=>{
@@ -1423,7 +1435,7 @@
       if(tool==='focus'&&focusDraft){focusDraft=null;if(focusRect?.w<5||focusRect?.h<5)focusRect=null;broadcastTransient('focus',{rect:focusRect});render()}
       const hadTransform=!!(moveStart||resizeStart||rotationStart||solidRotateStart);
       if(hadTransform&&!transformDirty){const last=undoStack[undoStack.length-1];if(last?.type==='elements'&&last.pageId===current.id&&JSON.stringify(last.elements)===JSON.stringify(elements))undoStack.pop();syncHistoryButtons()}
-      if(drawing&&drawing.type!=='marker-temp'||hadTransform){drawing=null;moveStart=null;resizeStart=null;rotationStart=null;solidRotateStart=null;if(!hadTransform||transformDirty)changed();else render()}
+      if(drawing&&drawing.type!=='marker-temp'||hadTransform){if(drawing?.type==='path')sendStrokeChunk(drawing,true);drawing=null;moveStart=null;resizeStart=null;rotationStart=null;solidRotateStart=null;if(!hadTransform||transformDirty)changed();else render()}
       transformDirty=false;if(panStart&&tool==='hand')svg.style.cursor='grab';panStart=null;
     };
     svg.onpointerup=finishPointer;
