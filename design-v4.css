@@ -2572,3 +2572,44 @@ input[type="file"]{font-size:11px!important}
     flex:0 1 auto!important;
   }
 }
+
+
+/* ===== Fullscreen board video mode switch: always reachable ===== */
+.board-card:fullscreen > #mrVideoPanel .mr-floating-view-switch{
+  display:flex!important;
+  pointer-events:auto!important;
+  z-index:2147483640!important;
+  opacity:1!important;
+  visibility:visible!important;
+}
+
+/* In hidden mode keep only the 3-way view selector, not the media controls. */
+.board-card:fullscreen > #mrVideoPanel.view-hidden{
+  width:auto!important;
+  min-width:0!important;
+  padding:5px!important;
+  background:transparent!important;
+  border:0!important;
+  box-shadow:none!important;
+}
+.board-card:fullscreen > #mrVideoPanel.view-hidden .mr-call-stage,
+.board-card:fullscreen > #mrVideoPanel.view-hidden .mr-call-head,
+.board-card:fullscreen > #mrVideoPanel.view-hidden .mr-call-note,
+.board-card:fullscreen > #mrVideoPanel.view-hidden .mr-call-quality,
+.board-card:fullscreen > #mrVideoPanel.view-hidden .mr-call-actions{
+  display:none!important;
+}
+.board-card:fullscreen > #mrVideoPanel.view-hidden .mr-floating-view-switch{
+  position:relative!important;
+  left:auto!important;
+  top:auto!important;
+  transform:none!important;
+  display:flex!important;
+  margin:0!important;
+}
+
+/* Prevent fullscreen video drag layer from swallowing clicks on the selector. */
+.board-card:fullscreen > #mrVideoPanel .mr-floating-view-switch,
+.board-card:fullscreen > #mrVideoPanel .mr-floating-view-switch *{
+  pointer-events:auto!important;
+}
