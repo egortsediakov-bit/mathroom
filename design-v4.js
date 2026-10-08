@@ -157,7 +157,16 @@
   function decorateBoard(){
     boardMap.forEach(([sel,name])=>{
       document.querySelectorAll(sel).forEach(b=>{
-        if(b.dataset.v4Icon)return;b.dataset.v4Icon='1';b.classList.add('mr-v4-board-icon-button');
+        const hasNativeIcon=!!b.querySelector('.mr-ui-icon,.board-rail-icon');
+        if(hasNativeIcon){
+          b.querySelectorAll(':scope > .mr-v4-inline-icon').forEach(x=>x.remove());
+          b.dataset.v4Icon='native';
+          b.classList.add('mr-v4-board-icon-button');
+          return;
+        }
+        if(b.dataset.v4Icon)return;
+        b.dataset.v4Icon='1';
+        b.classList.add('mr-v4-board-icon-button');
         b.insertAdjacentHTML('afterbegin',svg(name,'mr-v4-inline-icon'));
       });
     });
