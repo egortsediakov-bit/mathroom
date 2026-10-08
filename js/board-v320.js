@@ -1319,8 +1319,8 @@
     }
     function scratchPages(){try{const v=JSON.parse(localStorage.getItem(scratchStorageKey)||'[]');return Array.isArray(v)?v:[]}catch{return[]}}
     function copyToScratch(){const arr=scratchPages();arr.push({id:uid(),teacher_id:S.user?.id||'',student_id:null,title:`${options.studentName||'Ученик'} · ${current.title||'Лист'}`,sort_order:arr.length,elements:clone(elements),created_at:new Date().toISOString(),updated_at:new Date().toISOString()});localStorage.setItem(scratchStorageKey,JSON.stringify(arr));toast('Лист скопирован в черновик преподавателя')}
-    function copyFromScratch(){const arr=scratchPages();if(!arr.length)return toast('Черновик пуст');const m=modal(`<h2>Вставить из черновика</h2><div class="list">${arr.map(p=>`<div class="row"><div><b>${esc(p.title||'Черновик')}</b><span class="small muted">${(p.elements||[]).length} объектов</span></div><button class="btn sm primary" data-scratch-page="${p.id}">Вставить</button></div>`).join('')}</div>`);m.querySelectorAll('[data-scratch-page]').forEach(b=>b.onclick=()=>{const p=arr.find(x=>x.id===b.dataset.scratchPage);if(!p)return;pushElementsHistory();elements.push(...(p.elements||[]).map(x=>({...clone(x),id:uid()})));m.remove();changed();fitAll();toast('Черновик добавлен на доску ученика')})}
-    function readCheckpoints(){if(!checkpointKey)return[];try{const v=JSON.parse(localStorage.getItem(checkpointKey)||'[]');return Array.isArray(v)?v:[]}catch{return[]}}
+    function copyFromScratch(){const arr=scratchPages();if(!arr.length)return toast('Черновик пуст');const m=modal(`<h2>Вставить из черновика</h2><div class="list">${arr.map(p=>`<div class="row"><div><b>${esc(p.title||'Черновик')}</b><span class="small muted">${(p.elements||[]).length} объектов</span></div><button class="btn sm primary" data-scratch-page="${p.id}">Вставить</button></div>`).join('')}</div>`);m.querySelectorAll('[data-scratch-page]').forEach(b=>b.onclick=()=>{const p=arr.find(x=>x.id===b.dataset.scratchPage);if(!p)return;if((p.elements||[]).length>=8)writeCheckpointSnapshot('Перед вставкой из черновика');pushElementsHistory();elements.push(...(p.elements||[]).map(x=>{const o=freshOwnedObject(x);o.locked=false;return o}));m.remove();changed();fitAll();toast('Черновик добавлен на доску ученика')})}
+        function readCheckpoints(){if(!checkpointKey)return[];try{const v=JSON.parse(localStorage.getItem(checkpointKey)||'[]');return Array.isArray(v)?v:[]}catch{return[]}}
     function writeCheckpointSnapshot(label='Контрольная точка'){
       if(!checkpointKey||!current)return;
       const p=pages.find(x=>x.id===current.id);if(p)p.elements=clone(elements);
@@ -1825,6 +1825,10 @@
     if(!localOnly)pagesChannel=sb.channel(`student:${studentId}:pages`,{config:{private:true}}).on('broadcast',{event:'pages'},()=>refreshPages()).on('broadcast',{event:'navigate'},({payload})=>{if(!isTeacher&&followTeacher&&payload?.pageId)switchPage(payload.pageId,{fromLeader:true}).catch(()=>{})}).on('broadcast',{event:'hello'},()=>{if(isTeacher)persistClassroom()}).on('broadcast',{event:'classroom'},({payload})=>{if(isTeacher)return;classroomMode=payload?.mode||'open';followTeacher=payload?.follow!==false;if(followTeacher&&payload?.pageId&&payload.pageId!==current?.id)switchPage(payload.pageId,{fromLeader:true}).then(()=>{if(payload.camera){camera={...payload.camera};zoomLabel.textContent=Math.round(camera.zoom*100)+'%';render()}}).catch(()=>{});else if(payload?.camera&&followTeacher){camera={...payload.camera};zoomLabel.textContent=Math.round(camera.zoom*100)+'%'};if(classroomMode==='view')setTool('hand');else if(classroomMode==='pen'&&!['pen','pencil','eraser','hand'].includes(tool))setTool('pen');renderTabs();render()}).subscribe(s=>{if(s==='SUBSCRIBED'){if(isTeacher)persistClassroom();else pagesChannel?.send({type:'broadcast',event:'hello',payload:{role:'student'}}).catch(()=>{})}});renderTabs();render();joinChannel();
     if(lessonId&&isTeacher){if(!readCheckpoints().length)setTimeout(()=>saveCheckpoint('Начало урока'),800);checkpointTimer=setInterval(()=>saveCheckpoint('Авто · '+new Date().toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'})).catch(()=>{}),5*60*1000)}
 
+    const onBoardPageHide=()=>{
+      if(localOnly||!current)return;
+      if(!boardNetworkOnline||saveInFlight||pendingOps.length||dbPendingOps.length){try{localStorage.setItem(offlineSnapshotKey,JSON.stringify({pageId:current.id,elements,at:Date.now()}))}catch{}}
+    };
     const onBoardOnline=()=>{
       boardNetworkOnline=true;
       setSyncState('syncing','Интернет вернулся · синхронизация…');
@@ -1838,10 +1842,25 @@
     };
     window.addEventListener('online',onBoardOnline);
     window.addEventListener('offline',onBoardOffline);
-    if(!boardNetworkOnline)setSyncState('offline');
+    window.addEventListener('pagehide',onBoardPageHide);
+    if(recoveredOffline&&!localOnly)setSyncState(boardNetworkOnline?'syncing':'offline',boardNetworkOnline?'Восстановлены локальные изменения · синхронизация…':'Офлайн · локальные изменения восстановлены');
+    else if(!boardNetworkOnline)setSyncState('offline');
 
-    const cleanup=()=>{clearTimeout(saveTimer);clearInterval(checkpointTimer);root.removeEventListener('pointerdown',activateBoardShortcuts,true);root.removeEventListener('focusin',deactivateBoardShortcuts,true);document.removeEventListener('pointerdown',outsideBoardPointer,true);window.removeEventListener('keydown',key,true);window.removeEventListener('keyup',keyup);window.removeEventListener('paste',pasteExternal);window.removeEventListener('dragend',clearDragOverlay,true);window.removeEventListener('drop',clearDragOverlay,true);window.removeEventListener('online',onBoardOnline);window.removeEventListener('offline',onBoardOffline);if(channel)sb.removeChannel(channel);if(pagesChannel)sb.removeChannel(pagesChannel)};S.boardCleanup=cleanup;
-    return {addText,addTheoryCards,importPdfBlob,undo,redo,save,fitAll,exportPage:exportCurrentPng,exportAll:exportAllPdf,getPages:()=>pages.map(p=>({...p,elements:p.id===current.id?clone(elements):clone(p.elements||[])})),checkpoint:saveCheckpoint,restoreStart:resetToLessonStart,copyToScratch,copyFromScratch,setTool,readClipboard:readSystemClipboard,clearFocus:()=>{focusRect=null;broadcastTransient('focus',{rect:null});render()}};
+    const cleanup=()=>{clearTimeout(saveTimer);clearInterval(checkpointTimer);root.removeEventListener('pointerdown',activateBoardShortcuts,true);root.removeEventListener('focusin',deactivateBoardShortcuts,true);document.removeEventListener('pointerdown',outsideBoardPointer,true);window.removeEventListener('keydown',key,true);window.removeEventListener('keyup',keyup);window.removeEventListener('paste',pasteExternal);window.removeEventListener('dragend',clearDragOverlay,true);window.removeEventListener('drop',clearDragOverlay,true);window.removeEventListener('online',onBoardOnline);window.removeEventListener('offline',onBoardOffline);window.removeEventListener('pagehide',onBoardPageHide);if(channel)sb.removeChannel(channel);if(pagesChannel)sb.removeChannel(pagesChannel)};S.boardCleanup=cleanup;
+    const diagnostics=()=>({
+      pageId:current?.id||'',
+      objectCount:elements.length,
+      ownedByMe:elements.filter(localOwns).length,
+      pendingRealtimeOps:pendingOps.filter(op=>op?.pageId===current?.id).length,
+      pendingPersistenceOps:dbPendingOps.filter(op=>op?.pageId===current?.id).length,
+      channelSubscribed,
+      browserOnline:boardNetworkOnline,
+      lastServerSaveAt,
+      syncState:status?.dataset?.sync||'',
+      remoteLiveStrokeCount:remoteLiveStrokes.size,
+      invalidObjects:elements.filter(o=>!o?.id||!o?.type).length
+    });
+    return {addText,addTheoryCards,importPdfBlob,undo,redo,save,fitAll,exportPage:exportCurrentPng,exportAll:exportAllPdf,getPages:()=>pages.map(p=>({...p,elements:p.id===current.id?clone(elements):clone(p.elements||[])})),checkpoint:saveCheckpoint,restoreStart:resetToLessonStart,copyToScratch,copyFromScratch,setTool,readClipboard:readSystemClipboard,diagnostics,clearFocus:()=>{focusRect=null;broadcastTransient('focus',{rect:null});render()}};
   }
 
   function mountSnapshot(root,pages){
