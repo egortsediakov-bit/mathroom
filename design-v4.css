@@ -2672,3 +2672,92 @@ input[type="file"]{font-size:11px!important}
 @media (prefers-reduced-motion: reduce){
   #mrVideoPanel.connection-connecting .mr-call-dot{animation:none!important}
 }
+
+
+/* ===== Virtual camera background — prejoin ===== */
+.mr-prejoin-bg{
+  display:grid!important;
+  gap:8px!important;
+  padding:10px!important;
+  border:1px solid var(--pg-line)!important;
+  border-radius:8px!important;
+  background:#f8f9fa!important;
+}
+.mr-prejoin-bg-head{
+  display:flex!important;
+  align-items:center!important;
+  justify-content:space-between!important;
+  gap:10px!important;
+}
+.mr-prejoin-bg-head b{
+  font-size:12px!important;
+  font-weight:850!important;
+}
+.mr-prejoin-bg-head .small{
+  font-size:9.5px!important;
+}
+#mrBgStatus{
+  white-space:nowrap!important;
+  color:#69727d!important;
+}
+.mr-bg-options{
+  display:grid!important;
+  grid-template-columns:repeat(5,minmax(0,1fr))!important;
+  gap:5px!important;
+}
+.mr-bg-options .btn,
+.mr-bg-upload{
+  min-height:34px!important;
+  height:34px!important;
+  padding:0 7px!important;
+  display:inline-flex!important;
+  align-items:center!important;
+  justify-content:center!important;
+  border-radius:6px!important;
+  font-size:10.5px!important;
+  font-weight:750!important;
+  white-space:nowrap!important;
+}
+.mr-bg-options .btn.active,
+.mr-bg-upload.active{
+  background:var(--pg-dark)!important;
+  border-color:var(--pg-dark)!important;
+  color:#fff!important;
+  box-shadow:inset 0 -2px 0 var(--pg-orange)!important;
+}
+.mr-bg-options [data-bg-mode="mathroom"].active{
+  background:#15191f!important;
+}
+.mr-bg-options [data-bg-mode="light"].active{
+  background:#fff!important;
+  color:#111318!important;
+  border-color:var(--pg-orange)!important;
+  box-shadow:inset 0 -2px 0 var(--pg-orange)!important;
+}
+.mr-bg-upload{
+  cursor:pointer!important;
+  border:1px solid var(--pg-line-2)!important;
+  background:#fff!important;
+}
+.mr-native-preview{
+  background:#101214!important;
+}
+.mr-native-preview video{
+  width:100%!important;
+  height:100%!important;
+  object-fit:cover!important;
+}
+
+@media(max-width:760px){
+  .mr-bg-options{
+    grid-template-columns:repeat(2,minmax(0,1fr))!important;
+  }
+  .mr-bg-options .mr-bg-upload{
+    grid-column:span 2!important;
+  }
+  .mr-prejoin-bg-head{
+    align-items:flex-start!important;
+    flex-direction:column!important;
+    gap:2px!important;
+  }
+}
