@@ -1965,3 +1965,29 @@ input[type="file"]{font-size:11px!important}
     display:none!important;
   }
 }
+
+
+/* ===== Slightly larger adaptive whiteboard controls ===== */
+.board-head-actions{
+  --pg-board-control:clamp(32px,3.45cqw,39px)!important;
+  --pg-board-icon:clamp(15px,1.65cqw,19px)!important;
+  --pg-board-font:clamp(10px,.98cqw,11.5px)!important;
+  --pg-board-pad:clamp(7px,.85cqw,13px)!important;
+  gap:clamp(4px,.55cqw,8px)!important;
+}
+.board-head{
+  min-height:56px!important;
+  padding-top:8px!important;
+  padding-bottom:8px!important;
+}
+.mr-board-mode-control .board-permission-select{
+  width:clamp(94px,10cqw,138px)!important;
+  min-width:clamp(94px,10cqw,138px)!important;
+  max-width:clamp(94px,10cqw,138px)!important;
+}
+.board-head-actions #addPage,
+.board-head-actions #delPage,
+.board-head-actions #quickCommands,
+.board-head-actions #fullscreen{
+  padding-inline:clamp(8px,.9cqw,13px)!important;
+}
