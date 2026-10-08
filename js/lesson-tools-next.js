@@ -1697,8 +1697,55 @@
     setVideoViewMode(mode) {
       if (!['remote','both','hidden'].includes(mode)) return;
       this.videoViewMode = mode;
+      if (mode === 'hidden') {
+        this.expanded = false;
+        this.minimized = false;
+        localStorage.setItem(`mathroom.media.expanded.${this.role}`, '0');
+        localStorage.setItem(`mathroom.media.minimized.${this.role}`, '0');
+      }
       localStorage.setItem(`mathroom.media.view.${this.role}`, mode);
       this.paint();
+
+      // When restoring the compact player from hidden mode, its box grows
+      // immediately. Re-clamp the saved floating position after layout so the
+      // video cannot reopen partly outside the viewport.
+      if (mode !== 'hidden') {
+        requestAnimationFrame(() => {
+          if (this.videoFloating && this.floatingPosition) this.applyFloatingPosition();
+          this.bindMedia();
+          const remote=this.panel?.querySelector('#mrRemoteVideo');
+          if (remote?.srcObject?.getVideoTracks?.().length) remote.play?.().catch(()=>{});
+        });
+      }
+    }
+
+    showVideoFromHidden() {
+      if (!this.joined) return;
+      if (this.videoRestoreLock) return;
+      this.videoRestoreLock = true;
+
+      this.videoViewMode = 'remote';
+      this.expanded = false;
+      this.minimized = false;
+
+      localStorage.setItem(`mathroom.media.view.${this.role}`, 'remote');
+      localStorage.setItem(`mathroom.media.expanded.${this.role}`, '0');
+      localStorage.setItem(`mathroom.media.minimized.${this.role}`, '0');
+
+      this.paint();
+
+      requestAnimationFrame(() => {
+        if (this.videoFloating && this.floatingPosition) this.applyFloatingPosition();
+        this.bindMedia();
+        const remote=this.panel?.querySelector('#mrRemoteVideo');
+        if (remote?.srcObject?.getVideoTracks?.().length) remote.play?.().catch(()=>{});
+        requestAnimationFrame(() => {
+          if (this.videoFloating && this.floatingPosition) this.applyFloatingPosition();
+          this.videoRestoreLock = false;
+        });
+      });
+
+      setTimeout(()=>{ this.videoRestoreLock=false; },220);
     }
 
     attachVideoScroll() {
@@ -1896,7 +1943,12 @@
         host.querySelector('#mrVideoMin').onclick = () => this.toggleMinimized();
         const screen = host.querySelector('#mrVideoScreen'); if (screen) screen.onclick = () => this.shareScreen();
         const full = host.querySelector('#mrVideoFullscreen'); if (full) full.onclick = () => this.openVideoFullscreen();
-        const expand = host.querySelector('#mrVideoExpand'); if (expand) expand.onclick = () => this.videoViewMode === 'hidden' ? this.setVideoViewMode('remote') : this.toggleExpanded();
+        const expand = host.querySelector('#mrVideoExpand'); if (expand) expand.onclick = e => {
+          e.preventDefault();
+          e.stopPropagation();
+          if (this.videoViewMode === 'hidden') this.showVideoFromHidden();
+          else this.toggleExpanded();
+        };
         const stage = host.querySelector('#mrCallStage'); if (stage) stage.ondblclick = () => { if(Date.now()-(this.videoDraggedAt||0)>300)this.openVideoFullscreen(); };
         host.querySelectorAll('[data-video-view]').forEach(b=>b.onclick=()=>this.setVideoViewMode(b.dataset.videoView));
         const localPreview = host.querySelector('#mrLocalVideo'); if (localPreview) localPreview.onclick = () => { if (this.screenTrack) this.toggleExpanded(); };
