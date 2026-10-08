@@ -959,12 +959,46 @@
     function clearPendingPlanePoints(){for(const o of elements){if(o?.type==='solid3d'&&Array.isArray(o.solidPoints))for(const p of o.solidPoints)p.pendingPlane=false}}
     function cancelCompassDraft(){if(!compassDraft)return;const id=compassDraft.id;if(id)elements=elements.filter(z=>z.id!==id);compassDraft=null;const last=undoStack[undoStack.length-1];if(last?.type==='elements'&&last.pageId===current.id)undoStack.pop();syncHistoryButtons();render()}
     function setTool(v){if(!canUseTool(v)){toast(classroomMode==='view'?'Доска сейчас в режиме просмотра':'Преподаватель разрешил только письмо');return}if(tool==='compass'&&v!=='compass'&&compassDraft)cancelCompassDraft();if(tool==='solid-plane'&&v!=='solid-plane'){solidPlanePick=null;clearPendingPlanePoints()}tool=v;eraserPoint=v==='eraser'?eraserPoint:null;root.querySelectorAll('[data-tool]').forEach(b=>b.classList.toggle('active',b.dataset.tool===v));const cats={pen:'write',pencil:'write',marker:'write',text:'write',note:'write',line:'geometry',arrow:'geometry',ruler:'geometry',compass:'geometry','solid-point':'shapes','solid-plane':'shapes','solid-rotate':'shapes',laser:'lesson',focus:'lesson'};root.querySelectorAll('.board-tool-group').forEach(d=>d.classList.toggle('tool-active',d.dataset.category===cats[v]));svg.style.cursor=v==='hand'?'grab':v==='select'?'default':v==='eraser'?'none':'crosshair';stage?.classList.toggle('hand-mode',v==='hand');render()}
-    function screenToWorld(cx,cy){const r=svg.getBoundingClientRect();return[(cx-r.left)/camera.zoom+camera.x,(cy-r.top)/camera.zoom+camera.y]}
+    function clientToSvg(cx,cy){
+      /* Convert viewport coordinates through the SVG CTM instead of assuming
+         one CSS pixel always equals one SVG user unit. This keeps the pen
+         exactly under the pointer in fullscreen, browser zoom and any scaled
+         lesson layout. */
+      const ctm=svg.getScreenCTM?.();
+      if(ctm){
+        try{
+          const p=svg.createSVGPoint();
+          p.x=Number(cx)||0;p.y=Number(cy)||0;
+          const q=p.matrixTransform(ctm.inverse());
+          if(Number.isFinite(q.x)&&Number.isFinite(q.y))return[q.x,q.y];
+        }catch{}
+      }
+      const r=svg.getBoundingClientRect();
+      const vb=svg.viewBox?.baseVal;
+      const sx=vb?.width&&r.width?vb.width/r.width:1;
+      const sy=vb?.height&&r.height?vb.height/r.height:1;
+      return[(cx-r.left)*sx+(vb?.x||0),(cy-r.top)*sy+(vb?.y||0)];
+    }
+    function screenToWorld(cx,cy){
+      const [sx,sy]=clientToSvg(cx,cy);
+      return[sx/camera.zoom+camera.x,sy/camera.zoom+camera.y];
+    }
     function appendFreehandPoints(target,e){
       if(!target?.points)return;
-      const samples=typeof e.getCoalescedEvents==='function'?(e.getCoalescedEvents()||[]):[];
-      const events=samples.length?samples:[e],minStep=.7/Math.max(.25,camera.zoom);
+      const coalesced=typeof e.getCoalescedEvents==='function'?(e.getCoalescedEvents()||[]):[];
+      /* Some browsers return only historical coalesced samples. Always append
+         the dispatched event as the newest sample so handwriting does not lag
+         behind the cursor. */
+      const events=[...coalesced,e];
+      const minStep=1.05/Math.max(.25,camera.zoom);
+      let lastStamp=-Infinity,lastClientX=NaN,lastClientY=NaN;
       for(const ev of events){
+        if(!ev||!Number.isFinite(ev.clientX)||!Number.isFinite(ev.clientY))continue;
+        if(e.pointerId!=null&&ev.pointerId!=null&&ev.pointerId!==e.pointerId)continue;
+        const stamp=Number(ev.timeStamp||0);
+        if(stamp<lastStamp)continue;
+        if(stamp===lastStamp&&ev.clientX===lastClientX&&ev.clientY===lastClientY)continue;
+        lastStamp=stamp;lastClientX=ev.clientX;lastClientY=ev.clientY;
         const [px,py]=screenToWorld(ev.clientX,ev.clientY),last=target.points[target.points.length-1];
         if(!last||Math.hypot(px-last[0],py-last[1])>=minStep){
           const isPen=ev.pointerType==='pen',pressure=isPen?Math.max(.05,Math.min(1,Number(ev.pressure)||.5)):.5;
