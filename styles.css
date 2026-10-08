@@ -2410,3 +2410,10 @@ body{background:linear-gradient(180deg,#fbfbfa 0%,#f5f4f1 100%)!important;color:
     box-sizing:border-box!important;
   }
 }
+
+
+/* Mathroom v32.0 — phone figure interaction */
+[data-phone-student-board="1"] .board-object-hud,
+[data-phone-student-board="1"] .board-solid-hud{
+  display:none!important;
+}
