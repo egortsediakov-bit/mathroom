@@ -1387,7 +1387,8 @@
       boardFocused=true;root.querySelector('.board-card')?.focus?.({preventScroll:true});const ae=document.activeElement;if(ae&&['INPUT','TEXTAREA','SELECT','BUTTON'].includes(ae.tagName))ae.blur?.();
 
       if(e.pointerType==='pen')penActiveUntil=Date.now()+1200;
-      if(e.pointerType==='touch'){
+      const touchDrawTool=e.pointerType==='touch'&&['pen','pencil','marker','eraser'].includes(tool);
+      if(e.pointerType==='touch'&&!touchDrawTool){
         e.preventDefault();
         svg.setPointerCapture(e.pointerId);
         touchPointers.set(e.pointerId,{x:e.clientX,y:e.clientY});
@@ -1402,6 +1403,7 @@
         }
         return;
       }
+      if(touchDrawTool)e.preventDefault();
 
       svg.setPointerCapture(e.pointerId);
       let[x,y]=screenToWorld(e.clientX,e.clientY);sendCursor(x,y);
