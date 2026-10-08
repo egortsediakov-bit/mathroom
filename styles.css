@@ -2100,3 +2100,133 @@ body{background:linear-gradient(180deg,#fbfbfa 0%,#f5f4f1 100%)!important;color:
   .mr-rail-home-menu>.btn{min-height:48px}
   .mr-rail-home-menu>.btn small{display:none}
 }
+
+
+/* Mathroom v31.5 — focused student lesson + mobile board */
+.student-home.student-lesson-mode{
+  max-width:1180px;
+  display:grid;
+  gap:12px;
+}
+.student-home.student-lesson-mode #mrStudentVideoMount,
+.student-home.student-lesson-mode #studentLessonTaskMount,
+.student-home.student-lesson-mode #studentLessonBoard{min-width:0}
+.mr-student-current-task{
+  border:1px solid var(--line);
+  border-radius:16px;
+  background:#fff;
+  padding:14px 16px;
+  box-shadow:0 4px 18px rgba(20,24,32,.04);
+}
+.mr-student-current-task.empty-task{display:grid;gap:4px}
+.mr-student-current-task-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.mr-student-current-task h2{margin:3px 0 0;font-size:18px;line-height:1.25}
+.mr-student-current-prompt{margin-top:10px;white-space:pre-wrap;line-height:1.5;font-size:15px}
+.mr-student-board-timer{
+  display:inline-flex;align-items:center;gap:7px;
+  min-height:36px;padding:5px 9px;border:1px solid #deded8;border-radius:11px;
+  background:#fff;white-space:nowrap
+}
+.mr-student-board-timer-label{font-size:9px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:800}
+.mr-student-board-timer>b{font-size:15px;line-height:1}
+.mr-student-board-task-timer{display:none;align-items:center;gap:5px;padding-left:7px;border-left:1px solid var(--line)}
+.mr-student-board-task-timer.active{display:inline-flex}
+.mr-student-board-task-timer small{font-size:9px;color:var(--muted)}
+.mr-student-board-task-timer b{font-size:13px}
+
+@media(max-width:760px){
+  .student-home.student-lesson-mode{
+    width:100%;max-width:none;margin:0;padding:8px 0 18px!important;gap:8px
+  }
+  .student-home.student-lesson-mode>#mrStudentVideoMount,
+  .student-home.student-lesson-mode>#studentLessonTaskMount,
+  .student-home.student-lesson-mode>#studentLessonBoard{width:100%;padding:0 8px;box-sizing:border-box}
+  .student-home.student-lesson-mode>#studentLessonBoard{padding:0}
+  .mr-student-current-task{border-radius:13px;padding:11px 12px}
+  .mr-student-current-task h2{font-size:15px}
+  .mr-student-current-prompt{font-size:13px;margin-top:7px;line-height:1.42}
+
+  /* Board becomes a true phone canvas instead of a squeezed desktop board. */
+  .student-lesson-mode .board-card{border-left:0!important;border-right:0!important;border-radius:0!important}
+  .student-lesson-mode .board-head{padding:7px 8px!important;gap:6px!important;min-width:0}
+  .student-lesson-mode .board-head-title{min-width:0}
+  .student-lesson-mode .board-head-title strong{font-size:12px!important}
+  .student-lesson-mode .board-head-actions{
+    display:flex!important;align-items:center!important;gap:4px!important;min-width:0;overflow:visible!important
+  }
+  .student-lesson-mode .board-head-actions>.board-head-sep,
+  .student-lesson-mode .board-head-actions>#quickCommands,
+  .student-lesson-mode .board-head-actions>.board-shortcuts-btn{display:none!important}
+  .student-lesson-mode .board-head-actions>.board-head-icon .board-head-label{display:none!important}
+  .student-lesson-mode .mr-student-board-timer{margin-left:auto;order:-1;min-height:32px;padding:4px 7px}
+  .student-lesson-mode .mr-student-board-timer-label{display:none}
+  .student-lesson-mode .mr-student-board-timer>b{font-size:14px}
+  .student-lesson-mode .mr-student-board-task-timer{padding-left:6px}
+  .student-lesson-mode .board-page-tabs{
+    display:flex!important;gap:5px!important;overflow-x:auto!important;overflow-y:hidden!important;
+    padding:6px 8px!important;scrollbar-width:none;-webkit-overflow-scrolling:touch
+  }
+  .student-lesson-mode .board-page-tabs::-webkit-scrollbar{display:none}
+  .student-lesson-mode .board-page-tabs button{flex:0 0 auto;min-height:36px!important;padding:6px 10px!important}
+
+  .student-lesson-mode .board-stage{
+    height:min(68dvh,620px)!important;
+    min-height:470px!important;
+    width:100%!important;
+    overflow:hidden!important
+  }
+  .student-lesson-mode .board-stage>svg{inset:0!important;width:100%!important;height:100%!important}
+
+  /* Horizontal bottom dock: every tool stays reachable without covering the page. */
+  .student-lesson-mode .board-toolbar-side{
+    position:absolute!important;
+    left:8px!important;right:8px!important;top:auto!important;bottom:8px!important;
+    width:auto!important;height:58px!important;max-height:58px!important;
+    display:flex!important;flex-direction:row!important;align-items:center!important;
+    padding:6px!important;border-radius:16px!important;
+    overflow-x:auto!important;overflow-y:visible!important;
+    overscroll-behavior-x:contain;scrollbar-width:none;
+    transform:none!important
+  }
+  .student-lesson-mode .board-toolbar-side::-webkit-scrollbar{display:none}
+  .student-lesson-mode .board-toolbar-side .board-tool-groups{
+    display:flex!important;flex-direction:row!important;align-items:center!important;
+    gap:5px!important;width:max-content!important
+  }
+  .student-lesson-mode .board-rail-divider,
+  .student-lesson-mode .board-side-label{display:none!important}
+  .student-lesson-mode .board-rail-quick{
+    display:flex!important;flex-direction:row!important;gap:5px!important;width:auto!important
+  }
+  .student-lesson-mode .board-rail-quick .btn,
+  .student-lesson-mode .board-toolbar-side .board-tool-group>summary,
+  .student-lesson-mode .board-toolbar-side>.btn{
+    width:44px!important;height:44px!important;min-width:44px!important;min-height:44px!important;
+    padding:0!important;border-radius:12px!important;display:grid!important;place-items:center!important
+  }
+  .student-lesson-mode .board-rail-quick [data-tool="select"],
+  .student-lesson-mode .board-rail-quick [data-tool="hand"]{
+    grid-column:auto!important;width:44px!important;height:44px!important;min-height:44px!important
+  }
+  .student-lesson-mode .board-toolbar-side .board-tool-group{width:44px!important;flex:0 0 44px!important}
+  .student-lesson-mode .board-toolbar-side .board-tool-popover{
+    position:fixed!important;
+    left:8px!important;right:8px!important;top:auto!important;
+    bottom:calc(72px + env(safe-area-inset-bottom))!important;
+    max-width:none!important;min-width:0!important;max-height:58vh!important;
+    z-index:5000!important;border-radius:18px!important
+  }
+  .student-lesson-mode .board-toolbar-side .board-tool-group:nth-last-child(-n+2) .board-tool-popover{
+    top:auto!important;bottom:calc(72px + env(safe-area-inset-bottom))!important
+  }
+
+  /* Pinch is the primary zoom gesture on phone; only keep Home reset visible. */
+  .student-lesson-mode .board-floating{
+    right:8px!important;top:8px!important;bottom:auto!important;padding:4px!important;border-radius:11px!important
+  }
+  .student-lesson-mode .board-floating #zoomOut,
+  .student-lesson-mode .board-floating #zoomIn,
+  .student-lesson-mode .board-floating #zoomLabel{display:none!important}
+  .student-lesson-mode .board-floating #homeView{min-width:36px!important;min-height:36px!important;padding:6px!important}
+  .student-lesson-mode .board-hint{display:none!important}
+}
