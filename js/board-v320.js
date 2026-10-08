@@ -715,6 +715,24 @@
     const persistPendingOps=()=>{try{if(pendingOps.length)localStorage.setItem(collabQueueKey,JSON.stringify(pendingOps.slice(-800)));else localStorage.removeItem(collabQueueKey)}catch{}};
     const localOwns=o=>!!o&&o._ownerRole===actorRole&&String(o._ownerId||'')===actorId;
     const lastUpdatedByMe=o=>!!o&&o._updatedBy===actorKey;
+    const freshOwnedObject=src=>{const o=clone(src||{});o.id=uid();o._ownerRole=actorRole;o._ownerId=actorId;o._rev=0;o._updatedAt=0;o._updatedBy='';return o};
+    for(const op of pendingOps){if(op?.type==='delete'&&op.id)deleteJournal.set(op.id,{actor:op.actor||actorKey,rev:Math.max(1,Number(op.rev||0)),at:Number(op.at||Date.now())})}
+    dbPendingOps=clone(pendingOps);
+    function replayLocalOps(base,ops){
+      let out=(Array.isArray(base)?base:[]).map(normalizeElement).filter(Boolean);
+      for(const op of (ops||[]).slice().sort((a,b)=>Number(a?.at||0)-Number(b?.at||0))){
+        if(!op||op.pageId!==current?.id||!op.id)continue;
+        const idx=out.findIndex(x=>x.id===op.id);
+        if(op.type==='delete'){if(idx>=0)out.splice(idx,1);deleteJournal.set(op.id,{actor:op.actor||actorKey,rev:Math.max(1,Number(op.rev||0)),at:Number(op.at||Date.now())});continue}
+        const incoming=normalizeElement(op.element);if(!incoming)continue;
+        if(idx>=0)out[idx]=newerElement(out[idx],incoming);else{const pos=Number.isFinite(op.index)?Math.max(0,Math.min(out.length,op.index)):out.length;out.splice(pos,0,incoming)}
+      }
+      return out;
+    }
+    let recoveredOffline=false;
+    try{const raw=JSON.parse(localStorage.getItem(offlineSnapshotKey)||'null');if(raw?.pageId===current?.id&&Array.isArray(raw.elements)){elements=raw.elements.map(normalizeElement).filter(Boolean);recoveredOffline=true}}catch{}
+    if(pendingOps.some(op=>op?.pageId===current?.id)){elements=replayLocalOps(elements,pendingOps);recoveredOffline=true}
+    if(recoveredOffline){const p=pages.find(x=>x.id===current.id);if(p)p.elements=clone(elements);collabBaseline=clone(elements)}
     const selectionList=()=>{const out=[];if(selected&&elements.some(o=>o.id===selected))out.push(selected);for(const id of selectedIds)if(id!==selected&&elements.some(o=>o.id===id))out.push(id);return out};
     const selectionCount=()=>selectionList().length;
     const selectionHas=id=>!!id&&(selected===id||selectedIds.has(id));
@@ -1118,11 +1136,11 @@
         const cur=cm.get(id),want=tm.get(id),tomb=deleteJournal.get(id);
         if(cur&&want){
           if(elementSignature(cur)===elementSignature(want)){next.push(cur);continue}
-          if(lastUpdatedByMe(cur)||localOwns(cur)){next.push(clone(want));changedAny=true}else next.push(cur);
+          if(lastUpdatedByMe(cur)){next.push(clone(want));changedAny=true}else next.push(cur);
         }else if(cur&&!want){
-          if(lastUpdatedByMe(cur)||localOwns(cur))changedAny=true;else next.push(cur);
+          if(lastUpdatedByMe(cur))changedAny=true;else next.push(cur);
         }else if(!cur&&want){
-          if(tomb?.actor===actorKey||localOwns(want)){next.push(clone(want));changedAny=true}
+          if(tomb?.actor===actorKey){next.push(clone(want));changedAny=true}
         }
       }
       if(changedAny){elements=next;clearSelection()}
