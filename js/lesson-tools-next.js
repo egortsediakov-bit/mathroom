@@ -1296,7 +1296,8 @@
       let drag=null;
 
       const begin=e=>{
-        const floating=this.videoFloating||host.classList.contains('floating');
+        const fullscreenBoard=!!host.closest('.board-card:fullscreen');
+        const floating=this.videoFloating||host.classList.contains('floating')||fullscreenBoard;
         const allowed=floating?stage:head;
         if(e.currentTarget!==allowed)return;
         if(e.button!=null&&e.button!==0)return;
@@ -1320,8 +1321,10 @@
       };
       const finish=e=>{
         if(!drag)return;
-        if(drag.moved&&this.videoFloating){
-          try{localStorage.setItem(`mathroom.media.floatpos.${this.role}`,JSON.stringify(this.floatingPosition))}catch{}
+        if(drag.moved){
+          if(this.videoFloating){
+            try{localStorage.setItem(`mathroom.media.floatpos.${this.role}`,JSON.stringify(this.floatingPosition))}catch{}
+          }
           this.videoDraggedAt=Date.now();
         }
         drag=null;
