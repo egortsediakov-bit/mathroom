@@ -617,7 +617,7 @@
   function translated(orig,dx,dy){
     const o=clone(orig);
     if(['text','formula','note','image','coordinate','graph','attachment'].includes(o.type)){o.x+=dx;o.y+=dy}
-    else if(o.type==='path'||o.type==='polygon')o.points=(o.points||[]).map(p=>[p[0]+dx,p[1]+dy]);
+    else if(o.type==='path'||o.type==='polygon')o.points=(o.points||[]).map(p=>p.length>2?[p[0]+dx,p[1]+dy,p[2]]:[p[0]+dx,p[1]+dy]);
     else if(['rect','ellipse','line','arrow','ruler'].includes(o.type)){o.x1+=dx;o.x2+=dx;o.y1+=dy;o.y2+=dy}
     else if(o.type==='compass'||o.type==='arc'){o.cx+=dx;o.cy+=dy}
     else if(o.type==='solid3d'){o.x+=dx;o.y+=dy}
@@ -634,7 +634,7 @@
     }else if(['text','formula'].includes(o.type)){
       const [x,y]=point(o.x,o.y);o.x=x;o.y=y;o.fontSize=Math.max(10,(o.fontSize||28)*Math.max(.25,Math.min(sx,sy)));
     }else if(o.type==='path'||o.type==='polygon'){
-      o.points=(o.points||[]).map(([x,y])=>point(x,y));
+      o.points=(o.points||[]).map(p=>{const [nx,ny]=point(p[0],p[1]);return p.length>2?[nx,ny,p[2]]:[nx,ny]});
     }else if(['rect','ellipse','line','arrow','ruler'].includes(o.type)){
       [o.x1,o.y1]=point(o.x1,o.y1);[o.x2,o.y2]=point(o.x2,o.y2);
     }else if(o.type==='compass'||o.type==='arc'){const [cx,cy]=point(o.cx,o.cy);o.cx=cx;o.cy=cy;o.r=Math.max(8,(o.r||Math.max(from.w,from.h)/2)*Math.max(.25,(sx+sy)/2));
