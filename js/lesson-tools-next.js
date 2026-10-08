@@ -1947,7 +1947,6 @@
           e.preventDefault();
           e.stopPropagation();
           if (this.videoViewMode === 'hidden') this.showVideoFromHidden();
-          else this.toggleExpanded();
         };
         const stage = host.querySelector('#mrCallStage'); if (stage) stage.ondblclick = () => { if(Date.now()-(this.videoDraggedAt||0)>300)this.openVideoFullscreen(); };
         host.querySelectorAll('[data-video-view]').forEach(b=>b.onclick=()=>this.setVideoViewMode(b.dataset.videoView));
@@ -2014,7 +2013,7 @@
         screen.classList.toggle('sharing',!!this.screenTrack);
       }
       const expand = host.querySelector('#mrVideoExpand'); if (expand) {
-        expand.innerHTML=this.mediaButton('video',this.videoViewMode === 'hidden'?'Видео':(this.expanded?'Обычный размер':'Видео'),true);
+        expand.innerHTML=this.mediaButton('video','Видео',true);
       }
       host.querySelectorAll('[data-video-view]').forEach(b=>b.classList.toggle('active',b.dataset.videoView===this.videoViewMode));
       const note = host.querySelector('#mrVideoNote'); if (note) note.textContent = this.joined
