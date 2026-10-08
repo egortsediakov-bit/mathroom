@@ -3041,3 +3041,88 @@ input[type="file"]{font-size:11px!important}
 #mrVideoPanel.joined.view-hidden.floating #mrVideoExpand{
   display:inline-flex!important;
 }
+
+
+/* ===== Robust hidden mini-player after board fullscreen ===== */
+#mrVideoPanel.joined.view-hidden{
+  position:fixed!important;
+  right:18px!important;
+  bottom:18px!important;
+  left:auto;
+  top:auto;
+  z-index:3250!important;
+  width:auto!important;
+  min-width:0!important;
+  height:auto!important;
+  max-width:calc(100vw - 24px)!important;
+  padding:5px!important;
+  overflow:visible!important;
+  background:#fff!important;
+  border:1px solid var(--pg-line)!important;
+  border-radius:10px!important;
+  box-shadow:0 12px 34px rgba(0,0,0,.18)!important;
+  pointer-events:auto!important;
+}
+
+#mrVideoPanel.joined.view-hidden .mr-call-stage,
+#mrVideoPanel.joined.view-hidden .mr-call-head,
+#mrVideoPanel.joined.view-hidden .mr-call-note,
+#mrVideoPanel.joined.view-hidden .mr-call-quality,
+#mrVideoPanel.joined.view-hidden .mr-floating-view-switch{
+  display:none!important;
+}
+
+#mrVideoPanel.joined.view-hidden .mr-call-actions{
+  display:flex!important;
+  align-items:center!important;
+  flex-wrap:nowrap!important;
+  gap:5px!important;
+  margin:0!important;
+  padding:0!important;
+  opacity:1!important;
+  visibility:visible!important;
+  overflow:visible!important;
+  pointer-events:auto!important;
+}
+
+#mrVideoPanel.joined.view-hidden .mr-call-actions>*{
+  display:none!important;
+}
+
+#mrVideoPanel.joined.view-hidden #mrVideoMic,
+#mrVideoPanel.joined.view-hidden #mrVideoCam,
+#mrVideoPanel.joined.view-hidden #mrVideoExpand{
+  display:inline-flex!important;
+  min-height:34px!important;
+  height:34px!important;
+  padding:5px 9px!important;
+  pointer-events:auto!important;
+  cursor:pointer!important;
+}
+
+#mrVideoPanel.joined.view-hidden #mrVideoExpand{
+  display:inline-flex!important;
+}
+
+/* If the user hid video while the board itself is fullscreen, keep the
+   3-way selector there. Once fullscreen exits, the compact strip above wins. */
+.board-card:fullscreen > #mrVideoPanel.joined.view-hidden{
+  background:transparent!important;
+  border:0!important;
+  box-shadow:none!important;
+}
+.board-card:fullscreen > #mrVideoPanel.joined.view-hidden .mr-call-actions{
+  display:none!important;
+}
+.board-card:fullscreen > #mrVideoPanel.joined.view-hidden .mr-floating-view-switch{
+  position:relative!important;
+  left:auto!important;
+  top:auto!important;
+  transform:none!important;
+  display:flex!important;
+  margin:0!important;
+  pointer-events:auto!important;
+}
+.board-card:fullscreen > #mrVideoPanel.joined.view-hidden .mr-floating-view-switch *{
+  pointer-events:auto!important;
+}
