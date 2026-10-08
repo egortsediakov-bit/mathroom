@@ -2913,7 +2913,10 @@
           <button class="btn sm" id="mrRailCommands">Команды · Alt K</button>
           <button class="btn sm" id="mrRailExit">← В кабинет</button>
           <button class="btn sm danger" id="mrRailFinish">Завершить урок</button>
-        </section>`;
+        </section>
+        <div class="mr-rail-persistent-footer">
+          <button class="btn sm danger" id="mrRailFinishPersistent">Завершить урок</button>
+        </div>`;
 
       const showHome=()=>{
         host.dataset.activePanel='home';
@@ -2939,6 +2942,7 @@
       host.querySelector('#mrRailSnapshot').onclick=()=>document.querySelector('#saveVersion')?.click();
       host.querySelector('#mrRailExit').onclick=()=>document.querySelector('#leaveLesson')?.click();
       host.querySelector('#mrRailFinish').onclick=()=>document.querySelector('#completeLesson')?.click();
+      host.querySelector('#mrRailFinishPersistent').onclick=()=>document.querySelector('#completeLesson')?.click();
       host.querySelector('#mrRailFocus').onclick=()=>document.querySelector('#focusToggle')?.click();
       host.querySelector('#mrRailCommands').onclick=()=>window.MathroomLessonSuite?.openCommands?.();
 
