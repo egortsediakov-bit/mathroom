@@ -888,6 +888,7 @@
     }
     function syncHistoryButtons(){const u=root.querySelector('#undo'),r=root.querySelector('#redo');if(u){u.disabled=!undoStack.length;u.title=undoStack.length?'Отменить последнее действие · Ctrl+Z':'Нечего отменять'}if(r){r.disabled=!redoStack.length;r.title=redoStack.length?'Вернуть действие · Ctrl+Y':'Нечего возвращать'}}
     function syncSolidHud(){
+      if(phoneStudentBoardUI){if(solidHud)solidHud.hidden=true;return}
       if(!solidHud||!stage||selectionCount()!==1){if(solidHud)solidHud.hidden=true;return}const o=elements.find(x=>x.id===selected&&x.type==='solid3d');if(!o){solidHud.hidden=true;return}
       solidHud.hidden=false;const b=bounds(o),r=stage.getBoundingClientRect(),left=(b.x-camera.x+b.w)*camera.zoom+12,top=(b.y-camera.y)*camera.zoom;
       const hw=Math.max(250,solidHud.offsetWidth||250),hh=Math.max(44,solidHud.offsetHeight||44),minLeft=82;
@@ -923,6 +924,7 @@
       return null;
     }
     function syncObjectHud(){
+      if(phoneStudentBoardUI){if(objectHud)objectHud.hidden=true;return}
       if(!objectHud||!stage||selectionCount()!==1){if(objectHud)objectHud.hidden=true;return}const o=elements.find(x=>x.id===selected&&x.type!=='board-bg');if(!o){objectHud.hidden=true;return}
       const editable=['text','formula','graph','note'].includes(o.type),b=bounds(o),r=stage.getBoundingClientRect(),w=Math.max(190,objectHud.offsetWidth||190),h=Math.max(40,objectHud.offsetHeight||40);
       objectHud.hidden=false;objectHud.classList.toggle('locked',!!o.locked);objectHud.style.left=`${Math.max(72,Math.min(Math.max(72,r.width-w-8),(b.x-camera.x)*camera.zoom))}px`;objectHud.style.top=`${Math.max(8,Math.min(Math.max(8,r.height-h-8),(b.y-camera.y)*camera.zoom-h-10))}px`;
@@ -1442,6 +1444,27 @@
       boardFocused=true;root.querySelector('.board-card')?.focus?.({preventScroll:true});const ae=document.activeElement;if(ae&&['INPUT','TEXTAREA','SELECT','BUTTON'].includes(ae.tagName))ae.blur?.();
 
       if(e.pointerType==='pen')penActiveUntil=Date.now()+1200;
+
+      /* Mobile figure interaction: keep Hand active. Once a 3D figure has
+         been selected by double tap, dragging directly on that same figure
+         rotates it; dragging anywhere else still pans the board. */
+      if(e.pointerType==='touch'&&compactStudentBoardUI&&tool==='hand'&&selected){
+        const selectedObj=elements.find(z=>z.id===selected&&z.type==='solid3d');
+        if(selectedObj){
+          const [sx,sy]=screenToWorld(e.clientX,e.clientY);
+          const touched=hit(sx,sy);
+          if(touched?.id===selectedObj.id){
+            e.preventDefault();
+            svg.setPointerCapture(e.pointerId);
+            if(!canTransformObject(selectedObj))return toast(selectedObj.locked?'Фигура закреплена преподавателем':'Редактирование фигуры ограничено');
+            pushElementsHistory();
+            solidRotateStart={id:selectedObj.id,cx:e.clientX,cy:e.clientY,rotX:Number(selectedObj.rotX??-.42),rotY:Number(selectedObj.rotY??.62)};
+            handTapCandidate=null;
+            return;
+          }
+        }
+      }
+
       const touchDrawTool=e.pointerType==='touch'&&['pen','pencil','marker','eraser'].includes(tool);
       if(e.pointerType==='touch'&&!touchDrawTool){
         e.preventDefault();
@@ -1625,13 +1648,12 @@
                 else{
                   selectOnly(o.id);
                   render();
-                  if(o.type==='solid3d'){
-                    setTool('solid-rotate');
-                    toast('3D-фигура выбрана · веди пальцем по ней, чтобы вращать');
-                  }else{
-                    toast('Фигура выбрана');
-                  }
+                  toast(o.type==='solid3d'?'3D-фигура выбрана · тяни пальцем по ней, чтобы вращать':'Фигура выбрана · двойной тап по пустому месту снимет выделение');
                 }
+              }else if(selectionCount()){
+                clearSelection();
+                render();
+                toast('Выделение снято');
               }
               lastHandTap=null;
             }else{
