@@ -359,7 +359,8 @@
         }
         @media(max-height:760px) and (min-width:761px){.mr-native-prejoin{width:min(78vw,940px);max-height:94vh;padding:11px;gap:8px}.mr-native-prejoin h2{font-size:24px}.mr-native-prejoin-grid{grid-template-columns:minmax(0,1.45fr) minmax(220px,.8fr);gap:10px}.mr-native-preview{max-height:48vh}.mr-native-prejoin-side{gap:5px}.mr-native-prejoin-side .btn{min-height:36px}.mr-media-device-fields{gap:5px}.mr-media-device-field{gap:2px}.mr-media-device-field select{min-height:34px;padding:5px 8px}.mr-native-prejoin-side .notice{display:none}.mr-native-prejoin-footer{padding-top:6px}.mr-native-prejoin-footer .btn{min-height:38px}}
         html.mr-video-call-open,body.mr-video-call-open{overflow:hidden!important}
-        .mr-native-call.mr-call-fullscreen{
+        body>.mr-native-call.joined.mr-call-fullscreen,
+        body>.mr-native-call.mr-call-fullscreen{
           position:fixed!important;inset:0!important;z-index:10000!important;
           width:100vw!important;height:100dvh!important;max-width:none!important;max-height:none!important;
           padding:0!important;margin:0!important;border:0!important;border-radius:0!important;
@@ -369,44 +370,44 @@
         .mr-native-call.mr-call-fullscreen .mr-call-note,
         .mr-native-call.mr-call-fullscreen .mr-call-quality,
         .mr-native-call.mr-call-fullscreen .mr-floating-view-switch{display:none!important}
-        .mr-native-call.mr-call-fullscreen .mr-call-stage{
+        body>.mr-native-call.mr-call-fullscreen .mr-call-stage{
           position:absolute!important;inset:0!important;display:block!important;width:100%!important;height:100%!important;
           min-height:0!important;max-height:none!important;aspect-ratio:auto!important;border-radius:0!important;background:#090a0c!important
         }
-        .mr-native-call.mr-call-fullscreen .mr-remote-video{
+        body>.mr-native-call.mr-call-fullscreen .mr-remote-video{
           position:absolute!important;inset:0!important;width:100%!important;height:100%!important;
           object-fit:contain!important;background:#090a0c!important
         }
-        .mr-native-call.mr-call-fullscreen .mr-local-video{
+        body>.mr-native-call.mr-call-fullscreen .mr-local-video{
           display:block!important;position:absolute!important;z-index:6!important;
           right:max(14px,env(safe-area-inset-right))!important;top:max(18px,env(safe-area-inset-top))!important;
           width:clamp(104px,25vw,190px)!important;height:clamp(138px,33vw,245px)!important;
           object-fit:cover!important;border:2px solid rgba(255,255,255,.9)!important;border-radius:16px!important;
           box-shadow:0 10px 30px rgba(0,0,0,.42)!important
         }
-        .mr-native-call.mr-call-fullscreen.sharing .mr-local-video{object-fit:contain!important}
-        .mr-native-call.mr-call-fullscreen .mr-call-person{z-index:7!important;left:14px!important;bottom:88px!important}
-        .mr-native-call.mr-call-fullscreen .mr-call-actions{
+        body>.mr-native-call.mr-call-fullscreen.sharing .mr-local-video{object-fit:contain!important}
+        body>.mr-native-call.mr-call-fullscreen .mr-call-person{z-index:7!important;left:14px!important;bottom:88px!important}
+        body>.mr-native-call.mr-call-fullscreen .mr-call-actions{
           display:flex!important;position:absolute!important;z-index:8!important;
           left:50%!important;bottom:max(18px,env(safe-area-inset-bottom))!important;transform:translateX(-50%)!important;
           width:max-content!important;max-width:calc(100vw - 24px)!important;flex-wrap:nowrap!important;
           gap:9px!important;padding:9px!important;border-radius:18px!important;background:rgba(12,14,18,.72)!important;
           backdrop-filter:blur(14px)!important
         }
-        .mr-native-call.mr-call-fullscreen .mr-call-actions>*{display:none!important}
-        .mr-native-call.mr-call-fullscreen #mrVideoMic,
-        .mr-native-call.mr-call-fullscreen #mrVideoCam,
-        .mr-native-call.mr-call-fullscreen #mrVideoSound,
-        .mr-native-call.mr-call-fullscreen #mrVideoFullscreen,
-        .mr-native-call.mr-call-fullscreen #mrVideoEnd{display:inline-flex!important}
-        .mr-native-call.mr-call-fullscreen .mr-call-actions .btn{min-width:48px!important;min-height:48px!important;border-radius:14px!important}
+        body>.mr-native-call.mr-call-fullscreen .mr-call-actions>*{display:none!important}
+        body>.mr-native-call.mr-call-fullscreen #mrVideoMic,
+        body>.mr-native-call.mr-call-fullscreen #mrVideoCam,
+        body>.mr-native-call.mr-call-fullscreen #mrVideoSound,
+        body>.mr-native-call.mr-call-fullscreen #mrVideoFullscreen,
+        body>.mr-native-call.mr-call-fullscreen #mrVideoEnd{display:inline-flex!important}
+        body>.mr-native-call.mr-call-fullscreen .mr-call-actions .btn{min-width:48px!important;min-height:48px!important;border-radius:14px!important}
         @media(max-width:760px){
-          .mr-native-call.mr-call-fullscreen .mr-local-video{
+          body>.mr-native-call.mr-call-fullscreen .mr-local-video{
             width:28vw!important;height:37vw!important;max-width:126px!important;max-height:168px!important
           }
-          .mr-native-call.mr-call-fullscreen .mr-call-person{bottom:82px!important}
-          .mr-native-call.mr-call-fullscreen .mr-call-actions{gap:6px!important;padding:7px!important}
-          .mr-native-call.mr-call-fullscreen .mr-call-actions .btn{min-width:44px!important;min-height:44px!important;padding:7px!important}
+          body>.mr-native-call.mr-call-fullscreen .mr-call-person{bottom:82px!important}
+          body>.mr-native-call.mr-call-fullscreen .mr-call-actions{gap:6px!important;padding:7px!important}
+          body>.mr-native-call.mr-call-fullscreen .mr-call-actions .btn{min-width:44px!important;min-height:44px!important;padding:7px!important}
         }
       `;
       document.head.appendChild(st);
@@ -2078,14 +2079,33 @@
 
     async openVideoFullscreen() {
       if(!this.panel||!this.joined)return;
-      this.callFullscreen=!this.callFullscreen;
-      document.documentElement.classList.toggle('mr-video-call-open',this.callFullscreen);
-      document.body.classList.toggle('mr-video-call-open',this.callFullscreen);
+      const opening=!this.callFullscreen;
+      this.callFullscreen=opening;
+      document.documentElement.classList.toggle('mr-video-call-open',opening);
+      document.body.classList.toggle('mr-video-call-open',opening);
       this.videoFloating=false;
       if(this.videoHeroMount)this.videoHeroMount.style.minHeight='';
       this.clearFloatingInlinePosition?.();
+
+      /* On mobile Safari/Chromium a fixed element can still be clipped by a
+         transformed/overflow ancestor. Move the live call panel directly under
+         <body> while in app-style fullscreen, then put the same node back in
+         its lesson mount on exit. This also keeps the same MediaStream/video
+         elements alive instead of recreating the call. */
+      if(opening){
+        if(this.panel.parentNode!==document.body)document.body.appendChild(this.panel);
+      }else if(this.videoHeroMount&&this.panel.parentNode!==this.videoHeroMount){
+        this.videoHeroMount.appendChild(this.panel);
+      }
+
       this.paint();
-      requestAnimationFrame(()=>this.bindMedia());
+      requestAnimationFrame(()=>{
+        this.bindMedia();
+        if(opening){
+          window.scrollTo?.(0,window.scrollY);
+          this.panel?.focus?.({preventScroll:true});
+        }
+      });
     }
 
     toggleExpanded() {
@@ -2225,7 +2245,7 @@
         ? this.panel
         : (target.querySelector(':scope > #mrVideoPanel') || document.querySelector('#mrVideoPanel'));
 
-      if (host && host.parentNode !== target && !host.closest('.board-card:fullscreen')) {
+      if (host && host.parentNode !== target && !host.closest('.board-card:fullscreen') && !this.callFullscreen) {
         target.appendChild(host);
       }
 
