@@ -512,11 +512,18 @@
       svg.appendChild(svgEl('rect',{x:camera.x-3000,y:camera.y-3000,width:12000,height:12000,fill:'url(#mrgrid320)'}));
     }
     const g=svgEl('g',{transform:`scale(${camera.zoom}) translate(${-camera.x} ${-camera.y})`});svg.appendChild(g);
+    const vr=svg.getBoundingClientRect?.()||{width:0,height:0};
+    const useCulling=(elements?.length||0)>350&&vr.width>0&&vr.height>0;
+    const viewPad=180/Math.max(.25,camera.zoom),viewRect=useCulling?{x0:camera.x-viewPad,y0:camera.y-viewPad,x1:camera.x+vr.width/camera.zoom+viewPad,y1:camera.y+vr.height/camera.zoom+viewPad}:null;
     for(const o of elements||[]){
       try{
       if(!o||typeof o!=='object'||typeof o.type!=='string')continue;
       if(o.type==='board-bg') continue;
       if(o.teacherOnly && !viewerIsTeacher) continue;
+      if(useCulling&&!selectedSet.has(o.id)){
+        const ob=bounds(o);
+        if(ob.x+ob.w<viewRect.x0||ob.y+ob.h<viewRect.y0||ob.x>viewRect.x1||ob.y>viewRect.y1)continue;
+      }
       let n=null;
       if(o.type==='path') n=pressurePathGroup(o)||svgEl('path',{d:smoothPathD(o.points||[]),fill:'none',stroke:o.color||'#15171a','stroke-width':o.width||3,'stroke-linecap':'round','stroke-linejoin':'round','shape-rendering':'geometricPrecision',opacity:o.opacity==null?1:o.opacity});
       else if(o.type==='line') n=svgEl('line',{x1:o.x1,y1:o.y1,x2:o.x2,y2:o.y2,stroke:o.color||'#15171a','stroke-width':o.width||3,'stroke-linecap':'round'});
