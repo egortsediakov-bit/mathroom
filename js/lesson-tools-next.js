@@ -599,6 +599,31 @@
         this.bindMedia();
         return;
       }
+      if (kind === 'lesson-ended') {
+        this.remoteReady = false;
+        this.remoteScreenSharing = false;
+        this.joined = false;
+        this.callFullscreen = false;
+        document.documentElement.classList.remove('mr-video-call-open');
+        document.body.classList.remove('mr-video-call-open');
+        clearInterval(this.readyTimer); this.readyTimer = null;
+        clearTimeout(this.pollTimer); this.pollTimer = null;
+        clearTimeout(this.connectTimer);
+        clearTimeout(this.disconnectTimer);
+        this.closePeer(false);
+        try { this.screenTrack?.stop?.(); } catch {}
+        this.screenTrack = null;
+        this.screenPreviewStream = null;
+        try { this.localStream?.getTracks?.().forEach(t => t.stop()); } catch {}
+        this.localStream = null;
+        this.stopVirtualBackground();
+        this.status = 'Урок завершён преподавателем';
+        this.connectionQuality = '';
+        if (this.role === 'student') S.studentLive = null;
+        this.paint();
+        window.dispatchEvent(new CustomEvent('mathroom:lesson-ended',{detail:{lessonId:this.lessonId}}));
+        return;
+      }
       if (kind === 'hangup') {
         this.remoteReady = false;
         this.remoteScreenSharing = false;
@@ -5672,6 +5697,9 @@
     if (e.target.closest?.('#finishConfirm')) {
       const ctx = ctxNow();
       if (ctx?.role === 'teacher') {
+        const endingCall=call;
+        endingCall?.send('lesson-ended',{lessonId:ctx.lessonId,endedAt:new Date().toISOString()},'student').catch(()=>{});
+        setTimeout(()=>endingCall?.end?.().catch?.(()=>{}),180);
         appendLessonEvents(ctx, [{ kind: 'lesson_completed', title: ctx.lesson?.topics?.title || 'Урок', details: { completed_at: new Date().toISOString() } }]).catch(() => {});
         const currentAttendance=ctx.lesson?.attendance_status || 'unmarked';
         if(currentAttendance==='unmarked'){
