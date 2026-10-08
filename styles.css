@@ -2585,3 +2585,211 @@ body{background:linear-gradient(180deg,#fbfbfa 0%,#f5f4f1 100%)!important;color:
     grid-template-columns:repeat(4,minmax(0,1fr))!important;
   }
 }
+
+
+/* Mathroom v32.3 — hard phone-only compact tool menus */
+[data-phone-student-board="1"] .board-toolbar-side .board-tool-popover{
+  position:fixed!important;
+  left:auto!important;
+  right:10px!important;
+  top:auto!important;
+  bottom:calc(72px + env(safe-area-inset-bottom))!important;
+  transform:none!important;
+  min-width:0!important;
+  width:286px!important;
+  max-width:calc(100vw - 20px)!important;
+  max-height:300px!important;
+  padding:8px!important;
+  border-radius:14px!important;
+  overflow:auto!important;
+  box-sizing:border-box!important;
+  z-index:7600!important;
+}
+[data-phone-student-board="1"] .board-toolbar-side .board-tool-group:nth-last-child(-n+2) .board-tool-popover{
+  top:auto!important;
+  bottom:calc(72px + env(safe-area-inset-bottom))!important;
+}
+[data-phone-student-board="1"] .board-tool-popover .board-popover-head{
+  padding:0 0 5px!important;
+  margin:0 0 6px!important;
+  min-height:0!important;
+}
+[data-phone-student-board="1"] .board-tool-popover .board-popover-title{
+  font-size:13px!important;
+  line-height:1.1!important;
+  padding:0!important;
+  margin:0!important;
+}
+[data-phone-student-board="1"] .board-tool-popover .board-popover-subtitle{
+  display:none!important;
+}
+
+/* Writing */
+[data-phone-student-board="1"] .board-writing-grid{
+  display:grid!important;
+  grid-template-columns:repeat(3,minmax(0,1fr))!important;
+  gap:5px!important;
+  width:100%!important;
+}
+[data-phone-student-board="1"] .board-writing-grid .btn{
+  width:100%!important;
+  min-width:0!important;
+  height:36px!important;
+  min-height:36px!important;
+  max-height:36px!important;
+  padding:4px 5px!important;
+  border-radius:9px!important;
+  gap:4px!important;
+  font-size:9.5px!important;
+  justify-content:center!important;
+}
+[data-phone-student-board="1"] .board-writing-grid .btn span{
+  font-size:9.5px!important;
+  white-space:nowrap!important;
+}
+[data-phone-student-board="1"] .board-writing-grid .mr-ui-icon{
+  width:15px!important;height:15px!important;flex:0 0 15px!important;
+}
+[data-phone-student-board="1"] .board-style-row{
+  display:grid!important;
+  grid-template-columns:1fr!important;
+  gap:5px!important;
+  padding-top:6px!important;
+  margin-top:6px!important;
+}
+[data-phone-student-board="1"] .board-color-row{
+  display:flex!important;
+  justify-content:space-between!important;
+  align-items:center!important;
+  gap:4px!important;
+  flex-wrap:nowrap!important;
+  width:100%!important;
+}
+[data-phone-student-board="1"] .board-color-row .color-dot{
+  width:24px!important;height:24px!important;
+  min-width:24px!important;min-height:24px!important;
+  max-width:24px!important;max-height:24px!important;
+}
+[data-phone-student-board="1"] .board-width-select{
+  width:100%!important;
+  min-width:0!important;
+  height:32px!important;
+  min-height:32px!important;
+  padding:3px 7px!important;
+  font-size:10px!important;
+}
+
+/* Shapes */
+[data-phone-student-board="1"] .board-shapes-popover{
+  width:318px!important;
+  max-width:calc(100vw - 20px)!important;
+  max-height:330px!important;
+}
+[data-phone-student-board="1"] .board-shapes-popover .board-palette-section{
+  padding:0 0 5px!important;
+  margin:0 0 5px!important;
+}
+[data-phone-student-board="1"] .board-shapes-popover .board-palette-section>b{
+  display:block!important;
+  font-size:9.5px!important;
+  margin:0 0 4px!important;
+}
+[data-phone-student-board="1"] .board-shapes-popover .board-palette-grid{
+  display:grid!important;
+  grid-template-columns:repeat(3,minmax(0,1fr))!important;
+  gap:4px!important;
+}
+[data-phone-student-board="1"] .board-shapes-popover .board-shape-icon,
+[data-phone-student-board="1"] .board-shapes-popover [data-shape-template],
+[data-phone-student-board="1"] .board-shapes-popover [data-solid-template]{
+  width:100%!important;
+  min-width:0!important;
+  height:46px!important;
+  min-height:46px!important;
+  max-height:46px!important;
+  padding:3px!important;
+  border-radius:8px!important;
+  gap:1px!important;
+}
+[data-phone-student-board="1"] .board-shapes-popover .board-shape-svg,
+[data-phone-student-board="1"] .board-shapes-popover .board-shape-icon>svg{
+  width:25px!important;
+  height:23px!important;
+  max-height:23px!important;
+}
+[data-phone-student-board="1"] .board-shapes-popover .board-shape-label{
+  font-size:7.2px!important;
+  line-height:1!important;
+  max-height:15px!important;
+  overflow:hidden!important;
+}
+[data-phone-student-board="1"] .board-shapes-popover .board-mobile-extra{
+  margin-top:5px!important;
+  padding-top:5px!important;
+}
+[data-phone-student-board="1"] .board-shapes-popover .board-mobile-extra .board-action-grid{
+  display:grid!important;
+  grid-template-columns:repeat(2,minmax(0,1fr))!important;
+  gap:4px!important;
+}
+[data-phone-student-board="1"] .board-shapes-popover .board-mobile-extra .btn{
+  height:34px!important;
+  min-height:34px!important;
+  max-height:34px!important;
+  padding:4px 6px!important;
+  font-size:9px!important;
+}
+[data-phone-student-board="1"] .board-shapes-popover .board-tool-help{
+  font-size:8px!important;
+  line-height:1.2!important;
+  margin:4px 0 0!important;
+  padding:5px 6px!important;
+}
+
+/* More */
+[data-phone-student-board="1"] .board-more-popover{
+  width:244px!important;
+  max-width:calc(100vw - 20px)!important;
+  max-height:190px!important;
+}
+[data-phone-student-board="1"] .board-more-grid{
+  display:grid!important;
+  grid-template-columns:repeat(2,minmax(0,1fr))!important;
+  gap:5px!important;
+}
+[data-phone-student-board="1"] .board-more-grid .btn{
+  width:100%!important;
+  min-width:0!important;
+  height:36px!important;
+  min-height:36px!important;
+  max-height:36px!important;
+  padding:4px 6px!important;
+  border-radius:9px!important;
+  gap:5px!important;
+  font-size:9.5px!important;
+}
+[data-phone-student-board="1"] .board-more-grid .btn span{
+  font-size:9.5px!important;
+  white-space:nowrap!important;
+  overflow:hidden!important;
+  text-overflow:ellipsis!important;
+}
+[data-phone-student-board="1"] .board-more-grid .mr-ui-icon{
+  width:15px!important;height:15px!important;flex:0 0 15px!important;
+}
+
+/* Landscape phone: still anchor inside visible viewport. */
+@media (orientation:landscape) and (max-height:600px){
+  [data-phone-student-board="1"] .board-toolbar-side .board-tool-popover{
+    right:10px!important;
+    bottom:68px!important;
+    max-height:calc(100dvh - 82px)!important;
+  }
+  [data-phone-student-board="1"] .board-shapes-popover{
+    width:360px!important;
+    max-width:calc(100vw - 20px)!important;
+  }
+  [data-phone-student-board="1"] .board-shapes-popover .board-palette-grid{
+    grid-template-columns:repeat(4,minmax(0,1fr))!important;
+  }
+}
