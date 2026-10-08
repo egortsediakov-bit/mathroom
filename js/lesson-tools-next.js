@@ -133,7 +133,18 @@
         else this.send('need-offer', { joined: true }, 'teacher').catch(() => {});
       };
       window.addEventListener('online', this.onOnline);
-      this.onVideoResize=()=>{if(this.videoFloating&&this.floatingPosition)this.applyFloatingPosition()};
+      this.onVideoResize=()=>{
+        const phone=window.matchMedia?.('(max-width: 760px)')?.matches;
+        if(phone&&this.videoFloating){
+          this.videoFloating=false;
+          this.floatingPosition=null;
+          if(this.videoHeroMount)this.videoHeroMount.style.minHeight='';
+          this.clearFloatingInlinePosition?.();
+          this.paint();
+          return;
+        }
+        if(this.videoFloating&&this.floatingPosition)this.applyFloatingPosition();
+      };
       window.addEventListener('resize',this.onVideoResize);
 
       this.onBoardVideoRestored=()=>this.recoverAfterBoardFullscreen();
@@ -281,7 +292,70 @@
           .mr-native-call.floating.view-both{width:clamp(215px,24vw,300px)!important}
           .mr-native-call.floating.role-teacher{right:250px!important}
         }
-        @media(max-width:760px){.mr-native-prejoin-backdrop{align-items:flex-start;padding:8px}.mr-native-prejoin{width:96vw;max-width:96vw;max-height:94vh;padding:11px;border-radius:16px;gap:8px;margin:auto}.mr-native-prejoin h2{font-size:23px}.mr-native-prejoin-grid{grid-template-columns:1fr;gap:8px}.mr-native-preview{max-height:34vh;aspect-ratio:16/9}.mr-native-prejoin-side{grid-template-columns:1fr 1fr;gap:6px}.mr-native-prejoin-side .mr-prejoin-wide{grid-column:1/-1}.mr-native-prejoin-side .btn{min-height:38px;font-size:12px}.mr-media-device-fields{gap:6px}.mr-media-device-field{gap:2px}.mr-media-device-field select{min-height:36px;padding:6px 8px}.mr-native-prejoin-side .notice{display:none}.mr-native-prejoin-footer{display:grid;grid-template-columns:1fr 1.2fr;width:100%;padding-top:7px}.mr-native-prejoin-footer .btn{width:100%;min-height:44px}.mr-native-prejoin-footer #mrPrejoinJoin{min-width:0}.mr-native-call.joined{position:relative;right:auto;bottom:auto;width:100%;max-width:none;box-shadow:none}.mr-native-call.joined.expanded{position:fixed;inset:8px;width:auto;max-width:none;max-height:none;z-index:3200;overflow:auto}.mr-native-call.joined.expanded .mr-call-stage{min-height:50vh}.mr-native-call.joined .mr-call-head{cursor:default}.mr-native-call .mr-call-stage{min-height:210px}.mr-native-call .mr-local-video{width:88px;height:62px}.mr-native-call.joined.expanded .mr-local-video{width:120px;height:80px}}
+        @media(max-width:760px){
+          .mr-native-prejoin-backdrop{align-items:flex-start;padding:8px}
+          .mr-native-prejoin{width:96vw;max-width:96vw;max-height:94vh;padding:11px;border-radius:16px;gap:8px;margin:auto}
+          .mr-native-prejoin h2{font-size:23px}
+          .mr-native-prejoin-grid{grid-template-columns:1fr;gap:8px}
+          .mr-native-preview{max-height:34vh;aspect-ratio:16/9}
+          .mr-native-prejoin-side{grid-template-columns:1fr 1fr;gap:6px}
+          .mr-native-prejoin-side .mr-prejoin-wide{grid-column:1/-1}
+          .mr-native-prejoin-side .btn{min-height:38px;font-size:12px}
+          .mr-media-device-fields{gap:6px}
+          .mr-media-device-field{gap:2px}
+          .mr-media-device-field select{min-height:36px;padding:6px 8px}
+          .mr-native-prejoin-side .notice{display:none}
+          .mr-native-prejoin-footer{display:grid;grid-template-columns:1fr 1.2fr;width:100%;padding-top:7px}
+          .mr-native-prejoin-footer .btn{width:100%;min-height:44px}
+          .mr-native-prejoin-footer #mrPrejoinJoin{min-width:0}
+
+          /* Phone layout: video always stays in the document flow. */
+          .mr-video-hero-mount{min-height:0!important;margin-bottom:10px!important}
+          .mr-video-hero-mount>.mr-native-call.joined,
+          .mr-native-call.joined,
+          .mr-native-call.joined.floating{
+            position:relative!important;
+            inset:auto!important;
+            left:auto!important;right:auto!important;top:auto!important;bottom:auto!important;
+            width:100%!important;max-width:100%!important;height:auto!important;max-height:none!important;
+            padding:8px!important;border-radius:14px!important;box-shadow:0 8px 24px rgba(20,24,32,.07)!important;
+            transform:none!important
+          }
+          .mr-native-call.joined .mr-call-head{cursor:default}
+          .mr-native-call.joined .mr-call-stage,
+          .mr-native-call.joined.floating .mr-call-stage{
+            position:relative!important;
+            display:block!important;
+            width:100%!important;
+            height:clamp(170px,46vw,230px)!important;
+            min-height:0!important;
+            max-height:32vh!important;
+            aspect-ratio:auto!important;
+            border-radius:10px!important;
+            padding:0!important
+          }
+          .mr-native-call.joined .mr-remote-video,
+          .mr-native-call.joined.floating .mr-remote-video{
+            position:absolute!important;inset:0!important;
+            width:100%!important;height:100%!important;
+            object-fit:contain!important
+          }
+          .mr-native-call .mr-local-video,
+          .mr-native-call.floating .mr-local-video{
+            display:block!important;
+            position:absolute!important;
+            right:7px!important;top:7px!important;
+            width:clamp(72px,21vw,96px)!important;
+            height:clamp(50px,14vw,68px)!important;
+            border-radius:8px!important
+          }
+          .mr-native-call.floating .mr-floating-view-switch{display:none!important}
+          .mr-native-call.joined .mr-call-actions{gap:5px}
+          .mr-native-call.joined .mr-call-actions .btn{min-height:34px;padding:5px 8px;font-size:10.5px}
+          .mr-native-call.joined.expanded{position:fixed!important;inset:8px!important;width:auto!important;max-width:none!important;z-index:3200!important;overflow:auto!important}
+          .mr-native-call.joined.expanded .mr-call-stage{height:auto!important;min-height:50vh!important;max-height:none!important}
+          .mr-native-call.joined.expanded .mr-local-video{width:120px!important;height:80px!important}
+        }
         @media(max-height:760px) and (min-width:761px){.mr-native-prejoin{width:min(78vw,940px);max-height:94vh;padding:11px;gap:8px}.mr-native-prejoin h2{font-size:24px}.mr-native-prejoin-grid{grid-template-columns:minmax(0,1.45fr) minmax(220px,.8fr);gap:10px}.mr-native-preview{max-height:48vh}.mr-native-prejoin-side{gap:5px}.mr-native-prejoin-side .btn{min-height:36px}.mr-media-device-fields{gap:5px}.mr-media-device-field{gap:2px}.mr-media-device-field select{min-height:34px;padding:5px 8px}.mr-native-prejoin-side .notice{display:none}.mr-native-prejoin-footer{padding-top:6px}.mr-native-prejoin-footer .btn{min-height:38px}}
       `;
       document.head.appendChild(st);
@@ -1865,6 +1939,17 @@
 
     attachVideoScroll() {
       if (this.onVideoScroll || !this.videoHeroMount) return;
+
+      // Phones keep the lesson video permanently in its normal page position.
+      // Tablets and desktops retain the floating mini-player.
+      if(window.matchMedia?.('(max-width: 760px)')?.matches){
+        this.videoFloating=false;
+        this.floatingPosition=null;
+        this.videoHeroMount.style.minHeight='';
+        this.clearFloatingInlinePosition?.();
+        this.paint();
+        return;
+      }
 
       // Hero-first behaviour:
       // 1) immediately after joining, the large in-page video remains visible;
