@@ -711,6 +711,7 @@
     let pendingOps=[],dbPendingOps=[],deleteJournal=new Map(),remoteLiveStrokes=new Map(),strokeSentIndex=0,lastStrokeSent=0,seenOps=new Set();
     let boardNetworkOnline=navigator.onLine!==false,saveInFlight=false,lastServerSaveAt=0;
     let penActiveUntil=0,touchPointers=new Map(),touchGesture=null;
+    let handTapCandidate=null,lastHandTap=null;
     try{const q=JSON.parse(localStorage.getItem(collabQueueKey)||'[]');if(Array.isArray(q))pendingOps=q.slice(-800)}catch{}
     const persistPendingOps=()=>{try{if(pendingOps.length)localStorage.setItem(collabQueueKey,JSON.stringify(pendingOps.slice(-800)));else localStorage.removeItem(collabQueueKey)}catch{}};
     const localOwns=o=>!!o&&o._ownerRole===actorRole&&String(o._ownerId||'')===actorId;
@@ -1445,6 +1446,11 @@
       if(e.pointerType==='touch'&&!touchDrawTool){
         e.preventDefault();
         svg.setPointerCapture(e.pointerId);
+        if(compactStudentBoardUI&&tool==='hand'&&touchPointers.size===0){
+          handTapCandidate={id:e.pointerId,x:e.clientX,y:e.clientY,at:Date.now()};
+        }else if(touchPointers.size>0){
+          handTapCandidate=null;
+        }
         touchPointers.set(e.pointerId,{x:e.clientX,y:e.clientY});
         if(Date.now()<penActiveUntil)return;
         const pts=[...touchPointers.values()];
@@ -1537,6 +1543,9 @@
       if(e.pointerType==='pen')penActiveUntil=Date.now()+1200;
       if(e.pointerType==='touch'&&touchPointers.has(e.pointerId)){
         e.preventDefault();
+        if(handTapCandidate?.id===e.pointerId&&Math.hypot(e.clientX-handTapCandidate.x,e.clientY-handTapCandidate.y)>12){
+          handTapCandidate=null;
+        }
         touchPointers.set(e.pointerId,{x:e.clientX,y:e.clientY});
         if(Date.now()<penActiveUntil)return;
         const pts=[...touchPointers.values()];
@@ -1598,10 +1607,38 @@
       if(e?.pointerType==='touch'){
         const wasTouchGesture=touchPointers.has(e.pointerId);
         if(wasTouchGesture){
+          const tap=handTapCandidate?.id===e.pointerId?handTapCandidate:null;
           touchPointers.delete(e.pointerId);
           const pts=[...touchPointers.values()];
           if(!pts.length)touchGesture=null;
           else if(pts.length===1){const p=pts[0];touchGesture={mode:'pan',startX:p.x,startY:p.y,camera:{...camera}}}
+
+          if(tap&&compactStudentBoardUI&&tool==='hand'){
+            const now=Date.now();
+            const isDouble=!!lastHandTap&&(now-lastHandTap.at)<=420&&Math.hypot(e.clientX-lastHandTap.x,e.clientY-lastHandTap.y)<=34;
+            if(isDouble){
+              let [hx,hy]=screenToWorld(e.clientX,e.clientY);
+              const o=hit(hx,hy);
+              const isShape=!!o&&['solid3d','polygon','rect','ellipse'].includes(o.type);
+              if(isShape){
+                if(!canTransformObject(o))toast(o.locked?'Фигура закреплена преподавателем':'Редактирование фигуры ограничено');
+                else{
+                  selectOnly(o.id);
+                  render();
+                  if(o.type==='solid3d'){
+                    setTool('solid-rotate');
+                    toast('3D-фигура выбрана · веди пальцем по ней, чтобы вращать');
+                  }else{
+                    toast('Фигура выбрана');
+                  }
+                }
+              }
+              lastHandTap=null;
+            }else{
+              lastHandTap={x:e.clientX,y:e.clientY,at:now};
+            }
+          }
+          handTapCandidate=null;
           return;
         }
         /* Touch used as pen/pencil/marker/eraser must continue through the
@@ -1622,8 +1659,20 @@
       if(tool==='marker'&&drawing?.type==='marker-temp'){const mark={...drawing,expires:Date.now()+5000};drawing=null;broadcastTransient('marker',{mark});setTimeout(render,5100)}
       if(tool==='focus'&&focusDraft){focusDraft=null;if(focusRect?.w<5||focusRect?.h<5)focusRect=null;broadcastTransient('focus',{rect:focusRect});render()}
       const hadTransform=!!(moveStart||resizeStart||rotationStart||solidRotateStart);
+      const committedTransform=hadTransform&&transformDirty;
       if(hadTransform&&!transformDirty){const last=undoStack[undoStack.length-1];if(last?.type==='elements'&&last.pageId===current.id&&JSON.stringify(last.elements)===JSON.stringify(elements))undoStack.pop();syncHistoryButtons()}
-      if(drawing&&drawing.type!=='marker-temp'||hadTransform){if(drawing?.type==='path')sendStrokeChunk(drawing,true);drawing=null;moveStart=null;resizeStart=null;rotationStart=null;solidRotateStart=null;if(!hadTransform||transformDirty)changed();else render()}
+      if(drawing&&drawing.type!=='marker-temp'||hadTransform){
+        if(drawing?.type==='path')sendStrokeChunk(drawing,true);
+        drawing=null;moveStart=null;resizeStart=null;rotationStart=null;solidRotateStart=null;
+        if(!hadTransform||transformDirty)changed();else render();
+        /* Final transform snapshot is authoritative. Live drag ops can be
+           throttled/reordered on mobile networks; this guarantees that the
+           peer receives the final coordinates/size/rotation. */
+        if(committedTransform){
+          broadcastState(true);
+          setTimeout(()=>broadcastState(true),120);
+        }
+      }
       transformDirty=false;if(panStart&&tool==='hand')svg.style.cursor='grab';panStart=null;
     };
     svg.onpointerup=finishPointer;
@@ -1771,6 +1820,29 @@
       bind('#delPage','click',async()=>{if(pages.length<=1)return toast('Нельзя удалить единственный лист');if(!confirm('Удалить этот лист? Ctrl+Z сможет вернуть его.'))return;writeCheckpointSnapshot('Перед удалением листа');await save();const deleted=clone(current);undoStack.push({type:'deletePage',page:deleted});redoStack.length=0;try{await deletePageRecord(current.id)}catch(e){return fail(e)}pages=pages.filter(p=>p.id!==deleted.id);current=pages[0];elements=clone(current.elements||[]).map(normalizeElement).filter(Boolean);collabBaseline=clone(elements);renderTabs();render();joinChannel();pagesChanged()});
       bind('#clearBoard','click',()=>{if(!elements.length||!confirm('Очистить текущий лист?'))return;writeCheckpointSnapshot('Перед очисткой листа');pushElementsHistory();elements=[];clearSelection();changed()});
     }else{
+      const studentScaleSolid=f=>{
+        const idx=elements.findIndex(z=>z.id===selected&&z.type==='solid3d');
+        if(idx<0)return toast('Сначала выберите 3D фигуру двойным нажатием');
+        const o=elements[idx];if(!canTransformObject(o))return toast(o.locked?'Фигура закреплена преподавателем':'Редактирование ограничено');
+        pushElementsHistory();const copy=clone(o),cx=copy.x+(copy.w||440)/2,cy=copy.y+(copy.h||340)/2,nw=clamp((copy.w||440)*f,160,1600),nh=clamp((copy.h||340)*f,130,1200);
+        copy.x=cx-nw/2;copy.y=cy-nh/2;copy.w=nw;copy.h=nh;elements[idx]=copy;changed();broadcastState(true);
+      };
+      const studentResetSolid=()=>{
+        const idx=elements.findIndex(z=>z.id===selected&&z.type==='solid3d');
+        if(idx<0)return toast('Сначала выберите 3D фигуру двойным нажатием');
+        const o=elements[idx];if(!canTransformObject(o))return toast(o.locked?'Фигура закреплена преподавателем':'Редактирование ограничено');
+        pushElementsHistory();elements[idx]={...o,rotX:-.42,rotY:.62,rotZ:0};changed();broadcastState(true);
+      };
+      root.querySelectorAll('[data-solid-hud]').forEach(b=>{
+        const a=b.dataset.solidHud;
+        if(compactStudentBoardUI&&['point','plane','clear'].includes(a)){b.style.display='none';return}
+        b.onclick=()=>{
+          if(a==='rotate')setTool('solid-rotate');
+          else if(a==='smaller')studentScaleSolid(.9);
+          else if(a==='larger')studentScaleSolid(1.12);
+          else if(a==='reset')studentResetSolid();
+        };
+      });
       const pTool=root.querySelector('#protractorTool');
       if(pTool)pTool.onclick=()=>{pushElementsHistory();const obj={id:uid(),type:'protractor',x:camera.x+360/camera.zoom,y:camera.y+300/camera.zoom,r:180,color};elements.push(obj);changed();toast('Транспортир добавлен')};
       const insertStudentShape=v=>{
