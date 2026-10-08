@@ -876,6 +876,7 @@ async function openStudentAssignment(kind,id){
 window.addEventListener('mathroom:lesson-ended',async()=>{
   if(!S.access||!S.student)return;
   S.studentLive=null;
+  S.studentTab='today';
   try{await renderStudent()}catch(err){console.warn('[Mathroom lesson end render]',err)}
 });
 window.addEventListener('mathroom:refresh-lesson',()=>{if(S.view==='lesson'&&S.activeLesson)renderLesson()});
