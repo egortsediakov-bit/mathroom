@@ -1579,7 +1579,18 @@
 
     const ctl=s=>root.querySelector(s),bind=(s,ev,fn)=>{const el=ctl(s);if(!el){console.warn('[Mathroom board] control missing',s);return null}el.addEventListener(ev,fn);return el};
     root.querySelectorAll('[data-tool]').forEach(b=>b.addEventListener('click',()=>{setTool(b.dataset.tool);b.closest('.board-tool-group')?.removeAttribute('open')}));
-    const positionPopover=d=>{const pop=d.querySelector('.board-tool-popover'),summary=d.querySelector('summary');if(!pop||!summary)return;requestAnimationFrame(()=>{const r=summary.getBoundingClientRect(),vw=window.innerWidth,vh=window.innerHeight,left=Math.max(8,Math.min(vw-260,r.right+10)),available=Math.max(220,vh-24),desired=Math.min(pop.scrollHeight||460,available),top=Math.max(12,Math.min(r.top,vh-desired-12));pop.style.setProperty('--mr-pop-left',`${left}px`);pop.style.setProperty('--mr-pop-top',`${top}px`);pop.style.setProperty('--mr-pop-maxh',`${Math.max(220,vh-top-12)}px`)})};
+    const positionPopover=d=>{
+      const pop=d.querySelector('.board-tool-popover'),summary=d.querySelector('summary');if(!pop||!summary)return;
+      /* The dedicated mobile lesson layout positions tool sheets from CSS
+         against the viewport. Desktop rail math must not override it. */
+      if(root.closest('.student-lesson-mode')){
+        pop.style.removeProperty('--mr-pop-left');
+        pop.style.removeProperty('--mr-pop-top');
+        pop.style.removeProperty('--mr-pop-maxh');
+        return;
+      }
+      requestAnimationFrame(()=>{const r=summary.getBoundingClientRect(),vw=window.innerWidth,vh=window.innerHeight,left=Math.max(8,Math.min(vw-260,r.right+10)),available=Math.max(220,vh-24),desired=Math.min(pop.scrollHeight||460,available),top=Math.max(12,Math.min(r.top,vh-desired-12));pop.style.setProperty('--mr-pop-left',`${left}px`);pop.style.setProperty('--mr-pop-top',`${top}px`);pop.style.setProperty('--mr-pop-maxh',`${Math.max(220,vh-top-12)}px`)});
+    };
     root.querySelectorAll('.board-tool-group').forEach(d=>{
       d.addEventListener('toggle',()=>{if(!d.open)return;root.querySelectorAll('.board-tool-group').forEach(x=>{if(x!==d)x.removeAttribute('open')});positionPopover(d)});
       const pop=d.querySelector('.board-tool-popover');
