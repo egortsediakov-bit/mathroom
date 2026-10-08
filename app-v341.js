@@ -748,7 +748,16 @@ async function renderStudent(){
 
   // Dedicated lesson workspace is only for phones and tablets.
   // Desktop keeps the original student cabinet / lesson layout.
-  const compactLessonUI=window.matchMedia?.('(max-width: 1100px)')?.matches ?? (window.innerWidth<=1100);
+  const ua=String(navigator.userAgent||'');
+  const coarse=window.matchMedia?.('(pointer: coarse)')?.matches||false;
+  const touch=Number(navigator.maxTouchPoints||0)>0;
+  const sw=Math.max(Number(screen?.width||0),Number(screen?.height||0));
+  const sh=Math.min(Number(screen?.width||0),Number(screen?.height||0));
+  const mobileUA=/iPhone|iPad|iPod|Android|Mobile|Tablet/i.test(ua);
+  const iPadOS=/Macintosh/i.test(ua)&&touch;
+  /* Use physical device characteristics, not current viewport width.
+     Rotating a phone must never turn the live lesson into desktop mode. */
+  const compactLessonUI=(mobileUA||iPadOS||((coarse||touch)&&sw<=1366&&sh<=1024));
   if(active&&live&&compactLessonUI){
     S.studentTab='board';
     app.innerHTML=`<div class="student-home student-lesson-mode"><div id="studentLessonTaskMount">${studentLessonTaskCard(live)}</div><div id="studentLessonBoard"></div></div>`;
