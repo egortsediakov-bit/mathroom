@@ -2184,3 +2184,198 @@ input[type="file"]{font-size:11px!important}
 .board-card:fullscreen > .mr-native-call.mr-board-fullscreen-video.view-hidden .mr-call-actions{
   display:none!important;
 }
+
+
+/* ===== Video behavior repair: joined state must use the native floating player ===== */
+
+/* The compact connection-card treatment is PREJOIN ONLY.
+   If the helper class survives for a moment after joining, do not let it override video behavior. */
+.mr-native-call.joined.mr-micro-connection-card{
+  overflow:visible!important;
+}
+.mr-native-call.joined.mr-micro-connection-card.floating{
+  padding:6px!important;
+  border-radius:14px!important;
+}
+.mr-native-call.joined.mr-micro-connection-card.floating .mr-call-head,
+.mr-native-call.joined.mr-micro-connection-card.floating .mr-call-note,
+.mr-native-call.joined.mr-micro-connection-card.floating .mr-call-quality,
+.mr-native-call.joined.mr-micro-connection-card.floating .mr-call-actions{
+  display:none!important;
+}
+.mr-native-call.joined.mr-micro-connection-card.floating .mr-call-stage{
+  display:block!important;
+  width:100%!important;
+  min-height:0!important;
+  aspect-ratio:16/9!important;
+  padding:0!important;
+}
+.mr-native-call.joined.mr-micro-connection-card.floating:hover .mr-floating-view-switch,
+.mr-native-call.joined.mr-micro-connection-card.floating:focus-within .mr-floating-view-switch{
+  display:flex!important;
+}
+.mr-native-call.joined.mr-micro-connection-card.floating.view-hidden .mr-call-stage,
+.mr-native-call.joined.mr-micro-connection-card.floating.view-hidden .mr-floating-view-switch{
+  display:none!important;
+}
+.mr-native-call.joined.mr-micro-connection-card.floating.view-hidden .mr-call-actions{
+  display:flex!important;
+  align-items:center!important;
+  flex-wrap:nowrap!important;
+  gap:5px!important;
+  padding:0!important;
+}
+.mr-native-call.joined.mr-micro-connection-card.floating.view-hidden .mr-call-actions>*{
+  display:none!important;
+}
+.mr-native-call.joined.mr-micro-connection-card.floating.view-hidden #mrVideoMic,
+.mr-native-call.joined.mr-micro-connection-card.floating.view-hidden #mrVideoCam,
+.mr-native-call.joined.mr-micro-connection-card.floating.view-hidden #mrVideoExpand{
+  display:inline-flex!important;
+}
+
+/* Fullscreen board: emulate the existing native floating player exactly.
+   Target the actual element ID so repainting view mode cannot remove the behavior. */
+.board-card:fullscreen > #mrVideoPanel{
+  position:fixed!important;
+  right:16px!important;
+  bottom:16px!important;
+  left:auto!important;
+  top:auto!important;
+  z-index:2147483000!important;
+  width:clamp(230px,20vw,340px)!important;
+  max-width:calc(100vw - 32px)!important;
+  height:auto!important;
+  max-height:none!important;
+  margin:0!important;
+  padding:6px!important;
+  border-radius:14px!important;
+  border:1px solid var(--pg-line)!important;
+  background:#fff!important;
+  box-shadow:0 16px 44px rgba(0,0,0,.24)!important;
+  overflow:visible!important;
+}
+.board-card:fullscreen > #mrVideoPanel .mr-call-head,
+.board-card:fullscreen > #mrVideoPanel .mr-call-note,
+.board-card:fullscreen > #mrVideoPanel .mr-call-quality{
+  display:none!important;
+}
+.board-card:fullscreen > #mrVideoPanel .mr-call-stage{
+  display:block!important;
+  width:100%!important;
+  height:auto!important;
+  min-height:0!important;
+  aspect-ratio:16/9!important;
+  border-radius:10px!important;
+  overflow:hidden!important;
+  background:#101214!important;
+  cursor:grab!important;
+  touch-action:none!important;
+  user-select:none!important;
+}
+.board-card:fullscreen > #mrVideoPanel.dragging .mr-call-stage{
+  cursor:grabbing!important;
+}
+.board-card:fullscreen > #mrVideoPanel .mr-remote-video{
+  position:absolute!important;
+  inset:0!important;
+  width:100%!important;
+  height:100%!important;
+  object-fit:contain!important;
+  object-position:50% 50%!important;
+  transform:none!important;
+  background:#101214!important;
+}
+.board-card:fullscreen > #mrVideoPanel .mr-local-video{
+  display:none!important;
+}
+.board-card:fullscreen > #mrVideoPanel .mr-call-person{
+  left:7px!important;
+  bottom:7px!important;
+  font-size:9.5px!important;
+  padding:3px 6px!important;
+}
+.board-card:fullscreen > #mrVideoPanel .mr-call-actions{
+  display:none!important;
+  padding:0!important;
+}
+.board-card:fullscreen > #mrVideoPanel:hover .mr-floating-view-switch,
+.board-card:fullscreen > #mrVideoPanel:focus-within .mr-floating-view-switch{
+  display:flex!important;
+}
+
+/* Both cameras */
+.board-card:fullscreen > #mrVideoPanel.view-both{
+  width:clamp(230px,20vw,340px)!important;
+}
+.board-card:fullscreen > #mrVideoPanel.view-both .mr-call-stage{
+  display:grid!important;
+  grid-template-rows:minmax(0,1fr) minmax(0,1fr)!important;
+  gap:4px!important;
+  padding:4px!important;
+  aspect-ratio:8/9!important;
+  max-height:calc(100vh - 40px)!important;
+}
+.board-card:fullscreen > #mrVideoPanel.view-both .mr-remote-video,
+.board-card:fullscreen > #mrVideoPanel.view-both .mr-local-video{
+  position:relative!important;
+  inset:auto!important;
+  display:block!important;
+  width:100%!important;
+  height:100%!important;
+  min-width:0!important;
+  min-height:0!important;
+  border:0!important;
+  border-radius:7px!important;
+  object-fit:contain!important;
+  object-position:50% 50%!important;
+  box-shadow:none!important;
+  background:#101214!important;
+}
+.board-card:fullscreen > #mrVideoPanel.view-both .mr-local-video{
+  transform:scaleX(-1)!important;
+}
+.board-card:fullscreen > #mrVideoPanel.view-both.sharing .mr-local-video{
+  transform:none!important;
+}
+.board-card:fullscreen > #mrVideoPanel.view-both .mr-call-person{
+  display:none!important;
+}
+
+/* Hidden video = same compact 3-button strip as the normal floating player.
+   Clicking "Видео" returns to remote view through the existing JS handler. */
+.board-card:fullscreen > #mrVideoPanel.view-hidden{
+  width:auto!important;
+  min-width:0!important;
+  padding:5px!important;
+}
+.board-card:fullscreen > #mrVideoPanel.view-hidden .mr-call-stage,
+.board-card:fullscreen > #mrVideoPanel.view-hidden .mr-floating-view-switch{
+  display:none!important;
+}
+.board-card:fullscreen > #mrVideoPanel.view-hidden .mr-call-actions{
+  display:flex!important;
+  align-items:center!important;
+  flex-wrap:nowrap!important;
+  gap:5px!important;
+  padding:0!important;
+}
+.board-card:fullscreen > #mrVideoPanel.view-hidden .mr-call-actions>*{
+  display:none!important;
+}
+.board-card:fullscreen > #mrVideoPanel.view-hidden #mrVideoMic,
+.board-card:fullscreen > #mrVideoPanel.view-hidden #mrVideoCam,
+.board-card:fullscreen > #mrVideoPanel.view-hidden #mrVideoExpand{
+  display:inline-flex!important;
+  min-height:32px!important;
+  padding:5px 8px!important;
+  font-size:10.5px!important;
+}
+
+@media(max-width:760px){
+  .board-card:fullscreen > #mrVideoPanel{
+    width:clamp(215px,42vw,300px)!important;
+    right:10px!important;
+    bottom:10px!important;
+  }
+}
