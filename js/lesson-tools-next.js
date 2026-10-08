@@ -2782,14 +2782,56 @@
     return `${String(m).padStart(2,'0')}:${String(r).padStart(2,'0')}`;
   }
 
+  function syncTaskTimerControls(host){
+    if(!host)return;
+    const running=host.dataset.taskTimerRunning==='1';
+    const selected=Math.max(60,Number(host.dataset.taskTimerSelected||300));
+    const toggle=host.querySelector('#mrTaskTimerToggle');
+    const custom=host.querySelector('#mrCustomTaskMinutes');
+    const note=host.querySelector('#mrTimerRunningNote');
+    host.querySelectorAll('[data-task-seconds]').forEach(b=>{
+      const sec=Number(b.dataset.taskSeconds||0);
+      b.disabled=running;
+      b.classList.toggle('primary',!running&&sec===selected);
+      b.setAttribute('aria-pressed',String(!running&&sec===selected));
+    });
+    if(custom)custom.disabled=running;
+    if(toggle){
+      toggle.textContent=running?'■ Остановить таймер':'▷ Запустить';
+      toggle.classList.toggle('danger',running);
+      toggle.classList.toggle('primary',!running);
+    }
+    if(note)note.hidden=!running;
+  }
+
   async function setStudentTaskTimer(ctx, seconds){
     const value=Math.max(0,Math.round(Number(seconds)||0));
+    const host=document.querySelector('#mrBoardCompanion');
+    if(value>0&&host?.dataset.taskTimerRunning==='1'){
+      toast('Сначала останови текущий таймер');
+      return;
+    }
+    const endAt=value>0?new Date(Date.now()+value*1000).toISOString():null;
     const patch=value>0
-      ? {task_timer_running:true,task_timer_duration_seconds:value,task_timer_end_at:new Date(Date.now()+value*1000).toISOString(),updated_at:new Date().toISOString()}
+      ? {task_timer_running:true,task_timer_duration_seconds:value,task_timer_end_at:endAt,updated_at:new Date().toISOString()}
       : {task_timer_running:false,task_timer_duration_seconds:0,task_timer_end_at:null,updated_at:new Date().toISOString()};
     const {error}=await sb.from('lesson_live_state').update(patch).eq('lesson_id',ctx.lessonId);
     if(error)throw error;
-    window.dispatchEvent(new Event('mathroom:refresh-lesson'));
+
+    /* Timer changes are deliberately patched in place. The old generic
+       mathroom:refresh-lesson event rebuilt the whole lesson DOM, which looked
+       like a page refresh and could disturb the board/video state. */
+    if(host){
+      host.dataset.taskTimerRunning=value>0?'1':'0';
+      host.dataset.taskTimerEnd=endAt||'';
+      if(value>0)host.dataset.taskTimerSelected=String(value);
+      const out=host.querySelector('#mrTaskCountdown');
+      if(out){
+        out.textContent=value>0?formatCountdown(value):'00:00';
+        out.classList.toggle('active',value>0);
+      }
+      syncTaskTimerControls(host);
+    }
   }
 
   async function refreshBoardCompanion(ctx, queue, live) {
@@ -2848,11 +2890,11 @@
         </section>
 
         <section class="mr-rail-panel" data-rail-panel="timer">
-          <div class="mr-rail-view-head"><button class="btn sm mr-rail-back" data-rail-back>←</button><div><b>Таймер ученику</b><div class="small muted">Обратный отсчёт виден ученику</div></div></div>
+          <div class="mr-rail-view-head"><button class="btn sm mr-rail-back" data-rail-back>←</button><div><b>Таймер ученику</b><div class="small muted">Сначала выбери время, затем запусти</div></div></div>
           <div class="mr-task-countdown" id="mrTaskCountdown">00:00</div>
           <div class="mr-timer-presets"><button class="btn sm" data-task-seconds="60">1 мин</button><button class="btn sm" data-task-seconds="180">3 мин</button><button class="btn sm primary" data-task-seconds="300">5 мин</button><button class="btn sm" data-task-seconds="600">10 мин</button></div>
-          <div class="mr-timer-custom"><input id="mrCustomTaskMinutes" type="number" min="1" max="120" value="5"><button class="btn sm" id="mrStartCustomTimer">Запустить</button></div>
-          <button class="btn sm danger" id="mrStopTaskTimer">Остановить таймер</button>
+          <div class="mr-timer-custom"><input id="mrCustomTaskMinutes" type="number" min="1" max="120" value="5"><button class="btn sm primary" id="mrTaskTimerToggle">▷ Запустить</button></div>
+          <div class="small muted mr-timer-running-note" id="mrTimerRunningNote" hidden>Чтобы изменить время, сначала останови текущий таймер.</div>
         </section>
 
         <section class="mr-rail-panel" data-rail-panel="materials">
@@ -2900,12 +2942,29 @@
       host.querySelector('#mrRailFocus').onclick=()=>document.querySelector('#focusToggle')?.click();
       host.querySelector('#mrRailCommands').onclick=()=>window.MathroomLessonSuite?.openCommands?.();
 
-      host.querySelectorAll('[data-task-seconds]').forEach(b=>b.onclick=()=>setStudentTaskTimer(ctx,Number(b.dataset.taskSeconds)).catch(fail));
-      host.querySelector('#mrStartCustomTimer').onclick=()=>{
-        const mins=Math.max(1,Math.min(120,Number(host.querySelector('#mrCustomTaskMinutes').value||5)));
-        setStudentTaskTimer(ctx,mins*60).catch(fail);
+      host.dataset.taskTimerSelected=host.dataset.taskTimerSelected||'300';
+      host.querySelectorAll('[data-task-seconds]').forEach(b=>b.onclick=()=>{
+        if(host.dataset.taskTimerRunning==='1')return;
+        const seconds=Number(b.dataset.taskSeconds||300);
+        host.dataset.taskTimerSelected=String(seconds);
+        const input=host.querySelector('#mrCustomTaskMinutes');
+        if(input)input.value=String(Math.round(seconds/60));
+        syncTaskTimerControls(host);
+      });
+      const customTimerInput=host.querySelector('#mrCustomTaskMinutes');
+      if(customTimerInput)customTimerInput.oninput=()=>{
+        if(host.dataset.taskTimerRunning==='1')return;
+        const mins=Math.max(1,Math.min(120,Number(customTimerInput.value||5)));
+        host.dataset.taskTimerSelected=String(Math.round(mins*60));
+        syncTaskTimerControls(host);
       };
-      host.querySelector('#mrStopTaskTimer').onclick=()=>setStudentTaskTimer(ctx,0).catch(fail);
+      host.querySelector('#mrTaskTimerToggle').onclick=()=>{
+        if(host.dataset.taskTimerRunning==='1')return setStudentTaskTimer(ctx,0).catch(fail);
+        const mins=Math.max(1,Math.min(120,Number(host.querySelector('#mrCustomTaskMinutes').value||5)));
+        const seconds=Math.round(mins*60);
+        host.dataset.taskTimerSelected=String(seconds);
+        setStudentTaskTimer(ctx,seconds).catch(fail);
+      };
 
       host._timerTick=setInterval(()=>{
         if(!document.body.contains(host)){clearInterval(host._timerTick);return}
@@ -2915,6 +2974,7 @@
         const running=host.dataset.taskTimerRunning==='1';
         out.textContent=running&&end?formatCountdown(Math.max(0,Math.ceil((new Date(end).getTime()-Date.now())/1000))):'00:00';
         out.classList.toggle('active',running);
+        syncTaskTimerControls(host);
       },500);
     }
 
@@ -2974,8 +3034,19 @@
 
     host.dataset.taskTimerRunning=live?.task_timer_running?'1':'0';
     host.dataset.taskTimerEnd=live?.task_timer_end_at||'';
+    if(live?.task_timer_running&&Number(live?.task_timer_duration_seconds)>0){
+      host.dataset.taskTimerSelected=String(Number(live.task_timer_duration_seconds));
+      const input=host.querySelector('#mrCustomTaskMinutes');
+      if(input&&document.activeElement!==input)input.value=String(Math.max(1,Math.round(Number(live.task_timer_duration_seconds)/60)));
+    }else if(!host.dataset.taskTimerSelected){
+      host.dataset.taskTimerSelected='300';
+    }
     const timerOut=host.querySelector('#mrTaskCountdown');
-    if(timerOut)timerOut.textContent=live?.task_timer_running?formatCountdown(taskCountdownSeconds(live)):'00:00';
+    if(timerOut){
+      timerOut.textContent=live?.task_timer_running?formatCountdown(taskCountdownSeconds(live)):'00:00';
+      timerOut.classList.toggle('active',!!live?.task_timer_running);
+    }
+    syncTaskTimerControls(host);
 
     const materials=host.querySelector('#mrRailMaterials');
     const drawer=document.querySelector('.mr-lesson-materials-drawer');
