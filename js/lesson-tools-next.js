@@ -1008,15 +1008,32 @@
       await source.play().catch(()=>{});
 
       const settings=raw.getSettings?.()||{};
-      const w=Math.max(480,Math.min(960,Number(settings.width)||960));
-      const h=Math.max(270,Math.min(540,Number(settings.height)||540));
+      /* Mobile front cameras often expose settings.width/settings.height in a
+         sensor orientation that does not match the actual <video> frame.
+         Wait for real video dimensions and preserve that exact aspect ratio;
+         otherwise the segmentation mask and camera image are transformed
+         differently and the mask cuts through the face/body. */
+      if(!source.videoWidth||!source.videoHeight){
+        await new Promise(resolve=>{
+          const done=()=>resolve();
+          source.addEventListener('loadedmetadata',done,{once:true});
+          setTimeout(done,700);
+        });
+      }
+      const srcW=Math.max(1,Number(source.videoWidth)||Number(settings.width)||960);
+      const srcH=Math.max(1,Number(source.videoHeight)||Number(settings.height)||540);
+      const isMobile=(window.matchMedia?.('(pointer: coarse)')?.matches||window.innerWidth<=760);
+      const maxLong=isMobile?640:960;
+      const scale=Math.min(1,maxLong/Math.max(srcW,srcH));
+      const w=Math.max(240,Math.round(srcW*scale));
+      const h=Math.max(240,Math.round(srcH*scale));
       const canvas=document.createElement('canvas');
       canvas.width=w;canvas.height=h;
       // Segmentation compositing needs a real alpha channel.
       // With alpha:false the mask became fully opaque, so the original room
       // always won and blur/replacement backgrounds looked like they did nothing.
       const ctx=canvas.getContext('2d',{alpha:true,desynchronized:true});
-      const output=canvas.captureStream(24);
+      const output=canvas.captureStream(isMobile?20:24);
       const outTrack=output.getVideoTracks()[0];
       if(!outTrack) throw new Error('Не удалось создать обработанный видеопоток');
       outTrack.enabled=this.cameraEnabled;
@@ -1025,28 +1042,30 @@
       const processor=new Seg({
         locateFile:file=>`https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/${file}`
       });
-      processor.setOptions({modelSelection:1});
+      /* modelSelection 0 is the general/portrait model; the landscape
+         model is kept for wider desktop camera frames. */
+      processor.setOptions({modelSelection:(isMobile||srcH>srcW)?0:1});
       processor.onResults(results=>{
         if(!this.virtualBgCanvas||!results?.image)return;
         const cw=canvas.width,ch=canvas.height;
         ctx.save();
         ctx.clearRect(0,0,cw,ch);
 
-        // Slight mask feathering keeps hair/shoulder edges from looking cut out.
-        ctx.filter='blur(1.35px)';
+        // Canvas now has the exact source aspect ratio, so both mask and image
+        // use the same transform. A slightly wider feather on touch devices
+        // reduces shimmering around hair, ears and shoulders.
+        ctx.filter=isMobile?'blur(2.4px)':'blur(1.35px)';
         ctx.drawImage(results.segmentationMask,0,0,cw,ch);
         ctx.filter='none';
 
         ctx.globalCompositeOperation='source-in';
-        this.drawCover(ctx,results.image,cw,ch);
+        ctx.drawImage(results.image,0,0,cw,ch);
 
         ctx.globalCompositeOperation='destination-over';
         if(this.virtualBgMode==='blur'){
-          // Overscan the blurred source so canvas edges never show a dark halo.
           ctx.save();
-          ctx.filter='blur(22px)';
-          ctx.translate(-12,-12);
-          this.drawCover(ctx,results.image,cw+24,ch+24);
+          ctx.filter=isMobile?'blur(18px)':'blur(22px)';
+          ctx.drawImage(results.image,0,0,cw,ch);
           ctx.restore();
         }else if(this.virtualBgMode==='custom'&&this.virtualBgCustomImage){
           this.drawCover(ctx,this.virtualBgCustomImage,cw,ch);
@@ -1080,9 +1099,9 @@
           this.virtualBgAvgProcessMs=this.virtualBgAvgProcessMs
             ? this.virtualBgAvgProcessMs*.82+elapsed*.18
             : elapsed;
-          this.virtualBgFrameInterval=this.virtualBgAvgProcessMs>85 ? 84
-            : this.virtualBgAvgProcessMs>62 ? 66
-            : 50;
+          this.virtualBgFrameInterval=this.virtualBgAvgProcessMs>85 ? (isMobile?100:84)
+            : this.virtualBgAvgProcessMs>62 ? (isMobile?80:66)
+            : (isMobile?58:50);
           this.virtualBgBusy=false;
         }
       };
