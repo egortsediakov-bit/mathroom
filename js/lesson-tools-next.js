@@ -830,6 +830,8 @@
       cancelAnimationFrame(this.virtualBgRaf);
       this.virtualBgRaf=0;
       this.virtualBgBusy=false;
+      this.virtualBgAvgProcessMs=0;
+      this.virtualBgFrameInterval=50;
       try{this.virtualBgProcessor?.close?.()}catch{}
       this.virtualBgProcessor=null;
       try{this.virtualBgSourceVideo?.pause?.()}catch{}
@@ -933,7 +935,6 @@
             : this.virtualBgAvgProcessMs>62 ? 66
             : 50;
           this.virtualBgBusy=false;
-          this.paintAllVirtualBgControls();
         }
       };
       this.virtualBgRaf=requestAnimationFrame(loop);
