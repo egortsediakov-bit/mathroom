@@ -903,9 +903,97 @@
     function renderTabs(){pageTabs.innerHTML=pages.map(p=>`<button class="btn sm ${p.id===current.id?'primary':''}" data-page="${p.id}" ${!isTeacher&&lessonId&&followTeacher?'disabled':''}>${esc(p.title)}</button>`).join('');pageTabs.querySelectorAll('[data-page]').forEach(b=>b.onclick=()=>switchPage(b.dataset.page))}
     function pagesChanged(){if(localOnly)writeLocal();else pagesChannel?.send({type:'broadcast',event:'pages',payload:{}})}
     async function deletePageRecord(id){if(localOnly)return;const {error}=await sb.from('board_pages').delete().eq('id',id);if(error)throw error}
-    async function save(){clearTimeout(saveTimer);if(!current)return;status.textContent=localOnly?'Сохраняем черновик…':'Сохраняем…';const p=pages.find(x=>x.id===current.id);if(p){p.elements=clone(elements);p.updated_at=new Date().toISOString()}if(localOnly){writeLocal();status.textContent='Черновик сохранён';return}const {error}=await sb.from('board_pages').update({elements,updated_at:new Date().toISOString()}).eq('id',current.id);status.textContent=error?'Ошибка сохранения':'Сохранено';if(error)console.error(error)}
-    function scheduleSave(){clearTimeout(saveTimer);saveTimer=setTimeout(save,350)}
-    function broadcast(){channel?.send({type:'broadcast',event:'state',payload:{pageId:current.id,elements}}).catch(()=>{})}
+    function setSyncState(state,text=''){
+      if(!status)return;
+      status.dataset.sync=state;
+      status.textContent=text||(state==='online'?'Онлайн':state==='syncing'?'Синхронизация…':state==='offline'?'Офлайн · изменения локально':state==='error'?'Ошибка синхронизации':state==='saved'?'Сохранено':'Подключение…');
+    }
+    function elementSignature(o){
+      if(!o)return'';
+      const x={...o};delete x._rev;delete x._updatedAt;delete x._updatedBy;
+      return JSON.stringify(x);
+    }
+    function newerElement(a,b){
+      if(!a)return b;if(!b)return a;
+      const ar=Number(a._rev||0),br=Number(b._rev||0);if(ar!==br)return ar>br?a:b;
+      const at=Number(a._updatedAt||0),bt=Number(b._updatedAt||0);return at>=bt?a:b;
+    }
+    function stampLocalElement(obj,prev=null){
+      if(!obj)return obj;
+      if(!obj._ownerRole){obj._ownerRole=actorRole;obj._ownerId=actorId}
+      obj._ownerId=String(obj._ownerId||actorId);
+      obj._rev=Math.max(Number(obj._rev||0),Number(prev?._rev||0))+1;
+      obj._updatedAt=Date.now();obj._updatedBy=actorKey;
+      return obj;
+    }
+    function makeOp(type,element=null,id=''){
+      return {opId:`${actorKey}:${Date.now()}:${Math.random().toString(36).slice(2,8)}`,pageId:current?.id||'',type,id:id||element?.id||'',element:element?clone(element):null,actor:actorKey,role:actorRole,actorId,at:Date.now()};
+    }
+    function diffLocalOps(){
+      const before=new Map((collabBaseline||[]).map(o=>[o.id,o])),after=new Map((elements||[]).map(o=>[o.id,o])),ops=[];
+      for(let i=0;i<elements.length;i++){
+        const obj=elements[i],prev=before.get(obj.id);
+        if(!prev){stampLocalElement(obj);const op=makeOp('create',obj);op.index=i;ops.push(op)}
+        else if(elementSignature(prev)!==elementSignature(obj)){stampLocalElement(obj,prev);const op=makeOp('update',obj);op.index=i;ops.push(op)}
+      }
+      for(const [id,prev] of before){
+        if(after.has(id))continue;
+        const op=makeOp('delete',null,id);op.rev=Math.max(1,Number(prev?._rev||0)+1);deleteJournal.set(id,{actor:actorKey,rev:op.rev,at:op.at});ops.push(op)
+      }
+      collabBaseline=clone(elements);
+      if(ops.length)dbPendingOps.push(...clone(ops));
+      return ops;
+    }
+    function queueOps(ops){
+      const known=new Set(pendingOps.map(x=>x.opId));
+      for(const op of ops||[])if(op?.opId&&!known.has(op.opId))pendingOps.push(op);
+      pendingOps=pendingOps.slice(-800);persistPendingOps();
+    }
+    function sendOpBatch(ops){
+      if(localOnly||!ops?.length)return;
+      if(!boardNetworkOnline||!channelSubscribed||!channel){queueOps(ops);setSyncState('offline');return}
+      channel.send({type:'broadcast',event:'ops',payload:{pageId:current.id,ops}}).then(()=>{lastOpSent=Date.now();if(!saveInFlight)setSyncState('online')}).catch(e=>{console.warn('[Mathroom board ops]',e);queueOps(ops);setSyncState('offline')});
+    }
+    async function flushPendingOps(){
+      if(localOnly||!boardNetworkOnline||!channelSubscribed||!channel||!pendingOps.length)return;
+      const batch=pendingOps.filter(op=>op.pageId===current.id).slice(0,120);if(!batch.length)return;
+      try{
+        setSyncState('syncing',`Синхронизация · ${pendingOps.length}`);
+        await channel.send({type:'broadcast',event:'ops',payload:{pageId:current.id,ops:batch}});
+        const ids=new Set(batch.map(x=>x.opId));pendingOps=pendingOps.filter(x=>!ids.has(x.opId));persistPendingOps();
+        if(pendingOps.some(x=>x.pageId===current.id))setTimeout(()=>flushPendingOps(),40);else setSyncState('online');
+      }catch(e){console.warn('[Mathroom board ops flush]',e);setSyncState('offline')}
+    }
+    function mergeForPersistence(serverRaw,localRaw){
+      const server=(Array.isArray(serverRaw)?serverRaw:[]).map(normalizeElement).filter(Boolean),local=(Array.isArray(localRaw)?localRaw:[]).map(normalizeElement).filter(Boolean);
+      const sm=new Map(server.map(x=>[x.id,x])),lm=new Map(local.map(x=>[x.id,x])),order=[...local.map(x=>x.id),...server.map(x=>x.id).filter(id=>!lm.has(id))],out=[];
+      for(const id of order){const candidate=newerElement(lm.get(id),sm.get(id)),t=deleteJournal.get(id);if(!candidate)continue;if(t&&Number(t.rev||0)>Number(candidate._rev||0))continue;out.push(candidate)}
+      return out;
+    }
+    async function save(){
+      clearTimeout(saveTimer);if(!current)return;
+      const p=pages.find(x=>x.id===current.id);if(p){p.elements=clone(elements);p.updated_at=new Date().toISOString()}
+      if(localOnly){writeLocal();setSyncState('saved','Черновик сохранён');return}
+      if(!boardNetworkOnline){try{localStorage.setItem(offlineSnapshotKey,JSON.stringify({pageId:current.id,elements,at:Date.now()}))}catch{}setSyncState('offline');return}
+      if(saveInFlight){scheduleSave();return}
+      saveInFlight=true;setSyncState('syncing');
+      const pageId=current.id,localSnapshot=clone(elements),cutSet=new Set(dbPendingOps.map(x=>x.opId));
+      try{
+        const latest=await sb.from('board_pages').select('elements').eq('id',pageId).single();if(latest.error)throw latest.error;
+        const merged=mergeForPersistence(latest.data?.elements||[],localSnapshot);
+        const res=await sb.from('board_pages').update({elements:merged,updated_at:new Date().toISOString()}).eq('id',pageId);if(res.error)throw res.error;
+        dbPendingOps=dbPendingOps.filter(op=>!cutSet.has(op.opId));lastServerSaveAt=Date.now();try{localStorage.removeItem(offlineSnapshotKey)}catch{}
+        setSyncState('saved');setTimeout(()=>{if(status?.dataset.sync==='saved')setSyncState('online')},700);
+      }catch(error){console.error('[Mathroom board save]',error);try{localStorage.setItem(offlineSnapshotKey,JSON.stringify({pageId,elements:localSnapshot,at:Date.now()}))}catch{}setSyncState('error')}
+      finally{saveInFlight=false}
+    }
+    function scheduleSave(){clearTimeout(saveTimer);saveTimer=setTimeout(save,420)}
+    function broadcast(){const ops=diffLocalOps();if(ops.length)sendOpBatch(ops)}
+    function broadcastState(force=false){
+      if(localOnly||!channel||!channelSubscribed)return;
+      const now=Date.now();if(!force&&now-lastStateBroadcast<5000)return;lastStateBroadcast=now;
+      channel.send({type:'broadcast',event:'state',payload:{pageId:current.id,elements,protocol:2,actor:actorKey}}).catch(()=>{});
+    }
     function changed(){render();broadcast();scheduleSave();sendViewport()}
     function pushElementsHistory(){if(busyHistory)return;undoStack.push({type:'elements',pageId:current.id,elements:clone(elements)});if(undoStack.length>140)undoStack.shift();redoStack.length=0;syncHistoryButtons()}
     async function switchPage(id,{skipSave=false,fromLeader=false}={}){if(current?.id===id)return;if(!skipSave)await save();const p=pages.find(x=>x.id===id);if(!p)return;current=p;elements=clone(p.elements||[]);clearSelection();camera={x:0,y:0,zoom:1};zoomLabel.textContent='100%';renderTabs();render();joinChannel();if(isTeacher&&followTeacher&&!fromLeader)pagesChannel?.send({type:'broadcast',event:'navigate',payload:{pageId:id}}).catch(()=>{});sendViewport(true)}
