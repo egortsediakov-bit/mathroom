@@ -2383,3 +2383,30 @@ body{background:linear-gradient(180deg,#fbfbfa 0%,#f5f4f1 100%)!important;color:
   .student-lesson-mode .board-mobile-extra{display:flex!important}
   .student-lesson-mode details.board-mobile-extra{display:block!important}
 }
+
+
+/* Mathroom v31.9 — keep phone tool dock visible in landscape */
+@media (orientation:landscape) and (max-height:600px) and (pointer:coarse){
+  .student-lesson-mode .board-toolbar-side{
+    position:fixed!important;
+    left:max(8px,env(safe-area-inset-left))!important;
+    right:max(8px,env(safe-area-inset-right))!important;
+    bottom:max(8px,env(safe-area-inset-bottom))!important;
+    top:auto!important;
+    width:auto!important;
+    height:58px!important;
+    max-height:58px!important;
+    z-index:7500!important;
+    margin:0!important;
+    transform:none!important;
+  }
+  .student-lesson-mode .board-toolbar-side .board-tool-popover{
+    bottom:calc(74px + env(safe-area-inset-bottom))!important;
+    max-height:calc(100dvh - 92px)!important;
+    z-index:7600!important;
+  }
+  .student-lesson-mode .board-stage{
+    padding-bottom:72px!important;
+    box-sizing:border-box!important;
+  }
+}
