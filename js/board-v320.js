@@ -1318,6 +1318,24 @@
     svg.onpointerdown=e=>{
       clearDragOverlay();
       boardFocused=true;root.querySelector('.board-card')?.focus?.({preventScroll:true});const ae=document.activeElement;if(ae&&['INPUT','TEXTAREA','SELECT','BUTTON'].includes(ae.tagName))ae.blur?.();
+
+      if(e.pointerType==='pen')penActiveUntil=Date.now()+1200;
+      if(e.pointerType==='touch'){
+        e.preventDefault();
+        svg.setPointerCapture(e.pointerId);
+        touchPointers.set(e.pointerId,{x:e.clientX,y:e.clientY});
+        if(Date.now()<penActiveUntil)return;
+        const pts=[...touchPointers.values()];
+        if(pts.length>=2){
+          const a=pts[0],b=pts[1],mx=(a.x+b.x)/2,my=(a.y+b.y)/2,dist=Math.max(10,Math.hypot(a.x-b.x,a.y-b.y));
+          const [wx,wy]=screenToWorld(mx,my);
+          touchGesture={mode:'pinch',dist,zoom:camera.zoom,worldX:wx,worldY:wy,midX:mx,midY:my};
+        }else{
+          touchGesture={mode:'pan',startX:e.clientX,startY:e.clientY,camera:{...camera}};
+        }
+        return;
+      }
+
       svg.setPointerCapture(e.pointerId);
       let[x,y]=screenToWorld(e.clientX,e.clientY);sendCursor(x,y);
       if(!['pen','pencil','marker','laser','eraser','compass','solid-rotate'].includes(tool))[x,y]=geometrySnapPoint(x,y,selectionList());
@@ -1386,6 +1404,33 @@
       render();
     };
     svg.onpointermove=e=>{
+      if(e.pointerType==='pen')penActiveUntil=Date.now()+1200;
+      if(e.pointerType==='touch'&&touchPointers.has(e.pointerId)){
+        e.preventDefault();
+        touchPointers.set(e.pointerId,{x:e.clientX,y:e.clientY});
+        if(Date.now()<penActiveUntil)return;
+        const pts=[...touchPointers.values()];
+        if(pts.length>=2){
+          const a=pts[0],b=pts[1],mx=(a.x+b.x)/2,my=(a.y+b.y)/2,dist=Math.max(10,Math.hypot(a.x-b.x,a.y-b.y));
+          if(!touchGesture||touchGesture.mode!=='pinch'){
+            const [wx,wy]=screenToWorld(mx,my);
+            touchGesture={mode:'pinch',dist,zoom:camera.zoom,worldX:wx,worldY:wy,midX:mx,midY:my};
+          }else{
+            const nz=clamp(touchGesture.zoom*(dist/touchGesture.dist),.25,3),r=svg.getBoundingClientRect();
+            camera.zoom=nz;
+            camera.x=touchGesture.worldX-(mx-r.left)/nz;
+            camera.y=touchGesture.worldY-(my-r.top)/nz;
+            zoomLabel.textContent=Math.round(nz*100)+'%';renderInteractive();sendViewport();
+          }
+        }else if(pts.length===1){
+          const p=pts[0];
+          if(!touchGesture||touchGesture.mode!=='pan')touchGesture={mode:'pan',startX:p.x,startY:p.y,camera:{...camera}};
+          camera.x=touchGesture.camera.x-(p.x-touchGesture.startX)/camera.zoom;
+          camera.y=touchGesture.camera.y-(p.y-touchGesture.startY)/camera.zoom;
+          renderInteractive();sendViewport();
+        }
+        return;
+      }
       let[x,y]=screenToWorld(e.clientX,e.clientY);sendCursor(x,y);
       if(!['pen','pencil','marker','laser','eraser','compass','solid-rotate'].includes(tool))[x,y]=geometrySnapPoint(x,y,selectionList());
       if(marqueeSelect&&tool==='select'){marqueeSelect.x1=x;marqueeSelect.y1=y;renderInteractive();return}
@@ -1419,7 +1464,14 @@
       if(drawing.type==='path'){appendFreehandPoints(drawing,e);renderInteractive();sendStrokeChunk(drawing);return}
       if(drawing.type==='compass')drawing.r=Math.max(1,Math.hypot(x-drawing.cx,y-drawing.cy));else{let xx=x,yy=y;if(e.shiftKey&&['line','arrow','ruler'].includes(drawing.type)){const dx=x-drawing.x1,dy=y-drawing.y1,a=Math.atan2(dy,dx),step=Math.PI/4,aa=Math.round(a/step)*step,len=Math.hypot(dx,dy);xx=drawing.x1+Math.cos(aa)*len;yy=drawing.y1+Math.sin(aa)*len}drawing.x2=xx;drawing.y2=yy}render();broadcast();
     };
-    const finishPointer=()=>{
+    const finishPointer=e=>{
+      if(e?.pointerType==='touch'){
+        touchPointers.delete(e.pointerId);
+        const pts=[...touchPointers.values()];
+        if(!pts.length)touchGesture=null;
+        else if(pts.length===1){const p=pts[0];touchGesture={mode:'pan',startX:p.x,startY:p.y,camera:{...camera}}}
+        return;
+      }
       if(marqueeSelect){
         const m=marqueeSelect;marqueeSelect=null;const x0=Math.min(m.x0,m.x1),y0=Math.min(m.y0,m.y1),x1=Math.max(m.x0,m.x1),y1=Math.max(m.y0,m.y1),tiny=Math.abs(x1-x0)<3/camera.zoom&&Math.abs(y1-y0)<3/camera.zoom;
         if(tiny){setSelection(m.baseIds||[])}else{
