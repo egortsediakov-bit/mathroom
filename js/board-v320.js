@@ -17,6 +17,21 @@
     const prev=pts[pts.length-2],last=pts[pts.length-1];
     return d+` Q ${prev[0]} ${prev[1]} ${last[0]} ${last[1]}`;
   };
+  const pressurePathGroup=o=>{
+    const pts=(o.points||[]).filter(p=>Array.isArray(p)&&Number.isFinite(p[0])&&Number.isFinite(p[1]));
+    if(pts.length<2||!o.pressureSensitive)return null;
+    const g=svgEl('g');
+    const chunk=6,base=Math.max(.7,Number(o.baseWidth||o.width||3));
+    for(let i=0;i<pts.length-1;i+=chunk-1){
+      const seg=pts.slice(i,Math.min(pts.length,i+chunk));
+      if(seg.length<2)continue;
+      const ps=seg.map(p=>Number.isFinite(Number(p[2]))?Number(p[2]):.5);
+      const avg=ps.reduce((a,b)=>a+b,0)/ps.length;
+      const sw=base*(.52+Math.max(.05,Math.min(1,avg))*.96);
+      g.appendChild(svgEl('path',{d:smoothPathD(seg),fill:'none',stroke:o.color||'#15171a','stroke-width':sw,'stroke-linecap':'round','stroke-linejoin':'round','shape-rendering':'geometricPrecision',opacity:o.opacity==null?1:o.opacity}));
+    }
+    return g;
+  };
   const assetCache=new Map(), assetPending=new Map();
   const LOCAL_ASSET_PREFIX='mr-local-asset:';
   let localAssetDbPromise=null;
@@ -503,7 +518,7 @@
       if(o.type==='board-bg') continue;
       if(o.teacherOnly && !viewerIsTeacher) continue;
       let n=null;
-      if(o.type==='path') n=svgEl('path',{d:smoothPathD(o.points||[]),fill:'none',stroke:o.color||'#15171a','stroke-width':o.width||3,'stroke-linecap':'round','stroke-linejoin':'round','shape-rendering':'geometricPrecision',opacity:o.opacity==null?1:o.opacity});
+      if(o.type==='path') n=pressurePathGroup(o)||svgEl('path',{d:smoothPathD(o.points||[]),fill:'none',stroke:o.color||'#15171a','stroke-width':o.width||3,'stroke-linecap':'round','stroke-linejoin':'round','shape-rendering':'geometricPrecision',opacity:o.opacity==null?1:o.opacity});
       else if(o.type==='line') n=svgEl('line',{x1:o.x1,y1:o.y1,x2:o.x2,y2:o.y2,stroke:o.color||'#15171a','stroke-width':o.width||3,'stroke-linecap':'round'});
       else if(o.type==='rect') n=svgEl('rect',{x:Math.min(o.x1,o.x2),y:Math.min(o.y1,o.y2),width:Math.abs(o.x2-o.x1),height:Math.abs(o.y2-o.y1),fill:o.fill||'none',stroke:o.color||'#15171a','stroke-width':o.width||3});
       else if(o.type==='ellipse') n=svgEl('ellipse',{cx:(o.x1+o.x2)/2,cy:(o.y1+o.y2)/2,rx:Math.abs(o.x2-o.x1)/2,ry:Math.abs(o.y2-o.y1)/2,fill:o.fill||'none',stroke:o.color||'#15171a','stroke-width':o.width||3});
