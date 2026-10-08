@@ -80,6 +80,20 @@
       this.selectedAudioInput = localStorage.getItem(`mathroom.media.audioinput.${this.role}`) || '';
       this.selectedVideoInput = localStorage.getItem(`mathroom.media.videoinput.${this.role}`) || '';
       this.selectedAudioOutput = localStorage.getItem(`mathroom.media.audiooutput.${this.role}`) || '';
+
+      this.virtualBgMode = localStorage.getItem(`mathroom.media.bg.${this.role}`) || 'none';
+      if (!['none','blur','mathroom','light'].includes(this.virtualBgMode)) this.virtualBgMode = 'none';
+      this.virtualBgCustomImage = null;
+      this.virtualBgProcessor = null;
+      this.virtualBgSourceVideo = null;
+      this.virtualBgCanvas = null;
+      this.virtualBgStream = null;
+      this.virtualBgTrack = null;
+      this.virtualBgRaf = 0;
+      this.virtualBgBusy = false;
+      this.virtualBgLastFrame = 0;
+      this.virtualBgLibPromise = null;
+
       this.devices = { audioinput:[], videoinput:[], audiooutput:[] };
       this.deviceModal = null;
       this.deviceRefreshTimer = null;
@@ -515,17 +529,22 @@
       const currentKinds = new Set(pc.getSenders().map(s => s.track?.kind).filter(Boolean));
       const tracks = [];
       const audio = this.localStream.getAudioTracks()[0]; if (audio) tracks.push(audio);
-      const video = this.screenTrack || this.localStream.getVideoTracks()[0]; if (video) tracks.push(video);
+      const video = this.screenTrack || this.effectiveCameraTrack(); if (video) tracks.push(video);
       for (const track of tracks) {
-        if (!currentKinds.has(track.kind)) pc.addTrack(track, track === this.screenTrack ? new MediaStream([track]) : this.localStream);
+        if (!currentKinds.has(track.kind)) {
+          const stream = track.kind==='video' && track!==this.localStream.getVideoTracks()[0]
+            ? new MediaStream([track])
+            : this.localStream;
+          pc.addTrack(track,stream);
+        }
       }
     }
 
     async bindAnswererTracks(pc) {
       if (!this.localStream) return;
       for (const kind of ['audio','video']) {
-        const track = kind === 'video' && this.screenTrack
-          ? this.screenTrack
+        const track = kind === 'video'
+          ? (this.screenTrack || this.effectiveCameraTrack())
           : this.localStream.getTracks().find(t => t.kind === kind);
         if (!track) continue;
         let tr = pc.getTransceivers().find(t => t.receiver?.track?.kind === kind || t.sender?.track?.kind === kind);
@@ -669,6 +688,230 @@
       const video = { width:{ideal:960}, height:{ideal:540}, frameRate:{ideal:24,max:30} };
       if (deviceId) video.deviceId = { exact:deviceId };
       return video;
+    }
+
+    effectiveCameraTrack() {
+      return this.virtualBgTrack?.readyState === 'live'
+        ? this.virtualBgTrack
+        : (this.localStream?.getVideoTracks?.()[0] || null);
+    }
+
+    previewCameraStream() {
+      const track = this.effectiveCameraTrack();
+      return track ? new MediaStream([track]) : null;
+    }
+
+    bindPrejoinPreview() {
+      const video = this.prejoin?.querySelector('#mrPrejoinVideo');
+      if (!video) return;
+      const stream = this.previewCameraStream();
+      if (video.srcObject !== stream) video.srcObject = stream;
+      if (stream) video.play().catch(()=>{});
+    }
+
+    async ensureVirtualBgLibrary() {
+      if (window.SelfieSegmentation) return window.SelfieSegmentation;
+      if (this.virtualBgLibPromise) return this.virtualBgLibPromise;
+      this.virtualBgLibPromise = new Promise((resolve,reject)=>{
+        const existing=document.querySelector('script[data-mr-selfie-segmentation]');
+        if(existing){
+          const ready=()=>window.SelfieSegmentation?resolve(window.SelfieSegmentation):reject(new Error('Модуль виртуального фона не загрузился'));
+          if(window.SelfieSegmentation)return ready();
+          existing.addEventListener('load',ready,{once:true});
+          existing.addEventListener('error',()=>reject(new Error('Не удалось загрузить модуль виртуального фона')),{once:true});
+          return;
+        }
+        const s=document.createElement('script');
+        s.src='https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/selfie_segmentation.js';
+        s.async=true;
+        s.dataset.mrSelfieSegmentation='1';
+        s.onload=()=>window.SelfieSegmentation?resolve(window.SelfieSegmentation):reject(new Error('Модуль виртуального фона недоступен'));
+        s.onerror=()=>reject(new Error('Не удалось загрузить модуль виртуального фона'));
+        document.head.appendChild(s);
+      });
+      try{return await this.virtualBgLibPromise}
+      catch(e){this.virtualBgLibPromise=null;throw e}
+    }
+
+    drawCover(ctx,img,w,h) {
+      const iw=img.videoWidth||img.naturalWidth||img.width||w;
+      const ih=img.videoHeight||img.naturalHeight||img.height||h;
+      const scale=Math.max(w/iw,h/ih);
+      const dw=iw*scale,dh=ih*scale;
+      ctx.drawImage(img,(w-dw)/2,(h-dh)/2,dw,dh);
+    }
+
+    drawBuiltInBackground(ctx,w,h,mode) {
+      if(mode==='mathroom'){
+        const g=ctx.createLinearGradient(0,0,w,h);
+        g.addColorStop(0,'#0f1216');g.addColorStop(.62,'#171c22');g.addColorStop(1,'#252c35');
+        ctx.fillStyle=g;ctx.fillRect(0,0,w,h);
+        ctx.globalAlpha=.12;ctx.strokeStyle='#ffffff';ctx.lineWidth=1;
+        for(let x=0;x<w;x+=42){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,h);ctx.stroke()}
+        for(let y=0;y<h;y+=42){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(w,y);ctx.stroke()}
+        ctx.globalAlpha=1;
+        ctx.fillStyle='#ff7300';ctx.fillRect(0,0,Math.max(7,w*.012),h);
+        ctx.fillStyle='rgba(255,255,255,.92)';
+        ctx.font=`900 ${Math.max(22,Math.round(w*.046))}px Inter, Arial, sans-serif`;
+        ctx.fillText('MATHROOM',Math.round(w*.065),Math.round(h*.84));
+        ctx.fillStyle='rgba(255,255,255,.55)';
+        ctx.font=`600 ${Math.max(11,Math.round(w*.018))}px Inter, Arial, sans-serif`;
+        ctx.fillText('online lesson',Math.round(w*.068),Math.round(h*.90));
+        return;
+      }
+      const g=ctx.createLinearGradient(0,0,w,h);
+      g.addColorStop(0,'#f7f8fa');g.addColorStop(1,'#e9edf1');
+      ctx.fillStyle=g;ctx.fillRect(0,0,w,h);
+      ctx.globalAlpha=.55;ctx.fillStyle='#dfe4e9';
+      for(let x=0;x<w;x+=44)ctx.fillRect(x,0,1,h);
+      for(let y=0;y<h;y+=44)ctx.fillRect(0,y,w,1);
+      ctx.globalAlpha=1;
+      ctx.fillStyle='#ff7300';ctx.fillRect(Math.round(w*.06),Math.round(h*.12),Math.round(w*.18),6);
+      ctx.fillStyle='#111318';
+      ctx.font=`900 ${Math.max(22,Math.round(w*.046))}px Inter, Arial, sans-serif`;
+      ctx.fillText('MATHROOM',Math.round(w*.06),Math.round(h*.22));
+    }
+
+    stopVirtualBackground() {
+      cancelAnimationFrame(this.virtualBgRaf);
+      this.virtualBgRaf=0;
+      this.virtualBgBusy=false;
+      try{this.virtualBgProcessor?.close?.()}catch{}
+      this.virtualBgProcessor=null;
+      try{this.virtualBgSourceVideo?.pause?.()}catch{}
+      if(this.virtualBgSourceVideo)this.virtualBgSourceVideo.srcObject=null;
+      this.virtualBgSourceVideo=null;
+      this.virtualBgTrack?.stop?.();
+      this.virtualBgTrack=null;
+      this.virtualBgStream?.getTracks?.().forEach(t=>t.stop?.());
+      this.virtualBgStream=null;
+      this.virtualBgCanvas=null;
+    }
+
+    async startVirtualBackground() {
+      if(this.virtualBgMode==='none') return null;
+      const raw=this.localStream?.getVideoTracks?.()[0];
+      if(!raw) throw new Error('Камера недоступна');
+      if(!HTMLCanvasElement.prototype.captureStream) throw new Error('Этот браузер не поддерживает виртуальный фон');
+
+      this.stopVirtualBackground();
+      const Seg=await this.ensureVirtualBgLibrary();
+
+      const source=document.createElement('video');
+      source.autoplay=true;source.muted=true;source.playsInline=true;
+      source.srcObject=new MediaStream([raw]);
+      await source.play().catch(()=>{});
+
+      const settings=raw.getSettings?.()||{};
+      const w=Math.max(480,Math.min(960,Number(settings.width)||960));
+      const h=Math.max(270,Math.min(540,Number(settings.height)||540));
+      const canvas=document.createElement('canvas');
+      canvas.width=w;canvas.height=h;
+      const ctx=canvas.getContext('2d',{alpha:false,desynchronized:true});
+      const output=canvas.captureStream(24);
+      const outTrack=output.getVideoTracks()[0];
+      if(!outTrack) throw new Error('Не удалось создать обработанный видеопоток');
+      outTrack.enabled=this.cameraEnabled;
+
+      const processor=new Seg({
+        locateFile:file=>`https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/${file}`
+      });
+      processor.setOptions({modelSelection:1});
+      processor.onResults(results=>{
+        if(!this.virtualBgCanvas||!results?.image)return;
+        const cw=canvas.width,ch=canvas.height;
+        ctx.save();
+        ctx.clearRect(0,0,cw,ch);
+
+        ctx.drawImage(results.segmentationMask,0,0,cw,ch);
+        ctx.globalCompositeOperation='source-in';
+        this.drawCover(ctx,results.image,cw,ch);
+
+        ctx.globalCompositeOperation='destination-over';
+        if(this.virtualBgMode==='blur'){
+          ctx.filter='blur(18px)';
+          this.drawCover(ctx,results.image,cw,ch);
+          ctx.filter='none';
+        }else if(this.virtualBgMode==='custom'&&this.virtualBgCustomImage){
+          this.drawCover(ctx,this.virtualBgCustomImage,cw,ch);
+        }else{
+          this.drawBuiltInBackground(ctx,cw,ch,this.virtualBgMode);
+        }
+        ctx.restore();
+      });
+
+      this.virtualBgSourceVideo=source;
+      this.virtualBgCanvas=canvas;
+      this.virtualBgStream=output;
+      this.virtualBgTrack=outTrack;
+      this.virtualBgProcessor=processor;
+
+      const loop=async ts=>{
+        if(!this.virtualBgProcessor||this.destroyed)return;
+        this.virtualBgRaf=requestAnimationFrame(loop);
+        if(ts-this.virtualBgLastFrame<48||this.virtualBgBusy||source.readyState<2)return;
+        this.virtualBgLastFrame=ts;
+        this.virtualBgBusy=true;
+        try{await processor.send({image:source})}
+        catch(e){console.warn('[Mathroom virtual background]',e)}
+        finally{this.virtualBgBusy=false}
+      };
+      this.virtualBgRaf=requestAnimationFrame(loop);
+      return outTrack;
+    }
+
+    async syncOutgoingCameraTrack() {
+      if(this.screenTrack)return;
+      const track=this.effectiveCameraTrack();
+      if(!track)return;
+      const sender=this.pc?.getSenders?.().find(s=>s.track?.kind==='video')
+        || this.pc?.getTransceivers?.().find(t=>t.receiver?.track?.kind==='video')?.sender;
+      if(sender&&sender.track!==track){
+        try{await sender.replaceTrack(track)}catch(e){console.warn('[Mathroom virtual background] replaceTrack',e)}
+      }
+      this.bindMedia();
+      this.bindPrejoinPreview();
+    }
+
+    async setVirtualBackground(mode) {
+      if(!['none','blur','mathroom','light','custom'].includes(mode))return;
+      if(mode==='custom'&&!this.virtualBgCustomImage)return;
+      this.virtualBgMode=mode;
+      if(mode==='custom')localStorage.removeItem(`mathroom.media.bg.${this.role}`);
+      else localStorage.setItem(`mathroom.media.bg.${this.role}`,mode);
+
+      const status=this.prejoin?.querySelector('#mrBgStatus');
+      if(status)status.textContent=mode==='none'?'Без обработки':'Подготавливаем фон…';
+      try{
+        if(mode==='none')this.stopVirtualBackground();
+        else await this.startVirtualBackground();
+        await this.syncOutgoingCameraTrack();
+        this.paintPrejoin();
+      }catch(e){
+        console.warn('[Mathroom virtual background]',e);
+        this.virtualBgMode='none';
+        localStorage.setItem(`mathroom.media.bg.${this.role}`,'none');
+        this.stopVirtualBackground();
+        await this.syncOutgoingCameraTrack();
+        this.paintPrejoin();
+        toast(e?.message||'Не удалось включить виртуальный фон');
+      }
+    }
+
+    async setCustomVirtualBackground(file) {
+      if(!file)return;
+      if(!file.type?.startsWith('image/'))throw new Error('Выбери изображение JPG, PNG или WEBP');
+      if(file.size>8*1024*1024)throw new Error('Файл фона должен быть меньше 8 МБ');
+      const url=URL.createObjectURL(file);
+      try{
+        const img=new Image();
+        img.decoding='async';
+        await new Promise((resolve,reject)=>{img.onload=resolve;img.onerror=()=>reject(new Error('Не удалось прочитать изображение'));img.src=url});
+        this.virtualBgCustomImage=img;
+        await this.setVirtualBackground('custom');
+      }finally{
+        URL.revokeObjectURL(url);
+      }
     }
 
     async configureSpeechTrack(track) {
@@ -931,6 +1174,16 @@
               <div class="mr-media-device-field"><label>Вывод звука</label><select data-device-kind="audiooutput"></select></div>
               <div class="mr-device-count"></div>
             </div>
+            <div class="mr-prejoin-bg mr-prejoin-wide">
+              <div class="mr-prejoin-bg-head"><div><b>Фон камеры</b><div class="small muted">Обрабатывается локально в браузере</div></div><span class="small muted" id="mrBgStatus"></span></div>
+              <div class="mr-bg-options">
+                <button class="btn sm" type="button" data-bg-mode="none">Оригинал</button>
+                <button class="btn sm" type="button" data-bg-mode="blur">Размытие</button>
+                <button class="btn sm" type="button" data-bg-mode="mathroom">Mathroom</button>
+                <button class="btn sm" type="button" data-bg-mode="light">Светлый</button>
+                <label class="btn sm mr-bg-upload">Загрузить<input id="mrBgFile" type="file" accept="image/png,image/jpeg,image/webp" hidden></label>
+              </div>
+            </div>
             <div class="notice mr-prejoin-wide"><b>Устройства отслеживаются автоматически.</b><br><span class="small">Если подключить или отключить камеру, микрофон или наушники, список обновится без перезагрузки страницы.</span></div>
           </div>
         </div>
@@ -944,14 +1197,29 @@
       join.disabled = true;
       backdrop.querySelector('#mrPrejoinCancel').onclick = () => this.closePrejoin(false);
       backdrop.querySelector('#mrPrejoinMic').onclick = () => { this.micEnabled = !this.micEnabled; localStorage.setItem(`mathroom.media.mic.${this.role}`, this.micEnabled?'1':'0'); const t=this.localStream?.getAudioTracks?.()[0]; if(t)t.enabled=this.micEnabled; this.paintPrejoin(); };
-      backdrop.querySelector('#mrPrejoinCam').onclick = () => { this.cameraEnabled = !this.cameraEnabled; localStorage.setItem(`mathroom.media.camera.${this.role}`, this.cameraEnabled?'1':'0'); const t=this.localStream?.getVideoTracks?.()[0]; if(t)t.enabled=this.cameraEnabled; this.paintPrejoin(); };
+      backdrop.querySelector('#mrPrejoinCam').onclick = () => {
+        this.cameraEnabled = !this.cameraEnabled;
+        localStorage.setItem(`mathroom.media.camera.${this.role}`, this.cameraEnabled?'1':'0');
+        const raw=this.localStream?.getVideoTracks?.()[0]; if(raw)raw.enabled=this.cameraEnabled;
+        if(this.virtualBgTrack)this.virtualBgTrack.enabled=this.cameraEnabled;
+        this.paintPrejoin();
+      };
+      backdrop.querySelectorAll('[data-bg-mode]').forEach(b=>b.onclick=()=>this.setVirtualBackground(b.dataset.bgMode));
+      const bgFile=backdrop.querySelector('#mrBgFile');
+      if(bgFile)bgFile.onchange=()=>this.setCustomVirtualBackground(bgFile.files?.[0]).catch(e=>toast(e?.message||'Не удалось загрузить фон'));
       join.onclick = () => this.joinCall();
       try {
         await this.acquireMedia();
         if (!this.prejoin) return;
-        const video = backdrop.querySelector('#mrPrejoinVideo');
-        video.srcObject = this.localStream;
-        video.play().catch(() => {});
+        if(this.virtualBgMode!=='none'){
+          try{await this.startVirtualBackground()}catch(e){
+            console.warn('[Mathroom virtual background]',e);
+            this.virtualBgMode='none';
+            localStorage.setItem(`mathroom.media.bg.${this.role}`,'none');
+            this.stopVirtualBackground();
+          }
+        }
+        this.bindPrejoinPreview();
         join.disabled = false;
         this.bindDeviceSelects(backdrop);
         await this.refreshDevices().catch(()=>{});
@@ -980,6 +1248,16 @@
         cam.classList.toggle('is-on',on); cam.classList.toggle('is-off',!on);
         cam.disabled = !hasCam;
       }
+      this.prejoin.querySelectorAll('[data-bg-mode]').forEach(b=>b.classList.toggle('active',b.dataset.bgMode===this.virtualBgMode));
+      const upload=this.prejoin.querySelector('.mr-bg-upload');
+      if(upload)upload.classList.toggle('active',this.virtualBgMode==='custom');
+      const status=this.prejoin.querySelector('#mrBgStatus');
+      if(status)status.textContent=this.virtualBgMode==='none'?'Без обработки'
+        : this.virtualBgMode==='blur'?'Размытие включено'
+        : this.virtualBgMode==='mathroom'?'Фон Mathroom'
+        : this.virtualBgMode==='light'?'Светлый фон'
+        : 'Свой фон';
+      this.bindPrejoinPreview();
     }
 
     closePrejoin(stopMedia = false) {
@@ -1063,7 +1341,7 @@
         this.screenPreviewStream = new MediaStream([track]);
         this.bindMedia();
         track.onended = async () => {
-          const camera = this.localStream?.getVideoTracks?.()[0] || null;
+          const camera = this.effectiveCameraTrack();
           try { if (sender) await sender.replaceTrack(camera); } catch {}
           this.screenTrack = null;
           this.screenPreviewStream = null;
@@ -1113,6 +1391,7 @@
       this.screenTrack?.stop?.(); this.screenTrack = null; this.screenPreviewStream = null;
       this.localStream?.getTracks?.().forEach(t => t.stop());
       this.localStream = null;
+      this.stopVirtualBackground();
       this.status = 'Готов к подключению';
       this.connectionQuality = '';
       this.forceRelay = false;
@@ -1127,7 +1406,8 @@
       const remote = this.panel?.querySelector('#mrRemoteVideo');
       const audio = this.panel?.querySelector('#mrRemoteAudio');
       if (local) {
-        const preview = this.screenTrack ? (this.screenPreviewStream || new MediaStream([this.screenTrack])) : (this.localStream || null);
+        const previewTrack=this.screenTrack || this.effectiveCameraTrack();
+        const preview = previewTrack ? (this.screenTrack ? (this.screenPreviewStream || new MediaStream([this.screenTrack])) : new MediaStream([previewTrack])) : null;
         if (this.screenTrack && !this.screenPreviewStream) this.screenPreviewStream = preview;
         if (local.srcObject !== preview) local.srcObject = preview;
         local.muted = true; local.playsInline = true;
@@ -1458,6 +1738,7 @@
       this.pc = null;
       this.localStream?.getTracks?.().forEach(t => t.stop());
       this.localStream = null;
+      this.stopVirtualBackground();
       this.screenTrack?.stop?.();
       this.screenTrack = null;
       this.screenPreviewStream = null;
