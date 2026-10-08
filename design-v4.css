@@ -2078,3 +2078,109 @@ input[type="file"]{font-size:11px!important}
     bottom:10px!important;
   }
 }
+
+
+/* ===== Fullscreen board video: match the existing compact floating player ===== */
+.board-card:fullscreen > .mr-native-call.mr-board-fullscreen-video{
+  width:clamp(230px,20vw,340px)!important;
+  max-width:calc(100vw - 24px)!important;
+  height:auto!important;
+  max-height:none!important;
+  padding:6px!important;
+  border-radius:14px!important;
+  overflow:visible!important;
+}
+
+/* No media controls in board fullscreen — video only, like the normal floating player. */
+.board-card:fullscreen > .mr-native-call.mr-board-fullscreen-video .mr-call-head,
+.board-card:fullscreen > .mr-native-call.mr-board-fullscreen-video .mr-call-note,
+.board-card:fullscreen > .mr-native-call.mr-board-fullscreen-video .mr-call-quality,
+.board-card:fullscreen > .mr-native-call.mr-board-fullscreen-video .mr-call-actions{
+  display:none!important;
+}
+
+/* Keep the same video canvas proportions and styling as outside fullscreen. */
+.board-card:fullscreen > .mr-native-call.mr-board-fullscreen-video .mr-call-stage{
+  display:block!important;
+  width:100%!important;
+  height:auto!important;
+  min-height:0!important;
+  aspect-ratio:16/9!important;
+  border-radius:10px!important;
+  overflow:hidden!important;
+  background:#101214!important;
+}
+.board-card:fullscreen > .mr-native-call.mr-board-fullscreen-video .mr-remote-video{
+  position:absolute!important;
+  inset:0!important;
+  width:100%!important;
+  height:100%!important;
+  object-fit:contain!important;
+  object-position:50% 50%!important;
+  background:#101214!important;
+}
+.board-card:fullscreen > .mr-native-call.mr-board-fullscreen-video .mr-local-video{
+  display:none!important;
+}
+.board-card:fullscreen > .mr-native-call.mr-board-fullscreen-video .mr-call-person{
+  left:7px!important;
+  bottom:7px!important;
+  font-size:9.5px!important;
+  padding:3px 6px!important;
+}
+
+/* Keep only the existing Собеседник / Оба / Скрыть switch. */
+.board-card:fullscreen > .mr-native-call.mr-board-fullscreen-video:hover .mr-floating-view-switch,
+.board-card:fullscreen > .mr-native-call.mr-board-fullscreen-video:focus-within .mr-floating-view-switch{
+  display:flex!important;
+}
+
+/* Preserve the existing 'Оба' mode exactly. */
+.board-card:fullscreen > .mr-native-call.mr-board-fullscreen-video.view-both{
+  width:clamp(230px,20vw,340px)!important;
+}
+.board-card:fullscreen > .mr-native-call.mr-board-fullscreen-video.view-both .mr-call-stage{
+  display:grid!important;
+  grid-template-rows:minmax(0,1fr) minmax(0,1fr)!important;
+  gap:4px!important;
+  padding:4px!important;
+  aspect-ratio:8/9!important;
+  max-height:calc(100vh - 40px)!important;
+}
+.board-card:fullscreen > .mr-native-call.mr-board-fullscreen-video.view-both .mr-remote-video,
+.board-card:fullscreen > .mr-native-call.mr-board-fullscreen-video.view-both .mr-local-video{
+  position:relative!important;
+  inset:auto!important;
+  display:block!important;
+  width:100%!important;
+  height:100%!important;
+  min-width:0!important;
+  min-height:0!important;
+  border:0!important;
+  border-radius:7px!important;
+  object-fit:contain!important;
+  object-position:50% 50%!important;
+  box-shadow:none!important;
+  background:#101214!important;
+}
+.board-card:fullscreen > .mr-native-call.mr-board-fullscreen-video.view-both .mr-local-video{
+  transform:scaleX(-1)!important;
+}
+.board-card:fullscreen > .mr-native-call.mr-board-fullscreen-video.view-both.sharing .mr-local-video{
+  transform:none!important;
+}
+.board-card:fullscreen > .mr-native-call.mr-board-fullscreen-video.view-both .mr-call-person{
+  display:none!important;
+}
+
+/* Preserve 'Скрыть': no replacement control panel appears. */
+.board-card:fullscreen > .mr-native-call.mr-board-fullscreen-video.view-hidden{
+  width:auto!important;
+  min-width:0!important;
+  padding:5px!important;
+}
+.board-card:fullscreen > .mr-native-call.mr-board-fullscreen-video.view-hidden .mr-call-stage,
+.board-card:fullscreen > .mr-native-call.mr-board-fullscreen-video.view-hidden .mr-floating-view-switch,
+.board-card:fullscreen > .mr-native-call.mr-board-fullscreen-video.view-hidden .mr-call-actions{
+  display:none!important;
+}
