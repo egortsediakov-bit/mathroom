@@ -217,7 +217,8 @@
 
   function decorateVideoCard(){
     document.querySelectorAll('#mrVideoPanel').forEach(host=>{
-      host.classList.add('mr-micro-connection-card');
+      const prejoin=!host.classList.contains('joined');
+      host.classList.toggle('mr-micro-connection-card',prejoin);
       const join=host.querySelector('#mrVideoJoin');
       if(join&&!join.dataset.microCompact){
         join.dataset.microCompact='1';
