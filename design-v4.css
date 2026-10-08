@@ -3031,3 +3031,13 @@ input[type="file"]{font-size:11px!important}
     height:40px!important;
   }
 }
+
+
+/* ===== Video action cleanup =====
+   Keep "Видео" only as the restore action when the compact player is hidden. */
+#mrVideoPanel.joined:not(.view-hidden) #mrVideoExpand{
+  display:none!important;
+}
+#mrVideoPanel.joined.view-hidden.floating #mrVideoExpand{
+  display:inline-flex!important;
+}
