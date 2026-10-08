@@ -741,6 +741,20 @@
     const setSelection=ids=>{const clean=[...new Set((ids||[]).filter(id=>elements.some(o=>o.id===id)))];selected=clean[0]||null;selectedIds=new Set(clean.slice(1))};
     const toggleSelection=id=>{if(!id)return;if(selectionHas(id)){const next=selectionList().filter(x=>x!==id);setSelection(next)}else setSelection([...selectionList(),id])};
     const lessonId=options.lessonId||'';const checkpointKey=lessonId?`mathroom.board.checkpoints.${lessonId}`:'';let checkpointTimer=null;
+    const boardUA=String(navigator.userAgent||'');
+    const boardTouch=Number(navigator.maxTouchPoints||0)>0;
+    const boardCoarse=window.matchMedia?.('(pointer: coarse)')?.matches||false;
+    const boardScreenLong=Math.max(Number(screen?.width||0),Number(screen?.height||0));
+    const boardScreenShort=Math.min(Number(screen?.width||0),Number(screen?.height||0));
+    const boardIpadOS=/Macintosh/i.test(boardUA)&&boardTouch;
+    const phoneStudentBoardUI=!isTeacher&&(
+      /iPhone|iPod|Android.*Mobile|Mobile/i.test(boardUA)||
+      ((boardTouch||boardCoarse)&&boardScreenShort>0&&boardScreenShort<=600)
+    );
+    const compactStudentBoardUI=!isTeacher&&(
+      phoneStudentBoardUI||boardIpadOS||/iPad|Tablet/i.test(boardUA)||
+      ((boardTouch||boardCoarse)&&boardScreenLong>0&&boardScreenLong<=1366&&boardScreenShort<=1024)
+    );
     const templatesKey=`mathroom.board.templates.${S.user?.id||'teacher'}`;const assetLibraryKey=`mathroom.board.assetLibrary.${S.user?.id||'teacher'}`;const scratchStorageKey=`mathroom.teacher.scratch.${S.user?.id||'teacher'}`;const classroomKey=lessonId?`mathroom.board.classroom.${lessonId}`:'';if(isTeacher&&classroomKey){try{const c=JSON.parse(localStorage.getItem(classroomKey)||'null');if(c){classroomMode=c.mode||classroomMode;followTeacher=c.follow!==false}}catch{}}
     const toolPanel=`<div class="board-tools board-tool-groups board-rail">
       <div class="board-quick-tools board-rail-quick board-rail-main">
@@ -756,6 +770,25 @@
       ${isTeacher?`<div class="board-rail-divider board-rail-divider-bottom"></div><button class="btn sm board-icon-btn board-rail-action board-rail-clear danger" id="clearBoard" title="Очистить текущий лист" aria-label="Очистить лист">${uiIcon('trash')}</button>`:''}
     </div>`;
     root.innerHTML=`<div class="board-card"><div class="board-head"><div class="board-head-title"><strong>${localOnly?'Черновик':'Доска'}</strong><span class="board-status" id="boardStatus">${localOnly?'Локальный черновик':'Подключение…'}</span></div><div class="board-head-actions">${isTeacher&&lessonId?`<button class="btn sm ${followTeacher?'active':''}" id="followTeacherToggle">${uiIcon('focus')} <span>Ведение</span></button><select class="board-select board-permission-select" id="studentBoardMode" title="Права ученика"><option value="open" ${classroomMode==='open'?'selected':''}>Ученик: всё</option><option value="pen" ${classroomMode==='pen'?'selected':''}>Только писать</option><option value="view" ${classroomMode==='view'?'selected':''}>Просмотр</option></select>`:''}<span class="board-head-sep" aria-hidden="true"></span><button class="btn sm board-head-icon" id="undo" title="Отменить · Ctrl+Z">${uiIcon('undo')}<span class="board-head-label">Назад</span></button><button class="btn sm board-head-icon" id="redo" title="Вернуть · Ctrl+Y / Ctrl+Shift+Z">${uiIcon('redo')}<span class="board-head-label">Вперёд</span></button>${isTeacher?`<span class="board-head-sep" aria-hidden="true"></span><button class="btn sm board-head-icon" id="bringForward" disabled title="Поднять выбранный объект на один слой">${uiIcon('up')}<span class="board-head-label">Выше</span></button><button class="btn sm board-head-icon" id="sendBackward" disabled title="Опустить выбранный объект на один слой">${uiIcon('down')}<span class="board-head-label">Ниже</span></button><span class="board-head-sep" aria-hidden="true"></span><button class="btn sm board-head-icon" id="addPage" title="Создать новый лист">${uiIcon('plus')}<span class="board-head-label">Новый</span></button><button class="btn sm board-head-icon danger" id="delPage" title="Удалить текущий лист">${uiIcon('trash')}<span class="board-head-label">Удалить лист</span></button>`:''}<span class="board-head-sep" aria-hidden="true"></span><button class="btn sm board-shortcuts-btn" id="quickCommands" title="Показать быстрые команды">⌨ <span>Команды</span></button><button class="btn sm board-fullscreen-btn" id="fullscreen">${uiIcon('fullscreen')} <span>На весь экран</span></button></div></div><div class="board-page-tabs" id="pageTabs"></div><div class="board-stage" id="stage"><aside class="board-toolbar board-toolbar-side">${toolPanel}</aside><svg id="boardSvg"></svg><div class="board-object-hud" id="objectHud" hidden><button type="button" class="btn sm" data-object-action="duplicate" title="Дублировать">${uiIcon('duplicate')}</button><button type="button" class="btn sm" data-object-action="lock" title="Закрепить">${uiIcon('pin')}</button><button type="button" class="btn sm" data-object-action="front" title="На передний план">${uiIcon('front')}</button><button type="button" class="btn sm" data-object-action="back" title="На задний план">${uiIcon('back')}</button><button type="button" class="btn sm" data-object-action="fill" title="Заливка">${uiIcon('fill')}</button><button type="button" class="btn sm" data-object-action="edit" title="Редактировать">${uiIcon('edit')}</button><button type="button" class="btn sm danger" data-object-action="delete" title="Удалить">${uiIcon('trash')}</button></div><div class="board-follow-badge" id="followBadge" hidden>${uiIcon('focus')} Следуем за преподавателем</div><div class="board-solid-hud" id="solidHud" hidden><button type="button" class="btn sm" data-solid-hud="rotate" title="Вращать 3D">${uiIcon('rotate')}</button><button type="button" class="btn sm" data-solid-hud="point" title="Поставить точку">${uiIcon('point')}</button><button type="button" class="btn sm" data-solid-hud="plane" title="Плоскость по трём точкам">${uiIcon('plane')}</button><span class="board-solid-hud-sep"></span><button type="button" class="btn sm" data-solid-hud="smaller" title="Уменьшить">${uiIcon('minus')}</button><button type="button" class="btn sm" data-solid-hud="larger" title="Увеличить">${uiIcon('plus')}</button><button type="button" class="btn sm" data-solid-hud="reset" title="Стандартный вид">${uiIcon('home')}</button><button type="button" class="btn sm danger" data-solid-hud="clear" title="Удалить точки и плоскости">${uiIcon('trash')}</button></div><div class="board-floating"><button class="btn sm" id="zoomOut" title="Уменьшить">${uiIcon('minus')}</button><span class="btn sm" id="zoomLabel">100%</span><button class="btn sm" id="zoomIn" title="Увеличить">${uiIcon('plus')}</button><button class="btn sm" id="homeView" title="Сбросить вид">${uiIcon('home')}</button></div></div><div class="board-hint">Выбор: рамка · Shift+клик — несколько объектов · Ctrl+Z — отменить · Space + drag — перемещение · планшет: стилус пишет, палец двигает, два пальца масштабируют</div></div>`;
+    if(compactStudentBoardUI){
+      /* Selection is deliberately absent on touch lesson boards: direct tools
+         are clearer and it prevents an unusable cursor button reappearing
+         after orientation changes. Remove it from the DOM, not just via CSS. */
+      root.querySelector('[data-tool="select"]')?.remove();
+    }
+    if(phoneStudentBoardUI){
+      /* Phone toolbar is intentionally minimal. Geometry is removed entirely;
+         object-selection actions cannot be used without the selection tool and
+         are hidden so they occupy no space. */
+      root.querySelector('.board-tool-group[data-category="geometry"]')?.remove();
+      for(const id of ['copySelected','pasteSelected','duplicateSelected','lockSelected','bringFront','sendBack','deleteSelected']){
+        root.querySelector('#'+id)?.style.setProperty('display','none','important');
+      }
+      const fs=root.querySelector('#fullscreen');
+      const card=root.querySelector('.board-card');
+      if(fs&&!document.fullscreenEnabled&&!card?.requestFullscreen)fs.style.setProperty('display','none','important');
+      root.dataset.phoneStudentBoard='1';
+    }
     const svg=root.querySelector('#boardSvg'),status=root.querySelector('#boardStatus'),pageTabs=root.querySelector('#pageTabs'),zoomLabel=root.querySelector('#zoomLabel'),stage=root.querySelector('#stage'),solidHud=root.querySelector('#solidHud'),objectHud=root.querySelector('#objectHud'),followBadge=root.querySelector('#followBadge');
     const boardCard=root.querySelector('.board-card');if(boardCard){boardCard.tabIndex=0;boardCard.setAttribute('aria-label','Интерактивная доска Mathroom')};
     function openQuickCommands(){
