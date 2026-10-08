@@ -1518,21 +1518,55 @@
     async function refreshPages(){if(localOnly){const stored=readLocal();if(!stored.length)return;const old=current?.id;pages=stored;const found=pages.find(x=>x.id===old);if(found){current=found;if(!moveStart&&!drawing)elements=clone(found.elements||[])}else{current=pages[0];elements=clone(current?.elements||[])}renderTabs();render();return}const {data}=await sb.from('board_pages').select('*').eq('student_id',studentId).order('sort_order');if(!data)return;const old=current?.id;pages=data.map(normalizePage);const found=pages.find(x=>x.id===old);if(found){current=found;if(!moveStart&&!drawing)elements=clone(found.elements||[])}else{current=pages[0];elements=clone(current?.elements||[])}renderTabs();render();joinChannel()}
     function broadcastTransient(kind,payload){channel?.send({type:'broadcast',event:'transient',payload:{pageId:current?.id,kind,...payload}}).catch(()=>{})}
     function joinChannel(){
-      if(channel)sb.removeChannel(channel);channel=null;if(!current)return;if(localOnly){status.textContent='Локальный черновик';return}
+      if(channel)sb.removeChannel(channel);channel=null;channelSubscribed=false;
+      if(!current)return;
+      if(localOnly){setSyncState('saved','Локальный черновик');return}
+      setSyncState(boardNetworkOnline?'connecting':'offline');
       channel=sb.channel(`board:${current.id}`,{config:{private:true}})
-        .on('broadcast',{event:'state'},({payload})=>{if(payload.pageId!==current.id)return;const incoming=(Array.isArray(payload.elements)?payload.elements:[]).map(normalizeElement).filter(Boolean);if(isTeacher){const hidden=elements.filter(x=>x.teacherOnly);elements=[...incoming.filter(x=>!x.teacherOnly),...hidden]}else elements=incoming;const p=pages.find(x=>x.id===current.id);if(p)p.elements=clone(elements);render();status.textContent='Онлайн'})
+        .on('broadcast',{event:'ops'},({payload})=>{
+          if(payload?.pageId!==current.id)return;
+          applyRemoteOps(payload.ops||[]);
+        })
+        .on('broadcast',{event:'state'},({payload})=>{
+          if(payload?.pageId!==current.id||payload?.actor===actorKey)return;
+          applyStateSnapshot(payload.elements||[]);
+          setSyncState(boardNetworkOnline?'online':'offline');
+        })
         .on('broadcast',{event:'transient'},({payload})=>{
           if(payload.pageId!==current.id)return;
           if(payload.kind==='laser')remoteLaser=payload.point||null;
           if(payload.kind==='focus')remoteFocusRect=payload.rect||null;
-          if(payload.kind==='cursor'){remoteCursor=null;}
+          if(payload.kind==='cursor'){
+            remoteCursor=payload.point?{...payload.point,label:payload.label||(!isTeacher?'Преподаватель':'Ученик'),role:payload.role||'',expires:Date.now()+1800}:null;
+            if(remoteCursor)setTimeout(()=>{if(remoteCursor&&remoteCursor.expires<=Date.now()){remoteCursor=null;render()}},1900);
+          }
+          if(payload.kind==='stroke'){
+            const sid=payload.strokeId||payload.stroke?.id;
+            if(sid){
+              if(payload.phase==='start'){
+                const s=normalizeElement(payload.stroke||{id:sid,type:'path',points:[]});
+                if(s)remoteLiveStrokes.set(sid,{...s,points:[...(s.points||[])],expires:Date.now()+3500});
+              }else if(payload.phase==='chunk'){
+                const s=remoteLiveStrokes.get(sid);
+                if(s){s.points.push(...(payload.points||[]));s.expires=Date.now()+3500}
+              }else if(payload.phase==='end')remoteLiveStrokes.delete(sid);
+            }
+          }
           if(payload.kind==='marker'&&payload.mark){const i=remoteTempMarks.findIndex(x=>x.id===payload.mark.id),mark={...payload.mark,expires:Date.now()+5000};if(i>=0)remoteTempMarks[i]=mark;else remoteTempMarks.push(mark);setTimeout(render,5100)}
-          if(payload.kind==='classroom'&&!isTeacher){classroomMode=payload.mode||'open';followTeacher=payload.follow!==false;if(classroomMode==='view')setTool('hand');else if(classroomMode==='pen'&&!['pen','pencil','eraser','hand'].includes(tool))setTool('pen');renderTabs();toast(classroomMode==='open'?'Доска открыта для совместной работы':classroomMode==='pen'?'Режим: только письмо':'Режим: просмотр');}
+          if(payload.kind==='classroom'&&!isTeacher){classroomMode=payload.mode||'open';followTeacher=payload.follow!==false;if(classroomMode==='view')setTool('hand');else if(classroomMode==='pen'&&!['pen','pencil','eraser','hand'].includes(tool))setTool('pen');renderTabs();toast(classroomMode==='open'?'Доска открыта для совместной работы':classroomMode==='pen'?'Режим: только свои записи':'Режим: просмотр');}
           if(payload.kind==='viewport'&&!isTeacher&&followTeacher&&payload.camera){camera={...payload.camera};zoomLabel.textContent=Math.round(camera.zoom*100)+'%';}
-          if(payload.kind==='hello'&&isTeacher){persistClassroom();sendViewport(true)}
+          if(payload.kind==='hello'&&isTeacher){persistClassroom();sendViewport(true);broadcastState(true)}
           render();
         })
-        .subscribe(s=>{status.textContent=s==='SUBSCRIBED'?'Онлайн':'Подключение…';if(s==='SUBSCRIBED'){if(isTeacher){persistClassroom();sendViewport(true)}else broadcastTransient('hello',{role:'student'})}})
+        .subscribe(s=>{
+          channelSubscribed=s==='SUBSCRIBED';
+          setSyncState(channelSubscribed?'online':(boardNetworkOnline?'connecting':'offline'));
+          if(channelSubscribed){
+            flushPendingOps();
+            if(isTeacher){persistClassroom();sendViewport(true);broadcastState(true)}
+            else broadcastTransient('hello',{role:'student'});
+          }
+        })
     }
     function wrapBoardText(text,maxChars=38){
       const parts=[];
