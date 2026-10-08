@@ -809,7 +809,10 @@
       const h=Math.max(270,Math.min(540,Number(settings.height)||540));
       const canvas=document.createElement('canvas');
       canvas.width=w;canvas.height=h;
-      const ctx=canvas.getContext('2d',{alpha:false,desynchronized:true});
+      // Segmentation compositing needs a real alpha channel.
+      // With alpha:false the mask became fully opaque, so the original room
+      // always won and blur/replacement backgrounds looked like they did nothing.
+      const ctx=canvas.getContext('2d',{alpha:true,desynchronized:true});
       const output=canvas.captureStream(24);
       const outTrack=output.getVideoTracks()[0];
       if(!outTrack) throw new Error('Не удалось создать обработанный видеопоток');
