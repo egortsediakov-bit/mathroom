@@ -4577,3 +4577,42 @@ button.mr-mobile-lesson-asset{cursor:pointer}
   /* Do not override VideoSession's floating view modes here.
      "Оба" and "Скрыть" intentionally use the exact generic teacher rules. */
 }
+
+
+/* =========================================================
+   Mathroom v36.2 — desktop student board parity + video hero restore
+   ========================================================= */
+@media(min-width:1101px){
+  /* Same board shell and canvas geometry as the teacher lesson workspace. */
+  .student-desktop-lesson-mode .mr-student-desktop-board.mr-lesson-board-main .board-card{
+    border-radius:20px!important;
+    background:#fff!important;
+    box-shadow:0 18px 46px rgba(18,20,28,.07)!important;
+    overflow:hidden!important;
+  }
+  .student-desktop-lesson-mode .mr-student-desktop-board.mr-lesson-board-main .board-stage{
+    height:auto!important;
+    min-height:610px!important;
+  }
+  .student-desktop-lesson-mode .mr-student-desktop-board.mr-lesson-board-main .board-toolbar-side .board-tool-popover{
+    width:300px!important;
+    min-width:300px!important;
+    max-width:min(300px,calc(100vw - var(--mr-pop-left,92px) - 12px))!important;
+    max-height:min(var(--mr-pop-maxh,68vh),520px)!important;
+  }
+  .student-desktop-lesson-mode .mr-student-desktop-board.mr-lesson-board-main .board-toolbar-side .board-shapes-popover{
+    width:360px!important;
+    min-width:360px!important;
+    max-width:min(360px,calc(100vw - var(--mr-pop-left,92px) - 12px))!important;
+    max-height:min(var(--mr-pop-maxh,68vh),560px)!important;
+  }
+
+  /* Desktop students get the full student-safe geometry palette instead of the
+     phone-reduced palette. Teacher-only page/admin controls remain protected. */
+  .student-desktop-lesson-mode .mr-student-desktop-board .board-mobile-extra{
+    display:flex!important;
+  }
+  .student-desktop-lesson-mode .mr-student-desktop-board details.board-mobile-extra{
+    display:block!important;
+  }
+}
