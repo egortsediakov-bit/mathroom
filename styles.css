@@ -3501,3 +3501,69 @@ button.mr-mobile-lesson-asset{cursor:pointer}
 .student-mobile-shell .mr-progress-back:active{
   transform:scale(.97)!important;
 }
+
+
+/* Mathroom v33.3 — sticky top Progress header */
+.student-mobile-shell .mr-progress-sticky-head{
+  position:sticky!important;
+  top:0!important;
+  z-index:7200!important;
+  display:flex!important;
+  align-items:center!important;
+  justify-content:flex-start!important;
+  gap:12px!important;
+  min-height:58px!important;
+  padding:max(10px,env(safe-area-inset-top)) 12px 9px!important;
+  box-sizing:border-box!important;
+  background:rgba(251,250,248,.96)!important;
+  border-bottom:1px solid rgba(30,31,36,.08)!important;
+  box-shadow:0 5px 18px rgba(20,22,28,.05)!important;
+  -webkit-backdrop-filter:blur(14px)!important;
+  backdrop-filter:blur(14px)!important;
+}
+.student-mobile-shell .mr-progress-head-back{
+  appearance:none!important;
+  -webkit-appearance:none!important;
+  flex:0 0 auto!important;
+  height:38px!important;
+  min-width:66px!important;
+  padding:0 10px!important;
+  border:1px solid #dedbd5!important;
+  border-radius:11px!important;
+  background:#fff!important;
+  color:#171823!important;
+  display:inline-flex!important;
+  align-items:center!important;
+  justify-content:center!important;
+  gap:5px!important;
+  font:800 12px/1 system-ui,sans-serif!important;
+  box-shadow:0 2px 8px rgba(20,22,28,.04)!important;
+}
+.student-mobile-shell .mr-progress-head-back span{
+  font-size:18px!important;
+  line-height:1!important;
+}
+.student-mobile-shell .mr-progress-head-back b{
+  font:inherit!important;
+}
+.student-mobile-shell .mr-progress-head-title{
+  display:grid!important;
+  gap:1px!important;
+  min-width:0!important;
+}
+.student-mobile-shell .mr-progress-head-title>b{
+  font-size:16px!important;
+  line-height:1.15!important;
+  letter-spacing:-.02em!important;
+}
+.student-mobile-shell .mr-progress-head-title>small{
+  font-size:9.5px!important;
+  color:var(--ms-muted)!important;
+}
+.student-mobile-shell.tab-progress .mr-mobile-student-content{
+  padding-top:10px!important;
+}
+/* Old in-content header is obsolete; keep hidden in case stale cached markup survives. */
+.student-mobile-shell .mr-progress-mobile-topbar{
+  display:none!important;
+}
