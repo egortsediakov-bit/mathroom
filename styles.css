@@ -3949,30 +3949,30 @@ button.mr-mobile-lesson-asset{cursor:pointer}
     width:100%;
     margin:0 0 14px!important;
   }
-  .student-desktop-lesson-mode #mrStudentVideoMount .mr-native-call{
+  .student-desktop-lesson-mode #mrStudentVideoMount>.mr-native-call:not(.floating){
     border:1px solid #dedbd5!important;
     border-radius:20px!important;
     background:#fff!important;
     box-shadow:0 12px 34px rgba(20,22,28,.07)!important;
     overflow:hidden!important;
   }
-  .student-desktop-lesson-mode #mrStudentVideoMount .mr-call-stage{
+  .student-desktop-lesson-mode #mrStudentVideoMount>.mr-native-call:not(.floating) .mr-call-stage{
     min-height:520px!important;
     height:min(62vh,720px)!important;
     border-radius:0!important;
     background:#111!important;
   }
-  .student-desktop-lesson-mode #mrStudentVideoMount .mr-remote-video{
+  .student-desktop-lesson-mode #mrStudentVideoMount>.mr-native-call:not(.floating) .mr-remote-video{
     width:100%!important;height:100%!important;object-fit:cover!important;
   }
-  .student-desktop-lesson-mode #mrStudentVideoMount .mr-local-video{
+  .student-desktop-lesson-mode #mrStudentVideoMount>.mr-native-call:not(.floating) .mr-local-video{
     width:190px!important;height:122px!important;right:16px!important;bottom:16px!important;
     border-radius:14px!important;border:2px solid rgba(255,255,255,.82)!important;
   }
-  .student-desktop-lesson-mode #mrStudentVideoMount .mr-call-head{
+  .student-desktop-lesson-mode #mrStudentVideoMount>.mr-native-call:not(.floating) .mr-call-head{
     padding:10px 13px!important;
   }
-  .student-desktop-lesson-mode #mrStudentVideoMount .mr-call-actions{
+  .student-desktop-lesson-mode #mrStudentVideoMount>.mr-native-call:not(.floating) .mr-call-actions{
     padding:10px 12px 12px!important;
     justify-content:center!important;
     flex-wrap:wrap!important;
@@ -4466,4 +4466,92 @@ button.mr-mobile-lesson-asset{cursor:pointer}
   .mr-desk-art-orb{right:55px}
   #mrStudentFirstMinutes.mr-desk-onboarding .mr-desk-onboarding-row{grid-template-columns:1fr auto}
   #mrStudentFirstMinutes.mr-desk-onboarding .mr-first-grid{grid-column:1/-1}
+}
+
+
+/* =========================================================
+   Mathroom v36.0 — student five-minute lesson gate + teacher-parity video
+   ========================================================= */
+.student-prelesson-mode{
+  width:min(1180px,100%)!important;
+  max-width:none!important;
+  min-height:100dvh;
+  margin:0 auto!important;
+  padding:14px 16px 34px!important;
+  box-sizing:border-box!important;
+  display:grid!important;
+  gap:12px!important;
+  background:#f7f6f3;
+}
+.student-prelesson-mode>#mrStudentVideoMount[hidden]{display:none!important}
+.mr-prelesson-header{
+  min-height:54px;
+  display:flex;align-items:center;justify-content:space-between;gap:12px;
+  padding:0 4px;
+}
+.mr-prelesson-header>div{display:grid;gap:1px}
+.mr-prelesson-header .brand{font-size:20px;color:#f55a16}
+.mr-prelesson-header small{font-size:10px;color:#858991}
+.mr-prelesson-countdown{
+  display:inline-flex;align-items:center;justify-content:center;
+  min-height:34px;padding:0 12px;border-radius:999px;
+  background:#fff0e7;color:#e64d0e;border:1px solid #ffd9c5;
+  font-size:10px;font-weight:850;font-variant-numeric:tabular-nums;
+}
+.mr-prelesson-connect{
+  border:1px solid #ffe0cd;border-radius:20px;background:
+    radial-gradient(circle at 90% 10%,rgba(245,90,22,.10),transparent 210px),
+    linear-gradient(135deg,#fff,#fff7f1);
+  padding:18px 20px;
+  display:flex;align-items:center;justify-content:space-between;gap:18px;
+  box-shadow:0 10px 30px rgba(25,28,35,.04);
+}
+.mr-prelesson-connect h1{margin:4px 0 5px;font-size:25px;line-height:1.05;letter-spacing:-.04em}
+.mr-prelesson-connect p{margin:0;color:#777d87;font-size:11px}
+.mr-prelesson-connect .btn{min-height:46px;padding:0 18px;font-size:12px;white-space:nowrap}
+.mr-prelesson-connect .btn:disabled{opacity:.72;cursor:default}
+.mr-prelesson-board{
+  min-width:0;border:1px solid #e5e2dc;border-radius:20px;background:#fff;overflow:hidden;
+  box-shadow:0 10px 30px rgba(20,22,28,.045);
+}
+.mr-prelesson-board-head{
+  display:flex;align-items:center;justify-content:space-between;gap:12px;
+  padding:13px 15px;border-bottom:1px solid #ece9e4;background:#fff;
+}
+.mr-prelesson-board-head>div{display:grid;gap:2px}
+.mr-prelesson-board-head h2{margin:0;font-size:15px}
+.mr-prelesson-board-head>span{font-size:9px;color:#92969d}
+.student-prelesson-mode #studentPreLessonBoard .board-card{
+  border:0!important;border-radius:0!important;box-shadow:none!important;
+}
+.student-prelesson-mode #studentPreLessonBoard .board-stage{
+  height:min(72vh,760px)!important;min-height:520px!important;
+}
+@media(max-width:760px){
+  .student-prelesson-mode{padding:8px 0 18px!important;gap:8px!important;background:#f7f6f3}
+  .mr-prelesson-header{padding:0 10px}
+  .mr-prelesson-connect{margin:0 8px;padding:14px;border-radius:16px;align-items:flex-start;flex-direction:column}
+  .mr-prelesson-connect h1{font-size:20px}
+  .mr-prelesson-connect .btn{width:100%;min-height:48px}
+  .mr-prelesson-board{border-left:0;border-right:0;border-radius:0}
+  .mr-prelesson-board-head{padding:10px 12px}
+  .mr-prelesson-board-head>span{display:none}
+  .student-prelesson-mode #studentPreLessonBoard .board-stage{height:min(68dvh,620px)!important;min-height:470px!important}
+}
+
+/* The student's live call uses the exact same floating mini-player mechanics as the teacher.
+   Only the in-page hero gets student-specific sizing; .floating is left to VideoSession. */
+@media(min-width:761px){
+  .student-desktop-lesson-mode #mrStudentVideoMount>.mr-native-call.floating .mr-call-stage{
+    height:auto!important;min-height:0!important;max-height:none!important;aspect-ratio:16/9!important;
+  }
+  .student-desktop-lesson-mode #mrStudentVideoMount>.mr-native-call.floating .mr-remote-video{
+    position:absolute!important;inset:0!important;width:100%!important;height:100%!important;object-fit:contain!important;
+  }
+  .student-desktop-lesson-mode #mrStudentVideoMount>.mr-native-call.floating .mr-local-video{
+    display:none!important;
+  }
+  .student-desktop-lesson-mode #mrStudentVideoMount>.mr-native-call.floating .mr-call-actions{
+    display:none!important;
+  }
 }
