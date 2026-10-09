@@ -713,6 +713,14 @@ async function getStudentData(){
   }catch(e){console.info('[Mathroom student board archive] unavailable',e)}
   return {lessons:lessonRows,homeworks:homeworks||[],tests:tests||[],reports:Array.isArray(reports)?reports:[],versions};
 }
+function studentPreLessonGate(lessons){
+  const now=Date.now();
+  return (lessons||[])
+    .filter(x=>x.status==='assigned'&&x.scheduled_at)
+    .map(x=>({lesson:x,at:new Date(x.scheduled_at).getTime()}))
+    .filter(x=>Number.isFinite(x.at)&&now>=x.at-5*60000&&now<=x.at+Math.max(90,Number(x.lesson.duration_minutes||60)+30)*60000)
+    .sort((a,b)=>a.at-b.at)[0]?.lesson||null;
+}
 async function currentStudentLive(lessons){
   const active=lessons.find(x=>x.status==='in_progress');if(!active)return {active:null,live:null};const {data}=await sb.from('lesson_live_state').select('*').eq('lesson_id',active.id).maybeSingle();return {active,live:data};
 }
@@ -928,6 +936,53 @@ function studentDesktopMoreHtml(){
 }
 async function renderStudent(){
   cleanupAll();const d=await getStudentData(),{active,live}=await currentStudentLive(d.lessons);S.studentLive=live;
+  const preLesson=active?null:studentPreLessonGate(d.lessons);
+  S.studentPreLesson=preLesson||null;
+
+  if(preLesson){
+    const startsAt=new Date(preLesson.scheduled_at);
+    const seconds=Math.max(0,Math.ceil((startsAt.getTime()-Date.now())/1000));
+    const countdown=seconds>0?('До начала '+String(Math.floor(seconds/60)).padStart(2,'0')+':'+String(seconds%60).padStart(2,'0')):'Можно подключаться';
+    app.innerHTML=`<div class="student-home student-prelesson-mode">
+      <div id="mrStudentVideoMount" class="mr-student-video-top" hidden></div>
+      <header class="mr-prelesson-header">
+        <div><span class="brand">Mathroom</span><small>Урок скоро начнётся</small></div>
+        <span class="mr-prelesson-countdown" id="mrPreLessonCountdown">${esc(countdown)}</span>
+      </header>
+      <section class="mr-prelesson-connect">
+        <div>
+          <span class="mr-mobile-kicker">Через несколько минут</span>
+          <h1>${esc(preLesson.topics?.title||'Урок')}</h1>
+          <p>${esc(dateLong(preLesson.scheduled_at))} · ${Number(preLesson.duration_minutes||60)} мин</p>
+        </div>
+        <button class="btn primary" id="mrStudentPreLessonJoin">Подключиться к уроку</button>
+      </section>
+      <section class="mr-prelesson-board">
+        <div class="mr-prelesson-board-head"><div><span class="mr-mobile-kicker">Онлайн-доска</span><h2>Можно подготовиться к занятию</h2></div><span>Изменения сохраняются автоматически</span></div>
+        <div id="studentPreLessonBoard"></div>
+      </section>
+    </div>`;
+    await mountBoard(document.getElementById('studentPreLessonBoard'),S.student.id,false);
+    const updateCountdown=()=>{
+      const el=document.getElementById('mrPreLessonCountdown');if(!el)return;
+      const left=Math.max(0,Math.ceil((startsAt.getTime()-Date.now())/1000));
+      el.textContent=left>0?('До начала '+String(Math.floor(left/60)).padStart(2,'0')+':'+String(left%60).padStart(2,'0')):'Можно подключаться';
+    };
+    const countdownTimer=setInterval(updateCountdown,1000);
+    S.liveCleanup=()=>clearInterval(countdownTimer);
+    const join=document.getElementById('mrStudentPreLessonJoin');
+    if(join)join.onclick=()=>{
+      let tries=0;
+      const open=()=>{
+        const liveCall=window.MathroomLiveCall;
+        if(liveCall?.openPrejoin)return liveCall.openPrejoin();
+        if(tries++<12)return setTimeout(open,120);
+        toast('Подключение ещё готовится. Попробуй ещё раз через секунду.');
+      };
+      open();
+    };
+    return;
+  }
 
   const ua=String(navigator.userAgent||'');
   const touch=Number(navigator.maxTouchPoints||0)>0;
@@ -993,7 +1048,6 @@ async function renderStudent(){
         <aside class="mr-student-desktop-lesson-rail">
           <section id="studentLessonTaskMount">${studentLessonTaskCard(live)}</section>
           <section class="mr-student-desktop-timer-card"><div class="mr-desk-section-head"><div><span class="mr-mobile-kicker">Таймер</span><h2>Время урока</h2></div></div><div class="mr-student-desktop-timers"><div><span>Урок</span><b id="studentTimer">${fmtTime(elapsedSeconds(live))}</b></div><div id="studentTaskTimerWrap" class="${live.task_timer_running?'active':''}"><span>На задачу</span><b id="studentTaskTimer">${live.task_timer_running?fmtTime(taskLeft):'—'}</b></div></div></section>
-          <section class="mr-student-desktop-self-video"><div class="mr-desk-section-head"><div><span class="mr-mobile-kicker">Вы</span><h2>Ваше видео</h2></div></div><div class="mr-student-side-video-frame"><video id="mrStudentSideVideo" autoplay muted playsinline webkit-playsinline></video><span>Вы</span></div></section>
         </aside>
       </div>
     </div>`;
