@@ -1051,7 +1051,7 @@ async function renderStudent(){
         </aside>
       </div>
     </div>`;
-    await mountBoard(document.getElementById('studentLessonBoard'),S.student.id,false,{lessonId:active.id,studentName:S.student.name,followTeacher:true});
+    await mountBoard(document.getElementById('studentLessonBoard'),S.student.id,false,{lessonId:active.id,studentName:S.student.name,followTeacher:true,teacherReplica:true,teacherId:active.teacher_id||live.teacher_id||''});
     subscribeStudentLive(active.id);
     return;
   }
