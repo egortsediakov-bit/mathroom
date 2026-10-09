@@ -4539,19 +4539,41 @@ button.mr-mobile-lesson-asset{cursor:pointer}
   .student-prelesson-mode #studentPreLessonBoard .board-stage{height:min(68dvh,620px)!important;min-height:470px!important}
 }
 
-/* The student's live call uses the exact same floating mini-player mechanics as the teacher.
-   Only the in-page hero gets student-specific sizing; .floating is left to VideoSession. */
-@media(min-width:761px){
-  .student-desktop-lesson-mode #mrStudentVideoMount>.mr-native-call.floating .mr-call-stage{
-    height:auto!important;min-height:0!important;max-height:none!important;aspect-ratio:16/9!important;
+
+
+/* =========================================================
+   Mathroom v36.1 — student live lesson parity fixes
+   ========================================================= */
+@media(min-width:1101px){
+  body:has(.student-desktop-lesson-mode),
+  #app:has(.student-desktop-lesson-mode){
+    width:100%!important;
+    max-width:none!important;
   }
-  .student-desktop-lesson-mode #mrStudentVideoMount>.mr-native-call.floating .mr-remote-video{
-    position:absolute!important;inset:0!important;width:100%!important;height:100%!important;object-fit:contain!important;
+  .student-home.student-lesson-mode.student-desktop-lesson-mode{
+    width:100%!important;
+    max-width:none!important;
+    margin:0!important;
+    padding:14px 14px 42px!important;
   }
-  .student-desktop-lesson-mode #mrStudentVideoMount>.mr-native-call.floating .mr-local-video{
-    display:none!important;
+  .student-desktop-lesson-mode>#mrStudentVideoMount{
+    width:100%!important;
+    max-width:none!important;
+    margin:0 0 14px!important;
   }
-  .student-desktop-lesson-mode #mrStudentVideoMount>.mr-native-call.floating .mr-call-actions{
-    display:none!important;
+  .student-desktop-lesson-mode>#mrStudentVideoMount>.mr-native-call.joined:not(.floating){
+    width:100%!important;
+    max-width:none!important;
+    box-sizing:border-box!important;
   }
+  .student-desktop-lesson-mode>#mrStudentVideoMount>.mr-native-call.joined:not(.floating) .mr-call-stage{
+    width:100%!important;
+    height:auto!important;
+    min-height:0!important;
+    max-height:none!important;
+    aspect-ratio:16/9!important;
+  }
+
+  /* Do not override VideoSession's floating view modes here.
+     "Оба" and "Скрыть" intentionally use the exact generic teacher rules. */
 }
