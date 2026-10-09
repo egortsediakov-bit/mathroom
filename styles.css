@@ -4658,3 +4658,34 @@ button.mr-mobile-lesson-asset{cursor:pointer}
     width:320px!important;
   }
 }
+
+
+/* =========================================================
+   Mathroom v36.5 — desktop student exact teacher-board replica
+   ========================================================= */
+@media(min-width:1101px){
+  .student-desktop-lesson-mode .mr-student-desktop-workspace{
+    grid-template-rows:auto!important;
+    align-items:start!important;
+  }
+  .student-desktop-lesson-mode .mr-student-desktop-board.mr-lesson-board-main{
+    order:0!important;
+    grid-column:1!important;
+    grid-row:1!important;
+    align-self:start!important;
+    margin:0!important;
+  }
+  .student-desktop-lesson-mode .mr-student-desktop-lesson-rail{
+    order:0!important;
+    grid-column:2!important;
+    grid-row:1!important;
+    align-self:start!important;
+    margin:0!important;
+  }
+  /* v36.2 exposed the reduced mobile-only controls on desktop.
+     The replica now uses the actual teacher toolbar branch instead. */
+  .student-desktop-lesson-mode .mr-student-desktop-board .board-mobile-extra,
+  .student-desktop-lesson-mode .mr-student-desktop-board details.board-mobile-extra{
+    display:none!important;
+  }
+}
