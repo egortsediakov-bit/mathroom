@@ -18,8 +18,9 @@
     if (S.view === 'lesson' && S.activeLesson && S.user) {
       return { role: 'teacher', lessonId: S.activeLesson.id, lesson: S.activeLesson, studentId: S.activeLesson.student_id };
     }
-    if (S.access && S.student && S.studentLive?.lesson_id) {
-      return { role: 'student', lessonId: S.studentLive.lesson_id, studentId: S.student.id };
+    if (S.access && S.student && (S.studentLive?.lesson_id || S.studentPreLesson?.id)) {
+      const lessonId=S.studentLive?.lesson_id||S.studentPreLesson?.id;
+      return { role: 'student', lessonId, studentId: S.student.id };
     }
     return null;
   };
@@ -3132,6 +3133,7 @@
     const home=document.querySelector('.student-home');if(!home||!call)return;
     const liveMode=home.classList.contains('student-lesson-mode');
     const desktopLesson=home.classList.contains('student-desktop-lesson-mode');
+    const preLesson=home.classList.contains('student-prelesson-mode');
     let mount=document.querySelector('#mrStudentVideoMount');
     if(!mount){
       mount=document.createElement('div');
@@ -3141,6 +3143,20 @@
     }else if(home.firstElementChild!==mount){
       home.prepend(mount);
     }
+
+    if(preLesson){
+      mount.hidden=true;
+      call.renderPanel(mount,false);
+      const join=document.querySelector('#mrStudentPreLessonJoin');
+      if(join){
+        join.disabled=!!call.joined;
+        join.textContent=call.joined?'Подключено · ждём преподавателя':'Подключиться к уроку';
+        join.onclick=()=>call.openPrejoin();
+      }
+      return;
+    }
+
+    mount.hidden=false;
     if(liveMode&&!desktopLesson){
       const task=document.querySelector('#studentLessonTaskMount');
       const board=document.querySelector('#studentLessonBoard');
@@ -3148,18 +3164,6 @@
       if(board&&task?.nextElementSibling!==board)task?.insertAdjacentElement('afterend',board);
     }
     call.renderPanel(mount,home.classList.contains('student-focus'));
-
-    if(desktopLesson){
-      const mini=document.querySelector('#mrStudentSideVideo');
-      if(mini){
-        const stream=call.localStream||null;
-        if(mini.srcObject!==stream)mini.srcObject=stream;
-        mini.muted=true;
-        mini.playsInline=true;
-        mini.style.transform='scaleX(-1)';
-        if(stream)mini.play?.().catch(()=>{});
-      }
-    }
   }
 
 
@@ -5771,12 +5775,19 @@
     studentLessonWatchBusy=true;
     try{
       const {data,error}=await sb.rpc('get_my_lessons');if(error)return;
-      const active=(Array.isArray(data)?data:[]).find(x=>x.status==='in_progress')||null;
-      const activeId=active?.id||null,currentId=S.studentLive?.lesson_id||null;
-      if(activeId!==currentId&&typeof window.renderStudent==='function'){
+      const rows=Array.isArray(data)?data:[];
+      const active=rows.find(x=>x.status==='in_progress')||null;
+      const now=Date.now();
+      const gate=active?null:rows
+        .filter(x=>x.status==='assigned'&&x.scheduled_at)
+        .map(x=>({lesson:x,at:new Date(x.scheduled_at).getTime()}))
+        .filter(x=>Number.isFinite(x.at)&&now>=x.at-5*60000&&now<=x.at+Math.max(90,Number(x.lesson.duration_minutes||60)+30)*60000)
+        .sort((a,b)=>a.at-b.at)[0]?.lesson||null;
+      const targetId=active?.id||gate?.id||null;
+      const currentId=S.studentLive?.lesson_id||S.studentPreLesson?.id||null;
+      if(targetId!==currentId&&typeof window.renderStudent==='function'){
         await window.renderStudent();
-        // renderStudent fetches lesson_live_state; if it was created a fraction later,
-        // retry on the next tick instead of requiring a page refresh.
+        // renderStudent resolves either the five-minute gate or the active live lesson.
       }
     }catch(e){console.warn('[Mathroom student lesson watch]',e)}finally{studentLessonWatchBusy=false}
   }
