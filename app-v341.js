@@ -827,22 +827,40 @@ function studentMobileBottomNav(activeTab){
   </nav>`;
 }
 
-function studentDesktopSidebar(activeTab){
-  const item=(tab,icon,label)=>`<button data-desktop-tab="${tab}" class="${activeTab===tab?'active':''}">${studentMobileNavIcon(icon)}<span>${label}</span></button>`;
-  return `<aside class="mr-student-desktop-sidebar">
-    <div class="mr-student-desktop-brand"><span class="brand">Mathroom</span><small>Личный кабинет</small></div>
-    <nav>
-      ${item('today','home','Главная')}
-      ${item('tasks','tasks','Задания')}
-      ${item('lessons','lessons','Уроки')}
-      ${item('progress','progress','Прогресс')}
-      ${item('more','more','Ещё')}
-    </nav>
-    <div class="mr-student-desktop-profile">
-      <div class="mr-student-desktop-avatar">${esc(String(S.student.name||'?').trim().charAt(0).toUpperCase())}</div>
-      <div><b>${esc(S.student.name)}</b><span>${esc(String(S.student.grade))} класс</span></div>
-    </div>
-  </aside>`;
+function studentDeskIcon(name){
+  const icons={
+    spark:'<path d="M12 3v4M12 17v4M3 12h4M17 12h4"/><path d="M7.1 7.1l2.1 2.1M14.8 14.8l2.1 2.1M16.9 7.1l-2.1 2.1M9.2 14.8l-2.1 2.1"/><circle cx="12" cy="12" r="3"/>',
+    ruler:'<path d="M4 18.5 16.5 6 20 9.5 7.5 22H4z"/><path d="m12 10 2 2M9 13l2 2M6 16l2 2"/>',
+    clipboard:'<path d="M9 5h6"/><rect x="5" y="4" width="14" height="17" rx="3"/><path d="M9 3h6v4H9zM8.5 12h7M8.5 16h5"/>',
+    calendar:'<rect x="3" y="5" width="18" height="16" rx="3"/><path d="M7 3v4M17 3v4M3 10h18M8 14h2M14 14h2M8 18h2"/>',
+    book:'<path d="M4 5.5A3.5 3.5 0 0 1 7.5 2H11v18H7.5A3.5 3.5 0 0 0 4 23zM20 5.5A3.5 3.5 0 0 0 16.5 2H13v18h3.5A3.5 3.5 0 0 1 20 23z"/>',
+    trophy:'<path d="M8 4h8v5a4 4 0 0 1-8 0zM10 15h4M12 13v5M8 21h8"/><path d="M8 6H4v2a4 4 0 0 0 4 4M16 6h4v2a4 4 0 0 1-4 4"/>',
+    check:'<path d="m5 12 4 4L19 6"/>',
+    arrow:'<path d="M5 12h14M14 7l5 5-5 5"/>'
+  };
+  return '<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">'+(icons[name]||icons.spark)+'</svg>';
+}
+function studentDeskEmpty(icon,title,text,tab,label){
+  return '<div class="mr-desk-empty-state"><div class="mr-desk-empty-icon">'+studentDeskIcon(icon)+'</div><div><b>'+esc(title)+'</b><p>'+esc(text)+'</p></div>'+(tab?'<button class="btn sm" data-desktop-tab="'+tab+'">'+esc(label||'Открыть')+' '+studentDeskIcon('arrow')+'</button>':'')+'</div>';
+}
+function studentDesktopSidebar(activeTab,d){
+  const openAssignments=[...(d?.homeworks||[]),...(d?.tests||[])].filter(x=>x.status==='assigned').length;
+  const item=(tab,icon,label,badge='')=>'<button data-desktop-tab="'+tab+'" class="'+(activeTab===tab?'active':'')+'">'+studentMobileNavIcon(icon)+'<span class="mr-desk-nav-label">'+label+'</span>'+(badge?'<span class="mr-desk-nav-badge">'+badge+'</span>':'')+'</button>';
+  return '<aside class="mr-student-desktop-sidebar">'+
+    '<div class="mr-student-desktop-brand"><span class="brand">Mathroom <i></i><i></i></span><small>Личный кабинет</small></div>'+
+    '<nav>'+
+      item('today','home','Главная')+
+      item('tasks','tasks','Задания',openAssignments?String(Math.min(openAssignments,99)):'')+
+      item('lessons','lessons','Уроки')+
+      item('progress','progress','Прогресс')+
+      item('more','more','Ещё')+
+    '</nav>'+
+    '<div class="mr-desk-sidebar-tip"><span>'+studentDeskIcon('spark')+'</span><div><b>Маленькими шагами</b><small>Регулярность важнее скорости.</small></div></div>'+
+    '<div class="mr-student-desktop-profile">'+
+      '<div class="mr-student-desktop-avatar">'+esc(String(S.student.name||'?').trim().charAt(0).toUpperCase())+'</div>'+
+      '<div><b>'+esc(S.student.name)+'</b><span>'+esc(String(S.student.grade))+' класс</span></div>'+
+    '</div>'+
+  '</aside>';
 }
 function studentDesktopProgressSummary(d){
   const reports=(d.reports||[]).slice(0,6);
@@ -859,65 +877,55 @@ function studentDesktopHomeHtml(d){
   const upcoming=d.lessons.filter(x=>x.status==='assigned'&&x.scheduled_at).sort((a,b)=>new Date(a.scheduled_at)-new Date(b.scheduled_at)).slice(0,4);
   const latest=(d.reports||[]).slice().sort((a,b)=>String(b.created_at||'').localeCompare(String(a.created_at||'')))[0]||null;
   const ps=studentDesktopProgressSummary(d);
-  return `<div class="mr-student-desktop-home-grid">
-    <section class="mr-student-desktop-main">
-      <div class="mr-student-desktop-welcome"><div><span>Привет, ${esc(String(S.student.name||'').split(/\s+/)[0]||'')}!</span><h1>Продолжаем двигаться вперёд</h1><p>Все важное для занятий — прямо здесь.</p></div></div>
-      <div class="mr-student-desktop-hero-grid">
-        <article class="mr-desk-card mr-desk-next">
-          <div class="mr-desk-card-head"><span class="mr-mobile-kicker">Следующий урок</span>${next?'<span class="pill">запланирован</span>':''}</div>
-          <h2>${next?esc(next.topics?.title||'Урок'):'Пока урок не назначен'}</h2>
-          <p>${next?esc(dateLong(next.scheduled_at))+' · '+Number(next.duration_minutes||60)+' мин':'Когда преподаватель назначит занятие, оно появится здесь.'}</p>
-          <div class="mr-desk-hero-actions">${next?'<button class="btn primary" id="mrDeskPrepareLesson">Подготовиться</button>':''}<button class="btn" data-desktop-tab="lessons">Все уроки</button></div>
-        </article>
-        <article class="mr-desk-card mr-desk-current-task">
-          <div class="mr-desk-card-head"><span class="mr-mobile-kicker">Текущее задание</span>${current?'<span class="pill warn">в работе</span>':''}</div>
-          <h2>${current?esc(current.title):'Заданий нет'}</h2>
-          <p>${current?esc(current.topics?.title||'')+(current.due_at?` · срок ${new Date(current.due_at).toLocaleDateString('ru-RU',{day:'2-digit',month:'2-digit'})}`:''):'Можно сосредоточиться на повторении и подготовке к уроку.'}</p>
-          ${current?`<button class="btn primary" data-student-assignment="${current.kind}:${current.id}">Продолжить</button>`:'<button class="btn" data-desktop-tab="progress">Посмотреть прогресс</button>'}
-        </article>
-      </div>
-      ${latest?.public_highlights||latest?.public_focus?`<article class="mr-desk-card mr-desk-feedback"><div class="mr-desk-card-head"><span class="mr-mobile-kicker">Недавняя обратная связь</span></div>${latest.public_highlights?`<div><b>Получилось</b><p>${nl(latest.public_highlights)}</p></div>`:''}${latest.public_focus?`<div class="warn"><b>Повторить</b><p>${nl(latest.public_focus)}</p></div>`:''}</article>`:''}
-      <section class="mr-desk-card">
-        <div class="mr-desk-section-head"><div><span class="mr-mobile-kicker">Задания</span><h2>Что нужно сделать</h2></div><button data-desktop-tab="tasks">Все задания →</button></div>
-        <div class="mr-desk-task-strip">${open.length?open.slice(0,4).map(x=>`<button data-student-assignment="${x.kind}:${x.id}"><span class="status-dot"></span><b>${esc(x.title)}</b><small>${esc(x.topics?.title||'')}${x.due_at?` · до ${new Date(x.due_at).toLocaleDateString('ru-RU',{day:'2-digit',month:'2-digit'})}`:''}</small></button>`).join(''):'<div class="mr-desk-empty">Все задания выполнены.</div>'}</div>
-      </section>
-      <section class="mr-desk-card">
-        <div class="mr-desk-section-head"><div><span class="mr-mobile-kicker">Недавние уроки</span><h2>Записи и материалы занятий</h2></div><button data-desktop-tab="lessons">Все уроки →</button></div>
-        <div class="mr-desk-recent-lessons">${completed.length?completed.map(l=>{const r=(d.reports||[]).find(x=>x.lesson_id===l.id);return`<button data-desktop-tab="lessons"><span>${new Date(l.completed_at||l.scheduled_at).toLocaleDateString('ru-RU',{day:'2-digit',month:'short'})}</span><b>${esc(l.topics?.title||'Урок')}</b><small>${r?`${Math.round(Number(r.solved_percent||0))}% уверенно · `:''}запись и доска</small></button>`}).join(''):'<div class="mr-desk-empty">После завершённых уроков здесь появятся материалы.</div>'}</div>
-      </section>
-    </section>
-    <aside class="mr-student-desktop-rail">
-      <article class="mr-desk-card mr-desk-progress-summary">
-        <div class="mr-desk-section-head"><div><span class="mr-mobile-kicker">Мой прогресс</span><h2>${ps.overall==null?'—':ps.overall+'%'}</h2></div><button data-desktop-tab="progress">Подробнее →</button></div>
-        <div class="mr-desk-progress-ring" style="--p:${ps.overall||0}"><span>${ps.overall==null?'—':ps.overall+'%'}</span></div>
-        <div class="mr-desk-progress-stats"><div><b>${ps.lessons}</b><span>уроков в отчётах</span></div><div><b>${ps.homework==null?'—':ps.homework+'%'}</b><span>домашние</span></div><div><b>${ps.tests==null?'—':ps.tests+'%'}</b><span>тесты</span></div></div>
-      </article>
-      <article class="mr-desk-card">
-        <div class="mr-desk-section-head"><div><span class="mr-mobile-kicker">Ближайшие занятия</span><h2>Расписание</h2></div></div>
-        <div class="mr-desk-upcoming">${upcoming.length?upcoming.map(l=>`<div><span>${new Date(l.scheduled_at).toLocaleDateString('ru-RU',{day:'2-digit',month:'short'})}</span><div><b>${esc(l.topics?.title||'Урок')}</b><small>${new Date(l.scheduled_at).toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'})}</small></div></div>`).join(''):'<div class="mr-desk-empty">Занятий пока нет.</div>'}</div>
-      </article>
-      <article class="mr-desk-card mr-desk-materials-shortcuts">
-        <span class="mr-mobile-kicker">Материалы уроков</span>
-        <button data-desktop-tab="lessons"><b>Конспекты и доски</b><span>Открыть архив →</span></button>
-        <button data-desktop-tab="lessons"><b>Видеозаписи уроков</b><span>Открыть архив →</span></button>
-        <button data-desktop-tab="progress"><b>Мой прогресс</b><span>Посмотреть аналитику →</span></button>
-      </article>
-    </aside>
-  </div>`;
+  const firstName=esc(String(S.student.name||'').split(/\s+/)[0]||'');
+  const nextDate=next?new Date(next.scheduled_at):null;
+  return '<div class="mr-student-desktop-home-grid">'+
+    '<section class="mr-student-desktop-main">'+
+      '<section class="mr-desk-hero-welcome">'+
+        '<div class="mr-desk-hero-copy"><span class="mr-desk-soft-badge">Mathroom · твой учебный кабинет</span><p>Привет, '+firstName+'!</p><h1>Продолжаем учиться<br>и открывать новое</h1><small>Уроки, задания и твой прогресс — всё собрано в одном месте.</small>'+
+        '<div class="mr-desk-hero-actions">'+(next?'<button class="btn primary" data-desktop-tab="lessons">К следующему уроку '+studentDeskIcon('arrow')+'</button>':open.length?'<button class="btn primary" data-desktop-tab="tasks">Продолжить задание '+studentDeskIcon('arrow')+'</button>':'<button class="btn primary" data-desktop-tab="progress">Посмотреть прогресс '+studentDeskIcon('arrow')+'</button>')+'<button class="btn ghost" data-desktop-tab="lessons">Все уроки</button></div></div>'+
+        '<div class="mr-desk-hero-art" aria-hidden="true"><span class="mr-desk-art-orb">'+studentDeskIcon('spark')+'</span><b>x² + y²</b><i>π</i><em>✓</em><span class="mr-desk-art-card">'+studentDeskIcon('book')+'</span></div>'+
+      '</section>'+
+      '<div class="mr-student-desktop-hero-grid">'+
+        '<article class="mr-desk-card mr-desk-next">'+
+          '<div class="mr-desk-card-head"><div><span class="mr-mobile-kicker">Следующий урок</span><h2>'+(next?esc(next.topics?.title||'Урок'):'Пока урок не назначен')+'</h2></div>'+(next?'<span class="mr-desk-date-chip"><b>'+nextDate.toLocaleDateString('ru-RU',{day:'2-digit'})+'</b><small>'+nextDate.toLocaleDateString('ru-RU',{month:'short'}).replace('.','')+'</small></span>':'')+'</div>'+
+          '<div class="mr-desk-feature-row"><span class="mr-desk-feature-icon">'+studentDeskIcon('ruler')+'</span><div><p>'+(next?esc(dateLong(next.scheduled_at))+' · '+Number(next.duration_minutes||60)+' мин':'Как только преподаватель назначит занятие, оно появится здесь.')+'</p>'+(next?'<small>Подготовь тетрадь и подключись за пару минут до начала.</small>':'<small>А пока можно выполнить задания или посмотреть прогресс.</small>')+'</div></div>'+
+          '<div class="mr-desk-hero-actions">'+(next?'<button class="btn primary" id="mrDeskPrepareLesson">Подготовиться '+studentDeskIcon('arrow')+'</button>':'<button class="btn primary" data-desktop-tab="lessons">Открыть уроки '+studentDeskIcon('arrow')+'</button>')+'<button class="btn" data-desktop-tab="lessons">Материалы</button></div>'+
+        '</article>'+
+        '<article class="mr-desk-card mr-desk-current-task">'+
+          '<div class="mr-desk-card-head"><div><span class="mr-mobile-kicker">Текущее задание</span><h2>'+(current?esc(current.title):'Заданий нет')+'</h2></div>'+(current?'<span class="mr-desk-status-chip">В работе</span>':'')+'</div>'+
+          '<div class="mr-desk-feature-row"><span class="mr-desk-feature-icon task">'+studentDeskIcon('clipboard')+'</span><div><p>'+(current?esc(current.topics?.title||'Домашняя работа')+(current.due_at?' · до '+new Date(current.due_at).toLocaleDateString('ru-RU',{day:'2-digit',month:'short'}):''):'Все обязательные задания уже выполнены.')+'</p><small>'+(current?'Лучше сделать понемногу сейчас, чем всё перед уроком.':'Можно спокойно повторить тему или посмотреть материалы уроков.')+'</small></div></div>'+
+          (current?'<button class="btn primary" data-student-assignment="'+current.kind+':'+current.id+'">Продолжить '+studentDeskIcon('arrow')+'</button>':'<button class="btn" data-desktop-tab="progress">Посмотреть прогресс '+studentDeskIcon('arrow')+'</button>')+
+        '</article>'+
+      '</div>'+
+      (latest?.public_highlights||latest?.public_focus?'<article class="mr-desk-card mr-desk-feedback"><div class="mr-desk-card-head"><div><span class="mr-mobile-kicker">Обратная связь</span><h2>После последнего урока</h2></div><span class="mr-desk-feedback-mark">'+studentDeskIcon('check')+'</span></div>'+(latest.public_highlights?'<div><b>Получилось</b><p>'+nl(latest.public_highlights)+'</p></div>':'')+(latest.public_focus?'<div class="warn"><b>Повторить</b><p>'+nl(latest.public_focus)+'</p></div>':'')+'</article>':'')+
+      '<section class="mr-desk-card mr-desk-tasks-section"><div class="mr-desk-section-head"><div><span class="mr-mobile-kicker">Задания</span><h2>Что нужно сделать</h2></div><button data-desktop-tab="tasks">Все задания '+studentDeskIcon('arrow')+'</button></div>'+
+        (open.length?'<div class="mr-desk-task-strip">'+open.slice(0,4).map((x,i)=>'<button data-student-assignment="'+x.kind+':'+x.id+'"><span class="mr-desk-task-number">'+String(i+1).padStart(2,'0')+'</span><div><b>'+esc(x.title)+'</b><small>'+esc(x.topics?.title||'')+(x.due_at?' · до '+new Date(x.due_at).toLocaleDateString('ru-RU',{day:'2-digit',month:'2-digit'}):'')+'</small></div><i>'+studentDeskIcon('arrow')+'</i></button>').join('')+'</div>':studentDeskEmpty('check','Всё готово','Новых заданий сейчас нет. Отличный момент немного отдохнуть.','lessons','К урокам'))+
+      '</section>'+
+      '<section class="mr-desk-card mr-desk-recent-section"><div class="mr-desk-section-head"><div><span class="mr-mobile-kicker">Недавние уроки</span><h2>Записи и материалы</h2></div><button data-desktop-tab="lessons">Все уроки '+studentDeskIcon('arrow')+'</button></div>'+
+        (completed.length?'<div class="mr-desk-recent-lessons">'+completed.map(l=>{const r=(d.reports||[]).find(x=>x.lesson_id===l.id);return '<button data-desktop-tab="lessons"><span class="mr-desk-mini-icon">'+studentDeskIcon('book')+'</span><div><span>'+new Date(l.completed_at||l.scheduled_at).toLocaleDateString('ru-RU',{day:'2-digit',month:'short'})+'</span><b>'+esc(l.topics?.title||'Урок')+'</b><small>'+(r?Math.round(Number(r.solved_percent||0))+'% уверенно · ':'')+'запись и доска</small></div><i>'+studentDeskIcon('arrow')+'</i></button>'}).join('')+'</div>':studentDeskEmpty('book','Архив пока пуст','После первого завершённого урока здесь появятся запись и доска.'))+
+      '</section>'+
+    '</section>'+
+    '<aside class="mr-student-desktop-rail">'+
+      '<article class="mr-desk-card mr-desk-progress-summary"><div class="mr-desk-section-head"><div><span class="mr-mobile-kicker">Мой прогресс</span><h2>'+(ps.overall==null?'Начинаем':ps.overall+'%')+'</h2></div><button data-desktop-tab="progress">Подробнее '+studentDeskIcon('arrow')+'</button></div><div class="mr-desk-progress-ring" style="--p:'+(ps.overall||0)+'"><span><b>'+(ps.overall==null?'—':ps.overall+'%')+'</b><small>пройдено</small></span></div><div class="mr-desk-progress-stats"><div><b>'+ps.lessons+'</b><span>уроков</span></div><div><b>'+(ps.homework==null?'—':ps.homework+'%')+'</b><span>домашние</span></div><div><b>'+(ps.tests==null?'—':ps.tests+'%')+'</b><span>тесты</span></div></div></article>'+
+      '<article class="mr-desk-card mr-desk-upcoming-card"><div class="mr-desk-section-head"><div><span class="mr-mobile-kicker">Ближайшие занятия</span><h2>Расписание</h2></div><button data-desktop-tab="lessons">Все '+studentDeskIcon('arrow')+'</button></div><div class="mr-desk-upcoming">'+(upcoming.length?upcoming.map(l=>{const dt=new Date(l.scheduled_at);return '<div><span class="mr-desk-date-box"><b>'+dt.toLocaleDateString('ru-RU',{day:'2-digit'})+'</b><small>'+dt.toLocaleDateString('ru-RU',{month:'short'}).replace('.','')+'</small></span><div><b>'+esc(l.topics?.title||'Урок')+'</b><small>'+dt.toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'})+' · '+Number(l.duration_minutes||60)+' мин</small></div><i>'+studentDeskIcon('calendar')+'</i></div>'}).join(''):'<div class="mr-desk-empty-mini"><span>'+studentDeskIcon('calendar')+'</span><p>На этой неделе занятий пока нет.</p></div>')+'</div></article>'+
+      '<article class="mr-desk-card mr-desk-micro-tip"><span class="mr-desk-feature-icon">'+studentDeskIcon('spark')+'</span><div><span class="mr-mobile-kicker">Полезная подсказка</span><b>'+(open.length?'Начни с самого короткого задания':'Повтори тему 10 минут')+'</b><p>'+(open.length?'Так проще войти в ритм и не откладывать всё на потом.':'Небольшое повторение помогает лучше закрепить материал.')+'</p></div></article>'+
+    '</aside>'+
+  '</div>';
 }
 function studentDesktopTasksHtml(d){
   const all=[...d.homeworks.map(x=>({...x,kind:'homework'})),...d.tests.map(x=>({...x,kind:'test'}))].sort((a,b)=>String(b.created_at||'').localeCompare(String(a.created_at||'')));
-  return `<div class="mr-desk-page-head"><div><span class="mr-mobile-kicker">Учебный план</span><h1>Задания</h1><p>Домашние работы, тесты и задания на доработку.</p></div></div>
-    <div class="mr-desk-assignment-list">${all.length?all.map(x=>{const revision=x.kind==='homework'&&x.status==='assigned'&&x.revision_requested_at;const overdue=x.kind==='homework'&&x.due_at&&x.status==='assigned'&&!revision&&new Date(x.due_at)<new Date();return`<article class="${revision?'revision':''} ${overdue?'overdue':''}"><div><span class="mr-mobile-kicker">${x.kind==='homework'?'Домашняя работа':'Тест'}${revision?' · доработка':overdue?' · просрочено':''}</span><h3>${esc(x.title)}</h3><p>${esc(x.topics?.title||'')}${x.due_at?` · срок ${new Date(x.due_at).toLocaleDateString('ru-RU',{day:'2-digit',month:'2-digit'})}`:''}${x.score!=null?` · результат ${x.score}%`:''}</p></div><button class="btn ${x.status==='assigned'?'primary':''}" data-student-assignment="${x.kind}:${x.id}">${x.status==='assigned'?(revision?'Исправить':'Открыть'):'Посмотреть'}</button></article>`}).join(''):'<div class="mr-desk-empty">Заданий пока нет.</div>'}</div>`;
+  return '<div class="mr-desk-page-head"><div><span class="mr-desk-soft-badge">Учебный план</span><h1>Задания</h1><p>Домашние работы, тесты и задания на доработку.</p></div></div>'+
+    (all.length?'<div class="mr-desk-assignment-list">'+all.map(x=>{const revision=x.kind==='homework'&&x.status==='assigned'&&x.revision_requested_at;const overdue=x.kind==='homework'&&x.due_at&&x.status==='assigned'&&!revision&&new Date(x.due_at)<new Date();const done=x.status!=='assigned';return '<article class="'+(revision?'revision ':'')+(overdue?'overdue ':'')+(done?'done':'')+'"><span class="mr-desk-feature-icon task">'+studentDeskIcon(x.kind==='test'?'check':'clipboard')+'</span><div class="mr-desk-assignment-copy"><div class="mr-desk-assignment-tags"><span>'+(x.kind==='homework'?'Домашняя работа':'Тест')+'</span>'+(revision?'<i>Нужна доработка</i>':overdue?'<i>Просрочено</i>':done?'<i class="good">Выполнено</i>':'<i>В работе</i>')+'</div><h3>'+esc(x.title)+'</h3><p>'+esc(x.topics?.title||'')+(x.due_at?' · срок '+new Date(x.due_at).toLocaleDateString('ru-RU',{day:'2-digit',month:'2-digit'}):'')+(x.score!=null?' · результат '+x.score+'%':'')+'</p></div><button class="btn '+(x.status==='assigned'?'primary':'')+'" data-student-assignment="'+x.kind+':'+x.id+'">'+(x.status==='assigned'?(revision?'Исправить':'Открыть'):'Посмотреть')+' '+studentDeskIcon('arrow')+'</button></article>'}).join('')+'</div>':studentDeskEmpty('clipboard','Заданий пока нет','Когда преподаватель выдаст домашнюю работу или тест, они появятся здесь.','lessons','Перейти к урокам'));
 }
 function studentDesktopLessonsHtml(d){
   return `<div class="mr-desk-page-head"><div><span class="mr-mobile-kicker">Архив занятий</span><h1>Уроки</h1><p>Видеозаписи, сохранённые доски и итоги проведённых занятий.</p></div></div><div class="mr-desk-lessons-grid">${studentMobileLessonsHtml(d).replace(/^<section[\s\S]*?<\/section>\s*<p[\s\S]*?<\/p>/,'').replace('<div class="mr-mobile-list">','').replace(/<\/div>\s*$/,'')}</div>`;
 }
 function studentDesktopMoreHtml(){
-  return `<div class="mr-desk-page-head"><div><span class="mr-mobile-kicker">Кабинет</span><h1>Ещё</h1><p>Профиль и дополнительные разделы.</p></div></div>
-    <div class="mr-desk-more-grid"><article class="mr-desk-card mr-desk-profile-card"><div class="mr-student-desktop-avatar large">${esc(String(S.student.name||'?').trim().charAt(0).toUpperCase())}</div><div><h2>${esc(S.student.name)}</h2><p>${esc(String(S.student.grade))} класс</p></div></article><article class="mr-desk-card mr-desk-materials-shortcuts"><button data-desktop-tab="progress"><b>Прогресс</b><span>Результаты и динамика →</span></button><button data-desktop-tab="lessons"><b>Архив уроков</b><span>Записи и доски →</span></button></article></div>`;
+  return '<div class="mr-desk-page-head"><div><span class="mr-desk-soft-badge">Кабинет</span><h1>Ещё</h1><p>Профиль и дополнительные разделы.</p></div></div>'+
+    '<div class="mr-desk-more-grid"><article class="mr-desk-card mr-desk-profile-card"><div class="mr-student-desktop-avatar large">'+esc(String(S.student.name||'?').trim().charAt(0).toUpperCase())+'</div><div><span class="mr-mobile-kicker">Профиль ученика</span><h2>'+esc(S.student.name)+'</h2><p>'+esc(String(S.student.grade))+' класс</p></div></article>'+
+    '<article class="mr-desk-card mr-desk-materials-shortcuts"><button data-desktop-tab="progress"><span class="mr-desk-mini-icon">'+studentDeskIcon('trophy')+'</span><div><b>Прогресс</b><small>Результаты и динамика</small></div><i>'+studentDeskIcon('arrow')+'</i></button><button data-desktop-tab="lessons"><span class="mr-desk-mini-icon">'+studentDeskIcon('book')+'</span><div><b>Архив уроков</b><small>Записи и сохранённые доски</small></div><i>'+studentDeskIcon('arrow')+'</i></button></article></div>';
 }
-
 async function renderStudent(){
   cleanupAll();const d=await getStudentData(),{active,live}=await currentStudentLive(d.lessons);S.studentLive=live;
 
@@ -1006,9 +1014,9 @@ async function renderStudent(){
   const desktopTab=S.studentTab;
   const pageTitle={today:'Главная',tasks:'Задания',lessons:'Уроки',progress:'Прогресс',more:'Ещё'}[desktopTab]||'Главная';
   app.innerHTML=`<div class="student-home mr-student-desktop-shell tab-${desktopTab}">
-    ${studentDesktopSidebar(desktopTab)}
+    ${studentDesktopSidebar(desktopTab,d)}
     <section class="mr-student-desktop-body">
-      <header class="mr-student-desktop-topbar"><div><span class="mr-mobile-kicker">Mathroom · кабинет ученика</span><h1>${esc(pageTitle)}</h1></div><div class="mr-student-desktop-top-profile"><div class="mr-student-desktop-avatar small">${esc(String(S.student.name||'?').trim().charAt(0).toUpperCase())}</div><div><b>${esc(S.student.name)}</b><span>${esc(String(S.student.grade))} класс</span></div></div></header>
+      <header class="mr-student-desktop-topbar"><div class="mr-desk-topbar-title"><span class="mr-mobile-kicker">Mathroom · кабинет ученика</span><h1>${esc(pageTitle)}</h1></div><div class="mr-desk-topbar-actions"><span class="mr-desk-online-pill"><i></i>Всё сохранено</span><div class="mr-student-desktop-top-profile"><div class="mr-student-desktop-avatar small">${esc(String(S.student.name||'?').trim().charAt(0).toUpperCase())}</div><div><b>${esc(S.student.name)}</b><span>${esc(String(S.student.grade))} класс</span></div></div></div></header>
       <main id="studentContent" class="mr-student-desktop-content"></main>
     </section>
   </div>`;
