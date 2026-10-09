@@ -78,12 +78,20 @@
     if (!S.access || S.studentTab !== 'today' || safeStoreGet(key('welcome')) === 'done') return;
     const root = document.querySelector('#studentContent') || document.querySelector('.student-home');
     if (!root || document.getElementById('mrStudentFirstMinutes')) return;
-    const card = document.createElement('section'); card.id='mrStudentFirstMinutes'; card.className='card mr-first-minutes mr-student-first-minutes';
-    card.innerHTML = `<div class="mr-card-head"><div><span class="pill">Первый вход</span><h2>Здесь всё просто</h2><p class="small muted">Когда преподаватель начнёт занятие, урок появится сам — страницу обновлять не нужно.</p></div><button class="btn sm ghost" id="mrHideStudentFirst">Понятно</button></div><div class="mr-first-grid"><div class="mr-first-step static"><span>1</span><div><b>Дождись старта</b><small>Mathroom сам обнаружит активный урок</small></div></div><div class="mr-first-step static"><span>2</span><div><b>Включи камеру</b><small>Разреши камеру и микрофон браузеру</small></div></div><div class="mr-first-step static"><span>3</span><div><b>Работай на доске</b><small>Всё нужное находится внутри занятия</small></div></div></div>`;
-    root.prepend(card); card.querySelector('#mrHideStudentFirst').onclick=()=>{safeStoreSet(key('welcome'),'done');card.remove()};
+    const desktop=!!document.querySelector('.mr-student-desktop-shell');
+    const card = document.createElement('section'); card.id='mrStudentFirstMinutes'; card.className=desktop?'card mr-first-minutes mr-student-first-minutes mr-desk-onboarding':'card mr-first-minutes mr-student-first-minutes';
+    if(desktop){
+      card.innerHTML = '<div class="mr-desk-onboarding-row"><div><span class="mr-desk-soft-badge">Первый раз в Mathroom?</span><h2>Здесь всё просто</h2><p>Три вещи, которые стоит знать перед первым занятием.</p></div><div class="mr-first-grid"><div class="mr-first-step static"><span>1</span><div><b>Дождись старта</b><small>Урок появится сам</small></div></div><div class="mr-first-step static"><span>2</span><div><b>Включи камеру</b><small>Разреши доступ браузеру</small></div></div><div class="mr-first-step static"><span>3</span><div><b>Работай на доске</b><small>Всё внутри занятия</small></div></div></div><button class="btn sm ghost" id="mrHideStudentFirst" aria-label="Скрыть подсказку">×</button></div>';
+      root.append(card);
+    }else{
+      card.innerHTML = '<div class="mr-card-head"><div><span class="pill">Первый вход</span><h2>Здесь всё просто</h2><p class="small muted">Когда преподаватель начнёт занятие, урок появится сам — страницу обновлять не нужно.</p></div><button class="btn sm ghost" id="mrHideStudentFirst">Понятно</button></div><div class="mr-first-grid"><div class="mr-first-step static"><span>1</span><div><b>Дождись старта</b><small>Mathroom сам обнаружит активный урок</small></div></div><div class="mr-first-step static"><span>2</span><div><b>Включи камеру</b><small>Разреши камеру и микрофон браузеру</small></div></div><div class="mr-first-step static"><span>3</span><div><b>Работай на доске</b><small>Всё нужное находится внутри занятия</small></div></div></div>';
+      root.prepend(card);
+    }
+    card.querySelector('#mrHideStudentFirst').onclick=()=>{safeStoreSet(key('welcome'),'done');card.remove()};
   }
 
-  function ensureVideoCoach(){
+  
+function ensureVideoCoach(){
     const panel = document.getElementById('mrVideoPanel'); if (!panel) return;
     let c = panel.querySelector('#mrVideoCoach');
     if (!c && safeStoreGet(key('videoCoach')) !== 'done') {
