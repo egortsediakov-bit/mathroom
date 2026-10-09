@@ -4616,3 +4616,45 @@ button.mr-mobile-lesson-asset{cursor:pointer}
     display:block!important;
   }
 }
+
+
+/* =========================================================
+   Mathroom v36.3 — restore student desktop lesson columns
+   ========================================================= */
+@media(min-width:1101px){
+  .student-desktop-lesson-mode .mr-student-desktop-workspace{
+    display:grid!important;
+    grid-template-columns:minmax(0,1fr) 360px!important;
+    gap:14px!important;
+    align-items:start!important;
+  }
+  .student-desktop-lesson-mode .mr-student-desktop-board{
+    grid-column:1!important;
+    min-width:0!important;
+    width:100%!important;
+  }
+  .student-desktop-lesson-mode .mr-student-desktop-lesson-rail{
+    grid-column:2!important;
+    width:360px!important;
+    min-width:0!important;
+    display:grid!important;
+    gap:12px!important;
+    align-content:start!important;
+  }
+  .student-desktop-lesson-mode .mr-student-desktop-board .board-card{
+    width:100%!important;
+    max-width:none!important;
+  }
+  .student-desktop-lesson-mode .mr-student-desktop-board .board-stage{
+    width:100%!important;
+    min-height:610px!important;
+  }
+}
+@media(min-width:1101px) and (max-width:1350px){
+  .student-desktop-lesson-mode .mr-student-desktop-workspace{
+    grid-template-columns:minmax(0,1fr) 320px!important;
+  }
+  .student-desktop-lesson-mode .mr-student-desktop-lesson-rail{
+    width:320px!important;
+  }
+}
