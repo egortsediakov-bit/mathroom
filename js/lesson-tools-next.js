@@ -2059,56 +2059,74 @@
         return;
       }
 
-      // Hero-first behaviour:
-      // 1) immediately after joining, the large in-page video remains visible;
-      // 2) only after the user scrolls past that video does it become floating;
-      // 3) scrolling back to the video restores the large in-page version.
-      //
-      // Separate enter/leave thresholds create hysteresis and prevent flicker
-      // around the exact point where the hero leaves the viewport.
-      this.onVideoScroll = () => {
-        if (!this.joined || this.destroyed || !this.videoHeroMount || !this.panel) return;
-
-        const heroRect = this.videoHeroMount.getBoundingClientRect();
-        const enterFloatingAt = Math.max(72, Math.min(128, window.innerHeight * .12));
-        const leaveFloatingAt = Math.max(210, Math.min(320, window.innerHeight * .30));
-
-        const shouldFloat = this.videoFloating
-          ? heroRect.bottom < leaveFloatingAt
-          : heroRect.bottom < enterFloatingAt;
-
-        if (shouldFloat === this.videoFloating) return;
-
-        this.videoFloating = shouldFloat;
-
-        if (shouldFloat) {
-          this.videoHeroHeight = Math.max(
-            this.videoHeroHeight,
-            this.panel.offsetHeight || this.videoHeroMount.offsetHeight || Math.round(window.innerHeight * .64)
-          );
-          this.videoHeroMount.style.minHeight = this.videoHeroHeight + 'px';
-          this.expanded = false;
-          localStorage.setItem(`mathroom.media.expanded.${this.role}`, '0');
-        } else {
-          this.videoHeroMount.style.minHeight = '';
-          this.clearFloatingInlinePosition();
+      const restoreHero = () => {
+        if (!this.videoHeroMount || !this.panel) return;
+        this.videoFloating=false;
+        this.videoHeroMount.style.minHeight='';
+        if(!this.callFullscreen && this.panel.parentNode!==this.videoHeroMount){
+          this.videoHeroMount.appendChild(this.panel);
         }
-
+        this.clearFloatingInlinePosition();
         this.paint();
+        requestAnimationFrame(() => {
+          this.clearFloatingInlinePosition();
+          this.bindMedia();
+          const remote=this.panel?.querySelector('#mrRemoteVideo');
+          const local=this.panel?.querySelector('#mrLocalVideo');
+          if(remote?.srcObject?.getVideoTracks?.().length)remote.play?.().catch(()=>{});
+          if(local?.srcObject?.getVideoTracks?.().length)local.play?.().catch(()=>{});
+        });
+      };
 
-        if (shouldFloat) {
-          requestAnimationFrame(() => this.applyFloatingPosition());
+      // Hero-first behaviour:
+      // - float only when the hero has genuinely gone above the viewport;
+      // - as soon as the user scrolls back into the hero zone, restore the
+      //   exact same live panel to full width.
+      this.onVideoScroll = () => {
+        if (!this.joined || this.destroyed || !this.videoHeroMount || !this.panel || this.callFullscreen) return;
+
+        const heroRect=this.videoHeroMount.getBoundingClientRect();
+        const enterAt=Math.max(72,Math.min(118,window.innerHeight*.11));
+        const heroHeight=Math.max(this.videoHeroHeight||0,this.videoHeroMount.offsetHeight||0,420);
+        const restoreTop=-Math.max(90,Math.min(190,heroHeight*.18));
+
+        if(this.videoFloating){
+          // Using the hero top instead of the placeholder bottom makes the
+          // return transition deterministic even after dragging/minimizing.
+          if(heroRect.top>=restoreTop){
+            restoreHero();
+          }else if(this.floatingPosition){
+            this.applyFloatingPosition();
+          }
+          return;
         }
+
+        if(heroRect.bottom>=enterAt)return;
+
+        this.videoHeroHeight=Math.max(
+          this.videoHeroHeight,
+          this.panel.offsetHeight||this.videoHeroMount.offsetHeight||Math.round(window.innerHeight*.64)
+        );
+        this.videoHeroMount.style.minHeight=this.videoHeroHeight+'px';
+        this.videoFloating=true;
+        this.expanded=false;
+        localStorage.setItem(`mathroom.media.expanded.${this.role}`,'0');
+        this.paint();
+        requestAnimationFrame(()=>{
+          if(this.floatingPosition)this.applyFloatingPosition();
+          this.bindMedia();
+        });
       };
 
       window.addEventListener('scroll', this.onVideoScroll, { passive:true });
 
-      // Do not force floating on mount. The initial joined state is always the
-      // large hero video unless the page is already genuinely scrolled past it.
+      // Initial state remains the large hero unless the page was restored at a
+      // scroll position below it.
       requestAnimationFrame(() => {
         if (!this.joined || !this.videoHeroMount) return;
-        const heroRect = this.videoHeroMount.getBoundingClientRect();
-        if (heroRect.bottom < 72) this.onVideoScroll();
+        const heroRect=this.videoHeroMount.getBoundingClientRect();
+        if(heroRect.bottom<72)this.onVideoScroll();
+        else restoreHero();
       });
     }
 
