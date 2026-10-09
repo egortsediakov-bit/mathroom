@@ -3447,3 +3447,57 @@ button.mr-mobile-lesson-asset{cursor:pointer}
 @media(max-width:420px){
   .mr-mobile-lesson-assets{grid-template-columns:1fr}
 }
+
+
+/* Mathroom v33.2 — guaranteed mobile Progress back bar */
+.student-mobile-shell .mr-progress-mobile-topbar{
+  position:relative!important;
+  z-index:20!important;
+  display:flex!important;
+  align-items:center!important;
+  gap:12px!important;
+  width:100%!important;
+  min-height:52px!important;
+  margin:0 0 12px!important;
+  padding:2px 0 8px!important;
+  box-sizing:border-box!important;
+}
+.student-mobile-shell .mr-progress-mobile-topbar>div{
+  min-width:0!important;
+}
+.student-mobile-shell .mr-progress-mobile-topbar h1{
+  margin:0!important;
+  font-size:27px!important;
+  line-height:1.05!important;
+  letter-spacing:-.045em!important;
+}
+.student-mobile-shell .mr-progress-back{
+  appearance:none!important;
+  -webkit-appearance:none!important;
+  flex:0 0 auto!important;
+  display:inline-flex!important;
+  align-items:center!important;
+  justify-content:center!important;
+  gap:5px!important;
+  height:40px!important;
+  min-width:68px!important;
+  padding:0 10px!important;
+  border:1px solid #dedbd5!important;
+  border-radius:12px!important;
+  background:#fff!important;
+  color:#171823!important;
+  box-shadow:0 2px 8px rgba(20,22,28,.04)!important;
+  font:800 12px/1 system-ui,sans-serif!important;
+  opacity:1!important;
+  visibility:visible!important;
+}
+.student-mobile-shell .mr-progress-back span{
+  font-size:18px!important;
+  line-height:1!important;
+}
+.student-mobile-shell .mr-progress-back b{
+  font:inherit!important;
+}
+.student-mobile-shell .mr-progress-back:active{
+  transform:scale(.97)!important;
+}
