@@ -922,13 +922,13 @@ async function renderStudent(){
   cleanupAll();const d=await getStudentData(),{active,live}=await currentStudentLive(d.lessons);S.studentLive=live;
 
   const ua=String(navigator.userAgent||'');
-  const coarse=window.matchMedia?.('(pointer: coarse)')?.matches||false;
   const touch=Number(navigator.maxTouchPoints||0)>0;
-  const sw=Math.max(Number(screen?.width||0),Number(screen?.height||0));
-  const sh=Math.min(Number(screen?.width||0),Number(screen?.height||0));
   const mobileUA=/iPhone|iPad|iPod|Android|Mobile|Tablet/i.test(ua);
   const iPadOS=/Macintosh/i.test(ua)&&touch;
-  const compactLessonUI=(mobileUA||iPadOS||((coarse||touch)&&sw<=1366&&sh<=1024));
+  const viewportW=Math.max(Number(window.innerWidth||0),Number(document.documentElement?.clientWidth||0));
+  // Desktop/laptop mode is selected by the actual viewport, not by touch capability.
+  // This prevents touchscreen Windows laptops from being incorrectly forced into the mobile student UI.
+  const compactLessonUI=(mobileUA||iPadOS||viewportW<=1100);
 
   if(active&&live&&compactLessonUI){
     S.studentTab='board';
