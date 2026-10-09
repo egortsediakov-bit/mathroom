@@ -866,13 +866,15 @@ async function renderStudent(){
       content.innerHTML=studentMobileAssignmentsHtml(d);
       content.querySelectorAll('[data-student-assignment]').forEach(b=>b.onclick=()=>openStudentAssignment(...b.dataset.studentAssignment.split(':')));
     }else if(tab==='progress'){
-      content.innerHTML=`<section class="mr-mobile-subhead"><button class="mr-mobile-back wide" data-mobile-tab="more">← Ещё</button><div><span class="mr-mobile-kicker">Результаты</span><h1>Прогресс</h1></div></section><div class="mr-mobile-progress-wrap">${studentProgressHtml(d)}</div>`;
+      content.innerHTML=`<div class="mr-progress-mobile-topbar"><button type="button" id="mrProgressBackToMore" class="mr-progress-back" aria-label="Назад в раздел Ещё"><span aria-hidden="true">←</span><b>Ещё</b></button><div><span class="mr-mobile-kicker">Результаты</span><h1>Прогресс</h1></div></div><div class="mr-mobile-progress-wrap">${studentProgressHtml(d)}</div>`;
     }else if(tab==='lessons'){
       content.innerHTML=studentMobileLessonsHtml(d);
     }else{
       content.innerHTML=studentMobileMoreHtml();
     }
     app.querySelectorAll('[data-mobile-tab]').forEach(b=>b.onclick=()=>{S.studentTab=b.dataset.mobileTab;renderStudent()});
+    const progressBack=app.querySelector('#mrProgressBackToMore');
+    if(progressBack)progressBack.onclick=()=>{S.studentTab='more';renderStudent()};
     app.querySelectorAll('[data-lesson-board-version]').forEach(b=>b.onclick=()=>openStudentLessonBoardArchive((d.versions||[]).find(v=>v.id===b.dataset.lessonBoardVersion)));
     app.querySelectorAll('[data-lesson-recording]').forEach(b=>b.onclick=()=>{const url=b.dataset.lessonRecording;if(/^https?:\/\//i.test(url||''))window.open(url,'_blank','noopener')});
     return;
