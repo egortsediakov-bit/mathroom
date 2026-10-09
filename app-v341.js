@@ -826,6 +826,98 @@ function studentMobileBottomNav(activeTab){
     <button data-mobile-tab="more" class="${moreActive?'active':''}">${studentMobileNavIcon('more')}<span>Ещё</span></button>
   </nav>`;
 }
+
+function studentDesktopSidebar(activeTab){
+  const item=(tab,icon,label)=>`<button data-desktop-tab="${tab}" class="${activeTab===tab?'active':''}">${studentMobileNavIcon(icon)}<span>${label}</span></button>`;
+  return `<aside class="mr-student-desktop-sidebar">
+    <div class="mr-student-desktop-brand"><span class="brand">Mathroom</span><small>Личный кабинет</small></div>
+    <nav>
+      ${item('today','home','Главная')}
+      ${item('tasks','tasks','Задания')}
+      ${item('lessons','lessons','Уроки')}
+      ${item('progress','progress','Прогресс')}
+      ${item('more','more','Ещё')}
+    </nav>
+    <div class="mr-student-desktop-profile">
+      <div class="mr-student-desktop-avatar">${esc(String(S.student.name||'?').trim().charAt(0).toUpperCase())}</div>
+      <div><b>${esc(S.student.name)}</b><span>${esc(String(S.student.grade))} класс</span></div>
+    </div>
+  </aside>`;
+}
+function studentDesktopProgressSummary(d){
+  const reports=(d.reports||[]).slice(0,6);
+  const avgRecent=reports.length?Math.round(reports.reduce((s,r)=>s+Number(r.solved_percent||0),0)/reports.length):null;
+  const hws=d.homeworks.filter(x=>x.score!=null),tests=d.tests.filter(x=>x.score!=null);
+  return {overall:avgRecent,homework:avg(hws.map(x=>x.score)),tests:avg(tests.map(x=>x.score)),lessons:reports.length};
+}
+function studentDesktopHomeHtml(d){
+  const now=Date.now();
+  const next=d.lessons.filter(x=>x.status==='assigned'&&x.scheduled_at&&new Date(x.scheduled_at).getTime()>=now-5*60000).sort((a,b)=>new Date(a.scheduled_at)-new Date(b.scheduled_at))[0]||null;
+  const open=[...d.homeworks.map(x=>({...x,kind:'homework'})),...d.tests.map(x=>({...x,kind:'test'}))].filter(x=>x.status==='assigned').sort((a,b)=>String(a.due_at||'2999').localeCompare(String(b.due_at||'2999')));
+  const current=open[0]||null;
+  const completed=d.lessons.filter(x=>x.status==='completed').sort((a,b)=>String(b.completed_at||b.scheduled_at||'').localeCompare(String(a.completed_at||a.scheduled_at||''))).slice(0,4);
+  const upcoming=d.lessons.filter(x=>x.status==='assigned'&&x.scheduled_at).sort((a,b)=>new Date(a.scheduled_at)-new Date(b.scheduled_at)).slice(0,4);
+  const latest=(d.reports||[]).slice().sort((a,b)=>String(b.created_at||'').localeCompare(String(a.created_at||'')))[0]||null;
+  const ps=studentDesktopProgressSummary(d);
+  return `<div class="mr-student-desktop-home-grid">
+    <section class="mr-student-desktop-main">
+      <div class="mr-student-desktop-welcome"><div><span>Привет, ${esc(String(S.student.name||'').split(/\s+/)[0]||'')}!</span><h1>Продолжаем двигаться вперёд</h1><p>Все важное для занятий — прямо здесь.</p></div></div>
+      <div class="mr-student-desktop-hero-grid">
+        <article class="mr-desk-card mr-desk-next">
+          <div class="mr-desk-card-head"><span class="mr-mobile-kicker">Следующий урок</span>${next?'<span class="pill">запланирован</span>':''}</div>
+          <h2>${next?esc(next.topics?.title||'Урок'):'Пока урок не назначен'}</h2>
+          <p>${next?esc(dateLong(next.scheduled_at))+' · '+Number(next.duration_minutes||60)+' мин':'Когда преподаватель назначит занятие, оно появится здесь.'}</p>
+          <div class="mr-desk-hero-actions">${next?'<button class="btn primary" id="mrDeskPrepareLesson">Подготовиться</button>':''}<button class="btn" data-desktop-tab="lessons">Все уроки</button></div>
+        </article>
+        <article class="mr-desk-card mr-desk-current-task">
+          <div class="mr-desk-card-head"><span class="mr-mobile-kicker">Текущее задание</span>${current?'<span class="pill warn">в работе</span>':''}</div>
+          <h2>${current?esc(current.title):'Заданий нет'}</h2>
+          <p>${current?esc(current.topics?.title||'')+(current.due_at?` · срок ${new Date(current.due_at).toLocaleDateString('ru-RU',{day:'2-digit',month:'2-digit'})}`:''):'Можно сосредоточиться на повторении и подготовке к уроку.'}</p>
+          ${current?`<button class="btn primary" data-student-assignment="${current.kind}:${current.id}">Продолжить</button>`:'<button class="btn" data-desktop-tab="progress">Посмотреть прогресс</button>'}
+        </article>
+      </div>
+      ${latest?.public_highlights||latest?.public_focus?`<article class="mr-desk-card mr-desk-feedback"><div class="mr-desk-card-head"><span class="mr-mobile-kicker">Недавняя обратная связь</span></div>${latest.public_highlights?`<div><b>Получилось</b><p>${nl(latest.public_highlights)}</p></div>`:''}${latest.public_focus?`<div class="warn"><b>Повторить</b><p>${nl(latest.public_focus)}</p></div>`:''}</article>`:''}
+      <section class="mr-desk-card">
+        <div class="mr-desk-section-head"><div><span class="mr-mobile-kicker">Задания</span><h2>Что нужно сделать</h2></div><button data-desktop-tab="tasks">Все задания →</button></div>
+        <div class="mr-desk-task-strip">${open.length?open.slice(0,4).map(x=>`<button data-student-assignment="${x.kind}:${x.id}"><span class="status-dot"></span><b>${esc(x.title)}</b><small>${esc(x.topics?.title||'')}${x.due_at?` · до ${new Date(x.due_at).toLocaleDateString('ru-RU',{day:'2-digit',month:'2-digit'})}`:''}</small></button>`).join(''):'<div class="mr-desk-empty">Все задания выполнены.</div>'}</div>
+      </section>
+      <section class="mr-desk-card">
+        <div class="mr-desk-section-head"><div><span class="mr-mobile-kicker">Недавние уроки</span><h2>Записи и материалы занятий</h2></div><button data-desktop-tab="lessons">Все уроки →</button></div>
+        <div class="mr-desk-recent-lessons">${completed.length?completed.map(l=>{const r=(d.reports||[]).find(x=>x.lesson_id===l.id);return`<button data-desktop-tab="lessons"><span>${new Date(l.completed_at||l.scheduled_at).toLocaleDateString('ru-RU',{day:'2-digit',month:'short'})}</span><b>${esc(l.topics?.title||'Урок')}</b><small>${r?`${Math.round(Number(r.solved_percent||0))}% уверенно · `:''}запись и доска</small></button>`}).join(''):'<div class="mr-desk-empty">После завершённых уроков здесь появятся материалы.</div>'}</div>
+      </section>
+    </section>
+    <aside class="mr-student-desktop-rail">
+      <article class="mr-desk-card mr-desk-progress-summary">
+        <div class="mr-desk-section-head"><div><span class="mr-mobile-kicker">Мой прогресс</span><h2>${ps.overall==null?'—':ps.overall+'%'}</h2></div><button data-desktop-tab="progress">Подробнее →</button></div>
+        <div class="mr-desk-progress-ring" style="--p:${ps.overall||0}"><span>${ps.overall==null?'—':ps.overall+'%'}</span></div>
+        <div class="mr-desk-progress-stats"><div><b>${ps.lessons}</b><span>уроков в отчётах</span></div><div><b>${ps.homework==null?'—':ps.homework+'%'}</b><span>домашние</span></div><div><b>${ps.tests==null?'—':ps.tests+'%'}</b><span>тесты</span></div></div>
+      </article>
+      <article class="mr-desk-card">
+        <div class="mr-desk-section-head"><div><span class="mr-mobile-kicker">Ближайшие занятия</span><h2>Расписание</h2></div></div>
+        <div class="mr-desk-upcoming">${upcoming.length?upcoming.map(l=>`<div><span>${new Date(l.scheduled_at).toLocaleDateString('ru-RU',{day:'2-digit',month:'short'})}</span><div><b>${esc(l.topics?.title||'Урок')}</b><small>${new Date(l.scheduled_at).toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'})}</small></div></div>`).join(''):'<div class="mr-desk-empty">Занятий пока нет.</div>'}</div>
+      </article>
+      <article class="mr-desk-card mr-desk-materials-shortcuts">
+        <span class="mr-mobile-kicker">Материалы уроков</span>
+        <button data-desktop-tab="lessons"><b>Конспекты и доски</b><span>Открыть архив →</span></button>
+        <button data-desktop-tab="lessons"><b>Видеозаписи уроков</b><span>Открыть архив →</span></button>
+        <button data-desktop-tab="progress"><b>Мой прогресс</b><span>Посмотреть аналитику →</span></button>
+      </article>
+    </aside>
+  </div>`;
+}
+function studentDesktopTasksHtml(d){
+  const all=[...d.homeworks.map(x=>({...x,kind:'homework'})),...d.tests.map(x=>({...x,kind:'test'}))].sort((a,b)=>String(b.created_at||'').localeCompare(String(a.created_at||'')));
+  return `<div class="mr-desk-page-head"><div><span class="mr-mobile-kicker">Учебный план</span><h1>Задания</h1><p>Домашние работы, тесты и задания на доработку.</p></div></div>
+    <div class="mr-desk-assignment-list">${all.length?all.map(x=>{const revision=x.kind==='homework'&&x.status==='assigned'&&x.revision_requested_at;const overdue=x.kind==='homework'&&x.due_at&&x.status==='assigned'&&!revision&&new Date(x.due_at)<new Date();return`<article class="${revision?'revision':''} ${overdue?'overdue':''}"><div><span class="mr-mobile-kicker">${x.kind==='homework'?'Домашняя работа':'Тест'}${revision?' · доработка':overdue?' · просрочено':''}</span><h3>${esc(x.title)}</h3><p>${esc(x.topics?.title||'')}${x.due_at?` · срок ${new Date(x.due_at).toLocaleDateString('ru-RU',{day:'2-digit',month:'2-digit'})}`:''}${x.score!=null?` · результат ${x.score}%`:''}</p></div><button class="btn ${x.status==='assigned'?'primary':''}" data-student-assignment="${x.kind}:${x.id}">${x.status==='assigned'?(revision?'Исправить':'Открыть'):'Посмотреть'}</button></article>`}).join(''):'<div class="mr-desk-empty">Заданий пока нет.</div>'}</div>`;
+}
+function studentDesktopLessonsHtml(d){
+  return `<div class="mr-desk-page-head"><div><span class="mr-mobile-kicker">Архив занятий</span><h1>Уроки</h1><p>Видеозаписи, сохранённые доски и итоги проведённых занятий.</p></div></div><div class="mr-desk-lessons-grid">${studentMobileLessonsHtml(d).replace(/^<section[\s\S]*?<\/section>\s*<p[\s\S]*?<\/p>/,'').replace('<div class="mr-mobile-list">','').replace(/<\/div>\s*$/,'')}</div>`;
+}
+function studentDesktopMoreHtml(){
+  return `<div class="mr-desk-page-head"><div><span class="mr-mobile-kicker">Кабинет</span><h1>Ещё</h1><p>Профиль и дополнительные разделы.</p></div></div>
+    <div class="mr-desk-more-grid"><article class="mr-desk-card mr-desk-profile-card"><div class="mr-student-desktop-avatar large">${esc(String(S.student.name||'?').trim().charAt(0).toUpperCase())}</div><div><h2>${esc(S.student.name)}</h2><p>${esc(String(S.student.grade))} класс</p></div></article><article class="mr-desk-card mr-desk-materials-shortcuts"><button data-desktop-tab="progress"><b>Прогресс</b><span>Результаты и динамика →</span></button><button data-desktop-tab="lessons"><b>Архив уроков</b><span>Записи и доски →</span></button></article></div>`;
+}
+
 async function renderStudent(){
   cleanupAll();const d=await getStudentData(),{active,live}=await currentStudentLive(d.lessons);S.studentLive=live;
 
@@ -882,6 +974,26 @@ async function renderStudent(){
     return;
   }
 
+  if(active&&live&&!compactLessonUI){
+    S.studentTab='lessons';
+    const taskLeft=taskTimerRemaining(live);
+    app.innerHTML=`<div class="student-home student-lesson-mode student-desktop-lesson-mode">
+      <div id="mrStudentVideoMount" class="mr-student-video-top"></div>
+      <div class="mr-student-desktop-lesson-meta"><div><span class="mr-mobile-kicker">Урок идёт</span><h1>${esc(active.topics?.title||'Урок')}</h1></div><div class="mr-student-desktop-live-dot"><span></span>Онлайн</div></div>
+      <div class="mr-student-desktop-workspace">
+        <div class="mr-student-desktop-board"><div id="studentLessonBoard"></div></div>
+        <aside class="mr-student-desktop-lesson-rail">
+          <section id="studentLessonTaskMount">${studentLessonTaskCard(live)}</section>
+          <section class="mr-student-desktop-timer-card"><div class="mr-desk-section-head"><div><span class="mr-mobile-kicker">Таймер</span><h2>Время урока</h2></div></div><div class="mr-student-desktop-timers"><div><span>Урок</span><b id="studentTimer">${fmtTime(elapsedSeconds(live))}</b></div><div id="studentTaskTimerWrap" class="${live.task_timer_running?'active':''}"><span>На задачу</span><b id="studentTaskTimer">${live.task_timer_running?fmtTime(taskLeft):'—'}</b></div></div></section>
+          <section class="mr-student-desktop-self-video"><div class="mr-desk-section-head"><div><span class="mr-mobile-kicker">Вы</span><h2>Ваше видео</h2></div></div><div class="mr-student-side-video-frame"><video id="mrStudentSideVideo" autoplay muted playsinline webkit-playsinline></video><span>Вы</span></div></section>
+        </aside>
+      </div>
+    </div>`;
+    await mountBoard(document.getElementById('studentLessonBoard'),S.student.id,false);
+    subscribeStudentLive(active.id);
+    return;
+  }
+
   // Original desktop focus mode and cabinet remain unchanged.
   if(active&&live?.focus_enabled){
     app.innerHTML=`<div class="student-home student-focus">${studentLiveCard(active,live)}<div id="focusBoard"></div></div>`;
@@ -890,12 +1002,28 @@ async function renderStudent(){
     return;
   }
 
-  app.innerHTML=`<div class="student-home"><div class="student-top"><div><div class="brand">Mathroom</div><h1>${esc(S.student.name)}</h1><p class="muted">${S.student.grade} класс · персональный кабинет</p></div><div class="tabs"><button id="studentTodayTab" class="${S.studentTab==='today'?'active':''}">Сегодня</button><button id="studentBoardTab" class="${S.studentTab==='board'?'active':''}">Доска</button><button id="studentTasksTab" class="${S.studentTab==='tasks'?'active':''}">Задания</button><button id="studentLessonsTab" class="${S.studentTab==='lessons'?'active':''}">Уроки</button><button id="studentProgressTab" class="${S.studentTab==='progress'?'active':''}">Прогресс</button></div></div>${studentLiveCard(active,live)}<div id="studentContent"></div></div>`;
-  document.getElementById('studentTodayTab').onclick=()=>{S.studentTab='today';renderStudent()};document.getElementById('studentBoardTab').onclick=()=>{S.studentTab='board';renderStudent()};document.getElementById('studentTasksTab').onclick=()=>{S.studentTab='tasks';renderStudent()};document.getElementById('studentLessonsTab').onclick=()=>{S.studentTab='lessons';renderStudent()};document.getElementById('studentProgressTab').onclick=()=>{S.studentTab='progress';renderStudent()};
-  const cc=document.getElementById('studentContent');if(S.studentTab==='today')cc.innerHTML=`<div id="mrStudentToday" class="mr-student-today"><div class="card"><h2>Сегодня</h2><p class="muted">Собираем ближайший урок и следующий шаг…</p></div></div>`;else if(S.studentTab==='progress')cc.innerHTML=studentProgressHtml(d);else if(S.studentTab==='lessons')cc.innerHTML=`<div class="list">${d.lessons.length?d.lessons.map(l=>{const r=(d.reports||[]).find(x=>x.lesson_id===l.id);return `<div class="row student-lesson"><div><h3>${esc(l.topics?.title||'Урок')}</h3><p>${dateLong(l.scheduled_at)} · ${l.duration_minutes} мин · ${statusLabel(l.status)}</p>${l.rescheduled_from&&Math.abs(new Date(l.rescheduled_from)-new Date(l.scheduled_at))>60000?`<div class="small warn">Перенесено с ${dateLong(l.rescheduled_from)}</div>`:''}${r?`<div class="mr-student-report"><div class="actions"><span class="pill">✓ ${r.solved_count}/${r.queue_total}</span><span class="pill">${Math.round(Number(r.solved_percent||0))}% уверенно</span></div>${r.public_highlights?`<div><b>Получилось:</b> ${nl(r.public_highlights)}</div>`:''}${r.public_focus?`<div><b>Повторить:</b> ${nl(r.public_focus)}</div>`:''}</div>`:''}${l.public_summary?`<div class="notice">${nl(l.public_summary)}</div>`:''}${l.homework_plan?`<div class="small"><b>К следующему уроку:</b> ${esc(l.homework_plan)}</div>`:''}</div></div>`}).join(''):'<div class="empty">Уроков пока нет.</div>'}</div>`;
-  else if(S.studentTab==='tasks'){const all=[...d.homeworks.map(x=>({...x,kind:'homework'})),...d.tests.map(x=>({...x,kind:'test'}))].sort((a,b)=>String(b.created_at).localeCompare(String(a.created_at)));cc.innerHTML=`<div class="list">${all.length?all.map(x=>{const revision=x.kind==='homework'&&x.status==='assigned'&&x.revision_requested_at;const overdue=x.kind==='homework'&&x.due_at&&x.status==='assigned'&&!revision&&new Date(x.due_at).getTime()<Date.now();return `<div class="row"><div><h3>${x.kind==='homework'?'Домашняя':'Тест'} · ${esc(x.title)}</h3><p>${esc(x.topics?.title||'')} · ${revision?'нужна доработка':statusLabel(x.status)}${x.score!=null?` · ${x.score}%`:''}${x.kind==='homework'&&x.due_at?` · срок ${new Date(x.due_at).toLocaleDateString('ru-RU',{day:'2-digit',month:'2-digit'})}`:''}${x.kind==='homework'&&x.attempt_count?` · попыток ${x.attempt_count}`:''}</p>${revision?`<div class="notice warn"><b>Преподаватель вернул работу на доработку.</b>${x.revision_message?`<br>${nl(x.revision_message)}`:''}</div>`:''}${overdue?`<div class="small warn">Срок выполнения прошёл</div>`:''}${x.comment?`<div class="small muted">Комментарий: ${esc(x.comment)}</div>`:''}</div><button class="btn sm primary" data-student-assignment="${x.kind}:${x.id}">${x.status==='assigned'?(revision?'Исправить':'Выполнить'):'Посмотреть'}</button></div>`}).join(''):'<div class="empty">Заданий пока нет.</div>'}</div>`;cc.querySelectorAll('[data-student-assignment]').forEach(b=>b.onclick=()=>openStudentAssignment(...b.dataset.studentAssignment.split(':')))}
-  else await mountBoard(cc,S.student.id,false);
-  if(active)subscribeStudentLive(active.id);
+  if(!['today','tasks','lessons','progress','more'].includes(S.studentTab))S.studentTab='today';
+  const desktopTab=S.studentTab;
+  const pageTitle={today:'Главная',tasks:'Задания',lessons:'Уроки',progress:'Прогресс',more:'Ещё'}[desktopTab]||'Главная';
+  app.innerHTML=`<div class="student-home mr-student-desktop-shell tab-${desktopTab}">
+    ${studentDesktopSidebar(desktopTab)}
+    <section class="mr-student-desktop-body">
+      <header class="mr-student-desktop-topbar"><div><span class="mr-mobile-kicker">Mathroom · кабинет ученика</span><h1>${esc(pageTitle)}</h1></div><div class="mr-student-desktop-top-profile"><div class="mr-student-desktop-avatar small">${esc(String(S.student.name||'?').trim().charAt(0).toUpperCase())}</div><div><b>${esc(S.student.name)}</b><span>${esc(String(S.student.grade))} класс</span></div></div></header>
+      <main id="studentContent" class="mr-student-desktop-content"></main>
+    </section>
+  </div>`;
+  const cc=document.getElementById('studentContent');
+  if(desktopTab==='today')cc.innerHTML=studentDesktopHomeHtml(d);
+  else if(desktopTab==='tasks')cc.innerHTML=studentDesktopTasksHtml(d);
+  else if(desktopTab==='lessons')cc.innerHTML=studentDesktopLessonsHtml(d);
+  else if(desktopTab==='progress')cc.innerHTML=`<div class="mr-desk-page-head"><div><span class="mr-mobile-kicker">Результаты</span><h1>Прогресс</h1><p>Динамика, сильные стороны и темы для повторения.</p></div></div><div class="mr-student-desktop-progress">${studentProgressHtml(d)}</div>`;
+  else cc.innerHTML=studentDesktopMoreHtml();
+
+  app.querySelectorAll('[data-desktop-tab]').forEach(b=>b.onclick=()=>{S.studentTab=b.dataset.desktopTab;renderStudent()});
+  app.querySelectorAll('[data-student-assignment]').forEach(b=>b.onclick=()=>openStudentAssignment(...b.dataset.studentAssignment.split(':')));
+  app.querySelectorAll('[data-lesson-board-version]').forEach(b=>b.onclick=()=>openStudentLessonBoardArchive((d.versions||[]).find(v=>v.id===b.dataset.lessonBoardVersion)));
+  app.querySelectorAll('[data-lesson-recording]').forEach(b=>b.onclick=()=>{const url=b.dataset.lessonRecording;if(/^https?:\/\//i.test(url||''))window.open(url,'_blank','noopener')});
+  const prep=app.querySelector('#mrDeskPrepareLesson');if(prep)prep.onclick=()=>{toast('Перед уроком проверь камеру и микрофон. Когда преподаватель начнёт занятие, откроется рабочая комната.')};
 }
 window.renderStudent=renderStudent;
 function subscribeStudentLive(lessonId){
