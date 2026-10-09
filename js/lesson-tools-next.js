@@ -3131,6 +3131,7 @@
   function refreshStudentAddon() {
     const home=document.querySelector('.student-home');if(!home||!call)return;
     const liveMode=home.classList.contains('student-lesson-mode');
+    const desktopLesson=home.classList.contains('student-desktop-lesson-mode');
     let mount=document.querySelector('#mrStudentVideoMount');
     if(!mount){
       mount=document.createElement('div');
@@ -3140,13 +3141,25 @@
     }else if(home.firstElementChild!==mount){
       home.prepend(mount);
     }
-    if(liveMode){
+    if(liveMode&&!desktopLesson){
       const task=document.querySelector('#studentLessonTaskMount');
       const board=document.querySelector('#studentLessonBoard');
       if(task&&mount.nextElementSibling!==task)mount.insertAdjacentElement('afterend',task);
       if(board&&task?.nextElementSibling!==board)task?.insertAdjacentElement('afterend',board);
     }
     call.renderPanel(mount,home.classList.contains('student-focus'));
+
+    if(desktopLesson){
+      const mini=document.querySelector('#mrStudentSideVideo');
+      if(mini){
+        const stream=call.localStream||null;
+        if(mini.srcObject!==stream)mini.srcObject=stream;
+        mini.muted=true;
+        mini.playsInline=true;
+        mini.style.transform='scaleX(-1)';
+        if(stream)mini.play?.().catch(()=>{});
+      }
+    }
   }
 
 
