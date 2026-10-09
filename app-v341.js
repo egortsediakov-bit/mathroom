@@ -855,7 +855,9 @@ async function renderStudent(){
     if(!['today','tasks','more','progress','lessons'].includes(S.studentTab))S.studentTab='today';
     const tab=S.studentTab;
     app.innerHTML=`<div class="student-home student-mobile-shell tab-${tab}">
-      <header class="mr-mobile-web-head"><div><span class="brand">Mathroom</span><small>Кабинет ученика</small></div><div class="mr-mobile-student-mini"><b>${esc(S.student.name)}</b><span>${esc(String(S.student.grade))} класс</span></div></header>
+      ${tab==='progress'
+        ? `<header class="mr-mobile-web-head mr-progress-sticky-head"><button type="button" id="mrProgressBackToMore" class="mr-progress-head-back" aria-label="Назад в раздел Ещё"><span aria-hidden="true">←</span><b>Ещё</b></button><div class="mr-progress-head-title"><b>Прогресс</b><small>Результаты и динамика</small></div></header>`
+        : `<header class="mr-mobile-web-head"><div><span class="brand">Mathroom</span><small>Кабинет ученика</small></div><div class="mr-mobile-student-mini"><b>${esc(S.student.name)}</b><span>${esc(String(S.student.grade))} класс</span></div></header>`}
       <main id="studentContent" class="mr-mobile-student-content"></main>
       ${studentMobileBottomNav(tab)}
     </div>`;
@@ -866,7 +868,7 @@ async function renderStudent(){
       content.innerHTML=studentMobileAssignmentsHtml(d);
       content.querySelectorAll('[data-student-assignment]').forEach(b=>b.onclick=()=>openStudentAssignment(...b.dataset.studentAssignment.split(':')));
     }else if(tab==='progress'){
-      content.innerHTML=`<div class="mr-progress-mobile-topbar"><button type="button" id="mrProgressBackToMore" class="mr-progress-back" aria-label="Назад в раздел Ещё"><span aria-hidden="true">←</span><b>Ещё</b></button><div><span class="mr-mobile-kicker">Результаты</span><h1>Прогресс</h1></div></div><div class="mr-mobile-progress-wrap">${studentProgressHtml(d)}</div>`;
+      content.innerHTML=`<div class="mr-mobile-progress-wrap">${studentProgressHtml(d)}</div>`;
     }else if(tab==='lessons'){
       content.innerHTML=studentMobileLessonsHtml(d);
     }else{
