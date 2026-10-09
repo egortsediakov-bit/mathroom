@@ -996,7 +996,7 @@ async function renderStudent(){
   if(active&&live&&compactLessonUI){
     S.studentTab='board';
     app.innerHTML=`<div class="student-home student-lesson-mode"><div id="studentLessonTaskMount">${studentLessonTaskCard(live)}</div><div id="studentLessonBoard"></div></div>`;
-    await mountBoard(document.getElementById('studentLessonBoard'),S.student.id,false);
+    await mountBoard(document.getElementById('studentLessonBoard'),S.student.id,false,{lessonId:active.id,studentName:S.student.name,followTeacher:true});
     mountStudentLessonTimer(live,active);
     subscribeStudentLive(active.id);
     return;
@@ -1044,14 +1044,14 @@ async function renderStudent(){
       <div id="mrStudentVideoMount" class="mr-student-video-top"></div>
       <div class="mr-student-desktop-lesson-meta"><div><span class="mr-mobile-kicker">Урок идёт</span><h1>${esc(active.topics?.title||'Урок')}</h1></div><div class="mr-student-desktop-live-dot"><span></span>Онлайн</div></div>
       <div class="mr-student-desktop-workspace">
-        <div class="mr-student-desktop-board"><div id="studentLessonBoard"></div></div>
+        <div class="mr-student-desktop-board mr-lesson-board-main student-lesson-room"><div id="studentLessonBoard"></div></div>
         <aside class="mr-student-desktop-lesson-rail">
           <section id="studentLessonTaskMount">${studentLessonTaskCard(live)}</section>
           <section class="mr-student-desktop-timer-card"><div class="mr-desk-section-head"><div><span class="mr-mobile-kicker">Таймер</span><h2>Время урока</h2></div></div><div class="mr-student-desktop-timers"><div><span>Урок</span><b id="studentTimer">${fmtTime(elapsedSeconds(live))}</b></div><div id="studentTaskTimerWrap" class="${live.task_timer_running?'active':''}"><span>На задачу</span><b id="studentTaskTimer">${live.task_timer_running?fmtTime(taskLeft):'—'}</b></div></div></section>
         </aside>
       </div>
     </div>`;
-    await mountBoard(document.getElementById('studentLessonBoard'),S.student.id,false);
+    await mountBoard(document.getElementById('studentLessonBoard'),S.student.id,false,{lessonId:active.id,studentName:S.student.name,followTeacher:true});
     subscribeStudentLive(active.id);
     return;
   }
