@@ -1997,23 +1997,23 @@
       if (mode === 'hidden') {
         this.expanded = false;
         this.minimized = false;
+        this.videoFloating = true;
+        if (this.videoHeroMount) this.videoHeroMount.style.minHeight = '';
+        this.clearFloatingInlinePosition?.();
         localStorage.setItem(`mathroom.media.expanded.${this.role}`, '0');
         localStorage.setItem(`mathroom.media.minimized.${this.role}`, '0');
       }
       localStorage.setItem(`mathroom.media.view.${this.role}`, mode);
       this.paint();
 
-      // When restoring the compact player from hidden mode, its box grows
-      // immediately. Re-clamp the saved floating position after layout so the
-      // video cannot reopen partly outside the viewport.
-      if (mode !== 'hidden') {
-        requestAnimationFrame(() => {
-          if (this.videoFloating && this.floatingPosition) this.applyFloatingPosition();
-          this.bindMedia();
+      requestAnimationFrame(() => {
+        if (this.videoFloating && this.floatingPosition) this.applyFloatingPosition();
+        this.bindMedia();
+        if (mode !== 'hidden') {
           const remote=this.panel?.querySelector('#mrRemoteVideo');
           if (remote?.srcObject?.getVideoTracks?.().length) remote.play?.().catch(()=>{});
-        });
-      }
+        }
+      });
     }
 
     showVideoFromHidden() {
