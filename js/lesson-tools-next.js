@@ -2107,7 +2107,9 @@
           this.videoHeroHeight,
           this.panel.offsetHeight||this.videoHeroMount.offsetHeight||Math.round(window.innerHeight*.64)
         );
-        this.videoHeroMount.style.minHeight=this.videoHeroHeight+'px';
+        // Do not reserve the old hero height while the call is floating.
+        // The board should move up immediately instead of leaving a large blank gap.
+        this.videoHeroMount.style.minHeight='';
         this.videoFloating=true;
         this.expanded=false;
         localStorage.setItem(`mathroom.media.expanded.${this.role}`,'0');
