@@ -6334,20 +6334,51 @@
     if (e.target.closest?.('#finishConfirm')) {
       const ctx = ctxNow();
       if (ctx?.role === 'teacher') {
-        const endingCall=call;
-        endingCall?.send('lesson-ended',{lessonId:ctx.lessonId,endedAt:new Date().toISOString()},'student').catch(()=>{});
-        setTimeout(()=>endingCall?.end?.().catch?.(()=>{}),180);
-        appendLessonEvents(ctx, [{ kind: 'lesson_completed', title: ctx.lesson?.topics?.title || 'Урок', details: { completed_at: new Date().toISOString() } }]).catch(() => {});
-        const currentAttendance=ctx.lesson?.attendance_status || 'unmarked';
-        if(currentAttendance==='unmarked'){
-          const started=ctx.lesson?.started_at?new Date(ctx.lesson.started_at).getTime():null;
-          const actual=started?Math.max(1,Math.round((Date.now()-started)/60000)):Number(ctx.lesson?.duration_minutes||60);
-          setAttendance(ctx.lessonId,'present',ctx.lesson?.attendance_note||'',actual).catch(e=>console.warn('[Mathroom attendance]',e));
-        }
-        const sid=ctx.studentId; setTimeout(()=>saveProgressSnapshot(sid,'lesson',true).catch(e=>console.warn('[Mathroom snapshot]',e)),1800);
+        /* Completion side effects run only after app-v341 confirms success. */
       }
     }
   }, true);
+
+
+  window.addEventListener('mathroom:teacher-lesson-completed',e=>{
+    const detail=e?.detail||{};
+    const ctx=ctxNow();
+    const lessonId=detail.lessonId||ctx?.lessonId;
+    const studentId=detail.studentId||ctx?.studentId;
+    if(!lessonId)return;
+
+    appendLessonEvents(
+      { ...(ctx||{}), lessonId, studentId },
+      [{
+        kind:'lesson_completed',
+        title:ctx?.lesson?.topics?.title||'Урок',
+        details:{completed_at:detail.completedAt||new Date().toISOString()}
+      }]
+    ).catch(()=>{});
+
+    if(ctx?.lesson){
+      const currentAttendance=ctx.lesson.attendance_status||'unmarked';
+      if(currentAttendance==='unmarked'){
+        const started=ctx.lesson.started_at?new Date(ctx.lesson.started_at).getTime():null;
+        const actual=started
+          ?Math.max(1,Math.round((Date.now()-started)/60000))
+          :Number(ctx.lesson.duration_minutes||60);
+        setAttendance(
+          lessonId,
+          'present',
+          ctx.lesson.attendance_note||'',
+          actual
+        ).catch(err=>console.warn('[Mathroom attendance]',err));
+      }
+    }
+
+    if(studentId){
+      setTimeout(
+        ()=>saveProgressSnapshot(studentId,'lesson',true).catch(err=>console.warn('[Mathroom snapshot]',err)),
+        1200
+      );
+    }
+  });
 
   let scheduled = false;
   function scheduleSync() {
