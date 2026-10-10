@@ -2154,7 +2154,10 @@
         if (!this.joined || this.destroyed || !this.videoHeroMount || !this.panel || this.callFullscreen) return;
 
         const heroRect=this.videoHeroMount.getBoundingClientRect();
-        const enterAt=Math.max(72,Math.min(118,window.innerHeight*.11));
+        /* Switch to the floating lesson video before the user has to scroll
+           the hero completely out of view. This is especially important on
+           short desktop displays where the maximum page scroll is limited. */
+        const enterAt=Math.max(150,Math.min(220,window.innerHeight*.22));
         const heroHeight=Math.max(this.videoHeroHeight||0,this.videoHeroMount.offsetHeight||0,420);
         const restoreTop=-Math.max(90,Math.min(190,heroHeight*.18));
 
@@ -2198,7 +2201,7 @@
       requestAnimationFrame(() => {
         if (!this.joined || !this.videoHeroMount) return;
         const heroRect=this.videoHeroMount.getBoundingClientRect();
-        if(heroRect.bottom<72)this.onVideoScroll();
+        if(heroRect.bottom<Math.max(150,Math.min(220,window.innerHeight*.22)))this.onVideoScroll();
         else restoreHero();
       });
     }
