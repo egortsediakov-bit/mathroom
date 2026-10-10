@@ -779,9 +779,9 @@
       for(const selector of [
         '#templatesBoard','#assetLibrary',
         '[data-tool="focus"]','#toggleHidden','#revealHidden','#clearFocus',
-        '#bringForward','#sendBackward','#bringFront','#sendBack','#deleteSelected',
+        '#lockSelected','#bringForward','#sendBackward','#bringFront','#sendBack','#deleteSelected',
         '#toScratch','#fromScratch','#renamePage',
-        '[data-object-action="front"]','[data-object-action="back"]','[data-object-action="delete"]'
+        '[data-object-action="lock"]','[data-object-action="front"]','[data-object-action="back"]','[data-object-action="delete"]'
       ]){
         root.querySelectorAll(selector).forEach(el=>el.remove());
       }
@@ -899,7 +899,9 @@
       }
       const pp=root.querySelector('#pasteSelected'),h=root.querySelector('#toggleHidden'),cr=root.querySelector('#cropImage'),lb=root.querySelector('#lockSelected');
       if(!fullBoardTools)['lockSelected','bringForward','sendBackward','bringFront','sendBack'].forEach(id=>{const b=root.querySelector('#'+id);if(b)b.hidden=true});
-      if(pp)pp.disabled=!clipboardElement;
+      if(desktopTeacherReplica){
+        ['copySelected','pasteSelected','duplicateSelected'].forEach(id=>{const b=root.querySelector('#'+id);if(b)b.disabled=false});
+      }else if(pp)pp.disabled=!clipboardElement;
       if(lb&&has)lb.innerHTML=allLocked?`${uiIcon('unlock')} <span>Разблокировать${count>1?' всё':''}</span>`:`${uiIcon('pin')} <span>Закрепить${count>1?' всё':''}</span>`;
       if(h){h.disabled=!has;const allHidden=has&&objs.every(x=>x.teacherOnly);h.innerHTML=allHidden?`${uiIcon('eye')} <span>Показать${count>1?' выбранное':''}</span>`:`${uiIcon('eyeOff')} <span>Скрыть${count>1?' выбранное':''}</span>`}
       if(cr)cr.disabled=!(count===1&&obj?.type==='image')||!!obj?.locked;
@@ -957,7 +959,7 @@
       const bg=currentBackground(),m=modal(`<h2>Фон доски</h2><p class="muted">Фон синхронизируется вместе с листом.</p><div class="board-background-grid"><button data-bg="blank">Белый</button><button data-bg="dots">Точки</button><button data-bg="grid">Клетка</button><button data-bg="lines">Линии</button><button data-bg="cream">Тёплый</button></div><div class="field"><label>Свой цвет</label><input id="boardBgColor" type="color" value="${bg?.color||'#ffffff'}"></div><button class="btn" id="applyBgColor">Применить цвет</button>`);
       m.querySelectorAll('[data-bg]').forEach(b=>b.onclick=()=>{setBackground(b.dataset.bg,b.dataset.bg==='cream'?'#fffaf2':'#ffffff');m.remove()});m.querySelector('#applyBgColor').onclick=()=>{setBackground('color',m.querySelector('#boardBgColor').value);m.remove()};
     }
-    function duplicateSelected(){const ids=selectionList(),objs=ids.map(id=>elements.find(x=>x.id===id)).filter(o=>o&&o.type!=='board-bg');if(!objs.length)return;if(objs.some(o=>o.locked)&&!fullBoardTools)return;pushElementsHistory();const created=[];for(const o of objs){const shifted=translated(o,32/camera.zoom,32/camera.zoom),copy=freshOwnedObject(shifted);copy.locked=false;elements.push(copy);created.push(copy.id)}setSelection(created);changed();toast(created.length>1?`${created.length} объектов продублировано`:'Объект продублирован')}
+    function duplicateSelected(){const ids=selectionList(),objs=ids.map(id=>elements.find(x=>x.id===id)).filter(o=>o&&o.type!=='board-bg');if(!objs.length){if(desktopTeacherReplica)toast('Сначала выберите объект на доске');return}if(objs.some(o=>o.locked)&&!fullBoardTools)return;pushElementsHistory();const created=[];for(const o of objs){const shifted=translated(o,32/camera.zoom,32/camera.zoom),copy=freshOwnedObject(shifted);copy.locked=false;elements.push(copy);created.push(copy.id)}setSelection(created);changed();toast(created.length>1?`${created.length} объектов продублировано`:'Объект продублирован')}
     function toggleLockSelected(){if(!fullBoardTools||(!isTeacher&&classroomMode!=='open'))return;const ids=selectionList();if(!ids.length)return;const objs=ids.map(id=>elements.find(x=>x.id===id)).filter(Boolean),lock=!objs.every(o=>o.locked);pushElementsHistory();elements=elements.map(o=>ids.includes(o.id)?{...o,locked:lock}:o);changed();toast(ids.length>1?(lock?'Выбранные объекты закреплены':'Выбранные объекты разблокированы'):(lock?'Объект закреплён':'Объект разблокирован'))}
     function reorderSelected(mode){
       if(!fullBoardTools||(!isTeacher&&classroomMode!=='open')||!selected)return;
@@ -1355,7 +1357,7 @@
         doc.save(localOnly?'mathroom-scratch-board.pdf':'mathroom-board.pdf');status.textContent=localOnly?'Черновик сохранён':'Сохранено';toast('Доска экспортирована в PDF')
       }catch(e){fail(e)}
     }
-    function copySelected(){const ids=selectionList(),objs=ids.map(id=>elements.find(x=>x.id===id)).filter(Boolean);if(!objs.length)return;clipboardElement=clone(objs);syncSelectionButtons();toast(objs.length>1?`${objs.length} объектов скопировано`:'Объект скопирован')}
+    function copySelected(){const ids=selectionList(),objs=ids.map(id=>elements.find(x=>x.id===id)).filter(Boolean);if(!objs.length){if(desktopTeacherReplica)toast('Сначала выберите объект на доске');return}clipboardElement=clone(objs);syncSelectionButtons();toast(objs.length>1?`${objs.length} объектов скопировано`:'Объект скопирован')}
     function pasteSelected(){if(!clipboardElement)return;const list=Array.isArray(clipboardElement)?clipboardElement:[clipboardElement];pushElementsHistory();const created=[];for(const src of list){const shifted=translated(src,32/camera.zoom,32/camera.zoom),o=freshOwnedObject(shifted);o.locked=false;elements.push(o);created.push(o.id)}setSelection(created);changed();setTool('select');toast(created.length>1?`${created.length} объектов вставлено`:'Объект вставлен')}
     function deleteSelected(){const ids=selectionList();if(!ids.length)return;const objs=ids.map(id=>elements.find(x=>x.id===id)).filter(Boolean);if(objs.some(o=>o.locked))return toast('В выделении есть закреплённый объект · сначала разблокируйте');if(!isTeacher&&objs.some(o=>!canMutateObject(o)))return toast('Можно удалить только свои записи');if(ids.length>=4)writeCheckpointSnapshot('Перед массовым удалением');pushElementsHistory();const set=new Set(ids);elements=elements.filter(x=>!set.has(x.id));clearSelection();changed();toast(ids.length>1?`${ids.length} объектов удалено`:'Объект удалён')}
     async function importClipboardBlob(blob,name='clipboard.png'){const type=blob.type||'image/png';const file=blob instanceof File?blob:new File([blob],name,{type});await importImage(file);toast('Изображение вставлено из буфера')}
@@ -1745,7 +1747,7 @@
     });
     root.querySelectorAll('[data-color]').forEach(b=>b.addEventListener('click',()=>{color=b.dataset.color;root.querySelectorAll('[data-color]').forEach(x=>x.classList.toggle('active',x===b))}));
     bind('#strokeWidth','change',e=>width=Number(e.target.value));
-    bind('#undo','click',()=>undo());bind('#redo','click',()=>redo());bind('#copySelected','click',copySelected);bind('#pasteSelected','click',pasteSelected);bind('#duplicateSelected','click',duplicateSelected);bind('#lockSelected','click',toggleLockSelected);bind('#bringForward','click',()=>reorderSelected('forward'));bind('#sendBackward','click',()=>reorderSelected('backward'));bind('#bringFront','click',()=>reorderSelected('front'));bind('#sendBack','click',()=>reorderSelected('back'));bind('#pasteSystemClipboard','click',readSystemClipboard);bind('#deleteSelected','click',deleteSelected);
+    bind('#undo','click',()=>undo());bind('#redo','click',()=>redo());bind('#copySelected','click',copySelected);bind('#pasteSelected','click',()=>{if(desktopTeacherReplica&&!clipboardElement){readSystemClipboard();return}pasteSelected()});bind('#duplicateSelected','click',duplicateSelected);bind('#lockSelected','click',toggleLockSelected);bind('#bringForward','click',()=>reorderSelected('forward'));bind('#sendBackward','click',()=>reorderSelected('backward'));bind('#bringFront','click',()=>reorderSelected('front'));bind('#sendBack','click',()=>reorderSelected('back'));bind('#pasteSystemClipboard','click',readSystemClipboard);bind('#deleteSelected','click',deleteSelected);
     bind('#gridToggle','click',()=>{grid=!grid;ctl('#gridToggle')?.classList.toggle('active',grid);render()});ctl('#gridToggle')?.classList.add('active');bind('#snapToggle','click',()=>{snapEnabled=!snapEnabled;ctl('#snapToggle')?.classList.toggle('active',snapEnabled);toast(snapEnabled?'Привязка включена':'Привязка выключена')});bind('#fitView','click',fitAll);
 
     let boardFullscreenVideoState=null;
