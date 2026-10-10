@@ -71,6 +71,7 @@
       this.callFullscreen = false;
       this.videoFloating = false;
       this.videoHeroMount = null;
+      this.mediaActionLock = { mic:0, sound:0, camera:false };
       this.videoHeroHeight = 0;
       this.onVideoScroll = null;
       this.floatingPosition = (() => {
@@ -1828,18 +1829,27 @@
     }
 
     toggleMic() {
-      const t = this.localStream?.getAudioTracks?.()[0];
-      if (!t) return toast('Микрофон недоступен');
-      this.micEnabled = !this.micEnabled;
-      t.enabled = this.micEnabled;
-      localStorage.setItem(`mathroom.media.mic.${this.role}`, this.micEnabled?'1':'0');
+      const now=Date.now();
+      if(now-(this.mediaActionLock?.mic||0)<180)return;
+      if(this.mediaActionLock)this.mediaActionLock.mic=now;
+
+      const t=this.localStream?.getAudioTracks?.()[0];
+      if(!t || t.readyState!=='live')return toast('Микрофон недоступен');
+
+      const next=!this.micEnabled;
+      this.micEnabled=next;
+      t.enabled=next;
+      localStorage.setItem(`mathroom.media.mic.${this.role}`,next?'1':'0');
       this.paint();
     }
 
     async toggleCamera() {
-      let t=this.localStream?.getVideoTracks?.()[0];
+      if(this.mediaActionLock?.camera)return;
+      if(this.mediaActionLock)this.mediaActionLock.camera=true;
+      try{
+        let t=this.localStream?.getVideoTracks?.()[0];
 
-      if(!t || t.readyState!=='live'){
+        if(!t || t.readyState!=='live'){
         try{
           this.cameraEnabled=true;
           localStorage.setItem(`mathroom.media.camera.${this.role}`,'1');
@@ -1859,20 +1869,23 @@
           else if(e?.name==='NotFoundError'||e?.name==='OverconstrainedError') toast('Камера не найдена — урок продолжится без камеры');
           else { console.warn('[Mathroom camera on demand]',e); toast('Не удалось включить камеру — урок продолжится без неё'); }
         }
-        return;
-      }
+          return;
+        }
 
-      this.cameraEnabled=!this.cameraEnabled;
-      t.enabled=this.cameraEnabled;
-      if(this.virtualBgTrack)this.virtualBgTrack.enabled=this.cameraEnabled;
-      localStorage.setItem(`mathroom.media.camera.${this.role}`,this.cameraEnabled?'1':'0');
-      const sender=this.pc?.getSenders?.().find(s=>s.track?.kind==='video')
-        ||this.pc?.getTransceivers?.().find(tr=>tr.receiver?.track?.kind==='video')?.sender;
-      if(sender){
-        try{await sender.replaceTrack(this.cameraEnabled?(this.effectiveCameraTrack()||t):null)}catch(e){console.warn('[Mathroom camera toggle]',e)}
+        this.cameraEnabled=!this.cameraEnabled;
+        t.enabled=this.cameraEnabled;
+        if(this.virtualBgTrack)this.virtualBgTrack.enabled=this.cameraEnabled;
+        localStorage.setItem(`mathroom.media.camera.${this.role}`,this.cameraEnabled?'1':'0');
+        const sender=this.pc?.getSenders?.().find(s=>s.track?.kind==='video')
+          ||this.pc?.getTransceivers?.().find(tr=>tr.receiver?.track?.kind==='video')?.sender;
+        if(sender){
+          try{await sender.replaceTrack(this.cameraEnabled?(this.effectiveCameraTrack()||t):null)}catch(e){console.warn('[Mathroom camera toggle]',e)}
+        }
+        this.bindMedia();
+        this.paint();
+      }finally{
+        if(this.mediaActionLock)this.mediaActionLock.camera=false;
       }
-      this.bindMedia();
-      this.paint();
     }
 
     async restoreCameraAfterScreenShare(sender=null) {
@@ -2010,18 +2023,36 @@
           audio.setSinkId(this.selectedAudioOutput || '').then(() => { audio.dataset.sinkId=this.selectedAudioOutput || ''; }).catch(() => {});
         }
         if (this.remoteStream.getAudioTracks().length && this.soundEnabled) audio.play().catch(() => {
-          this.status = 'Нажми 🔊, чтобы включить звук'; this.soundEnabled = false; this.paint();
+          this.status = 'Звук включён · нажми 🔊 ещё раз только если хочешь его выключить';
+          this.paint();
         });
       }
     }
 
     toggleSound() {
-      const audio = this.panel?.querySelector('#mrRemoteAudio');
-      this.soundEnabled = !this.soundEnabled;
-      localStorage.setItem(`mathroom.media.sound.${this.role}`, this.soundEnabled ? '1' : '0');
-      if (audio) {
-        audio.muted = !this.soundEnabled;
-        if (this.soundEnabled) audio.play().then(() => { this.status = this.isConnected() ? 'Соединено' : this.status; this.paint(); }).catch(() => { this.soundEnabled = false; localStorage.setItem(`mathroom.media.sound.${this.role}`,'0'); this.paint(); toast('Браузер не разрешил воспроизведение звука'); });
+      const now=Date.now();
+      if(now-(this.mediaActionLock?.sound||0)<180)return;
+      if(this.mediaActionLock)this.mediaActionLock.sound=now;
+
+      const audio=this.panel?.querySelector('#mrRemoteAudio');
+      const next=!this.soundEnabled;
+      this.soundEnabled=next;
+      localStorage.setItem(`mathroom.media.sound.${this.role}`,next?'1':'0');
+
+      if(audio){
+        audio.muted=!next;
+        if(next){
+          audio.play().then(()=>{
+            if(this.isConnected())this.status='Соединено';
+            this.paint();
+          }).catch(()=>{
+            /* Keep the user's requested ON state. Browsers can transiently
+               reject play() while the remote track is being rebound; bindMedia
+               retries playback when the track is available. */
+            this.status='Звук включён · ждём аудиопоток';
+            this.paint();
+          });
+        }
       }
       this.paint();
     }
@@ -2034,56 +2065,33 @@
 
     bindCoreVideoActions() {
       const host=this.panel;
-      if(!host)return;
-      const mic=host.querySelector('#mrVideoMic'); if(mic)mic.onclick=()=>this.toggleMic();
-      const cam=host.querySelector('#mrVideoCam'); if(cam)cam.onclick=()=>this.toggleCamera().catch(e=>console.warn('[Mathroom camera]',e));
-      const sound=host.querySelector('#mrVideoSound'); if(sound)sound.onclick=()=>this.toggleSound();
-      const devices=host.querySelector('#mrVideoDevices'); if(devices)devices.onclick=()=>this.openDeviceSettings().catch(fail);
-      const reconnect=host.querySelector('#mrVideoReconnect'); if(reconnect)reconnect.onclick=()=>{this.forceRelay=false;this.reconnect(true,false).catch(fail)};
-      const end=host.querySelector('#mrVideoEnd'); if(end)end.onclick=()=>this.end();
-      const screen=host.querySelector('#mrVideoScreen'); if(screen)screen.onclick=()=>this.shareScreen();
-      const full=host.querySelector('#mrVideoFullscreen'); if(full)full.onclick=()=>this.openVideoFullscreen();
-      const expand=host.querySelector('#mrVideoExpand'); if(expand)expand.onclick=e=>{
+      if(!host || host.dataset.mrCoreActionsBound==='1')return;
+
+      host.dataset.mrCoreActionsBound='1';
+
+      /* One permanent delegated handler. The call panel is repainted and moved
+         between hero/floating/fullscreen containers, but its control buttons
+         must never accumulate or race multiple handlers. */
+      host.addEventListener('click',e=>{
+        const btn=e.target?.closest?.('button');
+        if(!btn || !host.contains(btn))return;
+
+        const id=btn.id||'';
+        if(!['mrVideoMic','mrVideoCam','mrVideoSound','mrVideoDevices','mrVideoReconnect','mrVideoEnd','mrVideoScreen','mrVideoFullscreen','mrVideoExpand'].includes(id))return;
+
         e.preventDefault();
         e.stopPropagation();
-        if(this.videoViewMode==='hidden')this.showVideoFromHidden();
-      };
-      host.querySelectorAll('[data-video-view]').forEach(b=>b.onclick=()=>this.setVideoViewMode(b.dataset.videoView));
-    }
 
-    recoverAfterBoardFullscreen() {
-      if(!this.joined||!this.panel)return;
-
-      const host=this.panel;
-      host.classList.remove('mr-board-fullscreen-video','dragging');
-
-      // Hidden mode must always return as a live compact control strip.
-      if(this.videoViewMode==='hidden'){
-        this.videoFloating=true;
-        this.expanded=false;
-        this.minimized=false;
-        localStorage.setItem(`mathroom.media.expanded.${this.role}`,'0');
-        localStorage.setItem(`mathroom.media.minimized.${this.role}`,'0');
-      }
-
-      this.bindCoreVideoActions();
-      this.paint();
-
-      requestAnimationFrame(()=>{
-        if(this.videoFloating){
-          if(!this.floatingPosition){
-            const r=host.getBoundingClientRect();
-            this.floatingPosition={
-              left:Math.max(8,Math.min(window.innerWidth-host.offsetWidth-8,r.left||window.innerWidth-host.offsetWidth-18)),
-              top:Math.max(8,Math.min(window.innerHeight-host.offsetHeight-8,r.top||82))
-            };
-          }
-          this.applyFloatingPosition();
-        }
-        host.style.pointerEvents='auto';
-        host.querySelectorAll('button').forEach(b=>b.style.pointerEvents='auto');
-        this.bindCoreVideoActions();
-      });
+        if(id==='mrVideoMic')return this.toggleMic();
+        if(id==='mrVideoCam')return this.toggleCamera().catch(err=>console.warn('[Mathroom camera]',err));
+        if(id==='mrVideoSound')return this.toggleSound();
+        if(id==='mrVideoDevices')return this.openDeviceSettings().catch(fail);
+        if(id==='mrVideoReconnect'){this.forceRelay=false;return this.reconnect(true,false).catch(fail)}
+        if(id==='mrVideoEnd')return this.end();
+        if(id==='mrVideoScreen')return this.shareScreen();
+        if(id==='mrVideoFullscreen')return this.openVideoFullscreen();
+        if(id==='mrVideoExpand'&&this.videoViewMode==='hidden')return this.showVideoFromHidden();
+      },false);
     }
 
     setVideoViewMode(mode) {
@@ -2445,20 +2453,7 @@
           <div class="mr-call-quality" id="mrVideoQuality"></div><div class="mr-call-note" id="mrVideoNote">Камера и микрофон выбираются перед входом. Связь встроена прямо в Mathroom.</div>`;
         target.appendChild(host);
         host.querySelector('#mrVideoJoin').onclick = () => this.openPrejoin();
-        host.querySelector('#mrVideoMic').onclick = () => this.toggleMic();
-        host.querySelector('#mrVideoCam').onclick = () => this.toggleCamera().catch(e=>console.warn('[Mathroom camera]',e));
-        host.querySelector('#mrVideoSound').onclick = () => this.toggleSound();
-        host.querySelector('#mrVideoDevices').onclick = () => this.openDeviceSettings().catch(fail);
-        host.querySelector('#mrVideoReconnect').onclick = () => { this.forceRelay = false; this.reconnect(true, false).catch(fail); };
-        host.querySelector('#mrVideoEnd').onclick = () => this.end();
         host.querySelector('#mrVideoMin').onclick = () => this.toggleMinimized();
-        const screen = host.querySelector('#mrVideoScreen'); if (screen) screen.onclick = () => this.shareScreen();
-        const full = host.querySelector('#mrVideoFullscreen'); if (full) full.onclick = () => this.openVideoFullscreen();
-        const expand = host.querySelector('#mrVideoExpand'); if (expand) expand.onclick = e => {
-          e.preventDefault();
-          e.stopPropagation();
-          if (this.videoViewMode === 'hidden') this.showVideoFromHidden();
-        };
         const stage = host.querySelector('#mrCallStage'); if (stage) stage.ondblclick = () => { if(Date.now()-(this.videoDraggedAt||0)>300)this.openVideoFullscreen(); };
         host.querySelectorAll('[data-video-view]').forEach(b=>b.onclick=()=>this.setVideoViewMode(b.dataset.videoView));
         const localPreview = host.querySelector('#mrLocalVideo'); if (localPreview) localPreview.onclick = () => { if (this.screenTrack) this.toggleExpanded(); };
