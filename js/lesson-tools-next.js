@@ -3856,9 +3856,7 @@
     const m = modal(`<div class="mr-card-head"><div><span class="pill">${esc(row.topics?.section||'Курс')}</span><h2>${esc(row.topics?.title||'Тема')}</h2></div><span class="pill ${s.key==='attention'?'warn':s.key==='mastered'?'good':''}">${s.label}</span></div>
       <div class="mr-mastery-detail-score"><b>${row.mastery==null?'—':Math.round(Number(row.mastery))+'%'}</b><div><span>Сводное освоение</span><small>${row.evidence_count||0} учебных сигналов${row.last_activity_at?` · последнее ${new Date(row.last_activity_at).toLocaleDateString('ru-RU')}`:''}</small></div></div>
       <div class="mr-mastery-components">${component('Уроки',row.lesson_score,d.lessons)}${component('Домашние',row.homework_score,d.homeworks)}${component('Тесты',row.test_score,d.tests)}${component('Повторение',row.review_score,d.review_signals)}</div>
-      <div class="notice"><b>Интерпретация:</b> итоговый процент — это взвешенная сводка реальных результатов, а не отдельная оценка. Уроки имеют наибольший вес, затем тесты/ДЗ и сигналы интервального повторения.</div>
-      <button class="btn modal-default-close">Закрыть</button>`,'wide-modal');
-    m.querySelector('.modal-default-close').onclick=()=>m.remove();
+      <div class="notice"><b>Интерпретация:</b> итоговый процент — это взвешенная сводка реальных результатов, а не отдельная оценка. Уроки имеют наибольший вес, затем тесты/ДЗ и сигналы интервального повторения.</div>`,'wide-modal');
   }
 
   async function openMasteryMap(studentId, studentMode = false, provided = null) {
