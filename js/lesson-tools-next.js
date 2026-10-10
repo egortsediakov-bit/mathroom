@@ -2350,6 +2350,11 @@
         setA('flex-wrap','nowrap');
         setA('align-items','center');
       }
+
+      /* A dragged hidden strip keeps its position across paint()/refresh. */
+      if(this.videoFloating && this.floatingPosition){
+        this.applyFloatingPosition();
+      }
     }
 
     clearHiddenPanelGeometry() {
@@ -2395,7 +2400,6 @@
             this.videoHeroMount.style.minHeight=measured+'px';
           }
         }
-        this.clearFloatingInlinePosition?.();
 
         const boardFullscreen=!!(
           document.fullscreenElement?.classList?.contains('board-card') &&
@@ -2438,32 +2442,23 @@
       if(this.videoRestoreLock)return;
       this.videoRestoreLock=true;
 
-      this.videoViewMode='remote';
-      this.expanded=false;
-      this.minimized=false;
-      this.clearHiddenPanelGeometry();
-
       const boardFullscreen=!!(
         document.fullscreenElement?.classList?.contains('board-card') &&
         this.panel &&
         document.fullscreenElement.contains(this.panel)
       );
 
-      /* In board fullscreen the player must stay inside the browser top layer.
-         Everywhere else "Видео" means restore the original large hero player. */
-      if(!boardFullscreen){
-        this.videoFloating=false;
-        this.floatingPosition=null;
-        if(this.videoHeroMount){
-          this.clearFloatingInlinePosition?.();
-          if(!this.callFullscreen && this.panel?.parentNode!==this.videoHeroMount){
-            this.videoHeroMount.appendChild(this.panel);
-          }
-          /* Restore the real panel first, then remove the placeholder height. */
-          requestAnimationFrame(()=>{
-            this.videoHeroMount?.style?.removeProperty('min-height');
-          });
-        }
+      this.videoViewMode='remote';
+      this.expanded=false;
+      this.minimized=false;
+
+      /* "Видео" means reopen the mini-player in place. The main hero is
+         restored only by scrolling back to the top of the lesson. */
+      this.videoFloating=true;
+      this.clearHiddenPanelGeometry();
+
+      if(!boardFullscreen && this.panel && this.panel.parentNode!==document.body){
+        document.body.appendChild(this.panel);
       }
 
       localStorage.setItem(`mathroom.media.view.${this.role}`,'remote');
@@ -2473,25 +2468,21 @@
       this.paint();
 
       requestAnimationFrame(()=>{
-        this.clearFloatingInlinePosition?.();
+        if(this.floatingPosition)this.applyFloatingPosition();
         this.bindMedia();
-        const remote=this.panel?.querySelector('#mrRemoteVideo');
-        if(remote?.srcObject?.getVideoTracks?.().length)remote.play?.().catch(()=>{});
 
-        if(!boardFullscreen && this.videoHeroMount){
-          try{
-            this.videoHeroMount.scrollIntoView({behavior:'smooth',block:'start'});
-          }catch{
-            this.videoHeroMount.scrollIntoView?.();
-          }
+        const remote=this.panel?.querySelector('#mrRemoteVideo');
+        if(remote?.srcObject?.getVideoTracks?.().length){
+          remote.play?.().catch(()=>{});
         }
 
         requestAnimationFrame(()=>{
+          if(this.floatingPosition)this.applyFloatingPosition();
           this.videoRestoreLock=false;
         });
       });
 
-      setTimeout(()=>{this.videoRestoreLock=false},400);
+      setTimeout(()=>{this.videoRestoreLock=false},300);
     }
 
     syncLessonRunway() {
@@ -2726,54 +2717,94 @@
 
     attachDrag() {
       const host=this.panel;
-      const head=host?.querySelector('.mr-call-head');
-      const stage=host?.querySelector('#mrCallStage');
-      if(!host||!head||!stage||host.dataset.dragBound==='1')return;
-      host.dataset.dragBound='1';
+      if(!host)return;
+
       let drag=null;
 
       const begin=e=>{
+        if(!this.joined)return;
+        if(e.button!=null && e.button!==0)return;
+        if(e.target.closest?.('button,input,select,textarea,.mr-floating-view-switch'))return;
+
         const fullscreenBoard=!!host.closest('.board-card:fullscreen');
-        const floating=this.videoFloating||host.classList.contains('floating')||fullscreenBoard;
-        const allowed=floating?stage:head;
-        if(e.currentTarget!==allowed)return;
-        if(e.button!=null&&e.button!==0)return;
-        if(e.target.closest('button,input,select,textarea,.mr-floating-view-switch'))return;
+        const hidden=this.videoViewMode==='hidden';
+        const floating=this.videoFloating || host.classList.contains('floating') || fullscreenBoard;
+
+        const inStage=!!e.target.closest?.('#mrCallStage');
+        const inHead=!!e.target.closest?.('.mr-call-head');
+        const inActions=!!e.target.closest?.('.mr-call-actions');
+
+        /* Hidden strip can be dragged by its white padding and the gaps between
+           buttons. Mini-video is dragged by its video surface. Hero keeps the
+           original header-only drag behavior. */
+        const allowed = hidden
+          ? (e.target===host || inActions)
+          : (floating ? inStage : inHead);
+
+        if(!allowed)return;
+
         const r=host.getBoundingClientRect();
-        drag={pointerId:e.pointerId,x:e.clientX,y:e.clientY,left:r.left,top:r.top,moved:false};
-        allowed.setPointerCapture?.(e.pointerId);
-        if(floating)host.classList.add('dragging');
+        drag={
+          pointerId:e.pointerId,
+          x:e.clientX,
+          y:e.clientY,
+          left:r.left,
+          top:r.top,
+          moved:false
+        };
+
+        try{host.setPointerCapture?.(e.pointerId)}catch{}
+        if(floating || hidden)host.classList.add('dragging');
+        e.preventDefault();
       };
+
       const move=e=>{
-        if(!drag||!this.joined)return;
-        const dx=e.clientX-drag.x,dy=e.clientY-drag.y;
-        if(Math.abs(dx)+Math.abs(dy)>4)drag.moved=true;
+        if(!drag || !this.joined)return;
+        if(e.pointerId!==drag.pointerId)return;
+
+        const dx=e.clientX-drag.x;
+        const dy=e.clientY-drag.y;
+        if(Math.abs(dx)+Math.abs(dy)>3)drag.moved=true;
         if(!drag.moved)return;
+
         const pos=this.clampFloatingPosition(drag.left+dx,drag.top+dy);
+        this.videoFloating=true;
+        this.floatingPosition=pos;
+
+        host.style.setProperty('position','fixed','important');
         host.style.setProperty('left',pos.left+'px','important');
         host.style.setProperty('top',pos.top+'px','important');
         host.style.setProperty('right','auto','important');
         host.style.setProperty('bottom','auto','important');
-        this.floatingPosition=pos;
+
+        e.preventDefault();
       };
+
       const finish=e=>{
         if(!drag)return;
+        if(e.pointerId!=null && e.pointerId!==drag.pointerId)return;
+
         if(drag.moved){
-          if(this.videoFloating){
-            try{localStorage.setItem(`mathroom.media.floatpos.${this.role}`,JSON.stringify(this.floatingPosition))}catch{}
-          }
+          try{
+            localStorage.setItem(
+              `mathroom.media.floatpos.${this.role}`,
+              JSON.stringify(this.floatingPosition)
+            );
+          }catch{}
           this.videoDraggedAt=Date.now();
         }
+
+        try{host.releasePointerCapture?.(drag.pointerId)}catch{}
         drag=null;
         host.classList.remove('dragging');
       };
 
-      for(const el of [head,stage]){
-        el.addEventListener('pointerdown',begin);
-        el.addEventListener('pointermove',move);
-        el.addEventListener('pointerup',finish);
-        el.addEventListener('pointercancel',finish);
-      }
+      /* Property assignment is intentionally idempotent. A reused video panel
+         can never keep drag callbacks from an older VideoSession. */
+      host.onpointerdown=begin;
+      host.onpointermove=move;
+      host.onpointerup=finish;
+      host.onpointercancel=finish;
     }
 
     renderPanel(target) {
@@ -2837,8 +2868,8 @@
         requestAnimationFrame(()=>{
           this.videoFloating=true;
           if(host.parentNode!==document.body)document.body.appendChild(host);
-          this.clearFloatingInlinePosition?.();
           this.applyHiddenPanelGeometry();
+          if(this.floatingPosition)this.applyFloatingPosition();
           host.style.pointerEvents='auto';
           this.bindCoreVideoActions();
         });
