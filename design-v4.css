@@ -3716,3 +3716,40 @@ input[type="file"]{font-size:11px!important}
     flex:0 0 auto!important;
   }
 }
+
+
+/* Mathroom v5.8 — prevent hidden strip from stretching full width */
+@media (min-width:761px){
+  html body #mrVideoPanel.joined.view-hidden,
+  html body #mrVideoPanel.joined.view-hidden.floating{
+    display:inline-flex!important;
+    position:fixed!important;
+    right:18px!important;
+    bottom:18px!important;
+    left:auto!important;
+    top:auto!important;
+    width:max-content!important;
+    min-width:max-content!important;
+    max-width:calc(100vw - 24px)!important;
+    flex:0 0 auto!important;
+    align-self:auto!important;
+    justify-self:auto!important;
+    box-sizing:border-box!important;
+  }
+
+  html body #mrVideoPanel.joined.view-hidden .mr-call-actions{
+    width:max-content!important;
+    min-width:max-content!important;
+    max-width:none!important;
+    flex:0 0 auto!important;
+    box-sizing:border-box!important;
+  }
+
+  html body #mrVideoPanel.joined.view-hidden #mrVideoMic,
+  html body #mrVideoPanel.joined.view-hidden #mrVideoCam,
+  html body #mrVideoPanel.joined.view-hidden #mrVideoExpand{
+    flex:0 0 auto!important;
+    width:auto!important;
+    min-width:0!important;
+  }
+}
