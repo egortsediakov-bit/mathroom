@@ -1781,7 +1781,7 @@
     let boardFullscreenVideoState=null;
     const moveLessonVideoIntoFullscreen=()=>{
       const card=root.querySelector('.board-card');
-      const video=document.querySelector('#mrVideoPanel');
+      const video=window.MathroomLiveCall?.panel || document.querySelector('#mrVideoPanel');
       if(!card||!video||card.contains(video)||!video.classList.contains('joined'))return;
       const savedPosition={};
       for(const prop of ['left','top','right','bottom']){
@@ -1844,7 +1844,14 @@
     document.addEventListener('fullscreenchange',()=>{
       const card=root.querySelector('.board-card');
       if(document.fullscreenElement===card){
-        card.querySelector('#mrVideoPanel')?.classList.add('mr-board-fullscreen-video');
+        const video=window.MathroomLiveCall?.panel || document.querySelector('#mrVideoPanel');
+        if(video?.classList?.contains('joined')){
+          if(video.parentNode!==card)card.appendChild(video);
+          video.classList.add('mr-board-fullscreen-video');
+          requestAnimationFrame(()=>{
+            window.dispatchEvent(new CustomEvent('mathroom:board-video-entered',{detail:{card}}));
+          });
+        }
       }else{
         restoreLessonVideoAfterFullscreen();
       }
