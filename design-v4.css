@@ -3633,3 +3633,86 @@ input[type="file"]{font-size:11px!important}
     grid-row:2!important;
   }
 }
+
+
+/* =========================================================
+   Mathroom v5.7 — compact hidden video controls
+   Hidden mode must collapse to the three control buttons only.
+   ========================================================= */
+@media (min-width:761px){
+  #mrVideoPanel.joined.view-hidden,
+  #mrVideoPanel.joined.view-hidden.floating,
+  .board-card:fullscreen > #mrVideoPanel.joined.view-hidden,
+  .board-card:fullscreen > #mrVideoPanel.joined.view-hidden.floating{
+    display:inline-flex!important;
+    position:fixed!important;
+    right:18px!important;
+    bottom:18px!important;
+    left:auto!important;
+    top:auto!important;
+    width:max-content!important;
+    min-width:0!important;
+    max-width:calc(100vw - 24px)!important;
+    height:auto!important;
+    min-height:0!important;
+    max-height:none!important;
+    padding:6px!important;
+    margin:0!important;
+    gap:0!important;
+    overflow:visible!important;
+    align-items:center!important;
+    justify-content:center!important;
+    background:#fff!important;
+    border:1px solid var(--pg-line,#d9dde3)!important;
+    border-radius:14px!important;
+    box-shadow:0 12px 34px rgba(0,0,0,.18)!important;
+    transform:none!important;
+  }
+
+  #mrVideoPanel.joined.view-hidden .mr-call-head,
+  #mrVideoPanel.joined.view-hidden .mr-call-stage,
+  #mrVideoPanel.joined.view-hidden .mr-call-note,
+  #mrVideoPanel.joined.view-hidden .mr-call-quality,
+  #mrVideoPanel.joined.view-hidden .mr-floating-view-switch{
+    display:none!important;
+  }
+
+  #mrVideoPanel.joined.view-hidden .mr-call-actions{
+    display:flex!important;
+    position:static!important;
+    width:auto!important;
+    min-width:0!important;
+    height:auto!important;
+    min-height:0!important;
+    max-height:none!important;
+    padding:0!important;
+    margin:0!important;
+    gap:7px!important;
+    align-items:center!important;
+    flex-wrap:nowrap!important;
+    background:transparent!important;
+    border:0!important;
+    box-shadow:none!important;
+    transform:none!important;
+  }
+
+  #mrVideoPanel.joined.view-hidden .mr-call-actions>*{
+    display:none!important;
+  }
+
+  #mrVideoPanel.joined.view-hidden #mrVideoMic,
+  #mrVideoPanel.joined.view-hidden #mrVideoCam,
+  #mrVideoPanel.joined.view-hidden #mrVideoExpand{
+    display:inline-flex!important;
+    width:auto!important;
+    min-width:auto!important;
+    height:42px!important;
+    min-height:42px!important;
+    max-height:42px!important;
+    padding:8px 13px!important;
+    margin:0!important;
+    align-items:center!important;
+    justify-content:center!important;
+    flex:0 0 auto!important;
+  }
+}
