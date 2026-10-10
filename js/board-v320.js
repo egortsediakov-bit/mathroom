@@ -780,13 +780,21 @@
         '#templatesBoard','#assetLibrary','#pasteSystemClipboard','#cropImage',
         '[data-tool="focus"]','#toggleHidden','#revealHidden','#clearFocus',
         '#lockSelected','#bringForward','#sendBackward','#bringFront','#sendBack','#deleteSelected','#duplicatePage',
-        '#toScratch','#fromScratch','#renamePage','#followBadge',
+        '#addPage','#delPage','#toScratch','#fromScratch','#renamePage','#followBadge',
         '[data-object-action="lock"]','[data-object-action="front"]','[data-object-action="back"]','[data-object-action="delete"]'
       ]){
         root.querySelectorAll(selector).forEach(el=>el.remove());
       }
       const systemPaste=root.querySelector('#pasteSystemClipboard span');
       if(systemPaste)systemPaste.textContent='Вставить из буфера';
+      /* Remove separators left empty after teacher-only page controls disappear. */
+      const headActions=root.querySelector('.board-head-actions');
+      if(headActions){
+        [...headActions.querySelectorAll('.board-head-sep')].forEach(sep=>{
+          const prev=sep.previousElementSibling,next=sep.nextElementSibling;
+          if(!prev||!next||prev.classList?.contains('board-head-sep')||next.classList?.contains('board-head-sep'))sep.remove();
+        });
+      }
       root.dataset.desktopStudentReplica='1';
     }
     if(compactStudentBoardUI){
