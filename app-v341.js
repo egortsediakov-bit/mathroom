@@ -991,7 +991,10 @@ async function renderStudent(){
   const viewportW=Math.max(Number(window.innerWidth||0),Number(document.documentElement?.clientWidth||0));
   // Desktop/laptop mode is selected by the actual viewport, not by touch capability.
   // This prevents touchscreen Windows laptops from being incorrectly forced into the mobile student UI.
-  const compactLessonUI=(mobileUA||iPadOS||viewportW<=1100);
+  /* Real phones/tablets keep the compact lesson UI. Desktop browsers use
+     the responsive desktop lesson layout down to 761px, so small laptops and
+     browser zoom no longer fall into a phone-style lesson. */
+  const compactLessonUI=(mobileUA||iPadOS||viewportW<=760);
 
   if(active&&live&&compactLessonUI){
     S.studentTab='board';
