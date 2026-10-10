@@ -2204,14 +2204,18 @@
 
     bindCoreVideoActions() {
       const host=this.panel;
-      if(!host || host.dataset.mrCoreActionsBound==='1')return;
+      if(!host)return;
 
-      host.dataset.mrCoreActionsBound='1';
+      /* The DOM panel can outlive a VideoSession while the lesson UI refreshes.
+         Never trust a boolean "already bound" marker: its listener may point to
+         a destroyed session. Rebind only when the owner changes. */
+      if(host._mrCoreOwner===this.peerId && host._mrCoreClickHandler)return;
 
-      /* One permanent delegated handler. The call panel is repainted and moved
-         between hero/floating/fullscreen containers, but its control buttons
-         must never accumulate or race multiple handlers. */
-      host.addEventListener('click',e=>{
+      if(host._mrCoreClickHandler){
+        try{host.removeEventListener('click',host._mrCoreClickHandler,false)}catch{}
+      }
+
+      const handler=e=>{
         const btn=e.target?.closest?.('button');
         if(!btn || !host.contains(btn))return;
 
@@ -2230,7 +2234,37 @@
         if(id==='mrVideoScreen')return this.shareScreen();
         if(id==='mrVideoFullscreen')return this.openVideoFullscreen();
         if(id==='mrVideoExpand'&&this.videoViewMode==='hidden')return this.showVideoFromHidden();
-      },false);
+      };
+
+      host._mrCoreClickHandler=handler;
+      host._mrCoreOwner=this.peerId;
+      host.addEventListener('click',handler,false);
+
+      /* These controls use onclick intentionally: assignment replaces any stale
+         closure left by a previous VideoSession without accumulating handlers. */
+      const join=host.querySelector('#mrVideoJoin');
+      if(join)join.onclick=()=>this.openPrejoin();
+
+      const min=host.querySelector('#mrVideoMin');
+      if(min)min.onclick=()=>this.toggleMinimized();
+
+      const stage=host.querySelector('#mrCallStage');
+      if(stage)stage.ondblclick=()=>{
+        if(Date.now()-(this.videoDraggedAt||0)>300)this.openVideoFullscreen();
+      };
+
+      host.querySelectorAll('[data-video-view]').forEach(b=>{
+        b.onclick=e=>{
+          e.preventDefault();
+          e.stopPropagation();
+          this.setVideoViewMode(b.dataset.videoView);
+        };
+      });
+
+      const localPreview=host.querySelector('#mrLocalVideo');
+      if(localPreview)localPreview.onclick=()=>{
+        if(this.screenTrack)this.toggleExpanded();
+      };
     }
 
     setVideoViewMode(mode) {
@@ -2259,32 +2293,60 @@
     }
 
     showVideoFromHidden() {
-      if (!this.joined) return;
-      if (this.videoRestoreLock) return;
-      this.videoRestoreLock = true;
+      if(!this.joined)return;
+      if(this.videoRestoreLock)return;
+      this.videoRestoreLock=true;
 
-      this.videoViewMode = 'remote';
-      this.expanded = false;
-      this.minimized = false;
+      this.videoViewMode='remote';
+      this.expanded=false;
+      this.minimized=false;
 
-      localStorage.setItem(`mathroom.media.view.${this.role}`, 'remote');
-      localStorage.setItem(`mathroom.media.expanded.${this.role}`, '0');
-      localStorage.setItem(`mathroom.media.minimized.${this.role}`, '0');
+      const boardFullscreen=!!(
+        document.fullscreenElement?.classList?.contains('board-card') &&
+        this.panel &&
+        document.fullscreenElement.contains(this.panel)
+      );
+
+      /* In board fullscreen the player must stay inside the browser top layer.
+         Everywhere else "Видео" means restore the original large hero player. */
+      if(!boardFullscreen){
+        this.videoFloating=false;
+        this.floatingPosition=null;
+        if(this.videoHeroMount){
+          this.videoHeroMount.style.minHeight='';
+          this.clearFloatingInlinePosition?.();
+          if(!this.callFullscreen && this.panel?.parentNode!==this.videoHeroMount){
+            this.videoHeroMount.appendChild(this.panel);
+          }
+        }
+      }
+
+      localStorage.setItem(`mathroom.media.view.${this.role}`,'remote');
+      localStorage.setItem(`mathroom.media.expanded.${this.role}`,'0');
+      localStorage.setItem(`mathroom.media.minimized.${this.role}`,'0');
 
       this.paint();
 
-      requestAnimationFrame(() => {
-        if (this.videoFloating && this.floatingPosition) this.applyFloatingPosition();
+      requestAnimationFrame(()=>{
+        this.clearFloatingInlinePosition?.();
         this.bindMedia();
         const remote=this.panel?.querySelector('#mrRemoteVideo');
-        if (remote?.srcObject?.getVideoTracks?.().length) remote.play?.().catch(()=>{});
-        requestAnimationFrame(() => {
-          if (this.videoFloating && this.floatingPosition) this.applyFloatingPosition();
-          this.videoRestoreLock = false;
+        if(remote?.srcObject?.getVideoTracks?.().length)remote.play?.().catch(()=>{});
+
+        if(!boardFullscreen && this.videoHeroMount){
+          try{
+            this.videoHeroMount.scrollIntoView({behavior:'smooth',block:'start'});
+          }catch{
+            this.videoHeroMount.scrollIntoView?.();
+          }
+        }
+
+        requestAnimationFrame(()=>{
+          this.videoRestoreLock=false;
         });
       });
 
-      setTimeout(()=>{ this.videoRestoreLock=false; },220);
+      setTimeout(()=>{this.videoRestoreLock=false},400);
     }
 
     syncLessonRunway() {
@@ -2591,11 +2653,6 @@
           <div class="mr-call-actions"><button class="btn primary" id="mrVideoJoin">Присоединиться к уроку</button><button class="btn mr-hide-min" id="mrVideoMic" hidden></button><button class="btn mr-hide-min" id="mrVideoCam" hidden></button><button class="btn mr-hide-min" id="mrVideoSound" hidden></button><button class="btn mr-hide-min mr-device-btn" id="mrVideoDevices" hidden>${this.mediaButton('devices','Устройства')}</button><button class="btn mr-hide-min" id="mrVideoScreen" hidden>${this.mediaButton('screen','Экран')}</button><button class="btn mr-hide-min" id="mrVideoFullscreen" hidden>${this.mediaButton('fullscreen','Весь экран')}</button><button class="btn mr-hide-min" id="mrVideoExpand" hidden>${this.mediaButton('video','Видео')}</button><button class="btn mr-hide-min" id="mrVideoReconnect" hidden>${this.mediaButton('reconnect','Переподключить')}</button><button class="btn danger" id="mrVideoEnd" hidden>${this.mediaButton('exit','Выйти')}</button></div>
           <div class="mr-call-quality" id="mrVideoQuality"></div><div class="mr-call-note" id="mrVideoNote">Камера и микрофон выбираются перед входом. Связь встроена прямо в Mathroom.</div>`;
         target.appendChild(host);
-        host.querySelector('#mrVideoJoin').onclick = () => this.openPrejoin();
-        host.querySelector('#mrVideoMin').onclick = () => this.toggleMinimized();
-        const stage = host.querySelector('#mrCallStage'); if (stage) stage.ondblclick = () => { if(Date.now()-(this.videoDraggedAt||0)>300)this.openVideoFullscreen(); };
-        host.querySelectorAll('[data-video-view]').forEach(b=>b.onclick=()=>this.setVideoViewMode(b.dataset.videoView));
-        const localPreview = host.querySelector('#mrLocalVideo'); if (localPreview) localPreview.onclick = () => { if (this.screenTrack) this.toggleExpanded(); };
       }
       this.panel = host;
       this.bindCoreVideoActions();
@@ -2708,6 +2765,11 @@
       this.onBoardVideoRestored=null;
       if (this.onVideoScroll) window.removeEventListener('scroll', this.onVideoScroll);
       this.onVideoScroll = null;
+      if(this.panel?._mrCoreOwner===this.peerId && this.panel._mrCoreClickHandler){
+        try{this.panel.removeEventListener('click',this.panel._mrCoreClickHandler,false)}catch{}
+        this.panel._mrCoreClickHandler=null;
+        this.panel._mrCoreOwner='';
+      }
       if (this.videoHeroMount) {
         this.videoHeroMount.style.minHeight = '';
         this.videoHeroMount.style.removeProperty('--mr-hero-runway-gap');
