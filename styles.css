@@ -5094,3 +5094,28 @@ button.mr-mobile-lesson-asset{cursor:pointer}
     left:0!important;
   }
 }
+
+
+/* Mathroom v37.5 — teacher follow toggle state */
+.board-head-actions #followTeacherToggle{
+  background:#fff!important;
+  color:#2b2d33!important;
+  border-color:var(--mr-line-strong,#d9d6d1)!important;
+  box-shadow:none!important;
+}
+.board-head-actions #followTeacherToggle:hover:not(:disabled){
+  background:#fff8f4!important;
+  color:var(--mr-orange,#f55a16)!important;
+  border-color:var(--mr-orange-border,#ffc2a5)!important;
+}
+.board-head-actions #followTeacherToggle.active{
+  background:var(--mr-orange,#f55a16)!important;
+  color:#fff!important;
+  border-color:var(--mr-orange,#f55a16)!important;
+  box-shadow:0 6px 16px rgba(245,90,22,.18)!important;
+}
+.board-head-actions #followTeacherToggle.active:hover:not(:disabled){
+  background:var(--mr-orange-2,#ff6a22)!important;
+  color:#fff!important;
+  border-color:var(--mr-orange-2,#ff6a22)!important;
+}
