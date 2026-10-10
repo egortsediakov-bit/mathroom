@@ -991,12 +991,12 @@ async function renderStudent(){
   const viewportW=Math.max(Number(window.innerWidth||0),Number(document.documentElement?.clientWidth||0));
   // Desktop/laptop mode is selected by the actual viewport, not by touch capability.
   // This prevents touchscreen Windows laptops from being incorrectly forced into the mobile student UI.
-  /* Real phones/tablets keep the compact lesson UI. Desktop browsers use
-     the responsive desktop lesson layout down to 761px, so small laptops and
-     browser zoom no longer fall into a phone-style lesson. */
-  const compactLessonUI=(mobileUA||iPadOS||viewportW<=760);
+  /* Keep the existing compact cabinet breakpoint, but let active lessons
+     use the responsive desktop workspace on small desktop/laptop windows. */
+  const compactLessonUI=(mobileUA||iPadOS||viewportW<=1100);
+  const compactActiveLessonUI=(mobileUA||iPadOS||viewportW<=760);
 
-  if(active&&live&&compactLessonUI){
+  if(active&&live&&compactActiveLessonUI){
     S.studentTab='board';
     app.innerHTML=`<div class="student-home student-lesson-mode"><div id="studentLessonTaskMount">${studentLessonTaskCard(live)}</div><div id="studentLessonBoard"></div></div>`;
     await mountBoard(document.getElementById('studentLessonBoard'),S.student.id,false,{lessonId:active.id,studentName:S.student.name,followTeacher:true});
@@ -1040,7 +1040,7 @@ async function renderStudent(){
     return;
   }
 
-  if(active&&live&&!compactLessonUI){
+  if(active&&live&&!compactActiveLessonUI){
     S.studentTab='lessons';
     const taskLeft=taskTimerRemaining(live);
     app.innerHTML=`<div class="student-home student-lesson-mode student-desktop-lesson-mode mr-student-teacher-design">
