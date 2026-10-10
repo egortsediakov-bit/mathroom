@@ -713,7 +713,7 @@
     let pendingOps=[],dbPendingOps=[],deleteJournal=new Map(),remoteLiveStrokes=new Map(),strokeSentIndex=0,lastStrokeSent=0,seenOps=new Set();
     let boardNetworkOnline=navigator.onLine!==false,saveInFlight=false,lastServerSaveAt=0;
     let penActiveUntil=0,touchPointers=new Map(),touchGesture=null;
-    let handTapCandidate=null,lastHandTap=null;
+    let handTapCandidate=null,lastHandTap=null,pasteShortcutFallbackTimer=null;
     try{const q=JSON.parse(localStorage.getItem(collabQueueKey)||'[]');if(Array.isArray(q))pendingOps=q.slice(-800)}catch{}
     const persistPendingOps=()=>{try{if(pendingOps.length)localStorage.setItem(collabQueueKey,JSON.stringify(pendingOps.slice(-800)));else localStorage.removeItem(collabQueueKey)}catch{}};
     const localOwns=o=>!!o&&o._ownerRole===actorRole&&String(o._ownerId||'')===actorId;
@@ -1361,8 +1361,9 @@
     function pasteSelected(){if(!clipboardElement)return;const list=Array.isArray(clipboardElement)?clipboardElement:[clipboardElement];pushElementsHistory();const created=[];for(const src of list){const shifted=translated(src,32/camera.zoom,32/camera.zoom),o=freshOwnedObject(shifted);o.locked=false;elements.push(o);created.push(o.id)}setSelection(created);changed();setTool('select');toast(created.length>1?`${created.length} объектов вставлено`:'Объект вставлен')}
     function deleteSelected(){const ids=selectionList();if(!ids.length)return;const objs=ids.map(id=>elements.find(x=>x.id===id)).filter(Boolean);if(objs.some(o=>o.locked))return toast('В выделении есть закреплённый объект · сначала разблокируйте');if(!isTeacher&&objs.some(o=>!canMutateObject(o)))return toast('Можно удалить только свои записи');if(ids.length>=4)writeCheckpointSnapshot('Перед массовым удалением');pushElementsHistory();const set=new Set(ids);elements=elements.filter(x=>!set.has(x.id));clearSelection();changed();toast(ids.length>1?`${ids.length} объектов удалено`:'Объект удалён')}
     async function importClipboardBlob(blob,name='clipboard.png'){const type=blob.type||'image/png';const file=blob instanceof File?blob:new File([blob],name,{type});await importImage(file);toast('Изображение вставлено из буфера')}
-    async function readSystemClipboard(){if(!fullBoardTools||(!isTeacher&&classroomMode!=='open'))return;try{if(!navigator.clipboard?.read)throw new Error('Браузер не поддерживает чтение изображений из буфера по кнопке. Используй Ctrl+V.');const items=await navigator.clipboard.read();for(const item of items){const type=item.types.find(t=>t.startsWith('image/'));if(type){await importClipboardBlob(await item.getType(type));return}}const text=await navigator.clipboard.readText().catch(()=> '');if(text){addText(text,{fontSize:26});toast('Текст вставлен из буфера');return}toast('В буфере нет изображения или текста')}catch(e){fail(e)}}
+    async function readSystemClipboard(){if(!fullBoardTools||(!isTeacher&&classroomMode!=='open'))return;try{if(navigator.clipboard?.read){const items=await navigator.clipboard.read();for(const item of items){const type=item.types.find(t=>t.startsWith('image/'));if(type){await importClipboardBlob(await item.getType(type));return}}}const text=await navigator.clipboard?.readText?.().catch(()=> '');if(text){addText(text,{fontSize:26});toast('Текст вставлен из буфера');return}if(clipboardElement){pasteSelected();return}throw new Error('Не удалось прочитать буфер обмена. Разреши доступ к буферу для сайта и попробуй Ctrl+V ещё раз.')}catch(e){if(clipboardElement){pasteSelected();return}fail(e)}}
     async function pasteExternal(e){
+      if(pasteShortcutFallbackTimer){clearTimeout(pasteShortcutFallbackTimer);pasteShortcutFallbackTimer=null}
       if(!fullBoardTools||(!isTeacher&&classroomMode!=='open'))return;const tag=document.activeElement?.tagName;if(['INPUT','TEXTAREA','SELECT'].includes(tag))return;const items=[...(e.clipboardData?.items||[])],files=[...(e.clipboardData?.files||[])];const imageItem=items.find(x=>x.type?.startsWith('image/')),imageFile=files.find(x=>x.type?.startsWith('image/'));if(imageItem||imageFile){e.preventDefault();const file=imageItem?.getAsFile?.()||imageFile;if(file)await importClipboardBlob(file,file.name||'clipboard.png');return}
       const text=e.clipboardData?.getData('text/plain');if(text){e.preventDefault();addText(text,{fontSize:26});toast('Текст вставлен на доску');return}
       if(clipboardElement){e.preventDefault();pasteSelected()}
@@ -2126,9 +2127,19 @@
         if(tool!=='hand')setTool('hand');
         return;
       }
-      const undoKey=cmd&&(k==='z'||code==='KeyZ'),redoKey=cmd&&(k==='y'||code==='KeyY');
+      const undoKey=cmd&&(k==='z'||code==='KeyZ'),redoKey=cmd&&(k==='y'||code==='KeyY'),pasteKey=cmd&&(k==='v'||code==='KeyV');
       if(undoKey&&boardFocused&&!isEditing){e.preventDefault();e.stopImmediatePropagation?.();e.shiftKey?redo():undo();return}
       if(redoKey&&boardFocused&&!isEditing){e.preventDefault();e.stopImmediatePropagation?.();redo();return}
+      if(pasteKey&&boardHot&&!isEditing){
+        boardFocused=true;
+        if(pasteShortcutFallbackTimer)clearTimeout(pasteShortcutFallbackTimer);
+        /* Do not preventDefault here: native paste is preferred because it can
+           access clipboardData without an extra permission prompt. If the
+           browser does not emit paste for a non-editable board, use the
+           Clipboard API a moment later. */
+        pasteShortcutFallbackTimer=setTimeout(()=>{pasteShortcutFallbackTimer=null;readSystemClipboard()},90);
+        return;
+      }
       if(!boardFocused||isEditing)return;
       if(cmd&&(k==='c'||code==='KeyC')&&selected){e.preventDefault();copySelected()}
       else if((e.key==='Delete'||e.key==='Backspace')&&selected){e.preventDefault();deleteSelected()}
@@ -2156,7 +2167,7 @@
     window.addEventListener('keydown',key,true);
     window.addEventListener('keyup',keyup,true);
     window.addEventListener('blur',releaseSpaceHand);
-    window.addEventListener('paste',pasteExternal);
+    document.addEventListener('paste',pasteExternal,true);
     if(!localOnly)pagesChannel=sb.channel(`student:${studentId}:pages`,{config:{private:true}}).on('broadcast',{event:'pages'},()=>refreshPages()).on('broadcast',{event:'navigate'},({payload})=>{if(!isTeacher&&followTeacher&&payload?.pageId)switchPage(payload.pageId,{fromLeader:true}).catch(()=>{})}).on('broadcast',{event:'hello'},()=>{if(isTeacher)persistClassroom()}).on('broadcast',{event:'classroom'},({payload})=>{if(isTeacher)return;classroomMode=payload?.mode||'open';followTeacher=payload?.follow!==false;if(followTeacher&&payload?.pageId&&payload.pageId!==current?.id)switchPage(payload.pageId,{fromLeader:true}).then(()=>{if(payload.camera){camera={...payload.camera};zoomLabel.textContent=Math.round(camera.zoom*100)+'%';render()}}).catch(()=>{});else if(payload?.camera&&followTeacher){camera={...payload.camera};zoomLabel.textContent=Math.round(camera.zoom*100)+'%'};if(classroomMode==='view')setTool('hand');else if(classroomMode==='pen'&&!['pen','pencil','eraser','hand'].includes(tool))setTool('pen');renderTabs();render()}).subscribe(s=>{if(s==='SUBSCRIBED'){if(isTeacher)persistClassroom();else pagesChannel?.send({type:'broadcast',event:'hello',payload:{role:'student'}}).catch(()=>{})}});renderTabs();render();joinChannel();
     if(lessonId&&isTeacher){if(!readCheckpoints().length)setTimeout(()=>saveCheckpoint('Начало урока'),800);checkpointTimer=setInterval(()=>saveCheckpoint('Авто · '+new Date().toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'})).catch(()=>{}),5*60*1000)}
 
@@ -2181,7 +2192,7 @@
     if(recoveredOffline&&!localOnly)setSyncState(boardNetworkOnline?'syncing':'offline',boardNetworkOnline?'Восстановлены локальные изменения · синхронизация…':'Офлайн · локальные изменения восстановлены');
     else if(!boardNetworkOnline)setSyncState('offline');
 
-    const cleanup=()=>{clearTimeout(saveTimer);clearInterval(checkpointTimer);root.removeEventListener('pointerdown',activateBoardShortcuts,true);root.removeEventListener('focusin',deactivateBoardShortcuts,true);document.removeEventListener('pointerdown',outsideBoardPointer,true);window.removeEventListener('keydown',key,true);window.removeEventListener('keyup',keyup,true);window.removeEventListener('blur',releaseSpaceHand);window.removeEventListener('paste',pasteExternal);window.removeEventListener('dragend',clearDragOverlay,true);window.removeEventListener('drop',clearDragOverlay,true);window.removeEventListener('online',onBoardOnline);window.removeEventListener('offline',onBoardOffline);window.removeEventListener('pagehide',onBoardPageHide);if(channel)sb.removeChannel(channel);if(pagesChannel)sb.removeChannel(pagesChannel)};S.boardCleanup=cleanup;
+    const cleanup=()=>{clearTimeout(saveTimer);clearInterval(checkpointTimer);root.removeEventListener('pointerdown',activateBoardShortcuts,true);root.removeEventListener('focusin',deactivateBoardShortcuts,true);document.removeEventListener('pointerdown',outsideBoardPointer,true);window.removeEventListener('keydown',key,true);window.removeEventListener('keyup',keyup,true);window.removeEventListener('blur',releaseSpaceHand);document.removeEventListener('paste',pasteExternal,true);if(pasteShortcutFallbackTimer){clearTimeout(pasteShortcutFallbackTimer);pasteShortcutFallbackTimer=null};window.removeEventListener('dragend',clearDragOverlay,true);window.removeEventListener('drop',clearDragOverlay,true);window.removeEventListener('online',onBoardOnline);window.removeEventListener('offline',onBoardOffline);window.removeEventListener('pagehide',onBoardPageHide);if(channel)sb.removeChannel(channel);if(pagesChannel)sb.removeChannel(pagesChannel)};S.boardCleanup=cleanup;
     const diagnostics=()=>({
       pageId:current?.id||'',
       objectCount:elements.length,
