@@ -773,6 +773,22 @@
       ${fullBoardTools?`<div class="board-rail-divider board-rail-divider-bottom"></div><button class="btn sm board-icon-btn board-rail-action board-rail-clear danger" id="clearBoard" title="Очистить текущий лист" aria-label="Очистить лист">${uiIcon('trash')}</button>`:''}
     </div>`;
     root.innerHTML=`<div class="board-card"><div class="board-head"><div class="board-head-title"><strong>${localOnly?'Черновик':'Доска'}</strong><span class="board-status" id="boardStatus">${localOnly?'Локальный черновик':'Подключение…'}</span></div><div class="board-head-actions">${isTeacher&&lessonId?`<button class="btn sm ${followTeacher?'active':''}" id="followTeacherToggle">${uiIcon('focus')} <span>Ведение</span></button><select class="board-select board-permission-select" id="studentBoardMode" title="Права ученика"><option value="open" ${classroomMode==='open'?'selected':''}>Ученик: всё</option><option value="pen" ${classroomMode==='pen'?'selected':''}>Только писать</option><option value="view" ${classroomMode==='view'?'selected':''}>Просмотр</option></select>`:desktopTeacherReplica&&lessonId?`<button class="btn sm active" disabled title="Ведением управляет преподаватель">${uiIcon('focus')} <span>Ведение</span></button><select class="board-select board-permission-select" disabled title="Права задаёт преподаватель"><option>Ученик: всё</option></select>`:''}<span class="board-head-sep" aria-hidden="true"></span><button class="btn sm board-head-icon" id="undo" title="Отменить · Ctrl+Z">${uiIcon('undo')}<span class="board-head-label">Назад</span></button><button class="btn sm board-head-icon" id="redo" title="Вернуть · Ctrl+Y / Ctrl+Shift+Z">${uiIcon('redo')}<span class="board-head-label">Вперёд</span></button>${fullBoardTools?`<span class="board-head-sep" aria-hidden="true"></span><button class="btn sm board-head-icon" id="bringForward" disabled title="Поднять выбранный объект на один слой">${uiIcon('up')}<span class="board-head-label">Выше</span></button><button class="btn sm board-head-icon" id="sendBackward" disabled title="Опустить выбранный объект на один слой">${uiIcon('down')}<span class="board-head-label">Ниже</span></button><span class="board-head-sep" aria-hidden="true"></span><button class="btn sm board-head-icon" id="addPage" title="Создать новый лист">${uiIcon('plus')}<span class="board-head-label">Новый</span></button><button class="btn sm board-head-icon danger" id="delPage" title="Удалить текущий лист">${uiIcon('trash')}<span class="board-head-label">Удалить лист</span></button>`:''}<span class="board-head-sep" aria-hidden="true"></span><button class="btn sm board-shortcuts-btn" id="quickCommands" title="Показать быстрые команды">⌨ <span>Команды</span></button><button class="btn sm board-fullscreen-btn" id="fullscreen" title="На весь экран" aria-label="На весь экран">${uiIcon('fullscreen')} <span data-fullscreen-label="На весь экран">На весь экран</span></button></div></div><div class="board-page-tabs" id="pageTabs"></div><div class="board-stage" id="stage"><aside class="board-toolbar board-toolbar-side">${toolPanel}</aside><svg id="boardSvg"></svg><div class="board-object-hud" id="objectHud" hidden><button type="button" class="btn sm" data-object-action="duplicate" title="Дублировать">${uiIcon('duplicate')}</button><button type="button" class="btn sm" data-object-action="lock" title="Закрепить">${uiIcon('pin')}</button><button type="button" class="btn sm" data-object-action="front" title="На передний план">${uiIcon('front')}</button><button type="button" class="btn sm" data-object-action="back" title="На задний план">${uiIcon('back')}</button><button type="button" class="btn sm" data-object-action="fill" title="Заливка">${uiIcon('fill')}</button><button type="button" class="btn sm" data-object-action="edit" title="Редактировать">${uiIcon('edit')}</button><button type="button" class="btn sm danger" data-object-action="delete" title="Удалить">${uiIcon('trash')}</button></div><div class="board-follow-badge" id="followBadge" hidden>${uiIcon('focus')} Следуем за преподавателем</div><div class="board-solid-hud" id="solidHud" hidden><button type="button" class="btn sm" data-solid-hud="rotate" title="Вращать 3D">${uiIcon('rotate')}</button><button type="button" class="btn sm" data-solid-hud="point" title="Поставить точку">${uiIcon('point')}</button><button type="button" class="btn sm" data-solid-hud="plane" title="Плоскость по трём точкам">${uiIcon('plane')}</button><span class="board-solid-hud-sep"></span><button type="button" class="btn sm" data-solid-hud="smaller" title="Уменьшить">${uiIcon('minus')}</button><button type="button" class="btn sm" data-solid-hud="larger" title="Увеличить">${uiIcon('plus')}</button><button type="button" class="btn sm" data-solid-hud="reset" title="Стандартный вид">${uiIcon('home')}</button><button type="button" class="btn sm danger" data-solid-hud="clear" title="Удалить точки и плоскости">${uiIcon('trash')}</button></div><div class="board-floating"><button class="btn sm" id="zoomOut" title="Уменьшить">${uiIcon('minus')}</button><span class="btn sm" id="zoomLabel">100%</span><button class="btn sm" id="zoomIn" title="Увеличить">${uiIcon('plus')}</button><button class="btn sm" id="homeView" title="Сбросить вид">${uiIcon('home')}</button></div></div><div class="board-hint">Выбор: рамка · Shift+клик — несколько объектов · Ctrl+Z — отменить · Space + drag — перемещение · планшет: стилус пишет, палец двигает, два пальца масштабируют</div></div>`;
+    if(desktopTeacherReplica){
+      /* Desktop student uses the teacher board layout, but not teacher-only
+         lesson/admin actions. Keep object clipboard actions available. */
+      for(const selector of [
+        '#templatesBoard','#assetLibrary',
+        '[data-tool="focus"]','#toggleHidden','#revealHidden','#clearFocus',
+        '#bringForward','#sendBackward','#bringFront','#sendBack','#deleteSelected',
+        '#toScratch','#fromScratch','#renamePage',
+        '[data-object-action="front"]','[data-object-action="back"]','[data-object-action="delete"]'
+      ]){
+        root.querySelectorAll(selector).forEach(el=>el.remove());
+      }
+      const systemPaste=root.querySelector('#pasteSystemClipboard span');
+      if(systemPaste)systemPaste.textContent='Вставить из буфера';
+      root.dataset.desktopStudentReplica='1';
+    }
     if(compactStudentBoardUI){
       /* Touch lesson boards keep only controls that are useful on mobile/tablet.
          Remove them from the DOM so orientation changes cannot bring them back. */
@@ -904,6 +920,7 @@
     }
     function canUseTool(v){
       if(isTeacher)return true;
+      if(desktopTeacherReplica&&v==='focus')return false;
       if(classroomMode==='view')return v==='hand';
       if(classroomMode==='pen')return ['pen','pencil','eraser','hand'].includes(v);
       return true;
@@ -2116,7 +2133,7 @@
       else if(!cmd&&!e.altKey&&!e.shiftKey){
         const map={KeyP:'pen',KeyK:'pencil',KeyE:'eraser',KeyT:'text',KeyL:'line',KeyV:'select',KeyH:'hand',KeyF:'focus',KeyR:'ruler',KeyM:'marker',KeyX:'laser',KeyC:'compass'};
         const next=map[code]||({p:'pen',k:'pencil',e:'eraser',t:'text',l:'line',v:'select',h:'hand',f:'focus',r:'ruler',m:'marker',x:'laser',c:'compass'})[k];
-        if(next&&(!['focus','ruler','marker','laser','compass'].includes(next)||fullBoardTools)){e.preventDefault();setTool(next)}
+        if(next&&next!=='focus'&&(!['ruler','marker','laser','compass'].includes(next)||fullBoardTools)){e.preventDefault();setTool(next)}
         else if(k==='g'||code==='KeyG'){e.preventDefault();grid=!grid;root.querySelector('#gridToggle').classList.toggle('active',grid);render()}
       }
     };
