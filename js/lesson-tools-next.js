@@ -194,8 +194,20 @@
         .mr-media-device-fields{display:grid;gap:9px;margin-top:2px}.mr-media-device-field{display:grid;gap:4px}.mr-media-device-field label{font-size:11px;font-weight:750;color:var(--muted,#747b85)}.mr-media-device-field select{width:100%;min-height:38px;border:1px solid var(--line,#e5e7eb);border-radius:10px;background:#fff;padding:7px 9px;color:inherit}.mr-media-device-field select:disabled{opacity:.55;background:#f6f6f5}.mr-device-count{font-size:11px;color:var(--muted,#747b85);line-height:1.4}.mr-device-modal-grid{display:grid;grid-template-columns:1fr;gap:12px;margin:14px 0}.mr-native-call .mr-device-btn{white-space:nowrap}
         .mr-video-hero-mount{width:100%;margin:0 0 12px}
         .mr-video-hero-mount>.mr-native-call.joined:not(.floating){position:relative!important;right:auto!important;bottom:auto!important;left:auto!important;top:auto!important;width:100%!important;max-width:none!important;padding:12px!important;border-radius:18px!important;box-shadow:0 16px 42px rgba(20,24,32,.08)!important}
-        .mr-video-hero-mount>.mr-native-call.joined:not(.floating) .mr-call-stage{display:block;min-height:min(68vh,720px);max-height:760px;aspect-ratio:16/9}
-        .mr-video-hero-mount>.mr-native-call.joined:not(.floating) .mr-local-video{width:190px;height:118px;right:16px;top:16px}
+        .mr-video-hero-mount>.mr-native-call.joined:not(.floating) .mr-call-stage{
+          display:block;
+          width:100%;
+          height:min(56.25vw,58dvh,680px);
+          min-height:260px;
+          max-height:calc(100dvh - 220px);
+          aspect-ratio:auto;
+        }
+        .mr-video-hero-mount>.mr-native-call.joined:not(.floating) .mr-local-video{
+          width:clamp(112px,15vw,190px);
+          height:clamp(72px,9.4vw,118px);
+          right:clamp(8px,1.2vw,16px);
+          top:clamp(8px,1.2vw,16px);
+        }
         .mr-native-call .mr-floating-view-switch{display:none;position:absolute;left:50%;top:8px;transform:translateX(-50%);z-index:12;gap:4px;padding:4px;border-radius:10px;background:rgba(10,12,16,.8);backdrop-filter:blur(8px);white-space:nowrap}
         .mr-native-call .mr-floating-view-switch button{border:0;background:transparent;color:#fff;border-radius:7px;padding:6px 8px;font-size:10.5px;font-weight:750;cursor:pointer;line-height:1}
         .mr-native-call .mr-floating-view-switch button.active,.mr-native-call .mr-floating-view-switch button:hover{background:#fff2}
@@ -301,7 +313,63 @@
         @media(max-width:1180px) and (min-width:761px){
           .mr-native-call.floating{width:clamp(215px,24vw,300px)!important}
           .mr-native-call.floating.view-both{width:clamp(215px,24vw,300px)!important}
-          .mr-native-call.floating.role-teacher{right:250px!important}
+          .mr-native-call.floating.role-teacher{right:clamp(236px,25vw,270px)!important}
+          .mr-video-hero-mount>.mr-native-call.joined:not(.floating){
+            padding:9px!important;
+            gap:7px!important;
+          }
+          .mr-video-hero-mount>.mr-native-call.joined:not(.floating) .mr-call-stage{
+            height:min(56.25vw,54dvh,520px)!important;
+            min-height:230px!important;
+            max-height:calc(100dvh - 205px)!important;
+          }
+          .mr-video-hero-mount>.mr-native-call.joined:not(.floating) .mr-call-actions{
+            gap:5px!important;
+          }
+          .mr-video-hero-mount>.mr-native-call.joined:not(.floating) .mr-call-actions .btn{
+            min-height:34px!important;
+            padding:5px 8px!important;
+            font-size:10.5px!important;
+          }
+        }
+        @media(max-height:820px) and (min-width:761px){
+          .mr-video-hero-mount>.mr-native-call.joined:not(.floating){
+            padding:8px!important;
+            gap:6px!important;
+          }
+          .mr-video-hero-mount>.mr-native-call.joined:not(.floating) .mr-call-stage{
+            height:clamp(230px,44dvh,360px)!important;
+            min-height:0!important;
+            max-height:44dvh!important;
+          }
+          .mr-video-hero-mount>.mr-native-call.joined:not(.floating) .mr-call-actions{
+            display:flex!important;
+            flex-wrap:wrap!important;
+            gap:4px!important;
+          }
+          .mr-video-hero-mount>.mr-native-call.joined:not(.floating) .mr-call-actions .btn{
+            min-height:32px!important;
+            padding:4px 7px!important;
+            font-size:10px!important;
+          }
+          .mr-video-hero-mount>.mr-native-call.joined:not(.floating) .mr-call-quality,
+          .mr-video-hero-mount>.mr-native-call.joined:not(.floating) .mr-call-note{
+            font-size:10px!important;
+            line-height:1.25!important;
+          }
+        }
+        @media(max-height:660px) and (min-width:761px){
+          .mr-video-hero-mount>.mr-native-call.joined:not(.floating) .mr-call-stage{
+            height:clamp(200px,38dvh,285px)!important;
+            min-height:0!important;
+            max-height:38dvh!important;
+          }
+          .mr-video-hero-mount>.mr-native-call.joined:not(.floating) .mr-call-note{
+            display:none!important;
+          }
+          .mr-video-hero-mount>.mr-native-call.joined:not(.floating) .mr-call-quality{
+            margin:0!important;
+          }
         }
         @media(max-width:760px){
           .mr-native-prejoin-backdrop{align-items:flex-start;padding:8px}
