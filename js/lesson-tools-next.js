@@ -1931,6 +1931,25 @@
     async joinCall() {
       try {
         await this.acquireMedia();
+
+        /* A new connection always starts on the main lesson video.
+           Hidden/floating is an in-lesson UI choice and must never leak from a
+           previous session via localStorage. */
+        this.videoViewMode='remote';
+        this.videoFloating=false;
+        this.floatingPosition=null;
+        this.expanded=false;
+        this.minimized=false;
+        this.clearHiddenPanelGeometry();
+        localStorage.setItem(`mathroom.media.view.${this.role}`,'remote');
+        localStorage.setItem(`mathroom.media.expanded.${this.role}`,'0');
+        localStorage.setItem(`mathroom.media.minimized.${this.role}`,'0');
+
+        if(this.videoHeroMount && this.panel && !this.callFullscreen){
+          if(this.panel.parentNode!==this.videoHeroMount)this.videoHeroMount.appendChild(this.panel);
+          this.clearFloatingInlinePosition?.();
+        }
+
         this.status = 'Готовим канал связи…';
         this.paint();
         await this.ensureIceServers(false);
@@ -2286,6 +2305,68 @@
       };
     }
 
+    applyHiddenPanelGeometry() {
+      const host=this.panel;
+      if(!host)return;
+
+      const set=(prop,value)=>host.style.setProperty(prop,value,'important');
+      set('display','inline-flex');
+      set('position','fixed');
+      set('right','18px');
+      set('bottom','18px');
+      set('left','auto');
+      set('top','auto');
+      set('width','max-content');
+      set('min-width','0');
+      set('max-width','calc(100vw - 24px)');
+      set('height','auto');
+      set('min-height','0');
+      set('max-height','none');
+      set('margin','0');
+      set('padding','6px');
+      set('align-items','center');
+      set('justify-content','center');
+      set('overflow','visible');
+      set('box-sizing','border-box');
+
+      const actions=host.querySelector('.mr-call-actions');
+      if(actions){
+        const setA=(prop,value)=>actions.style.setProperty(prop,value,'important');
+        setA('display','flex');
+        setA('position','static');
+        setA('width','max-content');
+        setA('min-width','0');
+        setA('max-width','none');
+        setA('height','auto');
+        setA('min-height','0');
+        setA('max-height','none');
+        setA('margin','0');
+        setA('padding','0');
+        setA('gap','7px');
+        setA('flex-wrap','nowrap');
+        setA('align-items','center');
+      }
+    }
+
+    clearHiddenPanelGeometry() {
+      const host=this.panel;
+      if(!host)return;
+      for(const prop of [
+        'display','position','right','bottom','left','top','width','min-width',
+        'max-width','height','min-height','max-height','margin','padding',
+        'align-items','justify-content','overflow','box-sizing'
+      ]) host.style.removeProperty(prop);
+
+      const actions=host.querySelector('.mr-call-actions');
+      if(actions){
+        for(const prop of [
+          'display','position','width','min-width','max-width','height',
+          'min-height','max-height','margin','padding','gap','flex-wrap',
+          'align-items'
+        ]) actions.style.removeProperty(prop);
+      }
+    }
+
     setVideoViewMode(mode) {
       if (!['remote','both','hidden'].includes(mode)) return;
       this.videoViewMode = mode;
@@ -2309,8 +2390,12 @@
           document.body.appendChild(this.panel);
         }
 
+        if(!boardFullscreen)this.applyHiddenPanelGeometry();
+
         localStorage.setItem(`mathroom.media.expanded.${this.role}`, '0');
         localStorage.setItem(`mathroom.media.minimized.${this.role}`, '0');
+      }else{
+        this.clearHiddenPanelGeometry();
       }
       localStorage.setItem(`mathroom.media.view.${this.role}`, mode);
       this.paint();
@@ -2333,6 +2418,7 @@
       this.videoViewMode='remote';
       this.expanded=false;
       this.minimized=false;
+      this.clearHiddenPanelGeometry();
 
       const boardFullscreen=!!(
         document.fullscreenElement?.classList?.contains('board-card') &&
@@ -2719,10 +2805,14 @@
       this.bindMedia();
       this.paint();
 
-      if(this.videoViewMode==='hidden' && this.videoFloating && !host.closest('.board-card:fullscreen')){
+      if(this.videoViewMode==='hidden' && !host.closest('.board-card:fullscreen')){
         requestAnimationFrame(()=>{
+          this.videoFloating=true;
+          if(host.parentNode!==document.body)document.body.appendChild(host);
           this.clearFloatingInlinePosition?.();
+          this.applyHiddenPanelGeometry();
           host.style.pointerEvents='auto';
+          this.bindCoreVideoActions();
         });
       }
     }
@@ -2741,7 +2831,9 @@
           : (finalError ? 'error' : 'connecting'));
 
       const boardFullscreen=!!(document.fullscreenElement?.classList?.contains('board-card') && document.fullscreenElement.contains(host));
-      host.className = `mr-native-call role-${this.role} ${this.joined ? 'joined' : ''} ${this.isConnected() ? 'connected' : ''} connection-${indicatorState} ${this.minimized ? 'minimized' : ''} ${this.expanded ? 'expanded' : ''} ${this.screenTrack ? 'sharing' : ''} ${this.videoFloating ? 'floating' : ''} ${this.callFullscreen ? 'mr-call-fullscreen' : ''} ${boardFullscreen ? 'mr-board-fullscreen-video' : ''} view-${this.videoViewMode}`;
+      const effectiveFloating=this.videoFloating || this.videoViewMode==='hidden';
+      host.className = `mr-native-call role-${this.role} ${this.joined ? 'joined' : ''} ${this.isConnected() ? 'connected' : ''} connection-${indicatorState} ${this.minimized ? 'minimized' : ''} ${this.expanded ? 'expanded' : ''} ${this.screenTrack ? 'sharing' : ''} ${effectiveFloating ? 'floating' : ''} ${this.callFullscreen ? 'mr-call-fullscreen' : ''} ${boardFullscreen ? 'mr-board-fullscreen-video' : ''} view-${this.videoViewMode}`;
+      if(this.videoViewMode==='hidden' && !boardFullscreen)this.applyHiddenPanelGeometry();
       const status = host.querySelector('#mrVideoStatus'); if (status) status.textContent = this.status;
       const dot = host.querySelector('.mr-call-dot'); if (dot) {
         dot.title = indicatorState === 'connected' ? 'Соединено'
