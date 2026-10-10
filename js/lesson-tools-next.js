@@ -154,6 +154,7 @@
           return;
         }
         if(this.videoFloating&&this.floatingPosition)this.applyFloatingPosition();
+        requestAnimationFrame(()=>this.syncLessonRunway());
       };
       window.addEventListener('resize',this.onVideoResize);
       window.addEventListener('orientationchange',this.onVideoResize);
@@ -2113,6 +2114,31 @@
       setTimeout(()=>{ this.videoRestoreLock=false; },220);
     }
 
+    syncLessonRunway() {
+      const mount=this.videoHeroMount;
+      if(!mount)return;
+      if(window.matchMedia?.('(max-width: 760px)')?.matches || !this.joined){
+        mount.style.removeProperty('--mr-hero-runway-gap');
+        return;
+      }
+
+      const panelHeight=Math.round(this.panel?.getBoundingClientRect?.().height||0);
+      const mountHeight=Math.round(mount.getBoundingClientRect?.().height||0);
+      const heroHeight=Math.max(1,
+        this.videoFloating
+          ? (this.videoHeroHeight||mountHeight||panelHeight)
+          : (panelHeight||mountHeight||this.videoHeroHeight)
+      );
+
+      if(!this.videoFloating)this.videoHeroHeight=heroHeight;
+
+      /* The workspace begins after the hero's own 1.0× height plus another
+         0.5× gap. This is the user's "first option": the board/right rail live
+         at a stable document position and move only with normal page scroll. */
+      const extra=Math.max(24,Math.round(heroHeight*0.5));
+      mount.style.setProperty('--mr-hero-runway-gap',extra+'px');
+    }
+
     attachVideoScroll() {
       if (this.onVideoScroll || !this.videoHeroMount) return;
 
@@ -2422,6 +2448,7 @@
 
       this.videoHeroMount = target;
       target.classList.add('mr-video-hero-mount');
+      requestAnimationFrame(()=>this.syncLessonRunway());
       this.attachVideoScroll();
       this.attachDrag();
       this.bindMedia();
@@ -2431,6 +2458,7 @@
     paint() {
       const host = this.panel;
       if (!host) return;
+      requestAnimationFrame(()=>this.syncLessonRunway());
 
       const finalError = /Не удалось подключиться|Резервный сервер связи недоступен|Проверь интернет/i.test(this.status || '');
       const indicatorState = !this.joined
@@ -2517,7 +2545,10 @@
       this.onBoardVideoRestored=null;
       if (this.onVideoScroll) window.removeEventListener('scroll', this.onVideoScroll);
       this.onVideoScroll = null;
-      if (this.videoHeroMount) this.videoHeroMount.style.minHeight = '';
+      if (this.videoHeroMount) {
+        this.videoHeroMount.style.minHeight = '';
+        this.videoHeroMount.style.removeProperty('--mr-hero-runway-gap');
+      }
       this.videoHeroMount = null;
       clearTimeout(this.deviceRefreshTimer);
       navigator.mediaDevices?.removeEventListener?.('devicechange', this.onDeviceChange);
