@@ -1969,7 +1969,7 @@
 
     toggleMic() {
       const now=Date.now();
-      if(now-(this.mediaActionLock?.mic||0)<180)return;
+      if(now-(this.mediaActionLock?.mic||0)<90)return;
       if(this.mediaActionLock)this.mediaActionLock.mic=now;
 
       const t=this.localStream?.getAudioTracks?.()[0];
@@ -1985,6 +1985,9 @@
     async toggleCamera() {
       if(this.mediaActionLock?.camera)return;
       if(this.mediaActionLock)this.mediaActionLock.camera=true;
+      const cameraLockFailsafe=setTimeout(()=>{
+        if(this.mediaActionLock)this.mediaActionLock.camera=false;
+      },5000);
       try{
         let t=this.localStream?.getVideoTracks?.()[0];
 
@@ -2023,6 +2026,7 @@
         this.bindMedia();
         this.paint();
       }finally{
+        clearTimeout(cameraLockFailsafe);
         if(this.mediaActionLock)this.mediaActionLock.camera=false;
       }
     }
@@ -2170,7 +2174,7 @@
 
     toggleSound() {
       const now=Date.now();
-      if(now-(this.mediaActionLock?.sound||0)<180)return;
+      if(now-(this.mediaActionLock?.sound||0)<90)return;
       if(this.mediaActionLock)this.mediaActionLock.sound=now;
 
       const audio=this.panel?.querySelector('#mrRemoteAudio');
@@ -2206,47 +2210,62 @@
       const host=this.panel;
       if(!host)return;
 
-      /* The DOM panel can outlive a VideoSession while the lesson UI refreshes.
-         Never trust a boolean "already bound" marker: its listener may point to
-         a destroyed session. Rebind only when the owner changes. */
-      if(host._mrCoreOwner===this.peerId && host._mrCoreClickHandler)return;
-
-      if(host._mrCoreClickHandler){
-        try{host.removeEventListener('click',host._mrCoreClickHandler,false)}catch{}
-      }
-
-      const handler=e=>{
-        const btn=e.target?.closest?.('button');
-        if(!btn || !host.contains(btn))return;
-
-        const id=btn.id||'';
-        if(!['mrVideoMic','mrVideoCam','mrVideoSound','mrVideoDevices','mrVideoReconnect','mrVideoEnd','mrVideoScreen','mrVideoFullscreen','mrVideoExpand'].includes(id))return;
-
-        e.preventDefault();
-        e.stopPropagation();
-
-        if(id==='mrVideoMic')return this.toggleMic();
-        if(id==='mrVideoCam')return this.toggleCamera().catch(err=>console.warn('[Mathroom camera]',err));
-        if(id==='mrVideoSound')return this.toggleSound();
-        if(id==='mrVideoDevices')return this.openDeviceSettings().catch(fail);
-        if(id==='mrVideoReconnect'){this.forceRelay=false;return this.reconnect(true,false).catch(fail)}
-        if(id==='mrVideoEnd')return this.end();
-        if(id==='mrVideoScreen')return this.shareScreen();
-        if(id==='mrVideoFullscreen')return this.openVideoFullscreen();
-        if(id==='mrVideoExpand'&&this.videoViewMode==='hidden')return this.showVideoFromHidden();
+      /* Direct onclick assignment is deliberately used here. It is idempotent:
+         every repaint replaces the previous callback instead of accumulating
+         listeners, so controls cannot become attached to a stale VideoSession. */
+      const bind=(selector,fn)=>{
+        const el=host.querySelector(selector);
+        if(el)el.onclick=fn;
       };
 
-      host._mrCoreClickHandler=handler;
-      host._mrCoreOwner=this.peerId;
-      host.addEventListener('click',handler,false);
-
-      /* These controls use onclick intentionally: assignment replaces any stale
-         closure left by a previous VideoSession without accumulating handlers. */
-      const join=host.querySelector('#mrVideoJoin');
-      if(join)join.onclick=()=>this.openPrejoin();
-
-      const min=host.querySelector('#mrVideoMin');
-      if(min)min.onclick=()=>this.toggleMinimized();
+      bind('#mrVideoJoin',()=>this.openPrejoin());
+      bind('#mrVideoMic',e=>{
+        e?.preventDefault?.();
+        e?.stopPropagation?.();
+        this.toggleMic();
+      });
+      bind('#mrVideoCam',e=>{
+        e?.preventDefault?.();
+        e?.stopPropagation?.();
+        this.toggleCamera().catch(err=>console.warn('[Mathroom camera]',err));
+      });
+      bind('#mrVideoSound',e=>{
+        e?.preventDefault?.();
+        e?.stopPropagation?.();
+        this.toggleSound();
+      });
+      bind('#mrVideoDevices',e=>{
+        e?.preventDefault?.();
+        e?.stopPropagation?.();
+        this.openDeviceSettings().catch(fail);
+      });
+      bind('#mrVideoReconnect',e=>{
+        e?.preventDefault?.();
+        e?.stopPropagation?.();
+        this.forceRelay=false;
+        this.reconnect(true,false).catch(fail);
+      });
+      bind('#mrVideoEnd',e=>{
+        e?.preventDefault?.();
+        e?.stopPropagation?.();
+        this.end();
+      });
+      bind('#mrVideoScreen',e=>{
+        e?.preventDefault?.();
+        e?.stopPropagation?.();
+        this.shareScreen();
+      });
+      bind('#mrVideoFullscreen',e=>{
+        e?.preventDefault?.();
+        e?.stopPropagation?.();
+        this.openVideoFullscreen();
+      });
+      bind('#mrVideoExpand',e=>{
+        e?.preventDefault?.();
+        e?.stopPropagation?.();
+        if(this.videoViewMode==='hidden')this.showVideoFromHidden();
+      });
+      bind('#mrVideoMin',()=>this.toggleMinimized());
 
       const stage=host.querySelector('#mrCallStage');
       if(stage)stage.ondblclick=()=>{
@@ -2676,6 +2695,14 @@
         target.appendChild(host);
       }
       this.panel = host;
+
+      if(host._mrCoreClickHandler){
+        try{host.removeEventListener('click',host._mrCoreClickHandler,false)}catch{}
+        host._mrCoreClickHandler=null;
+        host._mrCoreOwner='';
+      }
+      delete host.dataset.mrCoreActionsBound;
+
       this.bindCoreVideoActions();
 
       // Defensive cleanup for stale duplicate panels left by an older build.
@@ -2703,6 +2730,7 @@
     paint() {
       const host = this.panel;
       if (!host) return;
+      this.bindCoreVideoActions();
       requestAnimationFrame(()=>this.syncLessonRunway());
 
       const finalError = /Не удалось подключиться|Резервный сервер связи недоступен|Проверь интернет/i.test(this.status || '');
@@ -2793,11 +2821,6 @@
       this.onBoardVideoRestored=null;
       if (this.onVideoScroll) window.removeEventListener('scroll', this.onVideoScroll);
       this.onVideoScroll = null;
-      if(this.panel?._mrCoreOwner===this.peerId && this.panel._mrCoreClickHandler){
-        try{this.panel.removeEventListener('click',this.panel._mrCoreClickHandler,false)}catch{}
-        this.panel._mrCoreClickHandler=null;
-        this.panel._mrCoreOwner='';
-      }
       if (this.videoHeroMount) {
         this.videoHeroMount.style.minHeight = '';
         this.videoHeroMount.style.removeProperty('--mr-hero-runway-gap');
