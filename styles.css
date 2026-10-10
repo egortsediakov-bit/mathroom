@@ -5119,3 +5119,24 @@ button.mr-mobile-lesson-asset{cursor:pointer}
   color:#fff!important;
   border-color:var(--mr-orange-2,#ff6a22)!important;
 }
+
+
+/* Mathroom v37.7 — teacher follow button is state-driven, not hover-driven */
+.board-head-actions #followTeacherToggle[data-follow-state="off"],
+.board-head-actions #followTeacherToggle[data-follow-state="off"]:hover,
+.board-head-actions #followTeacherToggle[data-follow-state="off"]:focus,
+.board-head-actions #followTeacherToggle[data-follow-state="off"]:active{
+  background:#fff!important;
+  color:#2b2d33!important;
+  border-color:var(--mr-line-strong,#d9d6d1)!important;
+  box-shadow:none!important;
+}
+.board-head-actions #followTeacherToggle[data-follow-state="on"],
+.board-head-actions #followTeacherToggle[data-follow-state="on"]:hover,
+.board-head-actions #followTeacherToggle[data-follow-state="on"]:focus,
+.board-head-actions #followTeacherToggle[data-follow-state="on"]:active{
+  background:var(--mr-orange,#f55a16)!important;
+  color:#fff!important;
+  border-color:var(--mr-orange,#f55a16)!important;
+  box-shadow:0 6px 16px rgba(245,90,22,.18)!important;
+}
