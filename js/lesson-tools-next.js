@@ -75,6 +75,7 @@
       this.videoFloating = false;
       this.videoHeroMount = null;
       this.mediaActionLock = { mic:0, sound:0, camera:false };
+      this.videoDragState = null;
       this.videoHeroHeight = 0;
       this.onVideoScroll = null;
       this.floatingPosition = (() => {
@@ -2547,7 +2548,7 @@
       };
 
       this.onVideoScroll = () => {
-        if (!this.joined || this.destroyed || !this.videoHeroMount || !this.panel || this.callFullscreen) return;
+        if (!this.joined || this.destroyed || !this.videoHeroMount || !this.panel || this.callFullscreen || this.videoDragActive) return;
 
         const y=Math.max(0,window.scrollY||0);
         const delta=y-lastScrollY;
@@ -2700,7 +2701,7 @@
 
     applyFloatingPosition() {
       const host=this.panel;
-      if(!host||!this.videoFloating||!this.floatingPosition)return;
+      if(!host||!this.videoFloating||!this.floatingPosition||this.videoDragActive)return;
       const pos=this.clampFloatingPosition(this.floatingPosition.left,this.floatingPosition.top);
       this.floatingPosition=pos;
       host.style.setProperty('left',pos.left+'px','important');
@@ -2719,7 +2720,13 @@
       const host=this.panel;
       if(!host)return;
 
-      let drag=null;
+      /* renderPanel() runs repeatedly during a live lesson. Never replace drag
+         handlers while the same VideoSession owns the panel: doing so used to
+         drop the active pointer state mid-drag every ~2.5 seconds. */
+      if(host._mrDragOwner===this.peerId && host._mrDragHandlersBound)return;
+
+      host._mrDragOwner=this.peerId;
+      host._mrDragHandlersBound=true;
 
       const begin=e=>{
         if(!this.joined)return;
@@ -2734,17 +2741,14 @@
         const inHead=!!e.target.closest?.('.mr-call-head');
         const inActions=!!e.target.closest?.('.mr-call-actions');
 
-        /* Hidden strip can be dragged by its white padding and the gaps between
-           buttons. Mini-video is dragged by its video surface. Hero keeps the
-           original header-only drag behavior. */
-        const allowed = hidden
+        const allowed=hidden
           ? (e.target===host || inActions)
           : (floating ? inStage : inHead);
 
         if(!allowed)return;
 
         const r=host.getBoundingClientRect();
-        drag={
+        this.videoDragState={
           pointerId:e.pointerId,
           x:e.clientX,
           y:e.clientY,
@@ -2755,15 +2759,20 @@
 
         try{host.setPointerCapture?.(e.pointerId)}catch{}
         if(floating || hidden)host.classList.add('dragging');
+
+        /* Freeze automatic scroll/floating reposition while the user drags. */
+        this.videoDragActive=true;
         e.preventDefault();
       };
 
       const move=e=>{
+        const drag=this.videoDragState;
         if(!drag || !this.joined)return;
         if(e.pointerId!==drag.pointerId)return;
 
         const dx=e.clientX-drag.x;
         const dy=e.clientY-drag.y;
+
         if(Math.abs(dx)+Math.abs(dy)>3)drag.moved=true;
         if(!drag.moved)return;
 
@@ -2781,6 +2790,7 @@
       };
 
       const finish=e=>{
+        const drag=this.videoDragState;
         if(!drag)return;
         if(e.pointerId!=null && e.pointerId!==drag.pointerId)return;
 
@@ -2795,16 +2805,17 @@
         }
 
         try{host.releasePointerCapture?.(drag.pointerId)}catch{}
-        drag=null;
+
+        this.videoDragState=null;
+        this.videoDragActive=false;
         host.classList.remove('dragging');
       };
 
-      /* Property assignment is intentionally idempotent. A reused video panel
-         can never keep drag callbacks from an older VideoSession. */
       host.onpointerdown=begin;
       host.onpointermove=move;
       host.onpointerup=finish;
       host.onpointercancel=finish;
+      host.onlostpointercapture=finish;
     }
 
     renderPanel(target) {
@@ -2984,6 +2995,18 @@
       this.onBoardVideoRestored=null;
       if (this.onVideoScroll) window.removeEventListener('scroll', this.onVideoScroll);
       this.onVideoScroll = null;
+      if(this.panel?._mrDragOwner===this.peerId){
+        this.panel._mrDragOwner='';
+        this.panel._mrDragHandlersBound=false;
+        this.panel.onpointerdown=null;
+        this.panel.onpointermove=null;
+        this.panel.onpointerup=null;
+        this.panel.onpointercancel=null;
+        this.panel.onlostpointercapture=null;
+      }
+      this.videoDragState=null;
+      this.videoDragActive=false;
+
       if (this.videoHeroMount) {
         this.videoHeroMount.style.minHeight = '';
         this.videoHeroMount.style.removeProperty('--mr-hero-runway-gap');
