@@ -197,9 +197,9 @@
         .mr-video-hero-mount>.mr-native-call.joined:not(.floating) .mr-call-stage{
           display:block;
           width:100%;
-          height:clamp(280px,46dvh,500px);
-          min-height:280px;
-          max-height:500px;
+          height:min(56.25vw,58dvh,680px);
+          min-height:260px;
+          max-height:calc(100dvh - 220px);
           aspect-ratio:auto;
         }
         .mr-video-hero-mount>.mr-native-call.joined:not(.floating) .mr-local-video{
@@ -319,9 +319,9 @@
             gap:7px!important;
           }
           .mr-video-hero-mount>.mr-native-call.joined:not(.floating) .mr-call-stage{
-            height:clamp(250px,44dvh,430px)!important;
-            min-height:250px!important;
-            max-height:430px!important;
+            height:min(56.25vw,54dvh,520px)!important;
+            min-height:230px!important;
+            max-height:calc(100dvh - 205px)!important;
           }
           .mr-video-hero-mount>.mr-native-call.joined:not(.floating) .mr-call-actions{
             gap:5px!important;
@@ -338,9 +338,9 @@
             gap:6px!important;
           }
           .mr-video-hero-mount>.mr-native-call.joined:not(.floating) .mr-call-stage{
-            height:clamp(220px,38dvh,330px)!important;
-            min-height:220px!important;
-            max-height:330px!important;
+            height:clamp(230px,44dvh,360px)!important;
+            min-height:0!important;
+            max-height:44dvh!important;
           }
           .mr-video-hero-mount>.mr-native-call.joined:not(.floating) .mr-call-actions{
             display:flex!important;
