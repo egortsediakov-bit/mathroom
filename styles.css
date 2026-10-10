@@ -4895,3 +4895,202 @@ button.mr-mobile-lesson-asset{cursor:pointer}
     display:none!important;
   }
 }
+
+
+/* =========================================================
+   Mathroom v37.0 — desktop student lesson inherits teacher design
+   Visual parity only: student permissions and lesson behavior stay unchanged.
+   ========================================================= */
+@media(min-width:1101px){
+  .student-home.student-desktop-lesson-mode.mr-student-teacher-design{
+    width:100%!important;
+    max-width:none!important;
+    margin:0!important;
+    padding:22px 24px 28px 28px!important;
+    gap:0!important;
+    display:block!important;
+    box-sizing:border-box!important;
+    background:transparent!important;
+  }
+
+  .student-desktop-lesson-mode .mr-student-desktop-lesson-meta.topbar{
+    display:flex!important;
+    align-items:center!important;
+    justify-content:space-between!important;
+    gap:16px!important;
+    margin:0 0 20px!important;
+    padding:0 0 16px!important;
+    border-bottom:1px solid var(--mr-line,var(--line))!important;
+    background:transparent!important;
+  }
+  .student-desktop-lesson-mode .mr-student-desktop-lesson-meta.topbar h1{
+    margin:0!important;
+    font-size:30px!important;
+    line-height:1.08!important;
+    letter-spacing:-.04em!important;
+    color:#11131a!important;
+  }
+  .student-desktop-lesson-mode .mr-student-desktop-lesson-meta.topbar .mr-mobile-kicker{
+    display:block!important;
+    margin:0 0 5px!important;
+    color:var(--mr-muted,#7b7d84)!important;
+    font-size:10px!important;
+    font-weight:800!important;
+    letter-spacing:.06em!important;
+    text-transform:uppercase!important;
+  }
+
+  /* Same board/utility proportions as the teacher lesson workspace. */
+  .student-desktop-lesson-mode .mr-student-desktop-workspace.mr-teacher-workspace{
+    display:grid!important;
+    grid-template-columns:minmax(0,1fr) clamp(220px,17vw,280px)!important;
+    grid-template-rows:auto!important;
+    gap:10px!important;
+    align-items:start!important;
+    width:100%!important;
+  }
+  .student-desktop-lesson-mode .mr-student-desktop-board.mr-lesson-board-main{
+    grid-column:1!important;
+    grid-row:1!important;
+    width:100%!important;
+    min-width:0!important;
+    margin:0!important;
+  }
+  .student-desktop-lesson-mode .mr-student-desktop-lesson-rail.mr-teacher-rail{
+    grid-column:2!important;
+    grid-row:1!important;
+    position:sticky!important;
+    top:10px!important;
+    width:clamp(220px,17vw,280px)!important;
+    max-width:clamp(220px,17vw,280px)!important;
+    min-width:0!important;
+    display:block!important;
+    gap:0!important;
+    margin:0!important;
+    padding:0!important;
+    align-self:start!important;
+    justify-self:stretch!important;
+    background:#fff!important;
+    border:1px solid var(--mr-line,var(--line))!important;
+    border-radius:16px!important;
+    box-shadow:0 12px 38px rgba(20,24,32,.07)!important;
+    overflow:hidden!important;
+    z-index:24!important;
+  }
+  .student-desktop-lesson-mode .mr-student-desktop-lesson-rail.mr-teacher-rail>.mr-student-rail-section{
+    margin:0!important;
+    padding:12px!important;
+    border:0!important;
+    border-radius:0!important;
+    background:transparent!important;
+    box-shadow:none!important;
+  }
+  .student-desktop-lesson-mode .mr-student-desktop-lesson-rail.mr-teacher-rail>.mr-student-rail-section+ .mr-student-rail-section{
+    border-top:1px solid var(--mr-line,var(--line))!important;
+  }
+  .student-desktop-lesson-mode .mr-student-desktop-lesson-rail .mr-student-current-task{
+    padding:0!important;
+    margin:0!important;
+    border:0!important;
+    border-radius:0!important;
+    background:transparent!important;
+    box-shadow:none!important;
+  }
+  .student-desktop-lesson-mode .mr-student-desktop-lesson-rail .mr-student-current-task-head{
+    padding-bottom:8px!important;
+    margin-bottom:8px!important;
+    border-bottom:1px solid var(--mr-line,var(--line))!important;
+  }
+  .student-desktop-lesson-mode .mr-student-desktop-lesson-rail .mr-student-current-task h2{
+    font-size:17px!important;
+    line-height:1.25!important;
+    color:#191a22!important;
+  }
+  .student-desktop-lesson-mode .mr-student-desktop-lesson-rail .mr-student-current-prompt{
+    margin-top:8px!important;
+    font-size:12.5px!important;
+    line-height:1.48!important;
+    color:#44474f!important;
+  }
+  .student-desktop-lesson-mode .mr-student-desktop-timer-card .mr-desk-section-head{
+    padding-bottom:8px!important;
+    border-bottom:1px solid var(--mr-line,var(--line))!important;
+  }
+  .student-desktop-lesson-mode .mr-student-desktop-timer-card .mr-desk-section-head h2{
+    margin:2px 0 0!important;
+    font-size:17px!important;
+    color:#191a22!important;
+  }
+  .student-desktop-lesson-mode .mr-student-desktop-timers{
+    grid-template-columns:1fr 1fr!important;
+    gap:6px!important;
+    margin-top:10px!important;
+  }
+  .student-desktop-lesson-mode .mr-student-desktop-timers>div{
+    min-height:72px!important;
+    padding:9px!important;
+    border:1px solid var(--mr-line,var(--line))!important;
+    border-radius:11px!important;
+    background:#fafafa!important;
+    box-shadow:none!important;
+  }
+  .student-desktop-lesson-mode .mr-student-desktop-timers b{
+    font-size:22px!important;
+    color:#17191c!important;
+  }
+  .student-desktop-lesson-mode .mr-student-desktop-timers #studentTaskTimerWrap.active{
+    background:#17191c!important;
+    border-color:#17191c!important;
+    color:#fff!important;
+    box-shadow:none!important;
+  }
+  .student-desktop-lesson-mode .mr-student-desktop-timers #studentTaskTimerWrap.active b,
+  .student-desktop-lesson-mode .mr-student-desktop-timers #studentTaskTimerWrap.active span{
+    color:#fff!important;
+  }
+
+  /* The video area uses the exact teacher lesson video chrome. */
+  .student-desktop-lesson-mode>#mrStudentVideoMount.mr-lesson-video-top{
+    width:100%!important;
+    max-width:none!important;
+    margin:0 0 12px!important;
+  }
+
+  /* Reuse the teacher board's left-rail behavior instead of a student-only variant. */
+  .student-desktop-lesson-mode .mr-student-desktop-board .board-toolbar-side{
+    left:0!important;
+    right:auto!important;
+    top:12px!important;
+    bottom:auto!important;
+    width:68px!important;
+    height:auto!important;
+    max-height:calc(100% - 24px)!important;
+    padding:8px!important;
+    border-radius:20px!important;
+    transform:translateX(calc(-100% + 22px))!important;
+    opacity:.38!important;
+    transition:transform .18s ease,opacity .18s ease,box-shadow .18s ease!important;
+    box-shadow:5px 8px 22px rgba(0,0,0,.06)!important;
+  }
+  .student-desktop-lesson-mode .mr-student-desktop-board .board-toolbar-side:hover,
+  .student-desktop-lesson-mode .mr-student-desktop-board .board-toolbar-side:focus-within,
+  .student-desktop-lesson-mode .mr-student-desktop-board .board-toolbar-side:has(.board-tool-group[open]){
+    transform:translateX(0)!important;
+    opacity:.94!important;
+    box-shadow:0 12px 34px rgba(0,0,0,.11)!important;
+  }
+  .student-desktop-lesson-mode .mr-student-desktop-board .board-toolbar-side::after{
+    content:""!important;
+    position:absolute!important;
+    right:3px!important;
+    top:14px!important;
+    bottom:14px!important;
+    width:3px!important;
+    border-radius:999px!important;
+    background:rgba(237,89,26,.48)!important;
+    pointer-events:none!important;
+  }
+  .student-desktop-lesson-mode .mr-student-desktop-board .board-card:fullscreen .board-toolbar-side{
+    left:0!important;
+  }
+}
