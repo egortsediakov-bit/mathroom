@@ -3390,3 +3390,65 @@ input[type="file"]{font-size:11px!important}
     min-height:580px!important;
   }
 }
+
+
+/* =========================================================
+   Mathroom v5.2 — desktop lesson scroll runway + sticky workspace
+   The lesson always has enough vertical runway to scroll the large video fully
+   out of view, even on very tall displays. Once the board reaches its working
+   position, the board + lesson rail stay there while the page continues.
+   ========================================================= */
+@media (min-width:761px){
+  .view-lesson .content{
+    padding-bottom:max(62dvh,620px)!important;
+    min-height:calc(100dvh + 760px)!important;
+  }
+
+  .student-home.student-desktop-lesson-mode{
+    padding-bottom:max(62dvh,620px)!important;
+    min-height:calc(100dvh + 760px)!important;
+  }
+
+  .view-lesson .mr-teacher-workspace,
+  .student-desktop-lesson-mode .mr-student-desktop-workspace.mr-teacher-workspace{
+    position:sticky!important;
+    top:12px!important;
+    z-index:18!important;
+    align-self:start!important;
+  }
+
+  /* Keep the board itself tall enough to remain a stable lesson workspace. */
+  .view-lesson .mr-lesson-board-main .board-stage,
+  .student-desktop-lesson-mode .mr-student-desktop-board.mr-lesson-board-main .board-stage{
+    height:clamp(600px,78dvh,860px)!important;
+    min-height:600px!important;
+  }
+}
+
+/* On short laptops the board can still fit without turning the whole page into
+   an oversized canvas; the extra runway below provides the required scroll. */
+@media (min-width:761px) and (max-height:820px){
+  .view-lesson .mr-lesson-board-main .board-stage,
+  .student-desktop-lesson-mode .mr-student-desktop-board.mr-lesson-board-main .board-stage{
+    height:clamp(560px,82dvh,680px)!important;
+    min-height:560px!important;
+  }
+}
+
+@media (min-width:761px) and (max-height:660px){
+  .view-lesson .mr-lesson-board-main .board-stage,
+  .student-desktop-lesson-mode .mr-student-desktop-board.mr-lesson-board-main .board-stage{
+    height:clamp(500px,86dvh,600px)!important;
+    min-height:500px!important;
+  }
+}
+
+/* At narrow desktop widths the rail is stacked below the board, so sticky is
+   deliberately disabled to avoid trapping an extra-tall combined workspace. */
+@media (min-width:761px) and (max-width:899px){
+  .view-lesson .mr-teacher-workspace,
+  .student-desktop-lesson-mode .mr-student-desktop-workspace.mr-teacher-workspace{
+    position:relative!important;
+    top:auto!important;
+  }
+}
