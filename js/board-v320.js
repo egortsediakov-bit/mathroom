@@ -779,7 +779,7 @@
       for(const selector of [
         '#templatesBoard','#assetLibrary',
         '[data-tool="focus"]','#toggleHidden','#revealHidden','#clearFocus',
-        '#lockSelected','#bringForward','#sendBackward','#bringFront','#sendBack','#deleteSelected',
+        '#lockSelected','#bringForward','#sendBackward','#bringFront','#sendBack','#deleteSelected','#duplicatePage',
         '#toScratch','#fromScratch','#renamePage',
         '[data-object-action="lock"]','[data-object-action="front"]','[data-object-action="back"]','[data-object-action="delete"]'
       ]){
