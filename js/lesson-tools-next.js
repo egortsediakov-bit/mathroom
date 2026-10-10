@@ -2162,15 +2162,11 @@
         const enterAt=Math.max(145,Math.min(210,window.innerHeight*.22));
 
         if(this.videoFloating){
-          /* Do not restore the large video just because the placeholder is still
-             partly visible. Restore only when the user is deliberately scrolling
-             back up and has returned well into the hero area. */
-          const returnedTowardHero =
-            scrollingUp &&
-            y < Math.max(40,floatStartedAtY-90) &&
-            heroRect.bottom > Math.max(enterAt+90,window.innerHeight*.42);
-
-          if(returnedTowardHero){
+          /* The floating player is sticky for the whole lesson workspace.
+             It becomes large again only after the user deliberately returns
+             almost to the very top. This prevents any layout/scroll anchoring
+             change from reopening the hero while the user is working on board. */
+          if(scrollingUp && y<=48){
             restoreHero();
           }else if(this.floatingPosition){
             this.applyFloatingPosition();
@@ -3220,13 +3216,14 @@
       let host=document.querySelector('#mrLessonAddon');
       const [queue,live]=await Promise.all([getQueue(ctx.lessonId),getLiveState(ctx.lessonId)]);
       observeLessonChanges(ctx,queue,live).catch(e=>console.warn('[Mathroom history]',e));
+      const teacherContent=document.querySelector('.content');
+      if(teacherContent)teacherContent.classList.add('mr-teacher-lesson-content');
       if(!host){
         host=document.createElement('div');
         host.id='mrLessonAddon';
         host.className='mr-lesson-addon mr-lesson-video-top';
         host.innerHTML='<div id="mrTeacherVideoMount"></div>';
-        const content=document.querySelector('.content');
-        if(content)content.prepend(host);else control.parentElement?.insertBefore(host,control);
+        if(teacherContent)teacherContent.prepend(host);else control.parentElement?.insertBefore(host,control);
       }
       await refreshBoardCompanion(ctx,queue,live);
       call?.renderPanel(host.querySelector('#mrTeacherVideoMount'),false);
