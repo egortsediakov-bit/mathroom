@@ -1040,14 +1040,14 @@ async function renderStudent(){
   if(active&&live&&!compactLessonUI){
     S.studentTab='lessons';
     const taskLeft=taskTimerRemaining(live);
-    app.innerHTML=`<div class="student-home student-lesson-mode student-desktop-lesson-mode">
-      <div id="mrStudentVideoMount" class="mr-student-video-top"></div>
-      <div class="mr-student-desktop-lesson-meta"><div><span class="mr-mobile-kicker">Урок идёт</span><h1>${esc(active.topics?.title||'Урок')}</h1></div><div class="mr-student-desktop-live-dot"><span></span>Онлайн</div></div>
-      <div class="mr-student-desktop-workspace">
+    app.innerHTML=`<div class="student-home student-lesson-mode student-desktop-lesson-mode mr-student-teacher-design">
+      <div id="mrStudentVideoMount" class="mr-student-video-top mr-lesson-video-top"></div>
+      <div class="mr-student-desktop-lesson-meta topbar"><div><span class="mr-mobile-kicker">Урок идёт</span><h1>${esc(active.topics?.title||'Урок')}</h1></div><div class="mr-student-desktop-live-dot"><span></span>Онлайн</div></div>
+      <div class="mr-student-desktop-workspace mr-teacher-workspace">
         <div class="mr-student-desktop-board mr-lesson-board-main"><div id="studentLessonBoard"></div></div>
-        <aside class="mr-student-desktop-lesson-rail">
-          <section id="studentLessonTaskMount">${studentLessonTaskCard(live)}</section>
-          <section class="mr-student-desktop-timer-card"><div class="mr-desk-section-head"><div><span class="mr-mobile-kicker">Таймер</span><h2>Время урока</h2></div></div><div class="mr-student-desktop-timers"><div><span>Урок</span><b id="studentTimer">${fmtTime(elapsedSeconds(live))}</b></div><div id="studentTaskTimerWrap" class="${live.task_timer_running?'active':''}"><span>На задачу</span><b id="studentTaskTimer">${live.task_timer_running?fmtTime(taskLeft):'—'}</b></div></div></section>
+        <aside class="mr-student-desktop-lesson-rail mr-teacher-rail">
+          <section id="studentLessonTaskMount" class="mr-student-rail-section">${studentLessonTaskCard(live)}</section>
+          <section class="mr-student-desktop-timer-card mr-student-rail-section"><div class="mr-desk-section-head"><div><span class="mr-mobile-kicker">Таймер</span><h2>Время урока</h2></div></div><div class="mr-student-desktop-timers"><div><span>Урок</span><b id="studentTimer">${fmtTime(elapsedSeconds(live))}</b></div><div id="studentTaskTimerWrap" class="${live.task_timer_running?'active':''}"><span>На задачу</span><b id="studentTaskTimer">${live.task_timer_running?fmtTime(taskLeft):'—'}</b></div></div></section>
         </aside>
       </div>
     </div>`;
