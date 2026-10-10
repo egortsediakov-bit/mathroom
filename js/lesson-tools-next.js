@@ -784,17 +784,10 @@
           pc.addTrack(track,stream);
         }
       }
-
-      /* Always negotiate a video m-line even if camera permission has not been
-         requested yet. Later the Camera button can replaceTrack() into this
-         sender without restarting the lesson. */
-      const videoTr=pc.getTransceivers().find(t =>
+      const hasVideoTransceiver=pc.getTransceivers().some(t =>
         t.receiver?.track?.kind==='video' || t.sender?.track?.kind==='video'
       );
-      if(!videoTr) pc.addTransceiver('video',{direction:'sendrecv'});
-      else {
-        try{ videoTr.direction='sendrecv'; }catch{}
-      }
+      if(!hasVideoTransceiver) pc.addTransceiver('video',{direction:'sendrecv'});
     }
 
     async bindAnswererTracks(pc) {
@@ -1654,7 +1647,7 @@
       const m=modal(`<div class="mr-card-head"><div><span class="pill">Связь</span><h2 style="margin:8px 0 4px">Камера и звук</h2><p class="muted">Можно переключать устройства прямо во время урока — переподключаться не нужно.</p></div></div>
         <div class="mr-device-modal-grid">
           <div class="mr-media-device-field"><label>Микрофон</label><select data-device-kind="audioinput"></select></div>
-          <div class="mr-media-device-field"><label>Камера</label><select data-device-kind="videoinput"></select></div>
+          <div class="mr-media-device-field"><label>Камера</label><div class="small muted" style="padding:8px 0">Подключается после входа в урок</div></div>
           <div class="mr-media-device-field"><label>Вывод звука</label><select data-device-kind="audiooutput"></select></div>
         </div>
         ${this.virtualBgControlsHtml()}
@@ -1670,10 +1663,8 @@
       if (this.localStream?.getAudioTracks?.().some(t => t.readyState === 'live')) return this.localStream;
       if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) throw new Error('Микрофон доступен только по HTTPS в современном браузере.');
 
-      /* Camera permission is intentionally NOT requested here.
-         A participant can enter the lesson with no camera at all. The browser
-         asks for camera permission only after the in-lesson Camera button is
-         pressed for the first time. */
+      /* Entry never asks for camera access. Camera is requested on demand from
+         the in-lesson Camera button. */
       this.cameraEnabled=false;
       localStorage.setItem(`mathroom.media.camera.${this.role}`,'0');
 
@@ -1706,7 +1697,7 @@
       const backdrop = document.createElement('div');
       backdrop.className = 'mr-native-prejoin-backdrop';
       backdrop.innerHTML = `<div class="mr-native-prejoin">
-        <div><div class="pill">Встроенная связь Mathroom</div><h2>Подключиться к уроку</h2><p class="small muted">Выбери состояние камеры и микрофона. После входа собеседника будет слышно сразу.</p></div>
+        <div><div class="pill">Встроенная связь Mathroom</div><h2>Подключиться к уроку</h2><p class="small muted">Микрофон можно настроить сейчас. Камера подключается уже внутри урока по кнопке «Камера».</p></div>
         <div class="mr-native-prejoin-grid">
           <div class="mr-prejoin-media-col">
             <div class="mr-native-preview"><video id="mrPrejoinVideo" autoplay muted playsinline></video><span class="mr-preview-name">Вы</span></div>
@@ -1738,14 +1729,14 @@
       backdrop.querySelector('#mrPrejoinCancel').onclick = () => this.closePrejoin(false);
       backdrop.querySelector('#mrPrejoinMic').onclick = () => { this.micEnabled = !this.micEnabled; localStorage.setItem(`mathroom.media.mic.${this.role}`, this.micEnabled?'1':'0'); const t=this.localStream?.getAudioTracks?.()[0]; if(t)t.enabled=this.micEnabled; this.paintPrejoin(); };
       backdrop.querySelector('#mrPrejoinCam').onclick = () => {
-        toast('Камеру можно включить после входа в урок — тогда браузер запросит разрешение');
+        toast('Камеру можно включить после входа в урок');
       };
       this.bindVirtualBgControls(backdrop);
       join.onclick = () => this.joinCall();
       try {
         await this.acquireMedia();
         if (!this.prejoin) return;
-        if(this.virtualBgMode!=='none'){
+        if(this.localStream?.getVideoTracks?.().length && this.virtualBgMode!=='none'){
           try{await this.startVirtualBackground()}catch(e){
             console.warn('[Mathroom virtual background]',e);
             this.virtualBgMode='none';
@@ -1849,50 +1840,26 @@
       let t=this.localStream?.getVideoTracks?.()[0];
 
       if(!t || t.readyState!=='live'){
-        if(!navigator.mediaDevices?.getUserMedia){
-          toast('Камера недоступна в этом браузере');
-          return;
-        }
         try{
           this.cameraEnabled=true;
           localStorage.setItem(`mathroom.media.camera.${this.role}`,'1');
-
-          /* This is the first place where camera permission is requested. */
           t=await this.switchInputDevice('video',this.selectedVideoInput||'',{silent:true});
-
           const outgoing=this.effectiveCameraTrack()||t;
-          let sender=this.pc?.getSenders?.().find(s=>s.track?.kind==='video')
+          const sender=this.pc?.getSenders?.().find(s=>s.track?.kind==='video')
             ||this.pc?.getTransceivers?.().find(tr=>tr.receiver?.track?.kind==='video')?.sender;
-
-          if(sender){
-            await sender.replaceTrack(outgoing);
-          }else if(this.pc){
-            const tr=this.pc.addTransceiver(outgoing,{direction:'sendrecv',streams:[this.localStream]});
-            sender=tr.sender;
-            /* Fallback for an old connection that was created before the
-               reserved video m-line existed. Re-negotiate once. */
-            if(this.role==='teacher') await this.makeOffer(false);
-            else await this.send('need-offer',{joined:true,camera:true},'teacher');
-          }
-
+          if(sender) await sender.replaceTrack(outgoing);
           this.bindMedia();
           this.paint();
           toast('Камера включена');
-          return;
         }catch(e){
           this.cameraEnabled=false;
           localStorage.setItem(`mathroom.media.camera.${this.role}`,'0');
           this.paint();
-          if(e?.name==='NotAllowedError'||e?.name==='SecurityError'){
-            toast('Доступ к камере не разрешён — урок продолжится без камеры');
-          }else if(e?.name==='NotFoundError'||e?.name==='OverconstrainedError'){
-            toast('Камера не найдена — урок продолжится без камеры');
-          }else{
-            console.warn('[Mathroom camera on demand]',e);
-            toast('Не удалось включить камеру — урок продолжится без неё');
-          }
-          return;
+          if(e?.name==='NotAllowedError'||e?.name==='SecurityError') toast('Доступ к камере не разрешён — урок продолжится без камеры');
+          else if(e?.name==='NotFoundError'||e?.name==='OverconstrainedError') toast('Камера не найдена — урок продолжится без камеры');
+          else { console.warn('[Mathroom camera on demand]',e); toast('Не удалось включить камеру — урок продолжится без неё'); }
         }
+        return;
       }
 
       this.cameraEnabled=!this.cameraEnabled;
@@ -2571,7 +2538,7 @@
       host.querySelectorAll('[data-video-view]').forEach(b=>b.classList.toggle('active',b.dataset.videoView===this.videoViewMode));
       const note = host.querySelector('#mrVideoNote'); if (note) note.textContent = this.joined
         ? (this.hasTurn ? 'Mathroom сначала использует прямую связь, а при проблемах автоматически переключается через резервный сервер.' : 'Резервный сервер сейчас недоступен: Mathroom использует прямое P2P-соединение.')
-        : 'Микрофон можно настроить перед входом. Камера подключается уже внутри урока по кнопке «Камера».';
+        : 'Микрофон можно настроить перед входом. Камера подключается внутри урока по кнопке «Камера».';
       this.bindMedia();
     }
 
