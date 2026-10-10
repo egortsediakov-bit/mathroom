@@ -750,11 +750,11 @@
     const boardScreenLong=Math.max(Number(screen?.width||0),Number(screen?.height||0));
     const boardScreenShort=Math.min(Number(screen?.width||0),Number(screen?.height||0));
     const boardIpadOS=/Macintosh/i.test(boardUA)&&boardTouch;
-    const phoneStudentBoardUI=!isTeacher&&(
+    const phoneStudentBoardUI=!isTeacher&&!desktopTeacherReplica&&(
       /iPhone|iPod|Android.*Mobile|Mobile/i.test(boardUA)||
       ((boardTouch||boardCoarse)&&boardScreenShort>0&&boardScreenShort<=600)
     );
-    const compactStudentBoardUI=!isTeacher&&(
+    const compactStudentBoardUI=!isTeacher&&!desktopTeacherReplica&&(
       phoneStudentBoardUI||boardIpadOS||/iPad|Tablet/i.test(boardUA)||
       ((boardTouch||boardCoarse)&&boardScreenLong>0&&boardScreenLong<=1366&&boardScreenShort<=1024)
     );
