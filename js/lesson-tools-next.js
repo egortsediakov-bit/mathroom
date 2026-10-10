@@ -67,7 +67,10 @@
       this.cameraEnabled = localStorage.getItem(`mathroom.media.camera.${this.role}`) !== '0';
       this.minimized = localStorage.getItem(`mathroom.media.minimized.${this.role}`) === '1';
       this.videoViewMode = localStorage.getItem(`mathroom.media.view.${this.role}`) || 'remote';
-      if (!['remote','both','hidden'].includes(this.videoViewMode)) this.videoViewMode = 'remote';
+      if (!['remote','both'].includes(this.videoViewMode)) this.videoViewMode = 'remote';
+      /* "Скрыть" is an in-session state only. Never restore it on a new page
+         load or before the participant has joined the call. */
+      localStorage.setItem(`mathroom.media.view.${this.role}`,this.videoViewMode);
       this.callFullscreen = false;
       this.videoFloating = false;
       this.videoHeroMount = null;
@@ -1941,6 +1944,7 @@
         this.expanded=false;
         this.minimized=false;
         this.clearHiddenPanelGeometry();
+        if(this.videoHeroMount)this.videoHeroMount.style.removeProperty('min-height');
         localStorage.setItem(`mathroom.media.view.${this.role}`,'remote');
         localStorage.setItem(`mathroom.media.expanded.${this.role}`,'0');
         localStorage.setItem(`mathroom.media.minimized.${this.role}`,'0');
@@ -2307,7 +2311,7 @@
 
     applyHiddenPanelGeometry() {
       const host=this.panel;
-      if(!host)return;
+      if(!host || !this.joined || this.videoViewMode!=='hidden')return;
 
       const set=(prop,value)=>host.style.setProperty(prop,value,'important');
       set('display','inline-flex');
@@ -2371,10 +2375,26 @@
       if (!['remote','both','hidden'].includes(mode)) return;
       this.videoViewMode = mode;
       if (mode === 'hidden') {
+        if(!this.joined)return;
         this.expanded = false;
         this.minimized = false;
         this.videoFloating = true;
-        if (this.videoHeroMount) this.videoHeroMount.style.minHeight = '';
+
+        /* Keep the original hero slot in document flow while the compact
+           controls float. Without this placeholder the page collapses upward
+           and the user can no longer scroll back to the main video area. */
+        if(this.videoHeroMount){
+          const measured=Math.round(
+            this.videoHeroHeight ||
+            this.videoHeroMount.getBoundingClientRect?.().height ||
+            this.panel?.getBoundingClientRect?.().height ||
+            0
+          );
+          if(measured>0){
+            this.videoHeroHeight=measured;
+            this.videoHeroMount.style.minHeight=measured+'px';
+          }
+        }
         this.clearFloatingInlinePosition?.();
 
         const boardFullscreen=!!(
@@ -2397,7 +2417,10 @@
       }else{
         this.clearHiddenPanelGeometry();
       }
-      localStorage.setItem(`mathroom.media.view.${this.role}`, mode);
+      localStorage.setItem(
+        `mathroom.media.view.${this.role}`,
+        mode==='hidden' ? 'remote' : mode
+      );
       this.paint();
 
       requestAnimationFrame(() => {
@@ -2432,11 +2455,14 @@
         this.videoFloating=false;
         this.floatingPosition=null;
         if(this.videoHeroMount){
-          this.videoHeroMount.style.minHeight='';
           this.clearFloatingInlinePosition?.();
           if(!this.callFullscreen && this.panel?.parentNode!==this.videoHeroMount){
             this.videoHeroMount.appendChild(this.panel);
           }
+          /* Restore the real panel first, then remove the placeholder height. */
+          requestAnimationFrame(()=>{
+            this.videoHeroMount?.style?.removeProperty('min-height');
+          });
         }
       }
 
@@ -2760,14 +2786,16 @@
         ? this.panel
         : (target.querySelector(':scope > #mrVideoPanel') || document.querySelector('#mrVideoPanel'));
 
-      if (
+      if(
         host &&
-        host.parentNode !== target &&
+        host.parentNode!==target &&
         !host.closest('.board-card:fullscreen') &&
         !this.callFullscreen &&
-        !this.videoFloating &&
-        this.videoViewMode !== 'hidden'
-      ) {
+        (
+          !this.joined ||
+          (!this.videoFloating && this.videoViewMode!=='hidden')
+        )
+      ){
         target.appendChild(host);
       }
 
@@ -2805,7 +2833,7 @@
       this.bindMedia();
       this.paint();
 
-      if(this.videoViewMode==='hidden' && !host.closest('.board-card:fullscreen')){
+      if(this.joined && this.videoViewMode==='hidden' && !host.closest('.board-card:fullscreen')){
         requestAnimationFrame(()=>{
           this.videoFloating=true;
           if(host.parentNode!==document.body)document.body.appendChild(host);
@@ -2831,9 +2859,11 @@
           : (finalError ? 'error' : 'connecting'));
 
       const boardFullscreen=!!(document.fullscreenElement?.classList?.contains('board-card') && document.fullscreenElement.contains(host));
-      const effectiveFloating=this.videoFloating || this.videoViewMode==='hidden';
-      host.className = `mr-native-call role-${this.role} ${this.joined ? 'joined' : ''} ${this.isConnected() ? 'connected' : ''} connection-${indicatorState} ${this.minimized ? 'minimized' : ''} ${this.expanded ? 'expanded' : ''} ${this.screenTrack ? 'sharing' : ''} ${effectiveFloating ? 'floating' : ''} ${this.callFullscreen ? 'mr-call-fullscreen' : ''} ${boardFullscreen ? 'mr-board-fullscreen-video' : ''} view-${this.videoViewMode}`;
-      if(this.videoViewMode==='hidden' && !boardFullscreen)this.applyHiddenPanelGeometry();
+      const safeViewMode=this.joined ? this.videoViewMode : 'remote';
+      const effectiveFloating=this.joined && (this.videoFloating || safeViewMode==='hidden');
+      host.className = `mr-native-call role-${this.role} ${this.joined ? 'joined' : ''} ${this.isConnected() ? 'connected' : ''} connection-${indicatorState} ${this.minimized ? 'minimized' : ''} ${this.expanded ? 'expanded' : ''} ${this.screenTrack ? 'sharing' : ''} ${effectiveFloating ? 'floating' : ''} ${this.callFullscreen ? 'mr-call-fullscreen' : ''} ${boardFullscreen ? 'mr-board-fullscreen-video' : ''} view-${safeViewMode}`;
+      if(this.joined && safeViewMode==='hidden' && !boardFullscreen)this.applyHiddenPanelGeometry();
+      if(!this.joined)this.clearHiddenPanelGeometry();
       const status = host.querySelector('#mrVideoStatus'); if (status) status.textContent = this.status;
       const dot = host.querySelector('.mr-call-dot'); if (dot) {
         dot.title = indicatorState === 'connected' ? 'Соединено'
@@ -2843,9 +2873,19 @@
         dot.setAttribute('aria-label', dot.title);
       }
       const q = host.querySelector('#mrVideoQuality'); if (q) q.textContent = this.connectionQuality || (this.joined ? (this.hasTurn ? 'Автоматический прямой + резервный маршрут' : 'Прямой канал · резервный сервер пока недоступен') : '');
-      const join = host.querySelector('#mrVideoJoin'); if (join) join.hidden = this.joined;
-      const ids = ['#mrVideoMic','#mrVideoCam','#mrVideoSound','#mrVideoDevices','#mrVideoReconnect','#mrVideoEnd','#mrVideoScreen','#mrVideoFullscreen','#mrVideoExpand'];
-      ids.forEach(sel => { const el=host.querySelector(sel); if(el) el.hidden = !this.joined; });
+      const join=host.querySelector('#mrVideoJoin');
+      if(join){
+        join.hidden=this.joined;
+        join.style.removeProperty('display');
+      }
+      const ids=['#mrVideoMic','#mrVideoCam','#mrVideoSound','#mrVideoDevices','#mrVideoReconnect','#mrVideoEnd','#mrVideoScreen','#mrVideoFullscreen','#mrVideoExpand'];
+      ids.forEach(sel=>{
+        const el=host.querySelector(sel);
+        if(!el)return;
+        el.hidden=!this.joined;
+        if(!this.joined)el.style.setProperty('display','none','important');
+        else el.style.removeProperty('display');
+      });
       const min = host.querySelector('#mrVideoMin'); if (min) { min.hidden = !this.joined; min.textContent = this.minimized ? '□' : '—'; }
       const mic = host.querySelector('#mrVideoMic'); if (mic) {
         mic.innerHTML=this.mediaButton('mic',this.micEnabled?'Вкл':'Выкл',this.micEnabled);
