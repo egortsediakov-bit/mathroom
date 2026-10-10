@@ -3540,3 +3540,55 @@ input[type="file"]{font-size:11px!important}
     --mr-hero-runway-gap:10px;
   }
 }
+
+
+/* =========================================================
+   Mathroom v5.5 — student fullscreen-board live video
+   ========================================================= */
+@media (min-width:761px){
+  .board-card:fullscreen > #mrVideoPanel.joined.role-student.mr-board-fullscreen-video,
+  .board-card:fullscreen > #mrVideoPanel.joined.role-student.floating.mr-board-fullscreen-video{
+    display:grid!important;
+    position:fixed!important;
+    right:16px!important;
+    bottom:16px!important;
+    left:auto!important;
+    top:auto!important;
+    z-index:2147483646!important;
+    width:clamp(240px,21vw,360px)!important;
+    height:auto!important;
+    max-width:calc(100vw - 32px)!important;
+    max-height:calc(100vh - 32px)!important;
+    opacity:1!important;
+    visibility:visible!important;
+    pointer-events:auto!important;
+    transform:none!important;
+  }
+
+  .board-card:fullscreen > #mrVideoPanel.joined.role-student.mr-board-fullscreen-video:not(.view-hidden) .mr-call-stage{
+    display:block!important;
+    position:relative!important;
+    width:100%!important;
+    height:auto!important;
+    min-height:0!important;
+    aspect-ratio:16/9!important;
+    opacity:1!important;
+    visibility:visible!important;
+    overflow:hidden!important;
+    background:#101214!important;
+  }
+
+  .board-card:fullscreen > #mrVideoPanel.joined.role-student.mr-board-fullscreen-video:not(.view-hidden) #mrRemoteVideo{
+    display:block!important;
+    position:absolute!important;
+    inset:0!important;
+    width:100%!important;
+    height:100%!important;
+    min-width:100%!important;
+    min-height:100%!important;
+    opacity:1!important;
+    visibility:visible!important;
+    object-fit:contain!important;
+    background:#101214!important;
+  }
+}
