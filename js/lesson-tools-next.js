@@ -192,7 +192,7 @@
         .mr-native-prejoin-footer .btn{min-height:42px}.mr-native-prejoin-footer #mrPrejoinJoin{min-width:170px}
         .mr-native-prejoin-error{display:none;padding:9px 11px;background:#fff4f2;color:#9a291d;border:1px solid #f0d3ce;border-radius:12px;font-size:12px}.mr-native-prejoin-error.show{display:block}
         .mr-media-device-fields{display:grid;gap:9px;margin-top:2px}.mr-media-device-field{display:grid;gap:4px}.mr-media-device-field label{font-size:11px;font-weight:750;color:var(--muted,#747b85)}.mr-media-device-field select{width:100%;min-height:38px;border:1px solid var(--line,#e5e7eb);border-radius:10px;background:#fff;padding:7px 9px;color:inherit}.mr-media-device-field select:disabled{opacity:.55;background:#f6f6f5}.mr-device-count{font-size:11px;color:var(--muted,#747b85);line-height:1.4}.mr-device-modal-grid{display:grid;grid-template-columns:1fr;gap:12px;margin:14px 0}.mr-native-call .mr-device-btn{white-space:nowrap}
-        .mr-video-hero-mount{width:100%;margin:0 0 12px}
+        .mr-video-hero-mount{width:100%;margin:0 0 12px;overflow-anchor:none}
         .mr-video-hero-mount>.mr-native-call.joined:not(.floating){position:relative!important;right:auto!important;bottom:auto!important;left:auto!important;top:auto!important;width:100%!important;max-width:none!important;padding:12px!important;border-radius:18px!important;box-shadow:0 16px 42px rgba(20,24,32,.08)!important}
         .mr-video-hero-mount>.mr-native-call.joined:not(.floating) .mr-call-stage{
           display:block;
@@ -2175,9 +2175,12 @@
           this.videoHeroHeight,
           this.panel.offsetHeight||this.videoHeroMount.offsetHeight||Math.round(window.innerHeight*.64)
         );
-        // Do not reserve the old hero height while the call is floating.
-        // The board should move up immediately instead of leaving a large blank gap.
-        this.videoHeroMount.style.minHeight='';
+        /* Keep a placeholder with the exact hero height while the video becomes
+           floating. Without it the document collapses by several hundred pixels
+           at the same moment the user scrolls past the video. Browser scroll
+           anchoring then moves the viewport back toward the hero and the next
+           scroll event restores the large video, creating a "snap back" loop. */
+        this.videoHeroMount.style.minHeight=Math.max(1,Math.round(this.videoHeroHeight))+'px';
         this.videoFloating=true;
         this.expanded=false;
         localStorage.setItem(`mathroom.media.expanded.${this.role}`,'0');
