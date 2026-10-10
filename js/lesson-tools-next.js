@@ -2529,21 +2529,44 @@
       let floatStartedAtY=lastScrollY;
 
       const restoreHero = () => {
-        if (!this.videoHeroMount || !this.panel) return;
+        if(!this.videoHeroMount || !this.panel)return;
+
+        /* Reaching the top means the user wants the main player back.
+           Convert hidden/floating state into the normal hero state before
+           renderPanel's periodic refresh can move the panel away again. */
+        this.videoViewMode='remote';
         this.videoFloating=false;
-        this.videoHeroMount.style.minHeight='';
+        this.floatingPosition=null;
+        this.expanded=false;
+        this.minimized=false;
+        this.clearHiddenPanelGeometry?.();
+
+        localStorage.setItem(`mathroom.media.view.${this.role}`,'remote');
+        localStorage.setItem(`mathroom.media.expanded.${this.role}`,'0');
+        localStorage.setItem(`mathroom.media.minimized.${this.role}`,'0');
+
         if(!this.callFullscreen && this.panel.parentNode!==this.videoHeroMount){
           this.videoHeroMount.appendChild(this.panel);
         }
-        this.clearFloatingInlinePosition();
+
+        this.clearFloatingInlinePosition?.();
+        this.videoHeroMount.style.removeProperty('min-height');
+
         this.paint();
-        requestAnimationFrame(() => {
-          this.clearFloatingInlinePosition();
+
+        requestAnimationFrame(()=>{
+          this.clearFloatingInlinePosition?.();
           this.bindMedia();
+
           const remote=this.panel?.querySelector('#mrRemoteVideo');
           const local=this.panel?.querySelector('#mrLocalVideo');
-          if(remote?.srcObject?.getVideoTracks?.().length)remote.play?.().catch(()=>{});
-          if(local?.srcObject?.getVideoTracks?.().length)local.play?.().catch(()=>{});
+
+          if(remote?.srcObject?.getVideoTracks?.().length){
+            remote.play?.().catch(()=>{});
+          }
+          if(local?.srcObject?.getVideoTracks?.().length){
+            local.play?.().catch(()=>{});
+          }
         });
       };
 
@@ -2560,11 +2583,12 @@
         const enterAt=Math.max(145,Math.min(210,window.innerHeight*.22));
 
         if(this.videoFloating){
-          /* The floating player is sticky for the whole lesson workspace.
-             It becomes large again only after the user deliberately returns
-             almost to the very top. This prevents any layout/scroll anchoring
-             change from reopening the hero while the user is working on board. */
-          if(scrollingUp && y<=48){
+          /* Restore the main player when the user scrolls back into the hero
+             slot itself. Using page y<=48 was wrong on the student layout,
+             because the lesson title/header sits above the video mount. */
+          const heroVisibleAgain=heroRect.top<=96 && heroRect.bottom>220;
+
+          if(scrollingUp && heroVisibleAgain){
             restoreHero();
           }else if(this.floatingPosition){
             this.applyFloatingPosition();
@@ -2875,7 +2899,7 @@
       this.bindMedia();
       this.paint();
 
-      if(this.joined && this.videoViewMode==='hidden' && !host.closest('.board-card:fullscreen')){
+      if(this.joined && this.videoViewMode==='hidden' && this.videoFloating && !host.closest('.board-card:fullscreen')){
         requestAnimationFrame(()=>{
           this.videoFloating=true;
           if(host.parentNode!==document.body)document.body.appendChild(host);
