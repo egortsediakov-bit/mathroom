@@ -2276,6 +2276,20 @@
         this.videoFloating = true;
         if (this.videoHeroMount) this.videoHeroMount.style.minHeight = '';
         this.clearFloatingInlinePosition?.();
+
+        const boardFullscreen=!!(
+          document.fullscreenElement?.classList?.contains('board-card') &&
+          this.panel &&
+          document.fullscreenElement.contains(this.panel)
+        );
+
+        /* Hidden desktop controls are a global floating strip. Keep them out of
+           the lesson mount so the student's 2.5s UI refresh cannot detach and
+           reinsert the panel while a button is being clicked. */
+        if(!boardFullscreen && this.panel && this.panel.parentNode!==document.body){
+          document.body.appendChild(this.panel);
+        }
+
         localStorage.setItem(`mathroom.media.expanded.${this.role}`, '0');
         localStorage.setItem(`mathroom.media.minimized.${this.role}`, '0');
       }
@@ -2641,7 +2655,14 @@
         ? this.panel
         : (target.querySelector(':scope > #mrVideoPanel') || document.querySelector('#mrVideoPanel'));
 
-      if (host && host.parentNode !== target && !host.closest('.board-card:fullscreen') && !this.callFullscreen) {
+      if (
+        host &&
+        host.parentNode !== target &&
+        !host.closest('.board-card:fullscreen') &&
+        !this.callFullscreen &&
+        !this.videoFloating &&
+        this.videoViewMode !== 'hidden'
+      ) {
         target.appendChild(host);
       }
 
@@ -2670,6 +2691,13 @@
       this.attachDrag();
       this.bindMedia();
       this.paint();
+
+      if(this.videoViewMode==='hidden' && this.videoFloating && !host.closest('.board-card:fullscreen')){
+        requestAnimationFrame(()=>{
+          this.clearFloatingInlinePosition?.();
+          host.style.pointerEvents='auto';
+        });
+      }
     }
 
     paint() {
