@@ -2133,7 +2133,7 @@
       else if(!cmd&&!e.altKey&&!e.shiftKey){
         const map={KeyP:'pen',KeyK:'pencil',KeyE:'eraser',KeyT:'text',KeyL:'line',KeyV:'select',KeyH:'hand',KeyF:'focus',KeyR:'ruler',KeyM:'marker',KeyX:'laser',KeyC:'compass'};
         const next=map[code]||({p:'pen',k:'pencil',e:'eraser',t:'text',l:'line',v:'select',h:'hand',f:'focus',r:'ruler',m:'marker',x:'laser',c:'compass'})[k];
-        if(next&&next!=='focus'&&(!['ruler','marker','laser','compass'].includes(next)||fullBoardTools)){e.preventDefault();setTool(next)}
+        if(next&&(next!=='focus'||!desktopTeacherReplica)&&(!['focus','ruler','marker','laser','compass'].includes(next)||fullBoardTools)){e.preventDefault();setTool(next)}
         else if(k==='g'||code==='KeyG'){e.preventDefault();grid=!grid;root.querySelector('#gridToggle').classList.toggle('active',grid);render()}
       }
     };
