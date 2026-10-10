@@ -3503,3 +3503,40 @@ input[type="file"]{font-size:11px!important}
     top:auto!important;
   }
 }
+
+
+/* =========================================================
+   Mathroom v5.4 — natural 1.5× hero runway
+   The video keeps its natural document height. The lesson workspace starts
+   after an extra half-video gap, so its document position is roughly 1.5×
+   the large hero video height. Board + right rail then scroll together with
+   the page instead of sticking to the viewport.
+   ========================================================= */
+@media (min-width:761px){
+  .mr-video-hero-mount{
+    margin-bottom:var(--mr-hero-runway-gap,24px)!important;
+    overflow-anchor:none!important;
+  }
+
+  .mr-teacher-lesson-content,
+  .student-home.student-desktop-lesson-mode{
+    padding-bottom:32px!important;
+    min-height:auto!important;
+    overflow-anchor:none!important;
+  }
+
+  .mr-teacher-lesson-content .mr-teacher-workspace,
+  .student-desktop-lesson-mode .mr-student-desktop-workspace.mr-teacher-workspace{
+    position:relative!important;
+    top:auto!important;
+    z-index:auto!important;
+    align-self:start!important;
+    transform:none!important;
+  }
+}
+
+@media (max-width:760px){
+  .mr-video-hero-mount{
+    --mr-hero-runway-gap:10px;
+  }
+}
