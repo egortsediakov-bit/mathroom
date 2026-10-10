@@ -197,9 +197,9 @@
         .mr-video-hero-mount>.mr-native-call.joined:not(.floating) .mr-call-stage{
           display:block;
           width:100%;
-          height:min(56.25vw,58dvh,680px);
-          min-height:260px;
-          max-height:calc(100dvh - 220px);
+          height:clamp(280px,46dvh,500px);
+          min-height:280px;
+          max-height:500px;
           aspect-ratio:auto;
         }
         .mr-video-hero-mount>.mr-native-call.joined:not(.floating) .mr-local-video{
@@ -319,9 +319,9 @@
             gap:7px!important;
           }
           .mr-video-hero-mount>.mr-native-call.joined:not(.floating) .mr-call-stage{
-            height:min(56.25vw,54dvh,520px)!important;
-            min-height:230px!important;
-            max-height:calc(100dvh - 205px)!important;
+            height:clamp(250px,44dvh,430px)!important;
+            min-height:250px!important;
+            max-height:430px!important;
           }
           .mr-video-hero-mount>.mr-native-call.joined:not(.floating) .mr-call-actions{
             gap:5px!important;
@@ -338,9 +338,9 @@
             gap:6px!important;
           }
           .mr-video-hero-mount>.mr-native-call.joined:not(.floating) .mr-call-stage{
-            height:clamp(230px,44dvh,360px)!important;
-            min-height:0!important;
-            max-height:44dvh!important;
+            height:clamp(220px,38dvh,330px)!important;
+            min-height:220px!important;
+            max-height:330px!important;
           }
           .mr-video-hero-mount>.mr-native-call.joined:not(.floating) .mr-call-actions{
             display:flex!important;
@@ -2127,6 +2127,9 @@
         return;
       }
 
+      let lastScrollY=Math.max(0,window.scrollY||0);
+      let floatStartedAtY=lastScrollY;
+
       const restoreHero = () => {
         if (!this.videoHeroMount || !this.panel) return;
         this.videoFloating=false;
@@ -2146,25 +2149,28 @@
         });
       };
 
-      // Hero-first behaviour:
-      // - float only when the hero has genuinely gone above the viewport;
-      // - as soon as the user scrolls back into the hero zone, restore the
-      //   exact same live panel to full width.
       this.onVideoScroll = () => {
         if (!this.joined || this.destroyed || !this.videoHeroMount || !this.panel || this.callFullscreen) return;
 
+        const y=Math.max(0,window.scrollY||0);
+        const delta=y-lastScrollY;
+        const scrollingDown=delta>1;
+        const scrollingUp=delta<-1;
+        lastScrollY=y;
+
         const heroRect=this.videoHeroMount.getBoundingClientRect();
-        /* Switch to the floating lesson video before the user has to scroll
-           the hero completely out of view. This is especially important on
-           short desktop displays where the maximum page scroll is limited. */
-        const enterAt=Math.max(150,Math.min(220,window.innerHeight*.22));
-        const heroHeight=Math.max(this.videoHeroHeight||0,this.videoHeroMount.offsetHeight||0,420);
-        const restoreTop=-Math.max(90,Math.min(190,heroHeight*.18));
+        const enterAt=Math.max(145,Math.min(210,window.innerHeight*.22));
 
         if(this.videoFloating){
-          // Using the hero top instead of the placeholder bottom makes the
-          // return transition deterministic even after dragging/minimizing.
-          if(heroRect.top>=restoreTop){
+          /* Do not restore the large video just because the placeholder is still
+             partly visible. Restore only when the user is deliberately scrolling
+             back up and has returned well into the hero area. */
+          const returnedTowardHero =
+            scrollingUp &&
+            y < Math.max(40,floatStartedAtY-90) &&
+            heroRect.bottom > Math.max(enterAt+90,window.innerHeight*.42);
+
+          if(returnedTowardHero){
             restoreHero();
           }else if(this.floatingPosition){
             this.applyFloatingPosition();
@@ -2172,19 +2178,18 @@
           return;
         }
 
+        // Once the bottom of the large video passes this line, switch to the
+        // floating player. A deep restored scroll position is allowed too.
         if(heroRect.bottom>=enterAt)return;
+        if(!scrollingDown && y<=2)return;
 
         this.videoHeroHeight=Math.max(
           this.videoHeroHeight,
-          this.panel.offsetHeight||this.videoHeroMount.offsetHeight||Math.round(window.innerHeight*.64)
+          this.panel.offsetHeight||this.videoHeroMount.offsetHeight||Math.round(window.innerHeight*.5)
         );
-        /* Keep a placeholder with the exact hero height while the video becomes
-           floating. Without it the document collapses by several hundred pixels
-           at the same moment the user scrolls past the video. Browser scroll
-           anchoring then moves the viewport back toward the hero and the next
-           scroll event restores the large video, creating a "snap back" loop. */
         this.videoHeroMount.style.minHeight=Math.max(1,Math.round(this.videoHeroHeight))+'px';
         this.videoFloating=true;
+        floatStartedAtY=y;
         this.expanded=false;
         localStorage.setItem(`mathroom.media.expanded.${this.role}`,'0');
         this.paint();
@@ -2196,13 +2201,18 @@
 
       window.addEventListener('scroll', this.onVideoScroll, { passive:true });
 
-      // Initial state remains the large hero unless the page was restored at a
-      // scroll position below it.
       requestAnimationFrame(() => {
         if (!this.joined || !this.videoHeroMount) return;
         const heroRect=this.videoHeroMount.getBoundingClientRect();
-        if(heroRect.bottom<Math.max(150,Math.min(220,window.innerHeight*.22)))this.onVideoScroll();
-        else restoreHero();
+        const enterAt=Math.max(145,Math.min(210,window.innerHeight*.22));
+        if(heroRect.bottom<enterAt){
+          // Pretend the initial restored position is a downward navigation.
+          lastScrollY=Math.max(0,(window.scrollY||0)-2);
+          this.onVideoScroll();
+        }else{
+          restoreHero();
+          lastScrollY=Math.max(0,window.scrollY||0);
+        }
       });
     }
 
