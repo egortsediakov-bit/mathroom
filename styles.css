@@ -4689,3 +4689,14 @@ button.mr-mobile-lesson-asset{cursor:pointer}
     display:none!important;
   }
 }
+
+
+/* Mathroom v34.1 — keep teacher-follow badge clear of zoom controls */
+@media(min-width:761px){
+  .board-stage .board-follow-badge:not([hidden]){
+    top:12px!important;
+    right:202px!important;
+    bottom:auto!important;
+    z-index:181!important;
+  }
+}
