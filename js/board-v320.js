@@ -1000,7 +1000,22 @@
     async function duplicateCurrentPage(){if(!fullBoardTools||(!isTeacher&&classroomMode!=='open'))return;await save();const p=await createPage(`${current.title||'Лист'} · копия`,clone(elements));await switchPage(p.id)}
     async function moveCurrentPage(delta){if(!fullBoardTools||(!isTeacher&&classroomMode!=='open')||pages.length<2)return;await save();const i=pages.findIndex(x=>x.id===current.id),j=Math.max(0,Math.min(pages.length-1,i+delta));if(i===j)return;const [p]=pages.splice(i,1);pages.splice(j,0,p);pages.forEach((x,k)=>x.sort_order=k);if(localOnly)writeLocal();else{const rs=await Promise.all(pages.map(x=>sb.from('board_pages').update({sort_order:x.sort_order}).eq('id',x.id)));const er=rs.find(x=>x.error)?.error;if(er)return fail(er)}renderTabs();pagesChanged();toast('Порядок листов изменён')}
     function persistClassroom(){if(!isTeacher||!classroomKey)return;try{localStorage.setItem(classroomKey,JSON.stringify({mode:classroomMode,follow:followTeacher}))}catch{}broadcastTransient('classroom',{mode:classroomMode,follow:followTeacher});pagesChannel?.send({type:'broadcast',event:'classroom',payload:{mode:classroomMode,follow:followTeacher,pageId:current?.id,camera:{...camera}}}).catch(()=>{})}
-    function syncClassroomUi(){const sel=root.querySelector('#studentBoardMode'),btn=root.querySelector('#followTeacherToggle');if(sel)sel.value=classroomMode;if(btn){btn.classList.toggle('active',followTeacher);btn.querySelector('span')&&(btn.querySelector('span').textContent=followTeacher?'Ведение: вкл':'Ведение: выкл')}if(!isTeacher)root.querySelectorAll('[data-tool]').forEach(b=>b.disabled=!canUseTool(b.dataset.tool));if(followBadge)followBadge.hidden=isTeacher||!followTeacher||!lessonId}
+    function syncClassroomUi(){
+      const sel=root.querySelector('#studentBoardMode'),btn=root.querySelector('#followTeacherToggle');
+      if(sel)sel.value=classroomMode;
+      if(btn){
+        btn.classList.toggle('active',followTeacher);
+        btn.dataset.followState=followTeacher?'on':'off';
+        btn.setAttribute('aria-pressed',followTeacher?'true':'false');
+        btn.title=followTeacher?'Отслеживание включено · нажмите, чтобы выключить':'Отслеживание выключено · нажмите, чтобы включить';
+        btn.style.setProperty('background',followTeacher?'var(--mr-orange,#f55a16)':'#fff','important');
+        btn.style.setProperty('color',followTeacher?'#fff':'#2b2d33','important');
+        btn.style.setProperty('border-color',followTeacher?'var(--mr-orange,#f55a16)':'var(--mr-line-strong,#d9d6d1)','important');
+        btn.querySelector('span')&&(btn.querySelector('span').textContent=followTeacher?'Ведение: вкл':'Ведение: выкл');
+      }
+      if(!isTeacher)root.querySelectorAll('[data-tool]').forEach(b=>b.disabled=!canUseTool(b.dataset.tool));
+      if(followBadge)followBadge.hidden=isTeacher||!followTeacher||!lessonId
+    }
     function sendViewport(force=false){if(!isTeacher||!followTeacher||!channel)return;const now=Date.now();if(!force&&now-lastViewSent<60)return;lastViewSent=now;broadcastTransient('viewport',{camera:{...camera}})}
     function sendCursor(x,y){
       if(localOnly||!channelSubscribed||!Number.isFinite(x)||!Number.isFinite(y))return;
