@@ -784,6 +784,17 @@
           pc.addTrack(track,stream);
         }
       }
+
+      /* Always negotiate a video m-line even if camera permission has not been
+         requested yet. Later the Camera button can replaceTrack() into this
+         sender without restarting the lesson. */
+      const videoTr=pc.getTransceivers().find(t =>
+        t.receiver?.track?.kind==='video' || t.sender?.track?.kind==='video'
+      );
+      if(!videoTr) pc.addTransceiver('video',{direction:'sendrecv'});
+      else {
+        try{ videoTr.direction='sendrecv'; }catch{}
+      }
     }
 
     async bindAnswererTracks(pc) {
@@ -1656,36 +1667,34 @@
     }
 
     async acquireMedia() {
-      if (this.localStream?.getTracks?.().some(t => t.readyState === 'live')) return this.localStream;
-      if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) throw new Error('Камера и микрофон доступны только по HTTPS в современном браузере.');
+      if (this.localStream?.getAudioTracks?.().some(t => t.readyState === 'live')) return this.localStream;
+      if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) throw new Error('Микрофон доступен только по HTTPS в современном браузере.');
+
+      /* Camera permission is intentionally NOT requested here.
+         A participant can enter the lesson with no camera at all. The browser
+         asks for camera permission only after the in-lesson Camera button is
+         pressed for the first time. */
+      this.cameraEnabled=false;
+      localStorage.setItem(`mathroom.media.camera.${this.role}`,'0');
+
       try {
         this.localStream = await navigator.mediaDevices.getUserMedia({
           audio:this.audioConstraints(),
-          video:this.videoConstraints()
+          video:false
         });
       } catch (e) {
-        if ((e?.name === 'NotFoundError' || e?.name === 'OverconstrainedError') && (this.selectedAudioInput || this.selectedVideoInput)) {
-          this.selectedAudioInput=''; this.selectedVideoInput='';
+        if ((e?.name === 'NotFoundError' || e?.name === 'OverconstrainedError') && this.selectedAudioInput) {
+          this.selectedAudioInput='';
           localStorage.removeItem(`mathroom.media.audioinput.${this.role}`);
-          localStorage.removeItem(`mathroom.media.videoinput.${this.role}`);
           this.localStream = await navigator.mediaDevices.getUserMedia({
             audio:this.audioConstraints(''),
-            video:this.videoConstraints('')
-          }).catch(async fallbackError => {
-            if (fallbackError?.name === 'NotFoundError' || fallbackError?.name === 'OverconstrainedError') {
-              this.cameraEnabled=false;
-              return navigator.mediaDevices.getUserMedia({ audio:this.audioConstraints(''), video:false });
-            }
-            throw fallbackError;
+            video:false
           });
-        } else if (e?.name === 'NotFoundError' || e?.name === 'OverconstrainedError') {
-          this.localStream = await navigator.mediaDevices.getUserMedia({ audio:this.audioConstraints(''), video:false });
-          this.cameraEnabled = false;
         } else throw e;
       }
+
       const at = this.localStream.getAudioTracks()[0];
       if (at) { at.enabled = this.micEnabled; await this.configureSpeechTrack(at); }
-      const vt = this.localStream.getVideoTracks()[0]; if (vt) vt.enabled = this.cameraEnabled;
       await this.refreshDevices().catch(()=>{});
       this.bindMedia();
       return this.localStream;
@@ -1729,11 +1738,7 @@
       backdrop.querySelector('#mrPrejoinCancel').onclick = () => this.closePrejoin(false);
       backdrop.querySelector('#mrPrejoinMic').onclick = () => { this.micEnabled = !this.micEnabled; localStorage.setItem(`mathroom.media.mic.${this.role}`, this.micEnabled?'1':'0'); const t=this.localStream?.getAudioTracks?.()[0]; if(t)t.enabled=this.micEnabled; this.paintPrejoin(); };
       backdrop.querySelector('#mrPrejoinCam').onclick = () => {
-        this.cameraEnabled = !this.cameraEnabled;
-        localStorage.setItem(`mathroom.media.camera.${this.role}`, this.cameraEnabled?'1':'0');
-        const raw=this.localStream?.getVideoTracks?.()[0]; if(raw)raw.enabled=this.cameraEnabled;
-        if(this.virtualBgTrack)this.virtualBgTrack.enabled=this.cameraEnabled;
-        this.paintPrejoin();
+        toast('Камеру можно включить после входа в урок — тогда браузер запросит разрешение');
       };
       this.bindVirtualBgControls(backdrop);
       join.onclick = () => this.joinCall();
@@ -1755,7 +1760,7 @@
         this.refreshDeviceUi();
         this.paintPrejoin();
       } catch (e) {
-        err.textContent = e?.name === 'NotAllowedError' ? 'Доступ к камере или микрофону запрещён. Разреши его в настройках браузера и попробуй снова.' : (e?.message || 'Не удалось открыть камеру и микрофон.');
+        err.textContent = e?.name === 'NotAllowedError' ? 'Доступ к микрофону запрещён. Разреши его в настройках браузера и попробуй снова.' : (e?.message || 'Не удалось открыть микрофон.');
         err.classList.add('show');
       }
     }
@@ -1773,9 +1778,10 @@
       }
       if (cam) {
         const on=this.cameraEnabled && hasCam;
-        cam.innerHTML=this.mediaButton('camera',on?'Камера включена':'Камера выключена',on);
-        cam.classList.toggle('is-on',on); cam.classList.toggle('is-off',!on);
-        cam.disabled = !hasCam;
+        cam.innerHTML=this.mediaButton('camera',hasCam&&on?'Камера включена':'Камера после входа',hasCam&&on);
+        cam.classList.toggle('is-on',hasCam&&on); cam.classList.toggle('is-off',!(hasCam&&on));
+        cam.disabled = false;
+        cam.title='Камера подключается после входа в урок';
       }
       this.paintVirtualBgControls(this.prejoin);
       this.bindPrejoinPreview();
@@ -1839,13 +1845,66 @@
       this.paint();
     }
 
-    toggleCamera() {
-      const t = this.localStream?.getVideoTracks?.()[0];
-      if (!t) return toast('Камера недоступна');
-      this.cameraEnabled = !this.cameraEnabled;
-      t.enabled = this.cameraEnabled;
+    async toggleCamera() {
+      let t=this.localStream?.getVideoTracks?.()[0];
+
+      if(!t || t.readyState!=='live'){
+        if(!navigator.mediaDevices?.getUserMedia){
+          toast('Камера недоступна в этом браузере');
+          return;
+        }
+        try{
+          this.cameraEnabled=true;
+          localStorage.setItem(`mathroom.media.camera.${this.role}`,'1');
+
+          /* This is the first place where camera permission is requested. */
+          t=await this.switchInputDevice('video',this.selectedVideoInput||'',{silent:true});
+
+          const outgoing=this.effectiveCameraTrack()||t;
+          let sender=this.pc?.getSenders?.().find(s=>s.track?.kind==='video')
+            ||this.pc?.getTransceivers?.().find(tr=>tr.receiver?.track?.kind==='video')?.sender;
+
+          if(sender){
+            await sender.replaceTrack(outgoing);
+          }else if(this.pc){
+            const tr=this.pc.addTransceiver(outgoing,{direction:'sendrecv',streams:[this.localStream]});
+            sender=tr.sender;
+            /* Fallback for an old connection that was created before the
+               reserved video m-line existed. Re-negotiate once. */
+            if(this.role==='teacher') await this.makeOffer(false);
+            else await this.send('need-offer',{joined:true,camera:true},'teacher');
+          }
+
+          this.bindMedia();
+          this.paint();
+          toast('Камера включена');
+          return;
+        }catch(e){
+          this.cameraEnabled=false;
+          localStorage.setItem(`mathroom.media.camera.${this.role}`,'0');
+          this.paint();
+          if(e?.name==='NotAllowedError'||e?.name==='SecurityError'){
+            toast('Доступ к камере не разрешён — урок продолжится без камеры');
+          }else if(e?.name==='NotFoundError'||e?.name==='OverconstrainedError'){
+            toast('Камера не найдена — урок продолжится без камеры');
+          }else{
+            console.warn('[Mathroom camera on demand]',e);
+            toast('Не удалось включить камеру — урок продолжится без неё');
+          }
+          return;
+        }
+      }
+
+      this.cameraEnabled=!this.cameraEnabled;
+      t.enabled=this.cameraEnabled;
       if(this.virtualBgTrack)this.virtualBgTrack.enabled=this.cameraEnabled;
-      localStorage.setItem(`mathroom.media.camera.${this.role}`, this.cameraEnabled?'1':'0');
+      localStorage.setItem(`mathroom.media.camera.${this.role}`,this.cameraEnabled?'1':'0');
+      const sender=this.pc?.getSenders?.().find(s=>s.track?.kind==='video')
+        ||this.pc?.getTransceivers?.().find(tr=>tr.receiver?.track?.kind==='video')?.sender;
+      if(sender){
+        try{await sender.replaceTrack(this.cameraEnabled?(this.effectiveCameraTrack()||t):null)}catch(e){console.warn('[Mathroom camera toggle]',e)}
+      }
+      this.bindMedia();
       this.paint();
     }
 
@@ -2010,7 +2069,7 @@
       const host=this.panel;
       if(!host)return;
       const mic=host.querySelector('#mrVideoMic'); if(mic)mic.onclick=()=>this.toggleMic();
-      const cam=host.querySelector('#mrVideoCam'); if(cam)cam.onclick=()=>this.toggleCamera();
+      const cam=host.querySelector('#mrVideoCam'); if(cam)cam.onclick=()=>this.toggleCamera().catch(e=>console.warn('[Mathroom camera]',e));
       const sound=host.querySelector('#mrVideoSound'); if(sound)sound.onclick=()=>this.toggleSound();
       const devices=host.querySelector('#mrVideoDevices'); if(devices)devices.onclick=()=>this.openDeviceSettings().catch(fail);
       const reconnect=host.querySelector('#mrVideoReconnect'); if(reconnect)reconnect.onclick=()=>{this.forceRelay=false;this.reconnect(true,false).catch(fail)};
@@ -2420,7 +2479,7 @@
         target.appendChild(host);
         host.querySelector('#mrVideoJoin').onclick = () => this.openPrejoin();
         host.querySelector('#mrVideoMic').onclick = () => this.toggleMic();
-        host.querySelector('#mrVideoCam').onclick = () => this.toggleCamera();
+        host.querySelector('#mrVideoCam').onclick = () => this.toggleCamera().catch(e=>console.warn('[Mathroom camera]',e));
         host.querySelector('#mrVideoSound').onclick = () => this.toggleSound();
         host.querySelector('#mrVideoDevices').onclick = () => this.openDeviceSettings().catch(fail);
         host.querySelector('#mrVideoReconnect').onclick = () => { this.forceRelay = false; this.reconnect(true, false).catch(fail); };
@@ -2512,7 +2571,7 @@
       host.querySelectorAll('[data-video-view]').forEach(b=>b.classList.toggle('active',b.dataset.videoView===this.videoViewMode));
       const note = host.querySelector('#mrVideoNote'); if (note) note.textContent = this.joined
         ? (this.hasTurn ? 'Mathroom сначала использует прямую связь, а при проблемах автоматически переключается через резервный сервер.' : 'Резервный сервер сейчас недоступен: Mathroom использует прямое P2P-соединение.')
-        : 'Камера и микрофон выбираются перед входом. Связь встроена прямо в Mathroom.';
+        : 'Микрофон можно настроить перед входом. Камера подключается уже внутри урока по кнопке «Камера».';
       this.bindMedia();
     }
 
