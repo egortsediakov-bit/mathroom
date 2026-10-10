@@ -160,8 +160,59 @@
       window.addEventListener('resize',this.onVideoResize);
       window.addEventListener('orientationchange',this.onVideoResize);
 
+      this.onBoardVideoEntered=e=>this.enterBoardFullscreenVideo(e?.detail?.card);
+      window.addEventListener('mathroom:board-video-entered',this.onBoardVideoEntered);
       this.onBoardVideoRestored=()=>this.recoverAfterBoardFullscreen();
       window.addEventListener('mathroom:board-video-restored',this.onBoardVideoRestored);
+    }
+
+    enterBoardFullscreenVideo(card=null) {
+      if(!this.joined || !this.panel)return;
+      const host=this.panel;
+      const fsCard=card || document.fullscreenElement;
+      if(fsCard?.classList?.contains('board-card') && host.parentNode!==fsCard){
+        fsCard.appendChild(host);
+      }
+      host.dataset.boardFullscreen='1';
+      host.classList.add('mr-board-fullscreen-video');
+      host.style.pointerEvents='auto';
+
+      this.bindMedia();
+      requestAnimationFrame(()=>{
+        this.bindMedia();
+        const remote=host.querySelector('#mrRemoteVideo');
+        const audio=host.querySelector('#mrRemoteAudio');
+        if(remote){
+          remote.muted=true;
+          remote.playsInline=true;
+          if(remote.srcObject!==this.remoteStream)remote.srcObject=this.remoteStream;
+          if(this.remoteStream?.getVideoTracks?.().length){
+            remote.play?.().catch(e=>console.warn('[Mathroom fullscreen remote video]',e));
+          }
+        }
+        if(audio){
+          if(audio.srcObject!==this.remoteStream)audio.srcObject=this.remoteStream;
+          audio.muted=!this.soundEnabled;
+          if(this.soundEnabled&&this.remoteStream?.getAudioTracks?.().length){
+            audio.play?.().catch(()=>{});
+          }
+        }
+        this.bindCoreVideoActions();
+      });
+    }
+
+    recoverAfterBoardFullscreen() {
+      const host=this.panel;
+      if(!host)return;
+      delete host.dataset.boardFullscreen;
+      host.classList.remove('mr-board-fullscreen-video');
+      this.bindMedia();
+      this.paint();
+      requestAnimationFrame(()=>{
+        this.bindMedia();
+        const remote=host.querySelector('#mrRemoteVideo');
+        if(remote?.srcObject?.getVideoTracks?.().length)remote.play?.().catch(()=>{});
+      });
     }
 
     ensureStyles() {
@@ -2488,7 +2539,8 @@
           ? 'connected'
           : (finalError ? 'error' : 'connecting'));
 
-      host.className = `mr-native-call role-${this.role} ${this.joined ? 'joined' : ''} ${this.isConnected() ? 'connected' : ''} connection-${indicatorState} ${this.minimized ? 'minimized' : ''} ${this.expanded ? 'expanded' : ''} ${this.screenTrack ? 'sharing' : ''} ${this.videoFloating ? 'floating' : ''} ${this.callFullscreen ? 'mr-call-fullscreen' : ''} view-${this.videoViewMode}`;
+      const boardFullscreen=!!(document.fullscreenElement?.classList?.contains('board-card') && document.fullscreenElement.contains(host));
+      host.className = `mr-native-call role-${this.role} ${this.joined ? 'joined' : ''} ${this.isConnected() ? 'connected' : ''} connection-${indicatorState} ${this.minimized ? 'minimized' : ''} ${this.expanded ? 'expanded' : ''} ${this.screenTrack ? 'sharing' : ''} ${this.videoFloating ? 'floating' : ''} ${this.callFullscreen ? 'mr-call-fullscreen' : ''} ${boardFullscreen ? 'mr-board-fullscreen-video' : ''} view-${this.videoViewMode}`;
       const status = host.querySelector('#mrVideoStatus'); if (status) status.textContent = this.status;
       const dot = host.querySelector('.mr-call-dot'); if (dot) {
         dot.title = indicatorState === 'connected' ? 'Соединено'
@@ -2562,6 +2614,8 @@
         window.removeEventListener('orientationchange',this.onVideoResize);
       }
       this.onVideoResize=null;
+      if(this.onBoardVideoEntered)window.removeEventListener('mathroom:board-video-entered',this.onBoardVideoEntered);
+      this.onBoardVideoEntered=null;
       if(this.onBoardVideoRestored)window.removeEventListener('mathroom:board-video-restored',this.onBoardVideoRestored);
       this.onBoardVideoRestored=null;
       if (this.onVideoScroll) window.removeEventListener('scroll', this.onVideoScroll);
