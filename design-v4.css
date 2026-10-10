@@ -3359,3 +3359,34 @@ input[type="file"]{font-size:11px!important}
     min-height:320px!important;
   }
 }
+
+
+/* =========================================================
+   Mathroom v5.1 — taller adaptive lesson board on desktop
+   Gives short laptop screens enough document height for the hero video to
+   leave the viewport and switch into its floating lesson mode.
+   ========================================================= */
+@media (min-width:761px){
+  .view-lesson .mr-lesson-board-main .board-stage,
+  .student-desktop-lesson-mode .mr-student-desktop-board.mr-lesson-board-main .board-stage{
+    height:clamp(560px,76dvh,820px)!important;
+    min-height:560px!important;
+    max-height:none!important;
+  }
+}
+
+@media (min-width:761px) and (max-height:820px){
+  .view-lesson .mr-lesson-board-main .board-stage,
+  .student-desktop-lesson-mode .mr-student-desktop-board.mr-lesson-board-main .board-stage{
+    height:clamp(620px,92dvh,760px)!important;
+    min-height:620px!important;
+  }
+}
+
+@media (min-width:761px) and (max-height:660px){
+  .view-lesson .mr-lesson-board-main .board-stage,
+  .student-desktop-lesson-mode .mr-student-desktop-board.mr-lesson-board-main .board-stage{
+    height:clamp(580px,96dvh,680px)!important;
+    min-height:580px!important;
+  }
+}
