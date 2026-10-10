@@ -637,25 +637,153 @@ async function completeLesson(lesson,queue,live){
   const summary=`На уроке разобрали ${counts.total} задач. Уверенно решено: ${counts.solved}. Сложными отмечено: ${counts.hard}. Вернуться позже: ${counts.later}.${strengths?` Лучше всего сегодня получалось: ${strengths}.`:''}`;
   const plan=`${counts.hw?`В домашнюю добавлено ${counts.hw} задач. `:''}${focus?`Повторить: ${focus}. `:''}${counts.later?`Вернуться к ${counts.later} отложенным задачам. `:'Закрепить материал по необходимости. '}${nextTopic?`Следующая тема по программе: ${nextTopic.title}.`:''}`.trim();
   const m=modal(`<h2>Завершить урок</h2><div class="lesson-report-preview"><div class="report-stats"><span>Задач: ${counts.total}</span><span>Решено: ${counts.solved}</span><span>Сложно: ${counts.hard}</span><span>Позже: ${counts.later}</span><span>Разобрано: ${completion}%</span><span>Время: ${mins} мин</span></div></div><div class="grid cols2"><div class="field"><label>Что сегодня получилось</label><textarea id="finishHighlights">${esc(strengths?`Хорошо получалось: ${strengths}.`:`Уверенно решено ${counts.solved} из ${counts.total} задач.`)}</textarea></div><div class="field"><label>Что повторить</label><textarea id="finishFocus">${esc(focus?`Повторить: ${focus}.`:counts.later?`Вернуться к ${counts.later} отложенным задачам.`:'Закрепить материал по необходимости.')}</textarea></div></div><div class="field"><label>Итоги ученику</label><textarea id="finishSummary">${esc(summary)}</textarea></div><div class="field"><label>К следующему уроку</label><textarea id="finishPlan">${esc(plan)}</textarea></div><div class="field"><label>Приватная заметка</label><textarea id="finishPrivate">${esc(lesson.private_notes||`Очередь: ${counts.total}; решено: ${counts.solved}; сложно: ${counts.hard}; позже: ${counts.later}; таймер: ${mins} мин.`)}</textarea></div><button class="btn primary" id="finishConfirm">Завершить и сохранить доску</button>`);
-  m.querySelector('#finishConfirm').onclick=async()=>{try{
-    await S.boardController?.checkpoint?.('Финал урока');
-    try{await window.MathroomLiveCall?.stopRecording?.(true)}catch{}
-    try{window.MathroomLessonSuite?.stopPhaseTimer?.()}catch{}
-    try{await window.MathroomLiveCall?.end?.()}catch{}
-    await saveSnapshot(lesson,'Итог урока','Автоматически сохранено при завершении');
-    const publicSummary=m.querySelector('#finishSummary').value,homeworkPlan=m.querySelector('#finishPlan').value,privateNotes=m.querySelector('#finishPrivate').value,publicHighlights=m.querySelector('#finishHighlights').value,publicFocus=m.querySelector('#finishFocus').value;
-    const {error}=await sb.from('lessons').update({status:'completed',completed_at:new Date().toISOString(),public_summary:publicSummary,homework_plan:homeworkPlan,private_notes:privateNotes}).eq('id',lesson.id);if(error)throw error;
-    const report={teacher_id:S.user.id,lesson_id:lesson.id,student_id:lesson.student_id,topic_id:lesson.topic_id||null,duration_seconds:seconds,queue_total:counts.total,solved_count:counts.solved,hard_count:counts.hard,later_count:counts.later,pending_count:counts.pending,homework_count:counts.hw,completion_percent:completion,solved_percent:solvedPct,category_stats:categories,tag_stats:tags,public_highlights:publicHighlights,public_focus:publicFocus,private_summary:privateNotes,updated_at:new Date().toISOString()};
-    const {error:reportError}=await sb.from('lesson_reports').upsert(report,{onConflict:'lesson_id'});if(reportError)throw reportError;
-    await sb.from('lesson_live_state').update({focus_enabled:false,timer_running:false,timer_started_at:null,timer_elapsed_seconds:seconds}).eq('lesson_id',lesson.id);
-    m.remove();forgetActiveLesson();await loadTeacher();S.activeLesson=null;S.view='history';renderTeacher();toast('Урок завершён и отчёт сохранён');
-    if(nextTopic){
-      const freshNext=S.topics.find(x=>String(x.id)===String(nextTopic.id))||nextTopic;
-      const n=modal(`<span class="pill">Следующая тема по программе</span><h2>${esc(freshNext.title)}</h2><p class="muted">${freshNext.grade} класс · ${esc(topicTrack(freshNext))}</p><p>Можно сразу открыть тему или подставить её в форму следующего урока.</p><div class="actions"><button class="btn" id="finishOpenNext">Открыть тему</button><button class="btn primary" id="finishScheduleNext">Запланировать следующий урок</button></div>`);
-      n.querySelector('#finishOpenNext').onclick=()=>{n.remove();S.topic=freshNext;S.topicGradeFilter=Number(freshNext.grade);S.view='topics';renderTeacher()};
-      n.querySelector('#finishScheduleNext').onclick=()=>{n.remove();S.schedulePrefill={studentId:lesson.student_id,topicId:freshNext.id};S.view='schedule';renderTeacher()};
+  m.querySelector('#finishConfirm').onclick=async()=>{
+    const btn=m.querySelector('#finishConfirm');
+    if(!btn||btn.dataset.busy==='1')return;
+
+    /* Read form values before any async work can rerender/remove the modal. */
+    const publicSummary=m.querySelector('#finishSummary')?.value||'';
+    const homeworkPlan=m.querySelector('#finishPlan')?.value||'';
+    const privateNotes=m.querySelector('#finishPrivate')?.value||'';
+    const publicHighlights=m.querySelector('#finishHighlights')?.value||'';
+    const publicFocus=m.querySelector('#finishFocus')?.value||'';
+
+    const originalText=btn.textContent;
+    btn.dataset.busy='1';
+    btn.disabled=true;
+    btn.textContent='Сохраняем доску…';
+
+    const withTimeout=(promise,ms,label)=>Promise.race([
+      Promise.resolve(promise),
+      new Promise((_,reject)=>setTimeout(()=>reject(new Error(label+' · превышено время ожидания')),ms))
+    ]);
+
+    try{
+      /* First flush the board, but don't let a stalled realtime save freeze the
+         entire Finish button forever. The in-memory pages below are the source
+         of truth for the final lesson snapshot. */
+      if(S.boardController?.save){
+        try{await withTimeout(S.boardController.save(),7000,'Сохранение доски')}catch(e){
+          console.warn('[Mathroom finish board flush]',e);
+        }
+      }
+
+      try{
+        await withTimeout(S.boardController?.checkpoint?.('Финал урока'),5000,'Контрольная точка');
+      }catch(e){
+        console.warn('[Mathroom finish checkpoint]',e);
+      }
+
+      btn.textContent='Сохраняем итог…';
+
+      /* Save exactly what is currently visible on the board, even if the
+         background board_pages sync is still finishing. */
+      let pages=S.boardController?.getPages?.()||null;
+      if(!Array.isArray(pages)||!pages.length){
+        const {data,error}=await sb.from('board_pages')
+          .select('id,title,sort_order,elements')
+          .eq('student_id',lesson.student_id)
+          .order('sort_order');
+        if(error)throw error;
+        pages=data||[];
+      }
+
+      const {error:versionError}=await sb.from('lesson_board_versions').insert({
+        teacher_id:S.user.id,
+        lesson_id:lesson.id,
+        title:'Итог урока',
+        note:'Автоматически сохранено при завершении',
+        pages
+      });
+      if(versionError)throw versionError;
+
+      const completedAt=new Date().toISOString();
+      const {error}=await sb.from('lessons').update({
+        status:'completed',
+        completed_at:completedAt,
+        public_summary:publicSummary,
+        homework_plan:homeworkPlan,
+        private_notes:privateNotes
+      }).eq('id',lesson.id);
+      if(error)throw error;
+
+      const report={
+        teacher_id:S.user.id,
+        lesson_id:lesson.id,
+        student_id:lesson.student_id,
+        topic_id:lesson.topic_id||null,
+        duration_seconds:seconds,
+        queue_total:counts.total,
+        solved_count:counts.solved,
+        hard_count:counts.hard,
+        later_count:counts.later,
+        pending_count:counts.pending,
+        homework_count:counts.hw,
+        completion_percent:completion,
+        solved_percent:solvedPct,
+        category_stats:categories,
+        tag_stats:tags,
+        public_highlights:publicHighlights,
+        public_focus:publicFocus,
+        private_summary:privateNotes,
+        updated_at:completedAt
+      };
+
+      /* Report/live-state are secondary metadata. A failure here must not make
+         a successfully saved lesson look like the Finish button did nothing. */
+      const {error:reportError}=await sb.from('lesson_reports').upsert(report,{onConflict:'lesson_id'});
+      if(reportError)console.warn('[Mathroom finish report]',reportError);
+
+      const {error:liveError}=await sb.from('lesson_live_state').update({
+        focus_enabled:false,
+        timer_running:false,
+        timer_started_at:null,
+        timer_elapsed_seconds:seconds
+      }).eq('lesson_id',lesson.id);
+      if(liveError)console.warn('[Mathroom finish live state]',liveError);
+
+      btn.textContent='Завершаем урок…';
+
+      try{window.MathroomLessonSuite?.stopPhaseTimer?.()}catch{}
+      try{await window.MathroomLiveCall?.stopRecording?.(true)}catch{}
+      try{
+        await window.MathroomLiveCall?.send?.(
+          'lesson-ended',
+          {lessonId:lesson.id,endedAt:completedAt},
+          'student'
+        );
+      }catch{}
+      try{await window.MathroomLiveCall?.end?.()}catch{}
+
+      m.remove();
+      forgetActiveLesson();
+      await loadTeacher();
+      S.activeLesson=null;
+      S.view='history';
+      renderTeacher();
+      toast('Урок завершён · доска и отчёт сохранены');
+
+      window.dispatchEvent(new CustomEvent('mathroom:teacher-lesson-completed',{
+        detail:{lessonId:lesson.id,studentId:lesson.student_id,completedAt}
+      }));
+
+      if(nextTopic){
+        const freshNext=S.topics.find(x=>String(x.id)===String(nextTopic.id))||nextTopic;
+        const n=modal(`<span class="pill">Следующая тема по программе</span><h2>${esc(freshNext.title)}</h2><p class="muted">${freshNext.grade} класс · ${esc(topicTrack(freshNext))}</p><p>Можно сразу открыть тему или подставить её в форму следующего урока.</p><div class="actions"><button class="btn" id="finishOpenNext">Открыть тему</button><button class="btn primary" id="finishScheduleNext">Запланировать следующий урок</button></div>`);
+        n.querySelector('#finishOpenNext').onclick=()=>{n.remove();S.topic=freshNext;S.topicGradeFilter=Number(freshNext.grade);S.view='topics';renderTeacher()};
+        n.querySelector('#finishScheduleNext').onclick=()=>{n.remove();S.schedulePrefill={studentId:lesson.student_id,topicId:freshNext.id};S.view='schedule';renderTeacher()};
+      }
+    }catch(e){
+      console.error('[Mathroom finish lesson]',e);
+      btn.dataset.busy='';
+      btn.disabled=false;
+      btn.textContent='Повторить завершение';
+      fail(e);
+      setTimeout(()=>{
+        if(btn?.isConnected && btn.dataset.busy!=='1')btn.textContent=originalText;
+      },2500);
     }
-  }catch(e){fail(e)}};
+  };
 }
 
 async function renderBoardPage(){
