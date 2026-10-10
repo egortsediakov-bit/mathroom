@@ -3176,3 +3176,17 @@ input[type="file"]{font-size:11px!important}
 @media (prefers-reduced-motion: reduce){
   .board-head-title .board-status{animation:none!important}
 }
+
+
+/* Mathroom v4.9 — student live-lesson header stays in document flow */
+@media(min-width:1101px){
+  .student-desktop-lesson-mode .mr-student-desktop-lesson-meta.topbar{
+    position:relative!important;
+    top:auto!important;
+    left:auto!important;
+    right:auto!important;
+    z-index:auto!important;
+    backdrop-filter:none!important;
+    -webkit-backdrop-filter:none!important;
+  }
+}
