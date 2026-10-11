@@ -5140,3 +5140,182 @@ button.mr-mobile-lesson-asset{cursor:pointer}
   border-color:var(--mr-orange,#f55a16)!important;
   box-shadow:0 6px 16px rgba(245,90,22,.18)!important;
 }
+
+
+/* =========================================================
+   Mathroom v40.2 — one desktop lesson UI for teacher + student
+   Teacher desktop lesson is the canonical implementation.
+   Student keeps role permissions/content only; geometry and media behavior match.
+   ========================================================= */
+@media (min-width:761px){
+  .student-home.student-desktop-lesson-mode.mr-desktop-lesson-unified{
+    width:100%!important;
+    max-width:none!important;
+    margin:0!important;
+    box-sizing:border-box!important;
+    display:block!important;
+  }
+
+  .mr-desktop-lesson-unified>.mr-desktop-video-shell,
+  .mr-desktop-lesson-unified .mr-desktop-video-shell{
+    width:100%!important;
+    max-width:none!important;
+    margin:12px 0!important;
+    display:grid!important;
+    gap:12px!important;
+  }
+
+  /* Kill the old student-only hero sizing. Use the exact VideoSession teacher geometry. */
+  html body .mr-desktop-lesson-unified #mrStudentVideoMount.mr-video-hero-mount>.mr-native-call.joined:not(.floating){
+    position:relative!important;
+    right:auto!important;
+    bottom:auto!important;
+    left:auto!important;
+    top:auto!important;
+    width:100%!important;
+    max-width:none!important;
+    padding:12px!important;
+    border:1px solid var(--line,#e5e7eb)!important;
+    border-radius:18px!important;
+    background:#fff!important;
+    box-shadow:0 16px 42px rgba(20,24,32,.08)!important;
+    overflow:visible!important;
+  }
+
+  html body .mr-desktop-lesson-unified #mrStudentVideoMount.mr-video-hero-mount>.mr-native-call.joined:not(.floating) .mr-call-head{
+    padding:0!important;
+  }
+
+  html body .mr-desktop-lesson-unified #mrStudentVideoMount.mr-video-hero-mount>.mr-native-call.joined:not(.floating) .mr-call-stage{
+    display:block!important;
+    width:100%!important;
+    height:min(56.25vw,58dvh,680px)!important;
+    min-height:260px!important;
+    max-height:calc(100dvh - 220px)!important;
+    aspect-ratio:auto!important;
+    border-radius:14px!important;
+    background:#101214!important;
+  }
+
+  html body .mr-desktop-lesson-unified #mrStudentVideoMount.mr-video-hero-mount>.mr-native-call.joined:not(.floating) .mr-remote-video{
+    width:100%!important;
+    height:100%!important;
+    object-fit:contain!important;
+    background:#101214!important;
+  }
+
+  html body .mr-desktop-lesson-unified #mrStudentVideoMount.mr-video-hero-mount>.mr-native-call.joined:not(.floating) .mr-local-video{
+    width:clamp(112px,15vw,190px)!important;
+    height:clamp(72px,9.4vw,118px)!important;
+    right:clamp(8px,1.2vw,16px)!important;
+    top:clamp(8px,1.2vw,16px)!important;
+    bottom:auto!important;
+    border-radius:10px!important;
+  }
+
+  html body .mr-desktop-lesson-unified #mrStudentVideoMount.mr-video-hero-mount>.mr-native-call.joined:not(.floating) .mr-call-actions{
+    padding:0!important;
+    justify-content:flex-start!important;
+    flex-wrap:wrap!important;
+    gap:7px!important;
+  }
+
+  /* One workspace geometry. Student rail content differs, shell does not. */
+  .mr-desktop-lesson-unified .mr-desktop-workspace-unified.mr-teacher-workspace{
+    width:100%!important;
+    align-items:start!important;
+  }
+
+  .mr-desktop-lesson-unified .mr-student-desktop-board.mr-lesson-board-main{
+    width:100%!important;
+    min-width:0!important;
+    margin:0!important;
+  }
+
+  .mr-desktop-lesson-unified .mr-student-desktop-lesson-rail.mr-teacher-rail{
+    background:#fff!important;
+    border:1px solid var(--mr-line,var(--line))!important;
+    border-radius:16px!important;
+    box-shadow:0 12px 38px rgba(20,24,32,.07)!important;
+    overflow:hidden!important;
+  }
+}
+
+@media (min-width:901px){
+  .mr-desktop-lesson-unified .mr-desktop-workspace-unified.mr-teacher-workspace{
+    display:grid!important;
+    grid-template-columns:minmax(0,1fr) clamp(220px,17vw,280px)!important;
+    grid-template-rows:auto!important;
+    gap:10px!important;
+  }
+
+  .mr-desktop-lesson-unified .mr-desktop-workspace-unified.mr-teacher-workspace>.mr-lesson-board-main{
+    grid-column:1!important;
+    grid-row:1!important;
+    order:0!important;
+    width:100%!important;
+    min-width:0!important;
+  }
+
+  .mr-desktop-lesson-unified .mr-desktop-workspace-unified.mr-teacher-workspace>.mr-teacher-rail{
+    grid-column:2!important;
+    grid-row:1!important;
+    order:1!important;
+    position:sticky!important;
+    top:10px!important;
+    width:clamp(220px,17vw,280px)!important;
+    max-width:clamp(220px,17vw,280px)!important;
+    min-width:0!important;
+    align-self:start!important;
+    justify-self:stretch!important;
+  }
+}
+
+@media (min-width:761px) and (max-width:900px){
+  .mr-desktop-lesson-unified .mr-desktop-workspace-unified.mr-teacher-workspace{
+    display:block!important;
+  }
+
+  .mr-desktop-lesson-unified .mr-desktop-workspace-unified.mr-teacher-workspace>.mr-teacher-rail{
+    position:static!important;
+    width:100%!important;
+    max-width:none!important;
+    margin:10px 0 0!important;
+  }
+}
+
+@media (min-width:761px) and (max-width:1180px){
+  html body .mr-desktop-lesson-unified #mrStudentVideoMount.mr-video-hero-mount>.mr-native-call.joined:not(.floating){
+    padding:9px!important;
+    gap:7px!important;
+  }
+
+  html body .mr-desktop-lesson-unified #mrStudentVideoMount.mr-video-hero-mount>.mr-native-call.joined:not(.floating) .mr-call-stage{
+    height:min(56.25vw,54dvh,520px)!important;
+    min-height:230px!important;
+    max-height:calc(100dvh - 205px)!important;
+  }
+
+  html body .mr-desktop-lesson-unified #mrStudentVideoMount.mr-video-hero-mount>.mr-native-call.joined:not(.floating) .mr-call-actions{
+    gap:5px!important;
+  }
+
+  html body .mr-desktop-lesson-unified #mrStudentVideoMount.mr-video-hero-mount>.mr-native-call.joined:not(.floating) .mr-call-actions .btn{
+    min-height:34px!important;
+    padding:5px 8px!important;
+    font-size:10.5px!important;
+  }
+}
+
+@media (min-width:761px) and (max-height:820px){
+  html body .mr-desktop-lesson-unified #mrStudentVideoMount.mr-video-hero-mount>.mr-native-call.joined:not(.floating){
+    padding:8px!important;
+    gap:6px!important;
+  }
+
+  html body .mr-desktop-lesson-unified #mrStudentVideoMount.mr-video-hero-mount>.mr-native-call.joined:not(.floating) .mr-call-stage{
+    height:clamp(230px,44dvh,360px)!important;
+    min-height:0!important;
+    max-height:44dvh!important;
+  }
+}
