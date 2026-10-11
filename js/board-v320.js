@@ -1787,23 +1787,104 @@
     root.querySelectorAll('[data-tool]').forEach(b=>b.addEventListener('click',()=>{setTool(b.dataset.tool);b.closest('.board-tool-group')?.removeAttribute('open')}));
     /* Always start a newly opened/refreshed board in navigation mode on every role and device. */
     setTool('hand');
-    const positionPopover=d=>{
-      const pop=d.querySelector('.board-tool-popover'),summary=d.querySelector('summary');if(!pop||!summary)return;
-      /* The dedicated mobile lesson layout positions tool sheets from CSS
-         against the viewport. Desktop rail math must not override it. */
-      if(root.closest('.student-lesson-mode')){
-        pop.style.removeProperty('--mr-pop-left');
-        pop.style.removeProperty('--mr-pop-top');
-        pop.style.removeProperty('--mr-pop-maxh');
+    const desktopToolPopoverPortal=()=>window.matchMedia?.('(min-width:761px)')?.matches&&!phoneStudentBoardUI;
+
+    const restoreToolPopover=(d,pop)=>{
+      if(!d||!pop)return;
+      pop.classList.remove('board-tool-popover-portal');
+      for(const prop of ['left','right','top','bottom','width','min-width','max-width','max-height','position','z-index']){
+        pop.style.removeProperty(prop);
+      }
+      pop.style.removeProperty('--mr-pop-left');
+      pop.style.removeProperty('--mr-pop-top');
+      pop.style.removeProperty('--mr-pop-maxh');
+      if(pop.parentNode!==d)d.appendChild(pop);
+    };
+
+    const positionPopover=(d,popArg=null)=>{
+      const pop=popArg||d.querySelector('.board-tool-popover');
+      const summary=d.querySelector('summary');
+      if(!pop||!summary)return;
+
+      /* Phones/tablets keep their existing bottom-sheet behavior. Desktop
+         popovers are moved out of the scrollable tool rail and into board-stage
+         so the rail can scroll without clipping or swallowing the palette. */
+      if(!desktopToolPopoverPortal()){
+        restoreToolPopover(d,pop);
         return;
       }
-      requestAnimationFrame(()=>{const r=summary.getBoundingClientRect(),vw=window.innerWidth,vh=window.innerHeight,left=Math.max(8,Math.min(vw-260,r.right+10)),available=Math.max(220,vh-24),desired=Math.min(pop.scrollHeight||460,available),top=Math.max(12,Math.min(r.top,vh-desired-12));pop.style.setProperty('--mr-pop-left',`${left}px`);pop.style.setProperty('--mr-pop-top',`${top}px`);pop.style.setProperty('--mr-pop-maxh',`${Math.max(220,vh-top-12)}px`)});
+
+      if(pop.parentNode!==stage)stage.appendChild(pop);
+      pop.classList.add('board-tool-popover-portal');
+
+      requestAnimationFrame(()=>{
+        if(!d.open||!pop.isConnected)return;
+
+        const sr=summary.getBoundingClientRect();
+        const br=stage.getBoundingClientRect();
+        const gap=10;
+        const edge=10;
+
+        const desiredWidth=pop.classList.contains('board-shapes-popover')
+          ?Math.min(560,Math.max(360,br.width*.48))
+          :pop.classList.contains('board-more-popover')
+            ?Math.min(520,Math.max(360,br.width*.46))
+            :Math.min(420,Math.max(300,br.width*.38));
+
+        let left=sr.right-br.left+gap;
+        if(left+desiredWidth>br.width-edge){
+          left=Math.max(edge,sr.left-br.left-desiredWidth-gap);
+        }
+        left=Math.max(edge,Math.min(left,Math.max(edge,br.width-desiredWidth-edge)));
+
+        const maxHeight=Math.max(220,br.height-edge*2);
+        const measured=Math.min(pop.scrollHeight||460,maxHeight);
+        let top=sr.top-br.top;
+        top=Math.max(edge,Math.min(top,Math.max(edge,br.height-measured-edge)));
+
+        pop.style.setProperty('position','absolute','important');
+        pop.style.setProperty('left',left+'px','important');
+        pop.style.setProperty('right','auto','important');
+        pop.style.setProperty('top',top+'px','important');
+        pop.style.setProperty('bottom','auto','important');
+        pop.style.setProperty('width',desiredWidth+'px','important');
+        pop.style.setProperty('min-width','0','important');
+        pop.style.setProperty('max-width',Math.max(240,br.width-edge*2)+'px','important');
+        pop.style.setProperty('max-height',maxHeight+'px','important');
+        pop.style.setProperty('z-index','2600','important');
+      });
     };
+
     root.querySelectorAll('.board-tool-group').forEach(d=>{
-      d.addEventListener('toggle',()=>{if(!d.open)return;root.querySelectorAll('.board-tool-group').forEach(x=>{if(x!==d)x.removeAttribute('open')});positionPopover(d)});
       const pop=d.querySelector('.board-tool-popover');
-      if(pop)pop.addEventListener('click',e=>{const button=e.target.closest?.('button');if(!button||button.disabled)return;setTimeout(()=>d.removeAttribute('open'),0)});
+      d.addEventListener('toggle',()=>{
+        if(!d.open){
+          restoreToolPopover(d,pop);
+          return;
+        }
+        root.querySelectorAll('.board-tool-group').forEach(x=>{
+          if(x!==d)x.removeAttribute('open');
+        });
+        positionPopover(d,pop);
+      });
+      if(pop)pop.addEventListener('click',e=>{
+        const button=e.target.closest?.('button');
+        if(!button||button.disabled)return;
+        setTimeout(()=>d.removeAttribute('open'),0);
+      });
     });
+
+    const boardToolRail=root.querySelector('.board-toolbar-side');
+    if(boardToolRail){
+      let railPopoverRaf=0;
+      boardToolRail.addEventListener('scroll',()=>{
+        cancelAnimationFrame(railPopoverRaf);
+        railPopoverRaf=requestAnimationFrame(()=>{
+          const opened=root.querySelector('.board-tool-group[open]');
+          if(opened)positionPopover(opened);
+        });
+      },{passive:true});
+    }
     root.querySelectorAll('[data-color]').forEach(b=>b.addEventListener('click',()=>{color=b.dataset.color;root.querySelectorAll('[data-color]').forEach(x=>x.classList.toggle('active',x===b))}));
     bind('#strokeWidth','change',e=>width=Number(e.target.value));
     bind('#undo','click',()=>undo());bind('#redo','click',()=>redo());bind('#copySelected','click',copySelected);bind('#pasteSelected','click',pasteSelected);bind('#duplicateSelected','click',duplicateSelected);bind('#lockSelected','click',toggleLockSelected);bind('#bringForward','click',()=>reorderSelected('forward'));bind('#sendBackward','click',()=>reorderSelected('backward'));bind('#bringFront','click',()=>reorderSelected('front'));bind('#sendBack','click',()=>reorderSelected('back'));bind('#pasteSystemClipboard','click',readSystemClipboard);bind('#deleteSelected','click',deleteSelected);
