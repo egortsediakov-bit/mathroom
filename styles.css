@@ -5436,3 +5436,71 @@ button.mr-mobile-lesson-asset{cursor:pointer}
     padding:7px 8px!important;
   }
 }
+
+
+/* Mathroom v40.8 — viewport-adaptive desktop board palettes */
+@media (min-width:761px){
+  .board-stage > .board-tool-popover.board-tool-popover-portal{
+    padding:clamp(8px,.75vw,12px)!important;
+    border-radius:clamp(12px,.9vw,16px)!important;
+  }
+
+  .board-stage > .board-tool-popover.board-tool-popover-portal .board-popover-head{
+    padding-bottom:clamp(6px,.55vw,9px)!important;
+    margin-bottom:clamp(6px,.6vw,9px)!important;
+  }
+
+  .board-stage > .board-tool-popover.board-tool-popover-portal .board-popover-title{
+    font-size:clamp(11px,.8vw,13px)!important;
+  }
+
+  .board-stage > .board-tool-popover.board-tool-popover-portal .board-action-grid,
+  .board-stage > .board-tool-popover.board-tool-popover-portal .board-writing-grid,
+  .board-stage > .board-tool-popover.board-tool-popover-portal .board-geometry-grid,
+  .board-stage > .board-tool-popover.board-tool-popover-portal.board-more-popover .board-more-grid{
+    display:grid!important;
+    grid-template-columns:repeat(auto-fit,minmax(min(118px,100%),1fr))!important;
+    gap:clamp(5px,.55vw,8px)!important;
+    width:100%!important;
+  }
+
+  .board-stage > .board-tool-popover.board-tool-popover-portal.board-shapes-popover .board-palette-grid{
+    display:grid!important;
+    grid-template-columns:repeat(auto-fit,minmax(clamp(66px,5.6vw,86px),1fr))!important;
+    gap:clamp(5px,.5vw,8px)!important;
+    width:100%!important;
+  }
+
+  .board-stage > .board-tool-popover.board-tool-popover-portal.board-shapes-popover .board-shape-icon{
+    width:100%!important;
+    min-width:0!important;
+    min-height:clamp(60px,5vw,74px)!important;
+    height:auto!important;
+    aspect-ratio:1.28/1!important;
+    padding:clamp(4px,.4vw,6px)!important;
+    border-radius:clamp(10px,.7vw,13px)!important;
+  }
+
+  .board-stage > .board-tool-popover.board-tool-popover-portal.board-shapes-popover .board-shape-svg{
+    width:clamp(34px,3vw,44px)!important;
+    height:clamp(28px,2.5vw,36px)!important;
+  }
+
+  .board-stage > .board-tool-popover.board-tool-popover-portal.board-shapes-popover .board-shape-label{
+    font-size:clamp(7.8px,.58vw,9px)!important;
+    line-height:1.08!important;
+  }
+
+  .board-stage > .board-tool-popover.board-tool-popover-portal .board-action-grid .btn,
+  .board-stage > .board-tool-popover.board-tool-popover-portal .board-writing-grid .btn,
+  .board-stage > .board-tool-popover.board-tool-popover-portal .board-geometry-grid .btn,
+  .board-stage > .board-tool-popover.board-tool-popover-portal .board-more-grid .btn{
+    min-height:clamp(38px,3.3vw,48px)!important;
+    padding:clamp(6px,.55vw,9px)!important;
+    gap:clamp(5px,.45vw,8px)!important;
+  }
+
+  .board-stage > .board-tool-popover.board-tool-popover-portal .board-style-row{
+    gap:clamp(8px,1vw,16px)!important;
+  }
+}
