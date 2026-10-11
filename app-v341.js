@@ -1171,10 +1171,10 @@ async function renderStudent(){
   if(active&&live&&!compactActiveLessonUI){
     S.studentTab='lessons';
     const taskLeft=taskTimerRemaining(live);
-    app.innerHTML=`<div class="student-home student-lesson-mode student-desktop-lesson-mode mr-student-teacher-design">
-      <div id="mrStudentVideoMount" class="mr-student-video-top mr-lesson-video-top"></div>
-      <div class="mr-student-desktop-lesson-meta topbar"><div><span class="mr-mobile-kicker">Урок идёт</span><h1>${esc(active.topics?.title||'Урок')}</h1></div><div class="mr-student-desktop-live-dot"><span></span>Онлайн</div></div>
-      <div class="mr-student-desktop-workspace mr-teacher-workspace">
+    app.innerHTML=`<div class="student-home student-lesson-mode student-desktop-lesson-mode mr-student-teacher-design mr-desktop-lesson-unified mr-lesson-role-student">
+      <div id="mrStudentLessonAddon" class="mr-lesson-addon mr-lesson-video-top mr-desktop-video-shell"><div id="mrStudentVideoMount"></div></div>
+      <div class="mr-student-desktop-lesson-meta mr-desktop-lesson-meta topbar"><div><span class="mr-mobile-kicker">Урок идёт</span><h1>${esc(active.topics?.title||'Урок')}</h1></div><div class="mr-student-desktop-live-dot"><span></span>Онлайн</div></div>
+      <div class="mr-student-desktop-workspace mr-teacher-workspace mr-desktop-workspace-unified">
         <div class="mr-student-desktop-board mr-lesson-board-main"><div id="studentLessonBoard"></div></div>
         <aside class="mr-student-desktop-lesson-rail mr-teacher-rail">
           <section id="studentLessonTaskMount" class="mr-student-rail-section">${studentLessonTaskCard(live)}</section>
