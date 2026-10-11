@@ -89,6 +89,7 @@
          load or before the participant has joined the call. */
       localStorage.setItem(`mathroom.media.view.${this.role}`,this.videoViewMode);
       this.callFullscreen = false;
+      this.fullscreenTransition = false;
       this.videoFloating = false;
       this.videoHeroMount = null;
       this.mediaActionLock = { mic:0, sound:0, camera:false };
@@ -197,6 +198,7 @@
         const panelIsNativeFullscreen=fsEl===this.panel;
 
         if(panelIsNativeFullscreen){
+          this.fullscreenTransition=false;
           if(!this.callFullscreen){
             this.callFullscreen=true;
             document.documentElement.classList.add('mr-video-call-open');
@@ -209,6 +211,7 @@
 
         /* Esc / browser fullscreen exit must also clear our UI state. */
         if(this.callFullscreen && this.nativeVideoFullscreenActive){
+          this.fullscreenTransition=false;
           this.nativeVideoFullscreenActive=false;
           this.callFullscreen=false;
           document.documentElement.classList.remove('mr-video-call-open');
@@ -3092,9 +3095,17 @@
       this.floatingPosition=null;
       this.expanded=false;
       this.minimized=false;
+      this.fullscreenTransition=true;
       if(this.videoHeroMount)this.videoHeroMount.style.minHeight='';
       this.clearHiddenPanelGeometry?.();
       this.clearFloatingInlinePosition?.();
+
+      /* Keep the fullscreen element outside the student's periodically refreshed
+         lesson shell. Moving an ancestor of a fullscreen element makes Chromium
+         leave fullscreen, which made the student's button appear broken. */
+      if(host.parentNode!==document.body)document.body.appendChild(host);
+      host.style.pointerEvents='auto';
+      this.bindCoreVideoActions();
 
       /* Native fullscreen is the canonical path on desktop. It is independent
          from the student's periodic renderPanel refresh and therefore cannot be
@@ -3115,6 +3126,7 @@
           }
 
           await requestNative();
+          this.fullscreenTransition=false;
           this.nativeVideoFullscreenActive=true;
           this.callFullscreen=true;
           document.documentElement.classList.add('mr-video-call-open');
@@ -3126,11 +3138,13 @@
           });
           return;
         }catch(e){
+          this.fullscreenTransition=false;
           console.warn('[Mathroom video fullscreen native fallback]',e);
         }
       }
 
       /* Browser fallback (older Safari / restricted WebView). */
+      this.fullscreenTransition=false;
       this.nativeVideoFullscreenActive=false;
       this.callFullscreen=true;
       document.documentElement.classList.add('mr-video-call-open');
@@ -3530,6 +3544,7 @@
 
     destroy() {
       this.destroyed = true;
+      this.fullscreenTransition=false;
       this.callFullscreen=false;
       document.documentElement.classList.remove('mr-video-call-open');
       document.body.classList.remove('mr-video-call-open');
