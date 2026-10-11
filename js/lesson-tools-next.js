@@ -174,6 +174,22 @@
       window.addEventListener('mathroom:board-video-entered',this.onBoardVideoEntered);
       this.onBoardVideoRestored=()=>this.recoverAfterBoardFullscreen();
       window.addEventListener('mathroom:board-video-restored',this.onBoardVideoRestored);
+
+      const initialPermission=window.MathroomStudentLessonPermission;
+      this.studentPermissionMode=this.role==='student'&&String(initialPermission?.lessonId||'')===String(this.lessonId)
+        ?(initialPermission?.mode||'view')
+        :'open';
+      this.onStudentPermissionChanged=e=>{
+        if(this.role!=='student')return;
+        const detail=e?.detail||{};
+        if(String(detail.lessonId||'')!==String(this.lessonId))return;
+        this.studentPermissionMode=detail.mode||'view';
+        if(this.studentPermissionMode!=='open'&&this.screenTrack){
+          this.stopScreenShare('Преподаватель отключил демонстрацию экрана').catch(err=>console.warn('[Mathroom screen permission]',err));
+        }
+        this.paint();
+      };
+      window.addEventListener('mathroom:student-permission-changed',this.onStudentPermissionChanged);
     }
 
     enterBoardFullscreenVideo(card=null) {
@@ -2164,23 +2180,45 @@
       }
     }
 
+    studentFullAccessAllowed() {
+      if(this.role!=='student')return true;
+      const current=window.MathroomStudentLessonPermission;
+      if(current&&String(current.lessonId||'')===String(this.lessonId)){
+        this.studentPermissionMode=current.mode||'view';
+      }
+      return this.studentPermissionMode==='open';
+    }
+
+    async stopScreenShare(message='') {
+      if(!this.screenTrack)return;
+      const sender=this.pc?.getSenders?.().find(s=>s.track?.kind==='video')
+        ||this.pc?.getTransceivers?.().find(t=>t.receiver?.track?.kind==='video')?.sender;
+      const track=this.screenTrack;
+      try{track.onended=null}catch{}
+      this.screenTrack=null;
+      this.screenPreviewStream=null;
+      try{track.stop()}catch{}
+      await this.restoreCameraAfterScreenShare(sender);
+      if(message)toast(message);
+    }
+
     async restoreCameraAfterScreenShare(sender=null) {
       this.screenTrack=null;
       this.screenPreviewStream=null;
-      let camera=this.effectiveCameraTrack();
-      if(!camera||camera.readyState!=='live'){
+      let camera=this.cameraEnabled?this.effectiveCameraTrack():null;
+      if(this.cameraEnabled&&(!camera||camera.readyState!=='live')){
         try{await this.switchInputDevice('video',this.selectedVideoInput||'',{silent:true})}catch(e){console.warn('[Mathroom screen share] camera reacquire',e)}
         camera=this.effectiveCameraTrack();
       }
-      if(camera){
-        camera.enabled=this.cameraEnabled;
-        const targetSender=sender||this.pc?.getSenders?.().find(s=>s.track?.kind==='video')
-          ||this.pc?.getTransceivers?.().find(t=>t.receiver?.track?.kind==='video')?.sender;
-        try{
-          if(targetSender)await targetSender.replaceTrack(camera);
+      const targetSender=sender||this.pc?.getSenders?.().find(s=>s.track?.kind==='video')
+        ||this.pc?.getTransceivers?.().find(t=>t.receiver?.track?.kind==='video')?.sender;
+      try{
+        if(targetSender)await targetSender.replaceTrack(camera||null);
+        if(camera){
+          camera.enabled=this.cameraEnabled;
           this.configureCameraTrack(camera);
-        }catch(e){console.warn('[Mathroom screen share] restore track',e)}
-      }
+        }
+      }catch(e){console.warn('[Mathroom screen share] restore track',e)}
       await this.applyVideoSenderProfile(true);
       this.send('screen-state',{sharing:false},this.otherRole()).catch(()=>{});
       this.bindMedia();
@@ -2188,16 +2226,23 @@
     }
 
     async shareScreen() {
-      if (!this.joined) return;
+      if(!this.joined)return;
+      if(this.screenTrack){
+        await this.stopScreenShare();
+        return;
+      }
+      if(this.role==='student'&&!this.studentFullAccessAllowed()){
+        return toast('Демонстрация экрана доступна только когда преподаватель выбрал режим «Всё»');
+      }
       if(!navigator.mediaDevices?.getDisplayMedia)return toast('Демонстрация экрана недоступна на этом устройстве');
       try {
-        if (this.screenTrack) {
-          this.screenTrack.stop();
-          return;
-        }
-        const display = await navigator.mediaDevices.getDisplayMedia({ video:true, audio:false });
-        const track = display.getVideoTracks()[0];
+        const display=await navigator.mediaDevices.getDisplayMedia({video:true,audio:false});
+        const track=display.getVideoTracks()[0];
         if(!track)return;
+        if(this.role==='student'&&!this.studentFullAccessAllowed()){
+          try{track.stop()}catch{}
+          return toast('Преподаватель отключил демонстрацию экрана');
+        }
         try{track.contentHint='detail'}catch{}
         const sender = this.pc?.getSenders?.().find(s => s.track?.kind === 'video')
           || this.pc?.getTransceivers?.().find(t=>t.receiver?.track?.kind==='video')?.sender;
@@ -2207,8 +2252,12 @@
         this.screenPreviewStream = new MediaStream([track]);
         this.send('screen-state',{sharing:true},this.otherRole()).catch(()=>{});
         this.bindMedia();
-        track.onended = async () => {
-          await this.restoreCameraAfterScreenShare(sender);
+        track.onended=async()=>{
+          if(this.screenTrack===track){
+            this.screenTrack=null;
+            this.screenPreviewStream=null;
+            await this.restoreCameraAfterScreenShare(sender);
+          }
         };
         this.paint();
       } catch (e) {
@@ -3113,11 +3162,18 @@
         sound.classList.toggle('is-on',this.soundEnabled); sound.classList.toggle('is-off',!this.soundEnabled);
         sound.title=this.soundEnabled?'Выключить звук собеседника':'Включить звук собеседника';
       }
-      const screen = host.querySelector('#mrVideoScreen'); if (screen) {
-        const canShare=!!navigator.mediaDevices?.getDisplayMedia;
-        screen.hidden=!this.joined||!canShare;
+      const screen=host.querySelector('#mrVideoScreen');if(screen){
+        const deviceCanShare=!!navigator.mediaDevices?.getDisplayMedia;
+        const permissionCanShare=this.role!=='student'||this.studentFullAccessAllowed();
+        screen.hidden=!this.joined||!deviceCanShare;
+        screen.disabled=!this.screenTrack&&!permissionCanShare;
         screen.innerHTML=this.mediaButton('screen',this.screenTrack?'Остановить экран':'Экран',!!this.screenTrack);
         screen.classList.toggle('sharing',!!this.screenTrack);
+        screen.title=this.screenTrack
+          ?'Остановить демонстрацию экрана'
+          :permissionCanShare
+            ?'Демонстрация экрана'
+            :'Преподаватель должен включить режим «Всё»';
       }
       const fullBtn=host.querySelector('#mrVideoFullscreen');if(fullBtn){
         fullBtn.innerHTML=this.mediaButton('fullscreen',this.callFullscreen?'Свернуть':'Весь экран',this.callFullscreen);
@@ -3162,6 +3218,8 @@
       this.onBoardVideoEntered=null;
       if(this.onBoardVideoRestored)window.removeEventListener('mathroom:board-video-restored',this.onBoardVideoRestored);
       this.onBoardVideoRestored=null;
+      if(this.onStudentPermissionChanged)window.removeEventListener('mathroom:student-permission-changed',this.onStudentPermissionChanged);
+      this.onStudentPermissionChanged=null;
       if (this.onVideoScroll) window.removeEventListener('scroll', this.onVideoScroll);
       this.onVideoScroll = null;
       if(this.panel?._mrDragOwner===this.peerId){
