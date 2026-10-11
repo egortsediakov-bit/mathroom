@@ -192,6 +192,43 @@
       this.onBoardVideoRestored=()=>this.recoverAfterBoardFullscreen();
       window.addEventListener('mathroom:board-video-restored',this.onBoardVideoRestored);
 
+      this.onNativeVideoFullscreenChange=()=>{
+        const fsEl=document.fullscreenElement||document.webkitFullscreenElement||null;
+        const panelIsNativeFullscreen=fsEl===this.panel;
+
+        if(panelIsNativeFullscreen){
+          if(!this.callFullscreen){
+            this.callFullscreen=true;
+            document.documentElement.classList.add('mr-video-call-open');
+            document.body.classList.add('mr-video-call-open');
+          }
+          this.paint();
+          requestAnimationFrame(()=>this.bindMedia());
+          return;
+        }
+
+        /* Esc / browser fullscreen exit must also clear our UI state. */
+        if(this.callFullscreen && this.nativeVideoFullscreenActive){
+          this.nativeVideoFullscreenActive=false;
+          this.callFullscreen=false;
+          document.documentElement.classList.remove('mr-video-call-open');
+          document.body.classList.remove('mr-video-call-open');
+
+          if(this.videoHeroMount && this.panel && this.panel.parentNode!==this.videoHeroMount){
+            this.videoHeroMount.appendChild(this.panel);
+          }
+
+          this.clearFloatingInlinePosition?.();
+          this.paint();
+          requestAnimationFrame(()=>{
+            this.bindMedia();
+            this.syncLessonRunway();
+          });
+        }
+      };
+      document.addEventListener('fullscreenchange',this.onNativeVideoFullscreenChange);
+      document.addEventListener('webkitfullscreenchange',this.onNativeVideoFullscreenChange);
+
       const initialPermission=window.MathroomStudentLessonPermission;
       this.studentPermissionMode=this.role==='student'&&String(initialPermission?.lessonId||'')===String(this.lessonId)
         ?(initialPermission?.mode||'view')
@@ -577,6 +614,102 @@
         body>.mr-native-call.mr-call-fullscreen #mrVideoFullscreen,
         body>.mr-native-call.mr-call-fullscreen #mrVideoEnd{display:inline-flex!important}
         body>.mr-native-call.mr-call-fullscreen .mr-call-actions .btn{min-width:48px!important;min-height:48px!important;border-radius:14px!important}
+
+        /* Native Fullscreen API path. Keep the exact same call UI regardless of
+           whether the panel belongs to teacher or student lesson markup. */
+        #mrVideoPanel:fullscreen,
+        #mrVideoPanel:-webkit-full-screen{
+          position:fixed!important;
+          inset:0!important;
+          width:100vw!important;
+          height:100vh!important;
+          max-width:none!important;
+          max-height:none!important;
+          margin:0!important;
+          padding:clamp(8px,1vw,14px)!important;
+          display:grid!important;
+          grid-template-rows:minmax(0,1fr) auto!important;
+          gap:8px!important;
+          overflow:hidden!important;
+          background:#090b0e!important;
+          border:0!important;
+          border-radius:0!important;
+          box-shadow:none!important;
+          z-index:2147483647!important;
+        }
+        #mrVideoPanel:fullscreen .mr-call-head,
+        #mrVideoPanel:fullscreen .mr-call-note,
+        #mrVideoPanel:fullscreen .mr-call-quality,
+        #mrVideoPanel:-webkit-full-screen .mr-call-head,
+        #mrVideoPanel:-webkit-full-screen .mr-call-note,
+        #mrVideoPanel:-webkit-full-screen .mr-call-quality{
+          display:none!important;
+        }
+        #mrVideoPanel:fullscreen .mr-call-stage,
+        #mrVideoPanel:-webkit-full-screen .mr-call-stage{
+          display:block!important;
+          position:relative!important;
+          width:100%!important;
+          height:100%!important;
+          min-width:0!important;
+          min-height:0!important;
+          max-width:none!important;
+          max-height:none!important;
+          aspect-ratio:auto!important;
+          overflow:hidden!important;
+          border-radius:10px!important;
+          background:#090b0e!important;
+        }
+        #mrVideoPanel:fullscreen .mr-remote-video,
+        #mrVideoPanel:-webkit-full-screen .mr-remote-video{
+          position:absolute!important;
+          inset:0!important;
+          width:100%!important;
+          height:100%!important;
+          object-fit:contain!important;
+          background:#090b0e!important;
+        }
+        #mrVideoPanel:fullscreen .mr-local-video,
+        #mrVideoPanel:-webkit-full-screen .mr-local-video{
+          position:absolute!important;
+          right:clamp(12px,1.4vw,24px)!important;
+          top:clamp(12px,1.4vw,24px)!important;
+          bottom:auto!important;
+          width:clamp(130px,18vw,280px)!important;
+          height:auto!important;
+          aspect-ratio:16/9!important;
+          object-fit:cover!important;
+          border-radius:10px!important;
+        }
+        #mrVideoPanel:fullscreen .mr-call-actions,
+        #mrVideoPanel:-webkit-full-screen .mr-call-actions{
+          display:flex!important;
+          position:static!important;
+          width:max-content!important;
+          max-width:calc(100vw - 24px)!important;
+          margin:0 auto!important;
+          padding:8px!important;
+          gap:7px!important;
+          flex-wrap:nowrap!important;
+          overflow-x:auto!important;
+          border-radius:16px!important;
+          background:rgba(18,20,25,.82)!important;
+          backdrop-filter:blur(14px)!important;
+        }
+        #mrVideoPanel:fullscreen .mr-call-actions>*,
+        #mrVideoPanel:-webkit-full-screen .mr-call-actions>*{display:none!important}
+        #mrVideoPanel:fullscreen #mrVideoMic,
+        #mrVideoPanel:fullscreen #mrVideoCam,
+        #mrVideoPanel:fullscreen #mrVideoSound,
+        #mrVideoPanel:fullscreen #mrVideoFullscreen,
+        #mrVideoPanel:fullscreen #mrVideoEnd,
+        #mrVideoPanel:-webkit-full-screen #mrVideoMic,
+        #mrVideoPanel:-webkit-full-screen #mrVideoCam,
+        #mrVideoPanel:-webkit-full-screen #mrVideoSound,
+        #mrVideoPanel:-webkit-full-screen #mrVideoFullscreen,
+        #mrVideoPanel:-webkit-full-screen #mrVideoEnd{
+          display:inline-flex!important;
+        }
         @media(max-width:760px){
           body>.mr-native-call.mr-call-fullscreen .mr-local-video{
             width:28vw!important;height:37vw!important;max-width:126px!important;max-height:168px!important
@@ -2919,32 +3052,94 @@
 
     async openVideoFullscreen() {
       if(!this.panel||!this.joined)return;
-      const opening=!this.callFullscreen;
-      this.callFullscreen=opening;
-      document.documentElement.classList.toggle('mr-video-call-open',opening);
-      document.body.classList.toggle('mr-video-call-open',opening);
-      this.videoFloating=false;
-      if(this.videoHeroMount)this.videoHeroMount.style.minHeight='';
-      this.clearFloatingInlinePosition?.();
 
-      /* On mobile Safari/Chromium a fixed element can still be clipped by a
-         transformed/overflow ancestor. Move the live call panel directly under
-         <body> while in app-style fullscreen, then put the same node back in
-         its lesson mount on exit. This also keeps the same MediaStream/video
-         elements alive instead of recreating the call. */
-      if(opening){
-        if(this.panel.parentNode!==document.body)document.body.appendChild(this.panel);
-      }else if(this.videoHeroMount&&this.panel.parentNode!==this.videoHeroMount){
-        this.videoHeroMount.appendChild(this.panel);
+      const host=this.panel;
+      const fsEl=document.fullscreenElement||document.webkitFullscreenElement||null;
+      const panelIsNativeFullscreen=fsEl===host;
+
+      /* Exit native fullscreen first. The fullscreenchange listener restores
+         the lesson mount and UI state after Esc/exitFullscreen resolves. */
+      if(panelIsNativeFullscreen){
+        try{
+          if(document.exitFullscreen)await document.exitFullscreen();
+          else if(document.webkitExitFullscreen)document.webkitExitFullscreen();
+        }catch(e){
+          console.warn('[Mathroom video fullscreen exit]',e);
+          this.nativeVideoFullscreenActive=false;
+          this.callFullscreen=false;
+          document.documentElement.classList.remove('mr-video-call-open');
+          document.body.classList.remove('mr-video-call-open');
+          this.paint();
+        }
+        return;
       }
 
+      /* If the old CSS fallback is active, clicking again simply closes it. */
+      if(this.callFullscreen&&!this.nativeVideoFullscreenActive){
+        this.callFullscreen=false;
+        document.documentElement.classList.remove('mr-video-call-open');
+        document.body.classList.remove('mr-video-call-open');
+        if(this.videoHeroMount&&host.parentNode!==this.videoHeroMount){
+          this.videoHeroMount.appendChild(host);
+        }
+        this.clearFloatingInlinePosition?.();
+        this.paint();
+        requestAnimationFrame(()=>this.bindMedia());
+        return;
+      }
+
+      this.videoFloating=false;
+      this.floatingPosition=null;
+      this.expanded=false;
+      this.minimized=false;
+      if(this.videoHeroMount)this.videoHeroMount.style.minHeight='';
+      this.clearHiddenPanelGeometry?.();
+      this.clearFloatingInlinePosition?.();
+
+      /* Native fullscreen is the canonical path on desktop. It is independent
+         from the student's periodic renderPanel refresh and therefore cannot be
+         cancelled by the lesson UI rebuilding around it. */
+      const requestNative=host.requestFullscreen
+        ?()=>host.requestFullscreen({navigationUI:'hide'})
+        :host.webkitRequestFullscreen
+          ?()=>host.webkitRequestFullscreen()
+          :null;
+
+      if(requestNative){
+        try{
+          /* Another fullscreen element (for example the board) must leave the
+             top layer before video can become the fullscreen element. */
+          if(fsEl&&fsEl!==host){
+            if(document.exitFullscreen)await document.exitFullscreen();
+            else if(document.webkitExitFullscreen)document.webkitExitFullscreen();
+          }
+
+          await requestNative();
+          this.nativeVideoFullscreenActive=true;
+          this.callFullscreen=true;
+          document.documentElement.classList.add('mr-video-call-open');
+          document.body.classList.add('mr-video-call-open');
+          this.paint();
+          requestAnimationFrame(()=>{
+            this.bindMedia();
+            host.focus?.({preventScroll:true});
+          });
+          return;
+        }catch(e){
+          console.warn('[Mathroom video fullscreen native fallback]',e);
+        }
+      }
+
+      /* Browser fallback (older Safari / restricted WebView). */
+      this.nativeVideoFullscreenActive=false;
+      this.callFullscreen=true;
+      document.documentElement.classList.add('mr-video-call-open');
+      document.body.classList.add('mr-video-call-open');
+      if(host.parentNode!==document.body)document.body.appendChild(host);
       this.paint();
       requestAnimationFrame(()=>{
         this.bindMedia();
-        if(opening){
-          window.scrollTo?.(0,window.scrollY);
-          this.panel?.focus?.({preventScroll:true});
-        }
+        host.focus?.({preventScroll:true});
       });
     }
 
@@ -3236,7 +3431,10 @@
           ? 'connected'
           : (finalError ? 'error' : 'connecting'));
 
-      const boardFullscreen=!!(document.fullscreenElement?.classList?.contains('board-card') && document.fullscreenElement.contains(host));
+      const nativeFullscreenElement=document.fullscreenElement||document.webkitFullscreenElement||null;
+      const nativeVideoFullscreen=nativeFullscreenElement===host;
+      if(nativeVideoFullscreen)this.callFullscreen=true;
+      const boardFullscreen=!!(nativeFullscreenElement?.classList?.contains('board-card') && nativeFullscreenElement.contains(host));
       const safeViewMode=this.joined ? this.videoViewMode : 'remote';
       const effectiveFloating=this.joined && (this.videoFloating || safeViewMode==='hidden');
       const unifiedDesktop=!!document.querySelector('.mr-desktop-lesson-unified');
@@ -3359,6 +3557,12 @@
       this.onBoardVideoEntered=null;
       if(this.onBoardVideoRestored)window.removeEventListener('mathroom:board-video-restored',this.onBoardVideoRestored);
       this.onBoardVideoRestored=null;
+      if(this.onNativeVideoFullscreenChange){
+        document.removeEventListener('fullscreenchange',this.onNativeVideoFullscreenChange);
+        document.removeEventListener('webkitfullscreenchange',this.onNativeVideoFullscreenChange);
+      }
+      this.onNativeVideoFullscreenChange=null;
+      this.nativeVideoFullscreenActive=false;
       if(this.onStudentPermissionChanged)window.removeEventListener('mathroom:student-permission-changed',this.onStudentPermissionChanged);
       this.onStudentPermissionChanged=null;
       if (this.onVideoScroll) window.removeEventListener('scroll', this.onVideoScroll);
