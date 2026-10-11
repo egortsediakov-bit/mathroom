@@ -75,6 +75,12 @@
       this.videoFloating = false;
       this.videoHeroMount = null;
       this.mediaActionLock = { mic:0, sound:0, camera:false };
+      this.videoQualityProfile = 'high';
+      this.videoQualityCandidate = '';
+      this.videoQualityCandidateHits = 0;
+      this.lastVideoProfileApply = 0;
+      this.outboundVideoKbps = 0;
+      this.availableOutgoingKbps = 0;
       this.videoDragState = null;
       this.videoHeroHeight = 0;
       this.onVideoScroll = null;
@@ -797,6 +803,7 @@
           clearTimeout(this.pollTimer);
           this.pollTimer = null;
           this.bindMedia();
+          this.applyVideoSenderProfile(true).catch(()=>{});
           this.send('screen-state',{sharing:!!this.screenTrack},this.otherRole()).catch(()=>{});
           this.startStats();
         } else if (st === 'connecting' || st === 'new') {
@@ -844,6 +851,7 @@
         t.receiver?.track?.kind==='video' || t.sender?.track?.kind==='video'
       );
       if(!hasVideoTransceiver) pc.addTransceiver('video',{direction:'sendrecv'});
+      queueMicrotask(()=>this.applyVideoSenderProfile(true));
     }
 
     async bindAnswererTracks(pc) {
@@ -858,6 +866,7 @@
         try { await tr.sender.replaceTrack(track); } catch (e) { console.warn('[Mathroom media] replaceTrack', kind, e); }
         try { tr.direction = 'sendrecv'; } catch {}
       }
+      await this.applyVideoSenderProfile(true);
     }
 
     async makeOffer(iceRestart = false) {
@@ -991,9 +1000,94 @@
     }
 
     videoConstraints(deviceId = this.selectedVideoInput) {
-      const video = { width:{ideal:960}, height:{ideal:540}, frameRate:{ideal:24,max:30} };
+      const video = {
+        width:{ideal:1280,max:1920},
+        height:{ideal:720,max:1080},
+        frameRate:{ideal:30,min:20,max:30},
+        aspectRatio:{ideal:16/9}
+      };
       if (deviceId) video.deviceId = { exact:deviceId };
       return video;
+    }
+
+    configureCameraTrack(track) {
+      if(!track)return;
+      try{track.contentHint='motion'}catch{}
+    }
+
+    videoProfileConfig(profile=this.videoQualityProfile,screen=!!this.screenTrack) {
+      if(screen){
+        return {maxBitrate:4000000,maxFramerate:20,scaleResolutionDownBy:1,degradationPreference:'maintain-resolution'};
+      }
+      if(profile==='low'){
+        return {maxBitrate:850000,maxFramerate:20,scaleResolutionDownBy:1.5,degradationPreference:'balanced'};
+      }
+      if(profile==='medium'){
+        return {maxBitrate:1500000,maxFramerate:24,scaleResolutionDownBy:1.15,degradationPreference:'balanced'};
+      }
+      return {maxBitrate:2600000,maxFramerate:30,scaleResolutionDownBy:1,degradationPreference:'balanced'};
+    }
+
+    async applyVideoSenderProfile(force=false) {
+      const sender=this.pc?.getSenders?.().find(s=>s.track?.kind==='video')
+        ||this.pc?.getTransceivers?.().find(t=>t.receiver?.track?.kind==='video')?.sender;
+      if(!sender?.getParameters || !sender?.setParameters)return;
+      const now=Date.now();
+      if(!force && now-this.lastVideoProfileApply<1200)return;
+      this.lastVideoProfileApply=now;
+      try{
+        const p=sender.getParameters()||{};
+        if(!Array.isArray(p.encodings)||!p.encodings.length)p.encodings=[{}];
+        const cfg=this.videoProfileConfig(this.videoQualityProfile,!!this.screenTrack);
+        for(const enc of p.encodings){
+          enc.maxBitrate=cfg.maxBitrate;
+          enc.maxFramerate=cfg.maxFramerate;
+          enc.scaleResolutionDownBy=cfg.scaleResolutionDownBy;
+          try{enc.priority='high'}catch{}
+          try{enc.networkPriority='high'}catch{}
+        }
+        p.degradationPreference=cfg.degradationPreference;
+        await sender.setParameters(p);
+      }catch(e){
+        console.warn('[Mathroom video] sender quality profile',e);
+      }
+    }
+
+    async setAdaptiveVideoProfile(next,reason='') {
+      if(!['high','medium','low'].includes(next))return;
+      if(next===this.videoQualityProfile)return;
+      this.videoQualityProfile=next;
+      this.videoQualityCandidate='';
+      this.videoQualityCandidateHits=0;
+      await this.applyVideoSenderProfile(true);
+      if(reason)console.info('[Mathroom video] quality',next,reason);
+    }
+
+    considerAdaptiveVideoProfile({loss=0,rtt=null,availableKbps=0,outboundKbps=0}={}) {
+      if(this.screenTrack)return;
+      let wanted='high';
+      const veryPoor=loss>=8 || (rtt!=null&&rtt>=450) || (availableKbps>0&&availableKbps<900);
+      const constrained=loss>=3 || (rtt!=null&&rtt>=250) || (availableKbps>0&&availableKbps<1700);
+      if(veryPoor)wanted='low';
+      else if(constrained)wanted='medium';
+      if(wanted===this.videoQualityProfile){
+        this.videoQualityCandidate='';
+        this.videoQualityCandidateHits=0;
+        return;
+      }
+      if(this.videoQualityCandidate!==wanted){
+        this.videoQualityCandidate=wanted;
+        this.videoQualityCandidateHits=1;
+      }else{
+        this.videoQualityCandidateHits++;
+      }
+      const rank={low:0,medium:1,high:2};
+      const upgrading=rank[wanted]>rank[this.videoQualityProfile];
+      const needed=upgrading?4:2;
+      if(this.videoQualityCandidateHits>=needed){
+        const reason='loss='+loss+'% rtt='+(rtt==null?'—':rtt)+'ms avail='+(availableKbps||'—')+'kbps out='+(outboundKbps||'—')+'kbps';
+        this.setAdaptiveVideoProfile(wanted,reason).catch(()=>{});
+      }
     }
 
     virtualBgControlsHtml() {
@@ -1632,7 +1726,10 @@
       if (isAudio) {
         next.enabled = this.micEnabled;
         await this.configureSpeechTrack(next);
-      } else next.enabled = this.cameraEnabled;
+      } else {
+        next.enabled = this.cameraEnabled;
+        this.configureCameraTrack(next);
+      }
 
       if (!this.localStream) this.localStream = new MediaStream();
       const old = isAudio ? this.localStream.getAudioTracks()[0] : this.localStream.getVideoTracks()[0];
@@ -1653,7 +1750,10 @@
         || this.pc?.getTransceivers?.().find(t => t.receiver?.track?.kind === kind)?.sender;
       const outgoing = isAudio ? next : this.effectiveCameraTrack();
       if (sender && !(kind === 'video' && this.screenTrack)) {
-        try { await sender.replaceTrack(outgoing); } catch (e) { console.warn('[Mathroom devices] replaceTrack', kind, e); }
+        try {
+          await sender.replaceTrack(outgoing);
+          if(!isAudio)await this.applyVideoSenderProfile(true);
+        } catch (e) { console.warn('[Mathroom devices] replaceTrack', kind, e); }
       }
       old?.stop?.();
 
@@ -1774,7 +1874,10 @@
       const at=this.localStream.getAudioTracks()[0];
       if(at){at.enabled=this.micEnabled;await this.configureSpeechTrack(at)}
       const vt=this.localStream.getVideoTracks()[0];
-      if(vt)vt.enabled=this.cameraEnabled;
+      if(vt){
+        vt.enabled=this.cameraEnabled;
+        this.configureCameraTrack(vt);
+      }
       await this.refreshDevices().catch(()=>{});
       this.bindMedia();
       this.bindPrejoinPreview();
@@ -2023,7 +2126,10 @@
           const outgoing=this.effectiveCameraTrack()||t;
           const sender=this.pc?.getSenders?.().find(s=>s.track?.kind==='video')
             ||this.pc?.getTransceivers?.().find(tr=>tr.receiver?.track?.kind==='video')?.sender;
-          if(sender) await sender.replaceTrack(outgoing);
+          if(sender){
+            await sender.replaceTrack(outgoing);
+            await this.applyVideoSenderProfile(true);
+          }
           this.bindMedia();
           this.paint();
           toast('Камера включена');
@@ -2045,7 +2151,10 @@
         const sender=this.pc?.getSenders?.().find(s=>s.track?.kind==='video')
           ||this.pc?.getTransceivers?.().find(tr=>tr.receiver?.track?.kind==='video')?.sender;
         if(sender){
-          try{await sender.replaceTrack(this.cameraEnabled?(this.effectiveCameraTrack()||t):null)}catch(e){console.warn('[Mathroom camera toggle]',e)}
+          try{
+            await sender.replaceTrack(this.cameraEnabled?(this.effectiveCameraTrack()||t):null);
+            if(this.cameraEnabled)await this.applyVideoSenderProfile(true);
+          }catch(e){console.warn('[Mathroom camera toggle]',e)}
         }
         this.bindMedia();
         this.paint();
@@ -2067,8 +2176,12 @@
         camera.enabled=this.cameraEnabled;
         const targetSender=sender||this.pc?.getSenders?.().find(s=>s.track?.kind==='video')
           ||this.pc?.getTransceivers?.().find(t=>t.receiver?.track?.kind==='video')?.sender;
-        try{if(targetSender)await targetSender.replaceTrack(camera)}catch(e){console.warn('[Mathroom screen share] restore track',e)}
+        try{
+          if(targetSender)await targetSender.replaceTrack(camera);
+          this.configureCameraTrack(camera);
+        }catch(e){console.warn('[Mathroom screen share] restore track',e)}
       }
+      await this.applyVideoSenderProfile(true);
       this.send('screen-state',{sharing:false},this.otherRole()).catch(()=>{});
       this.bindMedia();
       this.paint();
@@ -2085,10 +2198,12 @@
         const display = await navigator.mediaDevices.getDisplayMedia({ video:true, audio:false });
         const track = display.getVideoTracks()[0];
         if(!track)return;
+        try{track.contentHint='detail'}catch{}
         const sender = this.pc?.getSenders?.().find(s => s.track?.kind === 'video')
           || this.pc?.getTransceivers?.().find(t=>t.receiver?.track?.kind==='video')?.sender;
         if (sender) await sender.replaceTrack(track);
         this.screenTrack = track;
+        await this.applyVideoSenderProfile(true);
         this.screenPreviewStream = new MediaStream([track]);
         this.send('screen-state',{sharing:true},this.otherRole()).catch(()=>{});
         this.bindMedia();
@@ -2674,32 +2789,61 @@
 
     startStats() {
       this.stopStats();
-      let prevPackets = 0, prevLost = 0;
-      this.statsTimer = setInterval(async () => {
-        const pc = this.pc;
-        if (!pc || pc.connectionState !== 'connected') return;
-        try {
-          const stats = await pc.getStats();
-          let rtt = null, packets = 0, lost = 0, selectedPair = null;
-          stats.forEach(s => {
-            if (s.type === 'candidate-pair' && s.state === 'succeeded' && (s.selected || s.nominated || s.currentRoundTripTime != null)) {
-              if (!selectedPair || s.selected || s.nominated) selectedPair = s;
-              if (s.currentRoundTripTime != null) rtt = Math.round(s.currentRoundTripTime * 1000);
+      let prevPackets=0;
+      let prevLost=0;
+      let prevBytesSent=0;
+      let prevStatsAt=performance.now();
+      this.statsTimer=setInterval(async()=>{
+        const pc=this.pc;
+        if(!pc || pc.connectionState!=='connected')return;
+        try{
+          const stats=await pc.getStats();
+          let rtt=null,packets=0,lost=0,selectedPair=null;
+          let videoBytesSent=0,availableOutgoingKbps=0,outboundFps=0,outboundWidth=0,outboundHeight=0;
+          stats.forEach(s=>{
+            if(s.type==='candidate-pair' && s.state==='succeeded' && (s.selected||s.nominated||s.currentRoundTripTime!=null)){
+              if(!selectedPair||s.selected||s.nominated)selectedPair=s;
+              if(s.currentRoundTripTime!=null)rtt=Math.round(s.currentRoundTripTime*1000);
+              if(Number(s.availableOutgoingBitrate)>0)availableOutgoingKbps=Math.round(Number(s.availableOutgoingBitrate)/1000);
             }
-            if (s.type === 'inbound-rtp' && !s.isRemote) { packets += Number(s.packetsReceived || 0); lost += Number(s.packetsLost || 0); }
+            if(s.type==='inbound-rtp' && !s.isRemote){
+              packets+=Number(s.packetsReceived||0);
+              lost+=Number(s.packetsLost||0);
+            }
+            if(s.type==='outbound-rtp' && !s.isRemote && (s.kind==='video'||s.mediaType==='video')){
+              videoBytesSent+=Number(s.bytesSent||0);
+              outboundFps=Math.max(outboundFps,Number(s.framesPerSecond||0));
+              outboundWidth=Math.max(outboundWidth,Number(s.frameWidth||0));
+              outboundHeight=Math.max(outboundHeight,Number(s.frameHeight||0));
+            }
           });
-          if (selectedPair) {
-            const local = stats.get?.(selectedPair.localCandidateId);
-            const remote = stats.get?.(selectedPair.remoteCandidateId);
-            const relay = local?.candidateType === 'relay' || remote?.candidateType === 'relay' || this.forceRelay;
-            this.routeLabel = relay ? 'резервный маршрут' : 'прямой маршрут';
+          if(selectedPair){
+            const local=stats.get?.(selectedPair.localCandidateId);
+            const remote=stats.get?.(selectedPair.remoteCandidateId);
+            const relay=local?.candidateType==='relay'||remote?.candidateType==='relay'||this.forceRelay;
+            this.routeLabel=relay?'резервный маршрут':'прямой маршрут';
           }
-          const dp = packets - prevPackets, dl = lost - prevLost; prevPackets = packets; prevLost = lost;
-          const loss = dp + dl > 0 ? Math.max(0, Math.round((dl / (dp + dl)) * 1000) / 10) : 0;
-          this.connectionQuality = `${this.routeLabel ? this.routeLabel + ' · ' : ''}${rtt == null ? '—' : `${rtt} мс`} · потери ${loss}%`;
+          const now=performance.now();
+          const dt=Math.max(0.25,(now-prevStatsAt)/1000);
+          const bytesDelta=Math.max(0,videoBytesSent-prevBytesSent);
+          const outboundKbps=Math.round((bytesDelta*8/dt)/1000);
+          prevBytesSent=videoBytesSent;
+          prevStatsAt=now;
+          const dp=packets-prevPackets,dl=lost-prevLost;
+          prevPackets=packets;prevLost=lost;
+          const loss=dp+dl>0?Math.max(0,Math.round((dl/(dp+dl))*1000)/10):0;
+          this.outboundVideoKbps=outboundKbps;
+          this.availableOutgoingKbps=availableOutgoingKbps;
+          this.considerAdaptiveVideoProfile({loss,rtt,availableKbps:availableOutgoingKbps,outboundKbps});
+          const profileLabel=this.screenTrack?'экран HD':this.videoQualityProfile==='high'?'HD':this.videoQualityProfile==='medium'?'стабильно':'экономия';
+          const res=outboundWidth&&outboundHeight?' · '+outboundWidth+'×'+outboundHeight+(outboundFps?'@'+Math.round(outboundFps):''):'';
+          const rate=outboundKbps>0?' · ↑'+outboundKbps+' кбит/с':'';
+          this.connectionQuality=(this.routeLabel?this.routeLabel+' · ':'')+(rtt==null?'—':rtt+' мс')+' · потери '+loss+'% · '+profileLabel+rate+res;
           this.paint();
-        } catch {}
-      }, 2500);
+        }catch(e){
+          console.warn('[Mathroom stats]',e);
+        }
+      },2500);
     }
 
     stopStats() { clearInterval(this.statsTimer); this.statsTimer = null; }
