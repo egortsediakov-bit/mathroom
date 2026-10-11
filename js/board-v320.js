@@ -1825,28 +1825,49 @@
         const gap=10;
         const edge=10;
 
-        const desiredWidth=pop.classList.contains('board-shapes-popover')
-          ?Math.min(420,Math.max(360,br.width*.30))
-          :pop.classList.contains('board-more-popover')
-            ?Math.min(400,Math.max(330,br.width*.28))
-            :Math.min(350,Math.max(300,br.width*.25));
+        const vw=Math.max(320,window.innerWidth||document.documentElement.clientWidth||br.width);
+        const vh=Math.max(320,window.innerHeight||document.documentElement.clientHeight||br.height);
 
-        let left=sr.right-br.left+gap;
-        if(left+desiredWidth>br.width-edge){
-          left=Math.max(edge,sr.left-br.left-desiredWidth-gap);
-        }
+        /* Scale palettes with the actual screen, but cap their share of the
+           board so even on ultrawide monitors they remain a tool, not a panel. */
+        const widthRatio=pop.classList.contains('board-shapes-popover')
+          ?0.245
+          :pop.classList.contains('board-more-popover')
+            ?0.225
+            :0.205;
+        const minWidth=pop.classList.contains('board-shapes-popover')?320:285;
+        const maxWidth=pop.classList.contains('board-shapes-popover')?470:410;
+
+        const viewportWidth=Math.round(vw*widthRatio);
+        const boardWidth=Math.round(br.width*(pop.classList.contains('board-shapes-popover')?.34:.30));
+        const desiredWidth=Math.max(
+          Math.min(minWidth,Math.max(250,br.width-edge*2)),
+          Math.min(maxWidth,viewportWidth,boardWidth,br.width-edge*2)
+        );
+
+        const rightSpace=Math.max(0,br.right-sr.right-gap-edge);
+        const leftSpace=Math.max(0,sr.left-br.left-gap-edge);
+        const openRight=rightSpace>=desiredWidth || rightSpace>=leftSpace;
+
+        let left=openRight
+          ?sr.right-br.left+gap
+          :sr.left-br.left-desiredWidth-gap;
         left=Math.max(edge,Math.min(left,Math.max(edge,br.width-desiredWidth-edge)));
 
-        const viewportCap=Math.max(260,window.innerHeight-70);
-        const typeCap=pop.classList.contains('board-shapes-popover')
-          ?520
-          :pop.classList.contains('board-more-popover')
-            ?480
-            :440;
-        const maxHeight=Math.max(220,Math.min(br.height-edge*2,viewportCap,typeCap));
-        const measured=Math.min(pop.scrollHeight||420,maxHeight);
-        let top=sr.top-br.top;
-        top=Math.max(edge,Math.min(top,Math.max(edge,br.height-measured-edge)));
+        /* Height follows both viewport and board. The menu may scroll, but
+           never dominates the visible lesson area. */
+        const viewportHeightCap=Math.round(vh*(pop.classList.contains('board-shapes-popover')?.62:.56));
+        const boardHeightCap=Math.round(br.height*.72);
+        const typeCap=pop.classList.contains('board-shapes-popover')?560:500;
+        const maxHeight=Math.max(220,Math.min(viewportHeightCap,boardHeightCap,typeCap,br.height-edge*2));
+
+        const measured=Math.min(pop.scrollHeight||400,maxHeight);
+        const summaryTop=sr.top-br.top;
+        const spaceBelow=br.height-summaryTop-edge;
+        const preferredTop=spaceBelow>=measured
+          ?summaryTop
+          :Math.max(edge,summaryTop-measured+sr.height);
+        let top=Math.max(edge,Math.min(preferredTop,Math.max(edge,br.height-measured-edge)));
 
         pop.style.setProperty('position','absolute','important');
         pop.style.setProperty('left',left+'px','important');
