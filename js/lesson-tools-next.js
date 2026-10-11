@@ -93,6 +93,7 @@
       this.videoFloating = false;
       this.videoHeroMount = null;
       this.mediaActionLock = { mic:0, sound:0, camera:false };
+      this.micRecovering = false;
       this.videoQualityProfile = 'high';
       this.videoQualityCandidate = '';
       this.videoQualityCandidateHits = 0;
@@ -1769,6 +1770,22 @@
     async configureSpeechTrack(track) {
       if (!track) return;
       try { track.contentHint = 'speech'; } catch {}
+
+      /* Keep the UI tied to the real MediaStreamTrack. If the browser/device
+         ends the track, the button must immediately stop pretending the mic is
+         still live. A replacement track gets its own listener. */
+      if(!track._mrMicEndedBound){
+        track._mrMicEndedBound=true;
+        track.addEventListener?.('ended',()=>{
+          if(this.destroyed)return;
+          const current=this.localStream?.getAudioTracks?.()[0];
+          if(current===track){
+            this.paintPrejoin();
+            this.paint();
+          }
+        },{once:true});
+      }
+
       try {
         const apply = {};
         const caps = track.getCapabilities?.() || {};
@@ -2202,11 +2219,25 @@
       const hasCam = !!this.localStream?.getVideoTracks?.().length;
       if(mic){
         const locked=this.role==='student'&&!this.studentMicAllowed;
-        const on=!locked&&this.micEnabled&&hasMic;
-        mic.innerHTML=this.mediaButton('mic',locked?'Микрофон заблокирован':on?'Микрофон включён':'Микрофон выключен',on);
+        const liveTrack=this.localStream?.getAudioTracks?.().find(t=>t.readyState==='live')||null;
+        const on=!locked&&!!liveTrack&&liveTrack.enabled!==false;
+        const recovering=!!this.micRecovering;
+        const micState=locked?'locked':recovering?'recovering':on?'on':'off';
+
+        /* Do not replace button children on every paint(). Stats/lesson refreshes
+           happen frequently and replacing the node between pointerdown/up can
+           cancel the browser click. Only redraw when visible state changes. */
+        if(mic.dataset.mrMediaState!==micState){
+          mic.innerHTML=this.mediaButton(
+            'mic',
+            locked?'Микрофон заблокирован':recovering?'Подключаем микрофон…':on?'Микрофон включён':'Микрофон выключен',
+            on
+          );
+          mic.dataset.mrMediaState=micState;
+        }
         mic.classList.toggle('is-on',on);mic.classList.toggle('is-off',!on);
-        mic.disabled=locked;
-        mic.title=locked?'Микрофон отключён преподавателем':on?'Выключить микрофон':'Включить микрофон';
+        mic.disabled=locked||recovering;
+        mic.title=locked?'Микрофон отключён преподавателем':recovering?'Подключаем микрофон':on?'Выключить микрофон':'Включить микрофон';
       }
       if(cam){
         const locked=this.role==='student'&&!this.studentCameraAllowed;
@@ -2355,20 +2386,50 @@
       }
     }
 
-    toggleMic() {
+    async toggleMic() {
       if(this.role==='student'&&!this.studentMicAllowed)return toast('Микрофон отключён преподавателем');
-      const now=Date.now();
-      if(now-(this.mediaActionLock?.mic||0)<90)return;
-      if(this.mediaActionLock)this.mediaActionLock.mic=now;
 
-      const t=this.localStream?.getAudioTracks?.()[0];
-      if(!t || t.readyState!=='live')return toast('Микрофон недоступен');
+      /* Do not debounce microphone clicks. MediaStreamTrack.enabled is a cheap,
+         synchronous switch; the old 90 ms lock could swallow real clicks.
+         Use the track itself as the source of truth so UI state cannot drift. */
+      let t=this.localStream?.getAudioTracks?.().find(track=>track.readyState==='live')||null;
 
-      const next=!this.micEnabled;
-      this.micEnabled=next;
-      t.enabled=next;
-      localStorage.setItem(`mathroom.media.mic.${this.role}`,next?'1':'0');
+      if(t){
+        const next=!(t.enabled!==false);
+        this.micEnabled=next;
+        t.enabled=next;
+        localStorage.setItem(`mathroom.media.mic.${this.role}`,next?'1':'0');
+        this.paintPrejoin();
+        this.paint();
+        return;
+      }
+
+      /* A browser can end an audio track after a device sleep/change. Previously
+         the mic button then became permanently useless until reconnect. A click
+         now reacquires the selected/default microphone and replaces the sender. */
+      if(this.micRecovering)return;
+      this.micRecovering=true;
+      this.micEnabled=true;
+      localStorage.setItem(`mathroom.media.mic.${this.role}`,'1');
+      this.paintPrejoin();
       this.paint();
+
+      try{
+        t=await this.switchInputDevice('audio',this.selectedAudioInput||'',{silent:true});
+        if(!t||t.readyState!=='live')throw new Error('Микрофон не запустился');
+        t.enabled=true;
+        this.micEnabled=true;
+        localStorage.setItem(`mathroom.media.mic.${this.role}`,'1');
+      }catch(e){
+        console.warn('[Mathroom microphone recovery]',e);
+        this.micEnabled=false;
+        localStorage.setItem(`mathroom.media.mic.${this.role}`,'0');
+        toast('Не удалось включить микрофон. Проверь разрешение браузера или устройство.');
+      }finally{
+        this.micRecovering=false;
+        this.paintPrejoin();
+        this.paint();
+      }
     }
 
     async toggleCamera() {
@@ -2657,7 +2718,7 @@
       bind('#mrVideoMic',e=>{
         e?.preventDefault?.();
         e?.stopPropagation?.();
-        this.toggleMic();
+        this.toggleMic().catch(err=>console.warn('[Mathroom microphone]',err));
       });
       bind('#mrVideoCam',e=>{
         e?.preventDefault?.();
@@ -3480,11 +3541,24 @@
       const min = host.querySelector('#mrVideoMin'); if (min) { min.hidden = !this.joined; min.textContent = this.minimized ? '□' : '—'; }
       const mic=host.querySelector('#mrVideoMic');if(mic){
         const locked=this.role==='student'&&!this.studentMicAllowed;
-        const on=!locked&&this.micEnabled;
-        mic.innerHTML=this.mediaButton('mic',locked?'Заблокирован':on?'Вкл':'Выкл',on);
+        const liveTrack=this.localStream?.getAudioTracks?.().find(t=>t.readyState==='live')||null;
+        const on=!locked&&!!liveTrack&&liveTrack.enabled!==false;
+        const recovering=!!this.micRecovering;
+        const micState=locked?'locked':recovering?'recovering':on?'on':'off';
+
+        /* Keep the actual button DOM stable while paint() runs from stats,
+           signaling and lesson refreshes. This prevents intermittent lost clicks. */
+        if(mic.dataset.mrMediaState!==micState){
+          mic.innerHTML=this.mediaButton(
+            'mic',
+            locked?'Заблокирован':recovering?'Подключаем…':on?'Вкл':'Выкл',
+            on
+          );
+          mic.dataset.mrMediaState=micState;
+        }
         mic.classList.toggle('is-on',on);mic.classList.toggle('is-off',!on);
-        mic.disabled=locked;
-        mic.title=locked?'Микрофон отключён преподавателем':on?'Выключить микрофон':'Включить микрофон';
+        mic.disabled=locked||recovering;
+        mic.title=locked?'Микрофон отключён преподавателем':recovering?'Подключаем микрофон':on?'Выключить микрофон':'Включить микрофон';
       }
       const cam=host.querySelector('#mrVideoCam');if(cam){
         const locked=this.role==='student'&&!this.studentCameraAllowed;
@@ -6993,7 +7067,7 @@
     const tag = document.activeElement?.tagName;
     if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
     const key = String(e.key || '').toLowerCase();
-    if (key === 'm') { e.preventDefault(); call.toggleMic(); }
+    if (key === 'm') { e.preventDefault(); call.toggleMic().catch(err=>console.warn('[Mathroom microphone]',err)); }
     if (key === 'v') { e.preventDefault(); call.toggleCamera(); }
     if (key === 's') { e.preventDefault(); call.shareScreen(); }
     const ctx = ctxNow();
