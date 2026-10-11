@@ -5319,3 +5319,73 @@ button.mr-mobile-lesson-asset{cursor:pointer}
     max-height:44dvh!important;
   }
 }
+
+
+/* =========================================================
+   Mathroom v40.6 — desktop board tool popovers escape rail scroll
+   The left toolbar may scroll, but an opened palette lives directly in the
+   board stage and therefore cannot be clipped into the rail.
+   ========================================================= */
+@media (min-width:761px){
+  .board-stage > .board-tool-popover.board-tool-popover-portal{
+    display:flex!important;
+    position:absolute!important;
+    flex-wrap:wrap!important;
+    gap:8px!important;
+    overflow:auto!important;
+    overscroll-behavior:contain!important;
+    box-sizing:border-box!important;
+    margin:0!important;
+    padding:12px!important;
+    border:1px solid #e5e2dd!important;
+    border-radius:16px!important;
+    background:rgba(255,255,253,.992)!important;
+    box-shadow:0 18px 55px rgba(0,0,0,.16)!important;
+    backdrop-filter:blur(14px)!important;
+    pointer-events:auto!important;
+    visibility:visible!important;
+    opacity:1!important;
+  }
+
+  .board-stage > .board-tool-popover.board-tool-popover-portal .board-popover-head{
+    width:100%!important;
+  }
+
+  .board-stage > .board-tool-popover.board-tool-popover-portal .board-action-grid,
+  .board-stage > .board-tool-popover.board-tool-popover-portal .board-writing-grid,
+  .board-stage > .board-tool-popover.board-tool-popover-portal .board-geometry-grid{
+    display:grid!important;
+    grid-template-columns:repeat(2,minmax(0,1fr))!important;
+    gap:7px!important;
+    width:100%!important;
+  }
+
+  .board-stage > .board-tool-popover.board-tool-popover-portal.board-more-popover .board-more-grid{
+    display:grid!important;
+    grid-template-columns:repeat(3,minmax(0,1fr))!important;
+    gap:7px!important;
+    width:100%!important;
+  }
+
+  .board-stage > .board-tool-popover.board-tool-popover-portal.board-shapes-popover .board-palette-section{
+    width:100%!important;
+  }
+
+  .board-stage > .board-tool-popover.board-tool-popover-portal.board-shapes-popover .board-palette-grid{
+    display:grid!important;
+    grid-template-columns:repeat(4,minmax(72px,1fr))!important;
+    gap:8px!important;
+    width:100%!important;
+  }
+
+  .board-stage > .board-tool-popover.board-tool-popover-portal .board-style-row,
+  .board-stage > .board-tool-popover.board-tool-popover-portal .board-tool-row{
+    width:100%!important;
+  }
+
+  /* The rail is allowed to keep its own vertical scrollbar. Its children no
+     longer need to overflow horizontally because palettes are portalled out. */
+  .board-toolbar-side{
+    overflow-x:hidden!important;
+  }
+}
