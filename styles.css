@@ -5389,3 +5389,50 @@ button.mr-mobile-lesson-asset{cursor:pointer}
     overflow-x:hidden!important;
   }
 }
+
+
+/* Mathroom v40.7 — compact desktop board palettes */
+@media (min-width:761px){
+  .board-stage > .board-tool-popover.board-tool-popover-portal{
+    padding:10px!important;
+    border-radius:14px!important;
+  }
+
+  .board-stage > .board-tool-popover.board-tool-popover-portal .board-popover-head{
+    padding-bottom:7px!important;
+    margin-bottom:8px!important;
+  }
+
+  .board-stage > .board-tool-popover.board-tool-popover-portal .board-popover-title{
+    font-size:12px!important;
+  }
+
+  .board-stage > .board-tool-popover.board-tool-popover-portal.board-shapes-popover .board-palette-grid{
+    grid-template-columns:repeat(4,minmax(64px,1fr))!important;
+    gap:7px!important;
+  }
+
+  .board-stage > .board-tool-popover.board-tool-popover-portal.board-shapes-popover .board-shape-icon{
+    min-height:68px!important;
+    height:68px!important;
+    padding:5px!important;
+    border-radius:12px!important;
+  }
+
+  .board-stage > .board-tool-popover.board-tool-popover-portal.board-shapes-popover .board-shape-svg{
+    width:42px!important;
+    height:34px!important;
+  }
+
+  .board-stage > .board-tool-popover.board-tool-popover-portal.board-shapes-popover .board-shape-label{
+    font-size:8.5px!important;
+    line-height:1.05!important;
+  }
+
+  .board-stage > .board-tool-popover.board-tool-popover-portal .board-action-grid .btn,
+  .board-stage > .board-tool-popover.board-tool-popover-portal .board-writing-grid .btn,
+  .board-stage > .board-tool-popover.board-tool-popover-portal .board-geometry-grid .btn{
+    min-height:42px!important;
+    padding:7px 8px!important;
+  }
+}
