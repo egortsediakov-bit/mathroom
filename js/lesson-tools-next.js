@@ -115,7 +115,13 @@
       this.selectedAudioOutput = localStorage.getItem(`mathroom.media.audiooutput.${this.role}`) || '';
 
       this.virtualBgMode = localStorage.getItem(`mathroom.media.bg.${this.role}`) || 'none';
-      if (!['none','blur','mathroom','light','custom'].includes(this.virtualBgMode)) this.virtualBgMode = 'none';
+      /* v40.12: replace the old near-black Mathroom and plain light presets
+         with richer built-in scenes. Preserve existing users' choices by
+         migrating the old keys instead of resetting their background. */
+      if(this.virtualBgMode==='mathroom')this.virtualBgMode='board';
+      if(this.virtualBgMode==='light')this.virtualBgMode='studio';
+      if (!['none','blur','studio','board','gradient','custom'].includes(this.virtualBgMode)) this.virtualBgMode = 'none';
+      localStorage.setItem(`mathroom.media.bg.${this.role}`,this.virtualBgMode);
       this.virtualBgCustomId = localStorage.getItem(`mathroom.media.bgCustom.${this.role}`) || '';
       this.virtualBgSaved = [];
       this.virtualBgDbPromise = null;
@@ -1278,8 +1284,9 @@
         <div class="mr-bg-options">
           <button class="btn sm" type="button" data-bg-mode="none"><span class="mr-bg-swatch mr-bg-swatch-original"></span><span>Оригинал</span></button>
           <button class="btn sm" type="button" data-bg-mode="blur"><span class="mr-bg-swatch mr-bg-swatch-blur"></span><span>Размытие</span></button>
-          <button class="btn sm" type="button" data-bg-mode="mathroom"><span class="mr-bg-swatch mr-bg-swatch-mathroom"></span><span>Mathroom</span></button>
-          <button class="btn sm" type="button" data-bg-mode="light"><span class="mr-bg-swatch mr-bg-swatch-light"></span><span>Светлый</span></button>
+          <button class="btn sm" type="button" data-bg-mode="studio"><span class="mr-bg-swatch" style="background:linear-gradient(135deg,#dccdbb 0%,#f2e8dc 55%,#b59a7c 100%)"></span><span>Кабинет</span></button>
+          <button class="btn sm" type="button" data-bg-mode="board"><span class="mr-bg-swatch" style="background:linear-gradient(135deg,#173b32,#254f43 72%,#b9783d 73%,#80512d 100%)"></span><span>Доска</span></button>
+          <button class="btn sm" type="button" data-bg-mode="gradient"><span class="mr-bg-swatch" style="background:linear-gradient(135deg,#f4eadf 0%,#f7c3a3 55%,#ed591a 100%)"></span><span>Градиент</span></button>
           <label class="btn sm mr-bg-upload"><span class="mr-bg-swatch mr-bg-swatch-upload">+</span><span>Загрузить</span><input data-bg-file type="file" accept="image/png,image/jpeg,image/webp" hidden></label>
         </div>
         <div class="mr-bg-saved" data-bg-saved></div>
@@ -1449,8 +1456,9 @@
         status.textContent=this.virtualBgBusy ? 'Обработка…'
           : this.virtualBgMode==='none' ? 'Без обработки'
           : this.virtualBgMode==='blur' ? 'Размытие включено'
-          : this.virtualBgMode==='mathroom' ? 'Фон Mathroom'
-          : this.virtualBgMode==='light' ? 'Светлый фон'
+          : this.virtualBgMode==='studio' ? 'Тёплый кабинет'
+          : this.virtualBgMode==='board' ? 'Меловая доска'
+          : this.virtualBgMode==='gradient' ? 'Фирменный градиент'
           : 'Свой фон';
       });
     }
@@ -1516,34 +1524,181 @@
     }
 
     drawBuiltInBackground(ctx,w,h,mode) {
-      if(mode==='mathroom'){
-        const g=ctx.createLinearGradient(0,0,w,h);
-        g.addColorStop(0,'#0f1216');g.addColorStop(.62,'#171c22');g.addColorStop(1,'#252c35');
-        ctx.fillStyle=g;ctx.fillRect(0,0,w,h);
-        ctx.globalAlpha=.12;ctx.strokeStyle='#ffffff';ctx.lineWidth=1;
-        for(let x=0;x<w;x+=42){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,h);ctx.stroke()}
-        for(let y=0;y<h;y+=42){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(w,y);ctx.stroke()}
-        ctx.globalAlpha=1;
-        ctx.fillStyle='#ff7300';ctx.fillRect(0,0,Math.max(7,w*.012),h);
-        ctx.fillStyle='rgba(255,255,255,.92)';
-        ctx.font=`900 ${Math.max(22,Math.round(w*.046))}px Inter, Arial, sans-serif`;
-        ctx.fillText('MATHROOM',Math.round(w*.065),Math.round(h*.84));
-        ctx.fillStyle='rgba(255,255,255,.55)';
-        ctx.font=`600 ${Math.max(11,Math.round(w*.018))}px Inter, Arial, sans-serif`;
-        ctx.fillText('online lesson',Math.round(w*.068),Math.round(h*.90));
+      const px=v=>Math.round(v);
+      const roundedRect=(x,y,rw,rh,r,fill)=>{
+        const rr=Math.min(r,rw/2,rh/2);
+        ctx.beginPath();
+        ctx.moveTo(x+rr,y);
+        ctx.arcTo(x+rw,y,x+rw,y+rh,rr);
+        ctx.arcTo(x+rw,y+rh,x,y+rh,rr);
+        ctx.arcTo(x,y+rh,x,y,rr);
+        ctx.arcTo(x,y,x+rw,y,rr);
+        ctx.closePath();
+        if(fill){ctx.fillStyle=fill;ctx.fill()}
+      };
+
+      if(mode==='studio'){
+        /* Warm home-office scene. Detail stays mostly at the edges so the
+           segmented person remains visually dominant in the centre. */
+        const wall=ctx.createLinearGradient(0,0,w,h);
+        wall.addColorStop(0,'#d8c5af');
+        wall.addColorStop(.48,'#efe5d9');
+        wall.addColorStop(1,'#c9ad90');
+        ctx.fillStyle=wall;ctx.fillRect(0,0,w,h);
+
+        // Soft window / daylight.
+        const glow=ctx.createRadialGradient(w*.73,h*.23,4,w*.73,h*.23,w*.48);
+        glow.addColorStop(0,'rgba(255,252,238,.95)');
+        glow.addColorStop(.45,'rgba(255,246,226,.42)');
+        glow.addColorStop(1,'rgba(255,244,224,0)');
+        ctx.fillStyle=glow;ctx.fillRect(0,0,w,h);
+
+        // Left shelving unit.
+        ctx.fillStyle='rgba(91,65,45,.72)';
+        ctx.fillRect(0,0,w*.205,h);
+        ctx.fillStyle='rgba(244,232,216,.16)';
+        for(let y=h*.16;y<h*.88;y+=h*.215)ctx.fillRect(w*.025,y,w*.155,Math.max(3,h*.009));
+
+        const books=[
+          ['#b96c4b',.035,.11,.028,.14],['#466b62',.069,.13,.024,.12],['#d6a25f',.099,.10,.021,.15],
+          ['#764d3d',.126,.14,.030,.11],['#657d8b',.038,.34,.022,.14],['#d08c55',.067,.37,.030,.11],
+          ['#596b4d',.105,.33,.025,.15],['#b76f62',.137,.36,.024,.12]
+        ];
+        for(const [color,x,y,bw,bh] of books){
+          roundedRect(w*x,h*y,w*bw,h*bh,Math.max(2,w*.004),color);
+        }
+
+        // Framed print behind the shoulder line.
+        ctx.fillStyle='rgba(255,252,246,.86)';
+        roundedRect(w*.73,h*.14,w*.17,h*.24,w*.008,'rgba(255,252,246,.88)');
+        ctx.strokeStyle='rgba(91,66,49,.38)';
+        ctx.lineWidth=Math.max(2,w*.003);
+        ctx.strokeRect(w*.735,h*.148,w*.16,h*.224);
+        ctx.fillStyle='rgba(237,89,26,.42)';
+        ctx.beginPath();ctx.arc(w*.815,h*.255,w*.035,0,Math.PI*2);ctx.fill();
+
+        // Low cabinet and plant.
+        roundedRect(w*.70,h*.69,w*.30,h*.31,w*.012,'rgba(116,80,53,.68)');
+        ctx.fillStyle='rgba(45,84,62,.82)';
+        const stems=[[.89,.70,.85,.48],[.90,.71,.95,.51],[.89,.70,.91,.43],[.88,.71,.82,.55]];
+        ctx.strokeStyle='rgba(45,84,62,.82)';ctx.lineWidth=Math.max(3,w*.006);
+        for(const [x1,y1,x2,y2] of stems){
+          ctx.beginPath();ctx.moveTo(w*x1,h*y1);ctx.lineTo(w*x2,h*y2);ctx.stroke();
+          ctx.beginPath();ctx.ellipse(w*x2,h*y2,w*.025,h*.045,-.45,0,Math.PI*2);ctx.fill();
+        }
+        roundedRect(w*.855,h*.68,w*.08,h*.095,w*.012,'#aa7350');
+
+        // Gentle vignette to give camera-like depth.
+        const vignette=ctx.createRadialGradient(w*.5,h*.46,w*.12,w*.5,h*.46,w*.74);
+        vignette.addColorStop(.45,'rgba(0,0,0,0)');
+        vignette.addColorStop(1,'rgba(55,35,20,.18)');
+        ctx.fillStyle=vignette;ctx.fillRect(0,0,w,h);
         return;
       }
-      const g=ctx.createLinearGradient(0,0,w,h);
-      g.addColorStop(0,'#f7f8fa');g.addColorStop(1,'#e9edf1');
-      ctx.fillStyle=g;ctx.fillRect(0,0,w,h);
-      ctx.globalAlpha=.55;ctx.fillStyle='#dfe4e9';
-      for(let x=0;x<w;x+=44)ctx.fillRect(x,0,1,h);
-      for(let y=0;y<h;y+=44)ctx.fillRect(0,y,w,1);
-      ctx.globalAlpha=1;
-      ctx.fillStyle='#ff7300';ctx.fillRect(Math.round(w*.06),Math.round(h*.12),Math.round(w*.18),6);
-      ctx.fillStyle='#111318';
-      ctx.font=`900 ${Math.max(22,Math.round(w*.046))}px Inter, Arial, sans-serif`;
-      ctx.fillText('MATHROOM',Math.round(w*.06),Math.round(h*.22));
+
+      if(mode==='board'){
+        /* Green chalkboard rather than a pure black virtual background. */
+        const g=ctx.createLinearGradient(0,0,w,h);
+        g.addColorStop(0,'#17392f');
+        g.addColorStop(.52,'#21493c');
+        g.addColorStop(1,'#16352d');
+        ctx.fillStyle=g;ctx.fillRect(0,0,w,h);
+
+        // Subtle chalk texture.
+        ctx.save();
+        ctx.globalAlpha=.055;
+        ctx.strokeStyle='#e8efe8';
+        ctx.lineWidth=1;
+        for(let y=8;y<h;y+=17){
+          ctx.beginPath();
+          ctx.moveTo(0,y);
+          ctx.lineTo(w,y+Math.sin(y*.07)*3);
+          ctx.stroke();
+        }
+        ctx.restore();
+
+        // Wooden frame.
+        const wood=ctx.createLinearGradient(0,0,w,0);
+        wood.addColorStop(0,'#7b4b2b');wood.addColorStop(.45,'#b27945');wood.addColorStop(1,'#714326');
+        ctx.fillStyle=wood;
+        ctx.fillRect(0,0,w,Math.max(10,h*.035));
+        ctx.fillRect(0,h-Math.max(12,h*.045),w,Math.max(12,h*.045));
+        ctx.fillRect(0,0,Math.max(9,w*.014),h);
+        ctx.fillRect(w-Math.max(9,w*.014),0,Math.max(9,w*.014),h);
+
+        // Keep formulas around the perimeter so they do not cover the face.
+        ctx.fillStyle='rgba(239,245,236,.38)';
+        ctx.font=`italic 600 ${Math.max(15,Math.round(w*.026))}px Georgia, serif`;
+        ctx.fillText('a² + b² = c²',w*.05,h*.20);
+        ctx.fillText('y = kx + b',w*.72,h*.18);
+        ctx.font=`italic 500 ${Math.max(13,Math.round(w*.022))}px Georgia, serif`;
+        ctx.fillText('S = πr²',w*.075,h*.78);
+        ctx.fillText('x₁,₂ = (−b ± √D) / 2a',w*.64,h*.80);
+
+        ctx.strokeStyle='rgba(239,245,236,.28)';
+        ctx.lineWidth=Math.max(1.5,w*.002);
+        ctx.beginPath();
+        ctx.moveTo(w*.72,h*.58);ctx.lineTo(w*.91,h*.58);
+        ctx.moveTo(w*.80,h*.68);ctx.lineTo(w*.80,h*.47);
+        ctx.stroke();
+        ctx.beginPath();
+        for(let i=0;i<=24;i++){
+          const x=w*(.73+i*.007);
+          const y=h*(.62-.006*i*i+.12*i);
+          if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);
+        }
+        ctx.stroke();
+
+        // Small brand tab, not a giant logo.
+        roundedRect(w*.04,h*.88,w*.16,h*.065,h*.015,'rgba(10,24,20,.42)');
+        ctx.fillStyle='rgba(255,255,255,.75)';
+        ctx.font=`800 ${Math.max(10,Math.round(w*.015))}px Inter,Arial,sans-serif`;
+        ctx.fillText('MATHROOM',w*.062,h*.922);
+        ctx.fillStyle='#ed591a';
+        ctx.beginPath();ctx.arc(w*.052,h*.908,Math.max(3,w*.006),0,Math.PI*2);ctx.fill();
+        return;
+      }
+
+      /* Brand abstract: cream/orange, no hard white field. */
+      const base=ctx.createLinearGradient(0,0,w,h);
+      base.addColorStop(0,'#efe5da');
+      base.addColorStop(.47,'#e7d2bf');
+      base.addColorStop(1,'#c88d68');
+      ctx.fillStyle=base;ctx.fillRect(0,0,w,h);
+
+      const orange=ctx.createRadialGradient(w*.12,h*.85,0,w*.12,h*.85,w*.52);
+      orange.addColorStop(0,'rgba(237,89,26,.78)');
+      orange.addColorStop(.55,'rgba(237,89,26,.28)');
+      orange.addColorStop(1,'rgba(237,89,26,0)');
+      ctx.fillStyle=orange;ctx.fillRect(0,0,w,h);
+
+      const cream=ctx.createRadialGradient(w*.88,h*.12,0,w*.88,h*.12,w*.48);
+      cream.addColorStop(0,'rgba(255,244,225,.82)');
+      cream.addColorStop(1,'rgba(255,244,225,0)');
+      ctx.fillStyle=cream;ctx.fillRect(0,0,w,h);
+
+      // Large soft geometric arcs.
+      ctx.save();
+      ctx.strokeStyle='rgba(255,255,255,.28)';
+      ctx.lineWidth=Math.max(18,w*.035);
+      ctx.beginPath();ctx.arc(w*.89,h*.72,w*.29,Math.PI*.85,Math.PI*1.75);ctx.stroke();
+      ctx.strokeStyle='rgba(109,69,45,.13)';
+      ctx.lineWidth=Math.max(10,w*.018);
+      ctx.beginPath();ctx.arc(w*.02,h*.18,w*.24,-Math.PI*.28,Math.PI*.58);ctx.stroke();
+      ctx.restore();
+
+      // Fine math grid on just one side.
+      ctx.save();ctx.globalAlpha=.13;ctx.strokeStyle='#6d4938';ctx.lineWidth=1;
+      const step=Math.max(30,Math.round(w*.052));
+      for(let x=w*.62;x<w;x+=step){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,h);ctx.stroke()}
+      for(let y=0;y<h*.58;y+=step){ctx.beginPath();ctx.moveTo(w*.62,y);ctx.lineTo(w,y);ctx.stroke()}
+      ctx.restore();
+
+      ctx.fillStyle='rgba(74,47,34,.70)';
+      ctx.font=`900 ${Math.max(18,Math.round(w*.035))}px Inter,Arial,sans-serif`;
+      ctx.fillText('MATHROOM',w*.055,h*.16);
+      ctx.fillStyle='#ed591a';
+      roundedRect(w*.055,h*.19,w*.11,Math.max(5,h*.012),Math.max(2,h*.006),'#ed591a');
     }
 
     stopVirtualBackground() {
@@ -1718,7 +1873,7 @@
     }
 
     async setVirtualBackground(mode) {
-      if(!['none','blur','mathroom','light','custom'].includes(mode))return;
+      if(!['none','blur','studio','board','gradient','custom'].includes(mode))return;
       if(mode==='custom'&&!this.virtualBgCustomImage)return;
 
       const previous=this.virtualBgMode;
