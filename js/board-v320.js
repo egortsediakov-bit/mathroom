@@ -1826,10 +1826,10 @@
         const edge=10;
 
         const desiredWidth=pop.classList.contains('board-shapes-popover')
-          ?Math.min(560,Math.max(360,br.width*.48))
+          ?Math.min(420,Math.max(360,br.width*.30))
           :pop.classList.contains('board-more-popover')
-            ?Math.min(520,Math.max(360,br.width*.46))
-            :Math.min(420,Math.max(300,br.width*.38));
+            ?Math.min(400,Math.max(330,br.width*.28))
+            :Math.min(350,Math.max(300,br.width*.25));
 
         let left=sr.right-br.left+gap;
         if(left+desiredWidth>br.width-edge){
@@ -1837,8 +1837,14 @@
         }
         left=Math.max(edge,Math.min(left,Math.max(edge,br.width-desiredWidth-edge)));
 
-        const maxHeight=Math.max(220,br.height-edge*2);
-        const measured=Math.min(pop.scrollHeight||460,maxHeight);
+        const viewportCap=Math.max(260,window.innerHeight-70);
+        const typeCap=pop.classList.contains('board-shapes-popover')
+          ?520
+          :pop.classList.contains('board-more-popover')
+            ?480
+            :440;
+        const maxHeight=Math.max(220,Math.min(br.height-edge*2,viewportCap,typeCap));
+        const measured=Math.min(pop.scrollHeight||420,maxHeight);
         let top=sr.top-br.top;
         top=Math.max(edge,Math.min(top,Math.max(edge,br.height-measured-edge)));
 
