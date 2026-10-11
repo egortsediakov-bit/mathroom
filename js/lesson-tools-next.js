@@ -65,6 +65,23 @@
       this.expanded = localStorage.getItem(`mathroom.media.expanded.${this.role}`) === '1';
       this.micEnabled = localStorage.getItem(`mathroom.media.mic.${this.role}`) !== '0';
       this.cameraEnabled = localStorage.getItem(`mathroom.media.camera.${this.role}`) !== '0';
+
+      this.studentMediaPolicyKey=`mathroom.studentMediaPolicy.${this.lessonId}`;
+      let savedStudentMediaPolicy={};
+      try{savedStudentMediaPolicy=JSON.parse(localStorage.getItem(this.studentMediaPolicyKey)||'{}')||{}}catch{}
+      this.studentMicAllowed=savedStudentMediaPolicy.micAllowed!==false;
+      this.studentCameraAllowed=savedStudentMediaPolicy.cameraAllowed!==false;
+      if(this.role==='student'){
+        if(!this.studentMicAllowed){
+          this.micEnabled=false;
+          localStorage.setItem(`mathroom.media.mic.${this.role}`,'0');
+        }
+        if(!this.studentCameraAllowed){
+          this.cameraEnabled=false;
+          localStorage.setItem(`mathroom.media.camera.${this.role}`,'0');
+        }
+      }
+
       this.minimized = localStorage.getItem(`mathroom.media.minimized.${this.role}`) === '1';
       this.videoViewMode = localStorage.getItem(`mathroom.media.view.${this.role}`) || 'remote';
       if (!['remote','both'].includes(this.videoViewMode)) this.videoViewMode = 'remote';
@@ -259,6 +276,8 @@
         .mr-call-actions #mrVideoEnd .mr-duo-icon{color:var(--koto-orange,#ED591A)}
         .mr-call-actions #mrVideoEnd{color:#b94212;border-color:#f2c9b7;background:#fffaf7}
         .mr-call-actions #mrVideoScreen.sharing{border-color:#ffd0ba;background:#fff7f2}
+        .mr-call-actions .mr-student-media-policy.is-off{border-color:#f0c9bb;background:#fff5f1;color:#a63d18}
+        .mr-call-actions .mr-student-media-policy.is-on{border-color:#d8ddd9;background:#fff}
 .mr-native-call .mr-call-note{font-size:12px;color:var(--muted,#747b85);line-height:1.45}.mr-native-call .mr-call-quality{font-size:11px;color:var(--muted,#747b85)}
         .mr-native-call.joined{position:fixed;right:18px;bottom:18px;z-index:1250;width:320px;max-width:calc(100vw - 36px);padding:10px;box-shadow:0 18px 55px #0004;transition:width .18s ease,height .18s ease}.mr-native-call.joined .mr-call-head{cursor:move}.mr-native-call.joined.expanded{width:min(860px,calc(100vw - 36px));max-height:calc(100vh - 36px);overflow:auto}.mr-native-call.joined.expanded .mr-call-stage{min-height:360px;aspect-ratio:16/9}.mr-native-call.joined.expanded .mr-local-video{width:180px;height:110px}.mr-native-call.joined.minimized{width:260px}.mr-native-call.joined.minimized .mr-call-stage,.mr-native-call.joined.minimized .mr-call-note,.mr-native-call.joined.minimized .mr-call-quality{display:none}.mr-native-call.joined.minimized .mr-call-actions .mr-hide-min{display:none}
         .mr-native-prejoin-backdrop{position:fixed;inset:0;z-index:3000;background:rgba(8,11,16,.72);display:flex;align-items:center;justify-content:center;padding:clamp(10px,2vh,20px);overflow:auto}
@@ -717,16 +736,22 @@
       }
       const kind = msg.kind;
       const data = msg.data || {};
-      if (kind === 'hello') {
-        this.remoteReady = true;
-        if (this.joined) await this.send(this.role === 'teacher' ? 'teacher-ready' : 'ready', { joined:true }, this.otherRole());
-        if (this.role === 'teacher' && this.joined && !this.isConnected()) this.makeOffer(false).catch(() => {});
+      if(kind==='hello'){
+        this.remoteReady=true;
+        if(this.role==='teacher')this.broadcastStudentMediaPolicy().catch(()=>{});
+        if(this.joined)await this.send(this.role==='teacher'?'teacher-ready':'ready',{joined:true},this.otherRole());
+        if(this.role==='teacher'&&this.joined&&!this.isConnected())this.makeOffer(false).catch(()=>{});
         return;
       }
-      if (kind === 'teacher-ready' || kind === 'ready' || kind === 'need-offer') {
-        this.remoteReady = true;
-        if (kind === 'need-offer' && data?.relay && this.role === 'teacher' && this.hasTurn) this.forceRelay = true;
-        if (this.role === 'teacher' && this.joined && !this.isConnected()) this.makeOffer(!!data?.reconnect).catch(() => {});
+      if(kind==='teacher-ready'||kind==='ready'||kind==='need-offer'){
+        this.remoteReady=true;
+        if(this.role==='teacher')this.broadcastStudentMediaPolicy().catch(()=>{});
+        if(kind==='need-offer'&&data?.relay&&this.role==='teacher'&&this.hasTurn)this.forceRelay=true;
+        if(this.role==='teacher'&&this.joined&&!this.isConnected())this.makeOffer(!!data?.reconnect).catch(()=>{});
+        return;
+      }
+      if(kind==='student-media-policy'&&this.role==='student'){
+        await this.applyStudentMediaPolicy(data,true);
         return;
       }
       if (kind === 'offer' && this.role === 'student') {
@@ -821,6 +846,7 @@
           this.bindMedia();
           this.applyVideoSenderProfile(true).catch(()=>{});
           this.send('screen-state',{sharing:!!this.screenTrack},this.otherRole()).catch(()=>{});
+          if(this.role==='teacher')this.broadcastStudentMediaPolicy().catch(()=>{});
           this.startStats();
         } else if (st === 'connecting' || st === 'new') {
           this.status = 'Подключаемся…';
@@ -1888,9 +1914,14 @@
       }
 
       const at=this.localStream.getAudioTracks()[0];
-      if(at){at.enabled=this.micEnabled;await this.configureSpeechTrack(at)}
+      if(at){
+        if(this.role==='student'&&!this.studentMicAllowed)this.micEnabled=false;
+        at.enabled=this.micEnabled;
+        await this.configureSpeechTrack(at);
+      }
       const vt=this.localStream.getVideoTracks()[0];
       if(vt){
+        if(this.role==='student'&&!this.studentCameraAllowed)this.cameraEnabled=false;
         vt.enabled=this.cameraEnabled;
         this.configureCameraTrack(vt);
       }
@@ -1936,8 +1967,16 @@
       const join = backdrop.querySelector('#mrPrejoinJoin');
       join.disabled = true;
       backdrop.querySelector('#mrPrejoinCancel').onclick = () => this.closePrejoin(false);
-      backdrop.querySelector('#mrPrejoinMic').onclick = () => { this.micEnabled = !this.micEnabled; localStorage.setItem(`mathroom.media.mic.${this.role}`, this.micEnabled?'1':'0'); const t=this.localStream?.getAudioTracks?.()[0]; if(t)t.enabled=this.micEnabled; this.paintPrejoin(); };
+      backdrop.querySelector('#mrPrejoinMic').onclick=()=>{
+        if(this.role==='student'&&!this.studentMicAllowed)return toast('Микрофон отключён преподавателем');
+        this.micEnabled=!this.micEnabled;
+        localStorage.setItem(`mathroom.media.mic.${this.role}`,this.micEnabled?'1':'0');
+        const t=this.localStream?.getAudioTracks?.()[0];
+        if(t)t.enabled=this.micEnabled;
+        this.paintPrejoin();
+      };
       backdrop.querySelector('#mrPrejoinCam').onclick = async () => {
+        if(this.role==='student'&&!this.studentCameraAllowed)return toast('Камера отключена преподавателем');
         const btn=backdrop.querySelector('#mrPrejoinCam');
         if(btn?.dataset.busy==='1')return;
 
@@ -2025,17 +2064,21 @@
       const cam = this.prejoin.querySelector('#mrPrejoinCam');
       const hasMic = !!this.localStream?.getAudioTracks?.().length;
       const hasCam = !!this.localStream?.getVideoTracks?.().length;
-      if (mic) {
-        const on=this.micEnabled && hasMic;
-        mic.innerHTML=this.mediaButton('mic',on?'Микрофон включён':'Микрофон выключен',on);
-        mic.classList.toggle('is-on',on); mic.classList.toggle('is-off',!on);
+      if(mic){
+        const locked=this.role==='student'&&!this.studentMicAllowed;
+        const on=!locked&&this.micEnabled&&hasMic;
+        mic.innerHTML=this.mediaButton('mic',locked?'Микрофон заблокирован':on?'Микрофон включён':'Микрофон выключен',on);
+        mic.classList.toggle('is-on',on);mic.classList.toggle('is-off',!on);
+        mic.disabled=locked;
+        mic.title=locked?'Микрофон отключён преподавателем':on?'Выключить микрофон':'Включить микрофон';
       }
-      if (cam) {
-        const on=this.cameraEnabled && hasCam;
-        cam.innerHTML=this.mediaButton('camera',hasCam&&on?'Камера включена':'Камера выключена',hasCam&&on);
-        cam.classList.toggle('is-on',hasCam&&on); cam.classList.toggle('is-off',!(hasCam&&on));
-        cam.disabled=false;
-        cam.title=hasCam?(on?'Выключить камеру':'Включить камеру'):'Включить камеру и показать предпросмотр';
+      if(cam){
+        const locked=this.role==='student'&&!this.studentCameraAllowed;
+        const on=!locked&&this.cameraEnabled&&hasCam;
+        cam.innerHTML=this.mediaButton('camera',locked?'Камера заблокирована':hasCam&&on?'Камера включена':'Камера выключена',hasCam&&on);
+        cam.classList.toggle('is-on',hasCam&&on);cam.classList.toggle('is-off',!(hasCam&&on));
+        cam.disabled=locked;
+        cam.title=locked?'Камера отключена преподавателем':hasCam?(on?'Выключить камеру':'Включить камеру'):'Включить камеру и показать предпросмотр';
       }
       this.paintVirtualBgControls(this.prejoin);
       this.bindPrejoinPreview();
@@ -2110,7 +2153,74 @@
       }, 1200);
     }
 
+    persistStudentMediaPolicy() {
+      try{
+        localStorage.setItem(this.studentMediaPolicyKey,JSON.stringify({
+          micAllowed:this.studentMicAllowed!==false,
+          cameraAllowed:this.studentCameraAllowed!==false,
+          updatedAt:Date.now()
+        }));
+      }catch{}
+    }
+
+    async broadcastStudentMediaPolicy() {
+      if(this.role!=='teacher')return;
+      this.persistStudentMediaPolicy();
+      await this.send('student-media-policy',{
+        micAllowed:this.studentMicAllowed!==false,
+        cameraAllowed:this.studentCameraAllowed!==false
+      },'student').catch(()=>{});
+      this.paint();
+    }
+
+    async setStudentMediaPermission(kind,allowed) {
+      if(this.role!=='teacher')return;
+      if(kind==='mic')this.studentMicAllowed=!!allowed;
+      if(kind==='camera')this.studentCameraAllowed=!!allowed;
+      await this.broadcastStudentMediaPolicy();
+      toast(kind==='mic'
+        ?(allowed?'Ученик снова может включить микрофон':'Микрофон ученика отключён и заблокирован')
+        :(allowed?'Ученик снова может включить камеру':'Камера ученика отключена и заблокирована'));
+    }
+
+    async applyStudentMediaPolicy(data={},notify=true) {
+      if(this.role!=='student')return;
+      const prevMic=this.studentMicAllowed!==false;
+      const prevCam=this.studentCameraAllowed!==false;
+      if(typeof data.micAllowed==='boolean')this.studentMicAllowed=data.micAllowed;
+      if(typeof data.cameraAllowed==='boolean')this.studentCameraAllowed=data.cameraAllowed;
+      this.persistStudentMediaPolicy();
+      if(!this.studentMicAllowed){
+        this.micEnabled=false;
+        localStorage.setItem(`mathroom.media.mic.${this.role}`,'0');
+        const audioTrack=this.localStream?.getAudioTracks?.()[0];
+        if(audioTrack)audioTrack.enabled=false;
+      }
+      if(!this.studentCameraAllowed){
+        this.cameraEnabled=false;
+        localStorage.setItem(`mathroom.media.camera.${this.role}`,'0');
+        const cameraTrack=this.localStream?.getVideoTracks?.()[0];
+        if(cameraTrack)cameraTrack.enabled=false;
+        if(this.virtualBgTrack)this.virtualBgTrack.enabled=false;
+        if(!this.screenTrack){
+          const sender=this.pc?.getSenders?.().find(s=>s.track?.kind==='video')
+            ||this.pc?.getTransceivers?.().find(t=>t.receiver?.track?.kind==='video')?.sender;
+          try{if(sender)await sender.replaceTrack(null)}catch(e){console.warn('[Mathroom student camera policy]',e)}
+        }
+      }
+      this.bindMedia();
+      this.paintPrejoin();
+      this.paint();
+      if(notify){
+        if(prevMic&&!this.studentMicAllowed)toast('Преподаватель отключил микрофон. Включить его можно после разрешения преподавателя.');
+        if(prevCam&&!this.studentCameraAllowed)toast('Преподаватель отключил камеру. Включить её можно после разрешения преподавателя.');
+        if(!prevMic&&this.studentMicAllowed)toast('Преподаватель разрешил включить микрофон');
+        if(!prevCam&&this.studentCameraAllowed)toast('Преподаватель разрешил включить камеру');
+      }
+    }
+
     toggleMic() {
+      if(this.role==='student'&&!this.studentMicAllowed)return toast('Микрофон отключён преподавателем');
       const now=Date.now();
       if(now-(this.mediaActionLock?.mic||0)<90)return;
       if(this.mediaActionLock)this.mediaActionLock.mic=now;
@@ -2126,6 +2236,7 @@
     }
 
     async toggleCamera() {
+      if(this.role==='student'&&!this.studentCameraAllowed)return toast('Камера отключена преподавателем');
       if(this.mediaActionLock?.camera)return;
       if(this.mediaActionLock)this.mediaActionLock.camera=true;
       const cameraLockFailsafe=setTimeout(()=>{
@@ -2442,6 +2553,14 @@
         e?.preventDefault?.();
         e?.stopPropagation?.();
         this.shareScreen();
+      });
+      bind('#mrStudentMicPolicy',e=>{
+        e?.preventDefault?.();e?.stopPropagation?.();
+        this.setStudentMediaPermission('mic',!this.studentMicAllowed).catch(fail);
+      });
+      bind('#mrStudentCamPolicy',e=>{
+        e?.preventDefault?.();e?.stopPropagation?.();
+        this.setStudentMediaPermission('camera',!this.studentCameraAllowed).catch(fail);
       });
       bind('#mrVideoFullscreen',e=>{
         e?.preventDefault?.();
@@ -3063,7 +3182,7 @@
         host.id = 'mrVideoPanel';
         host.innerHTML = `<div class="mr-call-head"><div><div class="mr-call-title"><span class="mr-call-dot"></span><b>Связь урока</b><span class="pill">Mathroom P2P + TURN</span></div><div class="small muted" id="mrVideoStatus"></div></div><button class="btn sm" id="mrVideoMin" hidden>—</button></div>
           <div class="mr-call-stage" id="mrCallStage" title="Двойной клик — полноэкранный режим"><video class="mr-remote-video" id="mrRemoteVideo" autoplay muted playsinline webkit-playsinline disablepictureinpicture disableremoteplayback controlslist="nodownload noplaybackrate noremoteplayback"></video><audio id="mrRemoteAudio" autoplay></audio><video class="mr-local-video" id="mrLocalVideo" autoplay muted playsinline webkit-playsinline disablepictureinpicture disableremoteplayback controlslist="nodownload noplaybackrate noremoteplayback" title="Ваше видео / ваш экран"></video><span class="mr-call-person">${this.role === 'teacher' ? 'Ученик' : 'Преподаватель'}</span><div class="mr-floating-view-switch"><button data-video-view="remote" title="Показывать только собеседника">Собеседник</button><button data-video-view="both" title="Показывать обоих">Оба</button><button data-video-view="hidden" title="Скрыть видео">Скрыть</button></div></div>
-          <div class="mr-call-actions"><button class="btn primary" id="mrVideoJoin">Присоединиться к уроку</button><button class="btn mr-hide-min" id="mrVideoMic" hidden></button><button class="btn mr-hide-min" id="mrVideoCam" hidden></button><button class="btn mr-hide-min" id="mrVideoSound" hidden></button><button class="btn mr-hide-min mr-device-btn" id="mrVideoDevices" hidden>${this.mediaButton('devices','Устройства')}</button><button class="btn mr-hide-min" id="mrVideoScreen" hidden>${this.mediaButton('screen','Экран')}</button><button class="btn mr-hide-min" id="mrVideoFullscreen" hidden>${this.mediaButton('fullscreen','Весь экран')}</button><button class="btn mr-hide-min" id="mrVideoExpand" hidden>${this.mediaButton('video','Видео')}</button><button class="btn mr-hide-min" id="mrVideoReconnect" hidden>${this.mediaButton('reconnect','Переподключить')}</button><button class="btn danger" id="mrVideoEnd" hidden>${this.mediaButton('exit','Выйти')}</button></div>
+          <div class="mr-call-actions"><button class="btn primary" id="mrVideoJoin">Присоединиться к уроку</button><button class="btn mr-hide-min" id="mrVideoMic" hidden></button><button class="btn mr-hide-min" id="mrVideoCam" hidden></button><button class="btn mr-hide-min" id="mrVideoSound" hidden></button><button class="btn mr-hide-min mr-device-btn" id="mrVideoDevices" hidden>${this.mediaButton('devices','Устройства')}</button><button class="btn mr-hide-min" id="mrVideoScreen" hidden>${this.mediaButton('screen','Экран')}</button>${this.role==='teacher'?'<button class="btn mr-hide-min mr-student-media-policy" id="mrStudentMicPolicy" hidden></button><button class="btn mr-hide-min mr-student-media-policy" id="mrStudentCamPolicy" hidden></button>':''}<button class="btn mr-hide-min" id="mrVideoFullscreen" hidden>${this.mediaButton('fullscreen','Весь экран')}</button><button class="btn mr-hide-min" id="mrVideoExpand" hidden>${this.mediaButton('video','Видео')}</button><button class="btn mr-hide-min" id="mrVideoReconnect" hidden>${this.mediaButton('reconnect','Переподключить')}</button><button class="btn danger" id="mrVideoEnd" hidden>${this.mediaButton('exit','Выйти')}</button></div>
           <div class="mr-call-quality" id="mrVideoQuality"></div><div class="mr-call-note" id="mrVideoNote">Камера и микрофон выбираются перед входом. Связь встроена прямо в Mathroom.</div>`;
         target.appendChild(host);
       }
@@ -3138,7 +3257,7 @@
         join.hidden=this.joined;
         join.style.removeProperty('display');
       }
-      const ids=['#mrVideoMic','#mrVideoCam','#mrVideoSound','#mrVideoDevices','#mrVideoReconnect','#mrVideoEnd','#mrVideoScreen','#mrVideoFullscreen','#mrVideoExpand'];
+      const ids=['#mrVideoMic','#mrVideoCam','#mrVideoSound','#mrVideoDevices','#mrVideoReconnect','#mrVideoEnd','#mrVideoScreen','#mrVideoFullscreen','#mrVideoExpand','#mrStudentMicPolicy','#mrStudentCamPolicy'];
       ids.forEach(sel=>{
         const el=host.querySelector(sel);
         if(!el)return;
@@ -3147,15 +3266,37 @@
         else el.style.removeProperty('display');
       });
       const min = host.querySelector('#mrVideoMin'); if (min) { min.hidden = !this.joined; min.textContent = this.minimized ? '□' : '—'; }
-      const mic = host.querySelector('#mrVideoMic'); if (mic) {
-        mic.innerHTML=this.mediaButton('mic',this.micEnabled?'Вкл':'Выкл',this.micEnabled);
-        mic.classList.toggle('is-on',this.micEnabled); mic.classList.toggle('is-off',!this.micEnabled);
-        mic.title=this.micEnabled?'Выключить микрофон':'Включить микрофон';
+      const mic=host.querySelector('#mrVideoMic');if(mic){
+        const locked=this.role==='student'&&!this.studentMicAllowed;
+        const on=!locked&&this.micEnabled;
+        mic.innerHTML=this.mediaButton('mic',locked?'Заблокирован':on?'Вкл':'Выкл',on);
+        mic.classList.toggle('is-on',on);mic.classList.toggle('is-off',!on);
+        mic.disabled=locked;
+        mic.title=locked?'Микрофон отключён преподавателем':on?'Выключить микрофон':'Включить микрофон';
       }
-      const cam = host.querySelector('#mrVideoCam'); if (cam) {
-        cam.innerHTML=this.mediaButton('camera',this.cameraEnabled?'Вкл':'Выкл',this.cameraEnabled);
-        cam.classList.toggle('is-on',this.cameraEnabled); cam.classList.toggle('is-off',!this.cameraEnabled);
-        cam.title=this.cameraEnabled?'Выключить камеру':'Включить камеру';
+      const cam=host.querySelector('#mrVideoCam');if(cam){
+        const locked=this.role==='student'&&!this.studentCameraAllowed;
+        const on=!locked&&this.cameraEnabled;
+        cam.innerHTML=this.mediaButton('camera',locked?'Заблокирована':on?'Вкл':'Выкл',on);
+        cam.classList.toggle('is-on',on);cam.classList.toggle('is-off',!on);
+        cam.disabled=locked;
+        cam.title=locked?'Камера отключена преподавателем':on?'Выключить камеру':'Включить камеру';
+      }
+      const studentMicPolicy=host.querySelector('#mrStudentMicPolicy');
+      if(studentMicPolicy){
+        studentMicPolicy.hidden=!this.joined||this.role!=='teacher';
+        studentMicPolicy.innerHTML=this.mediaButton('mic',this.studentMicAllowed?'Микрофон ученика':'Разрешить микрофон',this.studentMicAllowed);
+        studentMicPolicy.classList.toggle('is-on',this.studentMicAllowed);
+        studentMicPolicy.classList.toggle('is-off',!this.studentMicAllowed);
+        studentMicPolicy.title=this.studentMicAllowed?'Отключить и заблокировать микрофон ученика':'Разрешить ученику снова включить микрофон';
+      }
+      const studentCamPolicy=host.querySelector('#mrStudentCamPolicy');
+      if(studentCamPolicy){
+        studentCamPolicy.hidden=!this.joined||this.role!=='teacher';
+        studentCamPolicy.innerHTML=this.mediaButton('camera',this.studentCameraAllowed?'Камера ученика':'Разрешить камеру',this.studentCameraAllowed);
+        studentCamPolicy.classList.toggle('is-on',this.studentCameraAllowed);
+        studentCamPolicy.classList.toggle('is-off',!this.studentCameraAllowed);
+        studentCamPolicy.title=this.studentCameraAllowed?'Отключить и заблокировать камеру ученика':'Разрешить ученику снова включить камеру';
       }
       const sound = host.querySelector('#mrVideoSound'); if (sound) {
         sound.innerHTML=this.mediaButton('sound',this.soundEnabled?'Звук':'Звук выкл',this.soundEnabled);
