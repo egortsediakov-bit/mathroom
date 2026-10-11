@@ -285,7 +285,7 @@
           background:#fff!important;
           overflow:visible!important
         }
-        .mr-native-call.floating.role-teacher{right:calc(clamp(220px,17vw,280px) + 22px)!important}
+        .mr-native-call.floating.desktop-lesson-unified{right:calc(clamp(220px,17vw,280px) + 22px)!important}
         .mr-native-call.floating.expanded{width:clamp(230px,20vw,340px)!important;max-height:none!important;overflow:visible!important}
         .mr-native-call.floating .mr-call-head{display:none!important}
         .mr-native-call.floating .mr-call-note,.mr-native-call.floating .mr-call-quality{display:none!important}
@@ -370,7 +370,7 @@
         @media(max-width:1180px) and (min-width:761px){
           .mr-native-call.floating{width:clamp(215px,24vw,300px)!important}
           .mr-native-call.floating.view-both{width:clamp(215px,24vw,300px)!important}
-          .mr-native-call.floating.role-teacher{right:clamp(236px,25vw,270px)!important}
+          .mr-native-call.floating.desktop-lesson-unified{right:clamp(236px,25vw,270px)!important}
           .mr-video-hero-mount>.mr-native-call.joined:not(.floating){
             padding:9px!important;
             gap:7px!important;
@@ -2927,7 +2927,8 @@
       const boardFullscreen=!!(document.fullscreenElement?.classList?.contains('board-card') && document.fullscreenElement.contains(host));
       const safeViewMode=this.joined ? this.videoViewMode : 'remote';
       const effectiveFloating=this.joined && (this.videoFloating || safeViewMode==='hidden');
-      host.className = `mr-native-call role-${this.role} ${this.joined ? 'joined' : ''} ${this.isConnected() ? 'connected' : ''} connection-${indicatorState} ${this.minimized ? 'minimized' : ''} ${this.expanded ? 'expanded' : ''} ${this.screenTrack ? 'sharing' : ''} ${effectiveFloating ? 'floating' : ''} ${this.callFullscreen ? 'mr-call-fullscreen' : ''} ${boardFullscreen ? 'mr-board-fullscreen-video' : ''} view-${safeViewMode}`;
+      const unifiedDesktop=!!document.querySelector('.mr-desktop-lesson-unified');
+      host.className = `mr-native-call role-${this.role} ${unifiedDesktop ? 'desktop-lesson-unified' : ''} ${this.joined ? 'joined' : ''} ${this.isConnected() ? 'connected' : ''} connection-${indicatorState} ${this.minimized ? 'minimized' : ''} ${this.expanded ? 'expanded' : ''} ${this.screenTrack ? 'sharing' : ''} ${effectiveFloating ? 'floating' : ''} ${this.callFullscreen ? 'mr-call-fullscreen' : ''} ${boardFullscreen ? 'mr-board-fullscreen-video' : ''} view-${safeViewMode}`;
       if(this.joined && safeViewMode==='hidden' && !boardFullscreen)this.applyHiddenPanelGeometry();
       if(!this.joined)this.clearHiddenPanelGeometry();
       const status = host.querySelector('#mrVideoStatus'); if (status) status.textContent = this.status;
@@ -3734,11 +3735,11 @@
       const [queue,live]=await Promise.all([getQueue(ctx.lessonId),getLiveState(ctx.lessonId)]);
       observeLessonChanges(ctx,queue,live).catch(e=>console.warn('[Mathroom history]',e));
       const teacherContent=document.querySelector('.content');
-      if(teacherContent)teacherContent.classList.add('mr-teacher-lesson-content');
+      if(teacherContent)teacherContent.classList.add('mr-teacher-lesson-content','mr-desktop-lesson-unified','mr-lesson-role-teacher');
       if(!host){
         host=document.createElement('div');
         host.id='mrLessonAddon';
-        host.className='mr-lesson-addon mr-lesson-video-top';
+        host.className='mr-lesson-addon mr-lesson-video-top mr-desktop-video-shell';
         host.innerHTML='<div id="mrTeacherVideoMount"></div>';
         if(teacherContent)teacherContent.prepend(host);else control.parentElement?.insertBefore(host,control);
       }
@@ -3748,17 +3749,50 @@
   }
 
   function refreshStudentAddon() {
-    const home=document.querySelector('.student-home');if(!home||!call)return;
+    const home=document.querySelector('.student-home');
+    if(!home||!call)return;
+
     const liveMode=home.classList.contains('student-lesson-mode');
     const desktopLesson=home.classList.contains('student-desktop-lesson-mode');
     const preLesson=home.classList.contains('student-prelesson-mode');
+
+    if(desktopLesson){
+      home.classList.add('mr-desktop-lesson-unified','mr-lesson-role-student');
+
+      let shell=document.querySelector('#mrStudentLessonAddon');
+      let mount=document.querySelector('#mrStudentVideoMount');
+
+      if(!shell){
+        shell=document.createElement('div');
+        shell.id='mrStudentLessonAddon';
+        shell.className='mr-lesson-addon mr-lesson-video-top mr-desktop-video-shell';
+      }else{
+        shell.classList.add('mr-lesson-addon','mr-lesson-video-top','mr-desktop-video-shell');
+      }
+
+      if(!mount){
+        mount=document.createElement('div');
+        mount.id='mrStudentVideoMount';
+      }
+
+      if(mount.parentNode!==shell)shell.appendChild(mount);
+      if(home.firstElementChild!==shell)home.prepend(shell);
+
+      shell.hidden=false;
+      mount.hidden=false;
+      call.renderPanel(mount,false);
+      return;
+    }
+
+    home.classList.remove('mr-desktop-lesson-unified','mr-lesson-role-student');
+
     let mount=document.querySelector('#mrStudentVideoMount');
     if(!mount){
       mount=document.createElement('div');
       mount.id='mrStudentVideoMount';
       mount.className='mr-student-video-top';
       home.prepend(mount);
-    }else if(home.firstElementChild!==mount){
+    }else if(home.firstElementChild!==mount && !mount.closest('#mrStudentLessonAddon')){
       home.prepend(mount);
     }
 
@@ -3775,7 +3809,7 @@
     }
 
     mount.hidden=false;
-    if(liveMode&&!desktopLesson){
+    if(liveMode){
       const task=document.querySelector('#studentLessonTaskMount');
       const board=document.querySelector('#studentLessonBoard');
       if(task&&mount.nextElementSibling!==task)mount.insertAdjacentElement('afterend',task);
