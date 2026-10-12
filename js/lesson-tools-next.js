@@ -139,10 +139,6 @@
       this.virtualBgFrameInterval = 50;
       this.virtualBgAvgProcessMs = 0;
       this.virtualBgLibPromise = null;
-      this.virtualBgAdvancedLibPromise = null;
-      this.virtualBgProcessorKind = '';
-      this.virtualBgSegTimer = null;
-      this.virtualBgSegWatchdog = null;
 
       this.devices = { audioinput:[], videoinput:[], audiooutput:[] };
       this.deviceModal = null;
@@ -1673,310 +1669,6 @@
       catch(e){this.virtualBgLibPromise=null;throw e}
     }
 
-    async ensureAdvancedVirtualBgLibrary() {
-      if(this.virtualBgAdvancedLibPromise)return this.virtualBgAdvancedLibPromise;
-      this.virtualBgAdvancedLibPromise=(async()=>{
-        const mod=await import('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.21/+esm');
-        const vision=await mod.FilesetResolver.forVisionTasks(
-          'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.21/wasm'
-        );
-        return {mod,vision};
-      })();
-      try{return await this.virtualBgAdvancedLibPromise}
-      catch(e){
-        this.virtualBgAdvancedLibPromise=null;
-        throw e;
-      }
-    }
-
-    async startAdvancedVirtualBackground(raw) {
-      const {mod,vision}=await this.ensureAdvancedVirtualBgLibrary();
-      const {ImageSegmenter}=mod;
-      const modelUrl='https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_multiclass_256x256/float32/latest/selfie_multiclass_256x256.tflite';
-
-      /* Stability first. The Web GPU delegate can return corrupted category
-         masks on some browser/GPU combinations. The model is only 256×256, so
-         run inference on CPU at a lower cadence while video rendering stays
-         independent and smooth. */
-      const processor=await ImageSegmenter.createFromOptions(vision,{
-        baseOptions:{modelAssetPath:modelUrl,delegate:'CPU'},
-        runningMode:'VIDEO',
-        outputCategoryMask:true,
-        outputConfidenceMasks:false
-      });
-
-      const labels=processor.getLabels?.()||[];
-      const detectedBgIndex=labels.findIndex(x=>/background/i.test(String(x||'')));
-      const backgroundIndex=detectedBgIndex>=0?detectedBgIndex:0;
-
-      const source=document.createElement('video');
-      source.autoplay=true;
-      source.muted=true;
-      source.playsInline=true;
-      source.srcObject=new MediaStream([raw]);
-      await source.play().catch(()=>{});
-
-      const settings=raw.getSettings?.()||{};
-      if(!source.videoWidth||!source.videoHeight){
-        await new Promise(resolve=>{
-          const done=()=>resolve();
-          source.addEventListener('loadedmetadata',done,{once:true});
-          setTimeout(done,700);
-        });
-      }
-
-      const srcW=Math.max(1,Number(source.videoWidth)||Number(settings.width)||960);
-      const srcH=Math.max(1,Number(source.videoHeight)||Number(settings.height)||540);
-      const isMobile=(window.matchMedia?.('(pointer: coarse)')?.matches||window.innerWidth<=760);
-      const maxLong=isMobile?640:960;
-      const scale=Math.min(1,maxLong/Math.max(srcW,srcH));
-      const w=Math.max(240,Math.round(srcW*scale));
-      const h=Math.max(240,Math.round(srcH*scale));
-
-      const canvas=document.createElement('canvas');
-      canvas.width=w;
-      canvas.height=h;
-      const ctx=canvas.getContext('2d',{alpha:true,desynchronized:true});
-      if(!ctx)throw new Error('Canvas виртуального фона недоступен');
-
-      const blurCanvas=document.createElement('canvas');
-      const blurScale=isMobile?0.055:0.075;
-      blurCanvas.width=Math.max(20,Math.round(w*blurScale));
-      blurCanvas.height=Math.max(20,Math.round(h*blurScale));
-      const blurCtx=blurCanvas.getContext('2d',{alpha:false});
-      if(blurCtx)blurCtx.imageSmoothingEnabled=true;
-
-      const maskCanvas=document.createElement('canvas');
-      const maskCtx=maskCanvas.getContext('2d',{alpha:true,willReadFrequently:true});
-      let previousAlpha=null;
-      let maskReady=false;
-      let lastGoodMaskAt=0;
-      let lastRenderAt=0;
-      let consecutiveMaskErrors=0;
-
-      const output=canvas.captureStream(isMobile?20:24);
-      const outTrack=output.getVideoTracks()[0];
-      if(!outTrack)throw new Error('Не удалось создать обработанный видеопоток');
-      outTrack.enabled=this.cameraEnabled;
-      try{outTrack.contentHint='motion'}catch{}
-
-      const drawBackground=()=>{
-        ctx.globalCompositeOperation='destination-over';
-
-        if(this.virtualBgMode==='blur'){
-          if(blurCtx){
-            blurCtx.clearRect(0,0,blurCanvas.width,blurCanvas.height);
-            blurCtx.drawImage(source,0,0,blurCanvas.width,blurCanvas.height);
-
-            ctx.save();
-            ctx.imageSmoothingEnabled=true;
-            ctx.imageSmoothingQuality='high';
-
-            /* Downscale/upscale does the heavy lifting. A small desktop Canvas
-               blur finishes the effect without repeatedly filtering 960px video. */
-            if(!isMobile){
-              ctx.filter='blur(8px)';
-              ctx.drawImage(blurCanvas,0,0,blurCanvas.width,blurCanvas.height,0,0,w,h);
-              ctx.filter='none';
-            }else{
-              ctx.drawImage(blurCanvas,0,0,blurCanvas.width,blurCanvas.height,0,0,w,h);
-            }
-            ctx.restore();
-          }else{
-            ctx.save();
-            ctx.filter='blur(18px)';
-            ctx.drawImage(source,0,0,w,h);
-            ctx.restore();
-          }
-        }else if(this.virtualBgMode==='custom'&&this.virtualBgCustomImage){
-          this.drawCover(ctx,this.virtualBgCustomImage,w,h);
-        }else{
-          this.drawBuiltInBackground(ctx,w,h,this.virtualBgMode);
-        }
-      };
-
-      const updateMask=result=>{
-        const mask=result?.categoryMask;
-        if(!mask)return;
-
-        try{
-          const categories=mask.getAsUint8Array?.();
-          if(!categories?.length)throw new Error('Пустая маска');
-
-          let mw=Number(mask.width||0),mh=Number(mask.height||0);
-          if(!mw||!mh||mw*mh!==categories.length){
-            if(categories.length===256*256){
-              mw=256;mh=256;
-            }else{
-              throw new Error('Некорректный размер маски');
-            }
-          }
-
-          /* Reject obviously corrupted GPU/driver-style data instead of ever
-             presenting it as video. Selfie Multiclass has six categories. */
-          let bad=0;
-          const stride=Math.max(1,Math.floor(categories.length/512));
-          for(let i=0;i<categories.length;i+=stride){
-            if(categories[i]>5)bad++;
-          }
-          if(bad>2)throw new Error('Повреждённая карта сегментации');
-
-          if(maskCanvas.width!==mw||maskCanvas.height!==mh){
-            maskCanvas.width=mw;
-            maskCanvas.height=mh;
-            previousAlpha=new Uint8Array(mw*mh);
-          }
-          if(!maskCtx)throw new Error('Маска Canvas недоступна');
-
-          const img=maskCtx.createImageData(mw,mh);
-          const d=img.data;
-          let personPixels=0;
-
-          for(let p=0,i=0;p<categories.length;p++,i+=4){
-            const category=categories[p];
-            const person=category!==backgroundIndex;
-            if(person)personPixels++;
-
-            const prev=previousAlpha?.[p]||0;
-            /* Enter foreground quickly, release it even faster. This prevents
-               furniture remaining sharp after the person moves away. */
-            const a=person
-              ? Math.round(255*.88+prev*.12)
-              : Math.round(prev*.10);
-
-            if(previousAlpha)previousAlpha[p]=a;
-            d[i]=255;d[i+1]=255;d[i+2]=255;d[i+3]=a;
-          }
-
-          /* A completely full foreground mask is almost certainly a broken
-             result. Zero foreground is valid when nobody is in frame. */
-          if(personPixels>categories.length*.985){
-            throw new Error('Некорректная маска переднего плана');
-          }
-
-          maskCtx.putImageData(img,0,0);
-          maskReady=true;
-          lastGoodMaskAt=performance.now();
-          consecutiveMaskErrors=0;
-        }catch(e){
-          consecutiveMaskErrors++;
-          console.warn('[Mathroom virtual background] multiclass mask rejected',e);
-        }finally{
-          /* MPMask holds native/WASM/GPU memory and must be explicitly released
-             after copying its pixels. */
-          try{mask.close?.()}catch{}
-          try{result?.confidenceMasks?.forEach?.(m=>m?.close?.())}catch{}
-        }
-      };
-
-      this.virtualBgSourceVideo=source;
-      this.virtualBgCanvas=canvas;
-      this.virtualBgStream=output;
-      this.virtualBgTrack=outTrack;
-      this.virtualBgProcessor=processor;
-      this.virtualBgProcessorKind='multiclass-cpu';
-
-      /* Render the camera independently from ML inference. The old path only
-         painted when segmentation finished, so slow inference directly became
-         a low-FPS/red/blank camera. */
-      const renderLoop=ts=>{
-        if(this.virtualBgProcessor!==processor||this.destroyed)return;
-        this.virtualBgRaf=requestAnimationFrame(renderLoop);
-
-        const renderInterval=isMobile?50:41; // 20 / 24 fps
-        if(ts-lastRenderAt<renderInterval||source.readyState<2)return;
-        lastRenderAt=ts;
-
-        ctx.save();
-        ctx.clearRect(0,0,w,h);
-        ctx.globalCompositeOperation='source-over';
-
-        const maskFresh=maskReady&&(performance.now()-lastGoodMaskAt)<1400;
-
-        if(maskFresh&&maskCanvas.width&&maskCanvas.height){
-          ctx.filter=isMobile?'blur(.9px)':'blur(.65px)';
-          ctx.drawImage(maskCanvas,0,0,maskCanvas.width,maskCanvas.height,0,0,w,h);
-          ctx.filter='none';
-
-          ctx.globalCompositeOperation='source-in';
-          ctx.drawImage(source,0,0,w,h);
-
-          drawBackground();
-        }else{
-          /* Fail-open to normal camera. A broken/stalled ML model must never
-             break the lesson's camera feed. */
-          ctx.globalCompositeOperation='source-over';
-          ctx.drawImage(source,0,0,w,h);
-        }
-
-        ctx.restore();
-      };
-      this.virtualBgRaf=requestAnimationFrame(renderLoop);
-
-      const scheduleSegment=delay=>{
-        clearTimeout(this.virtualBgSegTimer);
-        this.virtualBgSegTimer=setTimeout(runSegment,delay);
-      };
-
-      const runSegment=()=>{
-        if(this.virtualBgProcessor!==processor||this.destroyed)return;
-        if(source.readyState<2||document.visibilityState==='hidden'){
-          scheduleSegment(300);
-          return;
-        }
-
-        const started=performance.now();
-        let settled=false;
-
-        clearTimeout(this.virtualBgSegWatchdog);
-        this.virtualBgSegWatchdog=setTimeout(()=>{
-          if(settled||this.virtualBgProcessor!==processor)return;
-          settled=true;
-          consecutiveMaskErrors++;
-          /* Continue the lesson even if one MediaPipe callback disappears. */
-          scheduleSegment(420);
-        },1000);
-
-        try{
-          processor.segmentForVideo(source,Math.floor(performance.now()),result=>{
-            if(settled)return;
-            settled=true;
-            clearTimeout(this.virtualBgSegWatchdog);
-            this.virtualBgSegWatchdog=null;
-
-            updateMask(result);
-
-            const elapsed=performance.now()-started;
-            this.virtualBgAvgProcessMs=this.virtualBgAvgProcessMs
-              ?this.virtualBgAvgProcessMs*.80+elapsed*.20
-              :elapsed;
-
-            /* Adaptive inference cadence: expensive ML never gets to monopolize
-               the main UI/video thread. */
-            const next=this.virtualBgAvgProcessMs>180?420
-              :this.virtualBgAvgProcessMs>110?320
-              :this.virtualBgAvgProcessMs>70?250
-              :180;
-
-            scheduleSegment(next);
-          });
-        }catch(e){
-          settled=true;
-          clearTimeout(this.virtualBgSegWatchdog);
-          this.virtualBgSegWatchdog=null;
-          consecutiveMaskErrors++;
-          console.warn('[Mathroom virtual background] multiclass inference',e);
-          scheduleSegment(420);
-        }
-      };
-
-      /* Draw normal camera immediately; segmentation appears when ready. */
-      ctx.drawImage(source,0,0,w,h);
-      scheduleSegment(20);
-
-      return outTrack;
-    }
-
     drawCover(ctx,img,w,h) {
       const iw=img.videoWidth||img.naturalWidth||img.width||w;
       const ih=img.videoHeight||img.naturalHeight||img.height||h;
@@ -2051,16 +1743,11 @@
     stopVirtualBackground() {
       cancelAnimationFrame(this.virtualBgRaf);
       this.virtualBgRaf=0;
-      clearTimeout(this.virtualBgSegTimer);
-      clearTimeout(this.virtualBgSegWatchdog);
-      this.virtualBgSegTimer=null;
-      this.virtualBgSegWatchdog=null;
       this.virtualBgBusy=false;
       this.virtualBgAvgProcessMs=0;
       this.virtualBgFrameInterval=50;
       try{this.virtualBgProcessor?.close?.()}catch{}
       this.virtualBgProcessor=null;
-      this.virtualBgProcessorKind='';
       try{this.virtualBgSourceVideo?.pause?.()}catch{}
       if(this.virtualBgSourceVideo)this.virtualBgSourceVideo.srcObject=null;
       this.virtualBgSourceVideo=null;
@@ -2082,10 +1769,6 @@
       }
 
       this.stopVirtualBackground();
-
-      /* Stable path: keep camera reliability independent from the experimental
-         multiclass segmenter. The advanced engine remains available in code but
-         is not used until its browser compatibility is proven. */
       const Seg=await this.ensureVirtualBgLibrary();
 
       const source=document.createElement('video');
@@ -2441,37 +2124,6 @@
       return outTrack;
     }
 
-    async activateVirtualBackgroundSafely(rawTrack=null) {
-      const raw=rawTrack||this.localStream?.getVideoTracks?.()[0]||null;
-      if(!raw||raw.readyState!=='live'||this.virtualBgMode==='none')return false;
-      if(this.localStream?.getVideoTracks?.()[0]!==raw)return false;
-
-      try{
-        await this.startVirtualBackground();
-        if(this.localStream?.getVideoTracks?.()[0]!==raw){
-          this.stopVirtualBackground();
-          return false;
-        }
-        await this.syncOutgoingCameraTrack();
-        this.bindMedia();
-        this.bindPrejoinPreview();
-        this.paintPrejoin();
-        return true;
-      }catch(e){
-        console.warn('[Mathroom virtual background] optional effect failed',e);
-        this.stopVirtualBackground();
-
-        const sender=this.pc?.getSenders?.().find(x=>x.track?.kind==='video')
-          ||this.pc?.getTransceivers?.().find(x=>x.receiver?.track?.kind==='video')?.sender;
-        if(sender&&!this.screenTrack&&raw.readyState==='live'){
-          await sender.replaceTrack(raw).catch(()=>{});
-        }
-        this.bindMedia();
-        this.bindPrejoinPreview();
-        return false;
-      }
-    }
-
     async syncOutgoingCameraTrack() {
       if(this.screenTrack)return;
       const track=this.effectiveCameraTrack();
@@ -2492,30 +2144,28 @@
       const previous=this.virtualBgMode;
 
       try{
+        /* Load the exact background before switching state. This avoids the
+           one-frame grey flash that the previous implementation could show. */
         if(['studio','mathroom','classroom'].includes(mode)){
           await this.ensureBuiltInBackgroundImage(mode);
         }
 
         this.virtualBgMode=mode;
         localStorage.setItem(`mathroom.media.bg.${this.role}`,mode);
-        if(mode==='custom'&&this.virtualBgCustomId){
-          localStorage.setItem(`mathroom.media.bgCustom.${this.role}`,this.virtualBgCustomId);
-        }
+        if(mode==='custom'&&this.virtualBgCustomId)localStorage.setItem(`mathroom.media.bgCustom.${this.role}`,this.virtualBgCustomId);
         this.paintAllVirtualBgControls();
 
         if(mode==='none'){
           if(this.virtualBgProcessor||this.virtualBgTrack)this.stopVirtualBackground();
           await this.syncOutgoingCameraTrack();
         }else{
-          const raw=this.localStream?.getVideoTracks?.().find(t=>t.readyState==='live')||null;
-
-          /* Camera can be off in prejoin. Just remember the user's choice;
-             activation happens after a raw video track exists. */
-          if(raw){
-            await this.activateVirtualBackgroundSafely(raw);
+          /* Once segmentation is running, changing an asset is only a background
+             swap. Keep the same processed MediaStreamTrack to avoid freezes. */
+          if(!this.virtualBgProcessor||!this.virtualBgTrack||this.virtualBgTrack.readyState!=='live'){
+            await this.startVirtualBackground();
+            await this.syncOutgoingCameraTrack();
           }
         }
-
         this.paintPrejoin();
         this.paintAllVirtualBgControls();
       }catch(e){
@@ -2683,90 +2333,59 @@
     }
 
     async switchInputDevice(kind, deviceId = '', opts = {}) {
-      if(!navigator.mediaDevices?.getUserMedia)throw new Error('Браузер не поддерживает выбор устройств');
-      const isAudio=kind==='audio';
-      const constraints=isAudio
-        ?{audio:this.audioConstraints(deviceId),video:false}
-        :{audio:false,video:this.videoConstraints(deviceId)};
-
-      let stream;
-      try{
-        stream=await navigator.mediaDevices.getUserMedia(constraints);
-      }catch(primaryError){
-        /* Only relax video constraints after a real constraints/device failure.
-           Do not stop an existing camera before the replacement is acquired. */
-        if(isAudio)throw primaryError;
-
-        const fallbackVideo=deviceId
-          ?{deviceId:{exact:deviceId}}
-          :true;
-
-        try{
-          stream=await navigator.mediaDevices.getUserMedia({audio:false,video:fallbackVideo});
-        }catch{
-          if(deviceId){
-            /* Saved device ids can become stale after reconnect/reboot. */
-            stream=await navigator.mediaDevices.getUserMedia({audio:false,video:true});
-          }else{
-            throw primaryError;
-          }
-        }
-      }
-
-      const next=isAudio?stream.getAudioTracks()[0]:stream.getVideoTracks()[0];
-      if(!next){
-        stream?.getTracks?.().forEach(t=>t.stop?.());
-        throw new Error(isAudio?'Микрофон не найден':'Камера не найдена');
-      }
-
-      if(isAudio){
-        next.enabled=this.micEnabled;
+      if (!navigator.mediaDevices?.getUserMedia) throw new Error('Браузер не поддерживает выбор устройств');
+      const isAudio = kind === 'audio';
+      const constraints = isAudio
+        ? { audio:this.audioConstraints(deviceId), video:false }
+        : { audio:false, video:this.videoConstraints(deviceId) };
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      const next = isAudio ? stream.getAudioTracks()[0] : stream.getVideoTracks()[0];
+      if (!next) throw new Error(isAudio ? 'Микрофон не найден' : 'Камера не найдена');
+      if (isAudio) {
+        next.enabled = this.micEnabled;
         await this.configureSpeechTrack(next);
-      }else{
-        next.enabled=true;
-        this.cameraEnabled=true;
+      } else {
+        next.enabled = this.cameraEnabled;
         this.configureCameraTrack(next);
-        localStorage.setItem(`mathroom.media.camera.${this.role}`,'1');
       }
 
-      if(!this.localStream)this.localStream=new MediaStream();
-      const old=isAudio?this.localStream.getAudioTracks()[0]:this.localStream.getVideoTracks()[0];
-
-      /* Acquire first, replace second, stop old last. This is the stable camera
-         lifecycle we used before the virtual-background refactor. */
-      if(old)this.localStream.removeTrack(old);
+      if (!this.localStream) this.localStream = new MediaStream();
+      const old = isAudio ? this.localStream.getAudioTracks()[0] : this.localStream.getVideoTracks()[0];
+      if (old) this.localStream.removeTrack(old);
       this.localStream.addTrack(next);
 
-      const sender=this.pc?.getSenders?.().find(x=>x.track?.kind===kind)
-        ||this.pc?.getTransceivers?.().find(x=>x.receiver?.track?.kind===kind)?.sender;
-
-      if(sender&&!(kind==='video'&&this.screenTrack)){
-        try{
-          await sender.replaceTrack(next);
-          if(!isAudio)await this.applyVideoSenderProfile(true);
-        }catch(e){
-          console.warn('[Mathroom devices] replaceTrack',kind,e);
+      if(!isAudio && this.virtualBgMode!=='none'){
+        try{await this.startVirtualBackground()}
+        catch(e){
+          console.warn('[Mathroom virtual background] restart after camera switch',e);
+          this.virtualBgMode='none';
+          localStorage.setItem(`mathroom.media.bg.${this.role}`,'none');
+          this.stopVirtualBackground();
         }
       }
 
+      const sender = this.pc?.getSenders?.().find(s => s.track?.kind === kind)
+        || this.pc?.getTransceivers?.().find(t => t.receiver?.track?.kind === kind)?.sender;
+      const outgoing = isAudio ? next : this.effectiveCameraTrack();
+      if (sender && !(kind === 'video' && this.screenTrack)) {
+        try {
+          await sender.replaceTrack(outgoing);
+          if(!isAudio)await this.applyVideoSenderProfile(true);
+        } catch (e) { console.warn('[Mathroom devices] replaceTrack', kind, e); }
+      }
       old?.stop?.();
 
-      if(isAudio){
-        this.selectedAudioInput=deviceId||'';
-        localStorage.setItem(`mathroom.media.audioinput.${this.role}`,this.selectedAudioInput);
-      }else{
-        this.stopVirtualBackground();
-        this.selectedVideoInput=next.getSettings?.().deviceId||deviceId||'';
-        localStorage.setItem(`mathroom.media.videoinput.${this.role}`,this.selectedVideoInput);
+      if (isAudio) {
+        this.selectedAudioInput = deviceId || '';
+        localStorage.setItem(`mathroom.media.audioinput.${this.role}`, this.selectedAudioInput);
+      } else {
+        this.selectedVideoInput = deviceId || '';
+        localStorage.setItem(`mathroom.media.videoinput.${this.role}`, this.selectedVideoInput);
       }
-
       this.bindMedia();
-      this.bindPrejoinPreview();
       await this.refreshDevices().catch(()=>{});
       this.paintPrejoin();
-      this.paint();
-
-      if(!opts.silent)toast(isAudio?'Микрофон переключён':'Камера переключена');
+      if (!opts.silent) toast(isAudio ? 'Микрофон переключён' : 'Камера переключена');
       return next;
     }
 
@@ -2960,14 +2579,19 @@
 
           /* Camera permission is requested only because the user explicitly
              pressed Camera. Failure never disables the Join button. */
-          const raw=await this.switchInputDevice('video',this.selectedVideoInput||'',{silent:true});
+          await this.switchInputDevice('video',this.selectedVideoInput||'',{silent:true});
+
+          if(this.virtualBgMode!=='none'){
+            try{
+              await this.startVirtualBackground();
+              await this.syncOutgoingCameraTrack();
+            }catch(e){
+              console.warn('[Mathroom prejoin virtual background]',e);
+            }
+          }
 
           this.bindPrejoinPreview();
           this.paintPrejoin();
-
-          if(this.virtualBgMode!=='none'){
-            setTimeout(()=>this.activateVirtualBackgroundSafely(raw),250);
-          }
         }catch(e){
           this.cameraEnabled=false;
           localStorage.setItem(`mathroom.media.camera.${this.role}`,'0');
@@ -3235,71 +2859,54 @@
       if(this.role==='student'&&!this.studentCameraAllowed)return toast('Камера отключена преподавателем');
       if(this.mediaActionLock?.camera)return;
       if(this.mediaActionLock)this.mediaActionLock.camera=true;
-
+      const cameraLockFailsafe=setTimeout(()=>{
+        if(this.mediaActionLock)this.mediaActionLock.camera=false;
+      },5000);
       try{
-        let track=this.localStream?.getVideoTracks?.()[0]||null;
+        let t=this.localStream?.getVideoTracks?.()[0];
 
-        if(!track||track.readyState!=='live'){
-          try{
-            this.cameraEnabled=true;
-            localStorage.setItem(`mathroom.media.camera.${this.role}`,'1');
-
-            track=await this.switchInputDevice('video',this.selectedVideoInput||'',{silent:true});
-            track.enabled=true;
-
-            this.bindMedia();
-            this.bindPrejoinPreview();
-            this.paintPrejoin();
-            this.paint();
-            toast('Камера включена');
-
-            /* Background starts only after raw camera is visibly working. */
-            if(this.virtualBgMode!=='none'){
-              setTimeout(()=>this.activateVirtualBackgroundSafely(track),250);
-            }
-          }catch(e){
-            this.cameraEnabled=false;
-            localStorage.setItem(`mathroom.media.camera.${this.role}`,'0');
-            this.paintPrejoin();
-            this.paint();
-
-            console.warn('[Mathroom camera on demand]',e);
-            if(e?.name==='NotAllowedError'||e?.name==='SecurityError'){
-              toast('Доступ к камере не разрешён');
-            }else if(e?.name==='NotReadableError'||e?.name==='AbortError'){
-              toast('Камера занята другим приложением');
-            }else if(e?.name==='NotFoundError'||e?.name==='OverconstrainedError'){
-              toast('Камера не найдена');
-            }else{
-              toast('Не удалось включить камеру');
-            }
+        if(!t || t.readyState!=='live'){
+        try{
+          this.cameraEnabled=true;
+          localStorage.setItem(`mathroom.media.camera.${this.role}`,'1');
+          t=await this.switchInputDevice('video',this.selectedVideoInput||'',{silent:true});
+          const outgoing=this.effectiveCameraTrack()||t;
+          const sender=this.pc?.getSenders?.().find(s=>s.track?.kind==='video')
+            ||this.pc?.getTransceivers?.().find(tr=>tr.receiver?.track?.kind==='video')?.sender;
+          if(sender){
+            await sender.replaceTrack(outgoing);
+            await this.applyVideoSenderProfile(true);
           }
+          this.bindMedia();
+          this.paint();
+          toast('Камера включена');
+        }catch(e){
+          this.cameraEnabled=false;
+          localStorage.setItem(`mathroom.media.camera.${this.role}`,'0');
+          this.paint();
+          if(e?.name==='NotAllowedError'||e?.name==='SecurityError') toast('Доступ к камере не разрешён — урок продолжится без камеры');
+          else if(e?.name==='NotFoundError'||e?.name==='OverconstrainedError') toast('Камера не найдена — урок продолжится без камеры');
+          else { console.warn('[Mathroom camera on demand]',e); toast('Не удалось включить камеру — урок продолжится без неё'); }
+        }
           return;
         }
 
-        const next=!this.cameraEnabled||track.enabled===false;
-        this.cameraEnabled=next;
-        track.enabled=next;
-        if(this.virtualBgTrack)this.virtualBgTrack.enabled=next;
-        localStorage.setItem(`mathroom.media.camera.${this.role}`,next?'1':'0');
-
-        const sender=this.pc?.getSenders?.().find(x=>x.track?.kind==='video')
-          ||this.pc?.getTransceivers?.().find(x=>x.receiver?.track?.kind==='video')?.sender;
-
-        if(sender&&!this.screenTrack){
+        this.cameraEnabled=!this.cameraEnabled;
+        t.enabled=this.cameraEnabled;
+        if(this.virtualBgTrack)this.virtualBgTrack.enabled=this.cameraEnabled;
+        localStorage.setItem(`mathroom.media.camera.${this.role}`,this.cameraEnabled?'1':'0');
+        const sender=this.pc?.getSenders?.().find(s=>s.track?.kind==='video')
+          ||this.pc?.getTransceivers?.().find(tr=>tr.receiver?.track?.kind==='video')?.sender;
+        if(sender){
           try{
-            await sender.replaceTrack(next?(this.effectiveCameraTrack()||track):null);
-            if(next)await this.applyVideoSenderProfile(true);
-          }catch(e){
-            console.warn('[Mathroom camera toggle]',e);
-          }
+            await sender.replaceTrack(this.cameraEnabled?(this.effectiveCameraTrack()||t):null);
+            if(this.cameraEnabled)await this.applyVideoSenderProfile(true);
+          }catch(e){console.warn('[Mathroom camera toggle]',e)}
         }
-
         this.bindMedia();
-        this.bindPrejoinPreview();
-        this.paintPrejoin();
         this.paint();
       }finally{
+        clearTimeout(cameraLockFailsafe);
         if(this.mediaActionLock)this.mediaActionLock.camera=false;
       }
     }
