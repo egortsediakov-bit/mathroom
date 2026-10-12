@@ -115,17 +115,19 @@
       this.selectedAudioOutput = localStorage.getItem(`mathroom.media.audiooutput.${this.role}`) || '';
 
       this.virtualBgMode = localStorage.getItem(`mathroom.media.bg.${this.role}`) || 'none';
-      /* v40.12: replace the old near-black Mathroom and plain light presets
-         with richer built-in scenes. Preserve existing users' choices by
-         migrating the old keys instead of resetting their background. */
-      if(this.virtualBgMode==='mathroom')this.virtualBgMode='board';
+      /* v40.13: built-ins are real 16:9 assets. Migrate the short-lived
+         v40.12 preset keys without losing the user's selection. */
       if(this.virtualBgMode==='light')this.virtualBgMode='studio';
-      if (!['none','blur','studio','board','gradient','custom'].includes(this.virtualBgMode)) this.virtualBgMode = 'none';
+      if(this.virtualBgMode==='board')this.virtualBgMode='classroom';
+      if(this.virtualBgMode==='gradient')this.virtualBgMode='mathroom';
+      if (!['none','blur','studio','mathroom','classroom','custom'].includes(this.virtualBgMode)) this.virtualBgMode = 'none';
       localStorage.setItem(`mathroom.media.bg.${this.role}`,this.virtualBgMode);
       this.virtualBgCustomId = localStorage.getItem(`mathroom.media.bgCustom.${this.role}`) || '';
       this.virtualBgSaved = [];
       this.virtualBgDbPromise = null;
       this.virtualBgCustomImage = null;
+      this.virtualBgBuiltInImages = new Map();
+      this.virtualBgBuiltInPromises = new Map();
       this.virtualBgProcessor = null;
       this.virtualBgSourceVideo = null;
       this.virtualBgCanvas = null;
@@ -720,6 +722,137 @@
         #mrVideoPanel:-webkit-full-screen #mrVideoEnd{
           display:inline-flex!important;
         }
+        .mr-prejoin-bg{
+          border-top:1px solid var(--line,#e4e4df);
+          padding-top:10px;
+          margin-top:2px;
+        }
+        .mr-prejoin-bg-head{
+          display:flex;
+          align-items:flex-start;
+          justify-content:space-between;
+          gap:10px;
+          margin-bottom:9px;
+        }
+        .mr-prejoin-bg-head>b,.mr-prejoin-bg-head b{font-size:13px}
+        .mr-bg-options{
+          display:grid;
+          grid-template-columns:repeat(2,minmax(0,1fr));
+          gap:8px;
+        }
+        .mr-bg-option{
+          appearance:none;
+          border:1px solid #deded9;
+          background:#fff;
+          color:#17191c;
+          border-radius:13px;
+          padding:6px;
+          display:grid;
+          gap:6px;
+          min-width:0;
+          cursor:pointer;
+          text-align:left;
+          font:inherit;
+          transition:border-color .14s ease,box-shadow .14s ease,transform .14s ease,background .14s ease;
+        }
+        .mr-bg-option:hover{
+          border-color:#c7c7c0;
+          transform:translateY(-1px);
+          box-shadow:0 5px 15px rgba(20,20,18,.07);
+        }
+        .mr-bg-option.active{
+          border-color:var(--koto-orange,#ED591A);
+          background:#fff8f4;
+          box-shadow:0 0 0 2px rgba(237,89,26,.12);
+        }
+        .mr-bg-preview{
+          position:relative;
+          display:block;
+          width:100%;
+          aspect-ratio:16/9;
+          overflow:hidden;
+          border-radius:9px;
+          background-size:cover;
+          background-position:center;
+          background-repeat:no-repeat;
+          box-shadow:inset 0 0 0 1px rgba(0,0,0,.06);
+        }
+        .mr-bg-preview-original{
+          background:
+            radial-gradient(circle at 72% 30%,rgba(255,255,255,.75),transparent 30%),
+            linear-gradient(135deg,#9b8879,#d9c7b6 52%,#7b8a82);
+        }
+        .mr-bg-preview-original::before{
+          content:"";
+          position:absolute;
+          left:18%;top:15%;width:22%;height:62%;
+          border-radius:4px;
+          background:rgba(72,58,47,.45);
+          box-shadow:34px 13px 0 rgba(244,231,213,.42);
+        }
+        .mr-bg-preview-blur{
+          background:
+            radial-gradient(circle at 18% 30%,rgba(237,89,26,.55),transparent 25%),
+            radial-gradient(circle at 76% 68%,rgba(63,103,85,.56),transparent 28%),
+            linear-gradient(135deg,#c6b29d,#eee3d6);
+        }
+        .mr-bg-preview-blur::after{
+          content:"";
+          position:absolute;inset:-12px;
+          backdrop-filter:blur(10px);
+          background:rgba(255,255,255,.05);
+        }
+        .mr-bg-preview-upload{
+          display:flex;
+          flex-direction:column;
+          align-items:center;
+          justify-content:center;
+          gap:2px;
+          background:#f4f4f1;
+          border:1px dashed #cfcfc8;
+          box-shadow:none;
+        }
+        .mr-bg-preview-upload b{
+          font-size:27px;
+          line-height:1;
+          font-weight:400;
+          color:var(--koto-orange,#ED591A);
+        }
+        .mr-bg-preview-upload small{font-size:9px;color:#7c7b76}
+        .mr-bg-option-label{
+          display:block;
+          padding:0 2px 1px;
+          font-size:11px;
+          line-height:1.15;
+          font-weight:750;
+          white-space:nowrap;
+          overflow:hidden;
+          text-overflow:ellipsis;
+        }
+        .mr-bg-upload{position:relative}
+        .mr-bg-saved{margin-top:10px}
+        .mr-bg-saved-title{font-size:11px;font-weight:800;margin-bottom:6px}
+        .mr-bg-saved-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+        .mr-bg-saved-item{
+          position:relative;
+          min-width:0;
+          border:1px solid #deded9;
+          border-radius:10px;
+          background:#fff;
+          padding:4px;
+          cursor:pointer;
+          overflow:hidden;
+        }
+        .mr-bg-saved-item.active{border-color:var(--koto-orange,#ED591A);box-shadow:0 0 0 2px rgba(237,89,26,.10)}
+        .mr-bg-saved-thumb{display:block;aspect-ratio:16/9;border-radius:7px;overflow:hidden;background:#eee}
+        .mr-bg-saved-thumb img{width:100%;height:100%;object-fit:cover;display:block}
+        .mr-bg-saved-name{display:block;margin-top:4px;font-size:9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+        .mr-bg-saved-remove{
+          position:absolute;right:6px;top:6px;width:18px;height:18px;border-radius:50%;
+          display:grid;place-items:center;background:rgba(20,20,20,.72);color:#fff;font-size:13px;line-height:1;
+        }
+        .mr-bg-hint{margin-top:7px;line-height:1.35}
+
         @media(max-width:760px){
           body>.mr-native-call.mr-call-fullscreen .mr-local-video{
             width:28vw!important;height:37vw!important;max-width:126px!important;max-height:168px!important
@@ -727,6 +860,7 @@
           body>.mr-native-call.mr-call-fullscreen .mr-call-person{bottom:82px!important}
           body>.mr-native-call.mr-call-fullscreen .mr-call-actions{gap:6px!important;padding:7px!important}
           body>.mr-native-call.mr-call-fullscreen .mr-call-actions .btn{min-width:44px!important;min-height:44px!important;padding:7px!important}
+          .mr-bg-options{grid-template-columns:repeat(2,minmax(0,1fr))}
         }
       `;
       document.head.appendChild(st);
@@ -1276,21 +1410,41 @@
     }
 
     virtualBgControlsHtml() {
+      const asset=v=>`./assets/virtual-bg/${v}.svg?v=40.13`;
       return `<div class="mr-prejoin-bg mr-prejoin-wide">
         <div class="mr-prejoin-bg-head">
-          <div><b>Фон камеры</b><div class="small muted">Обрабатывается локально в браузере</div></div>
+          <div><b>Фон камеры</b><div class="small muted">Центр каждого фона специально оставлен спокойным под человека</div></div>
           <span class="small muted" data-bg-status></span>
         </div>
         <div class="mr-bg-options">
-          <button class="btn sm" type="button" data-bg-mode="none"><span class="mr-bg-swatch mr-bg-swatch-original"></span><span>Оригинал</span></button>
-          <button class="btn sm" type="button" data-bg-mode="blur"><span class="mr-bg-swatch mr-bg-swatch-blur"></span><span>Размытие</span></button>
-          <button class="btn sm" type="button" data-bg-mode="studio"><span class="mr-bg-swatch" style="background:linear-gradient(135deg,#dccdbb 0%,#f2e8dc 55%,#b59a7c 100%)"></span><span>Кабинет</span></button>
-          <button class="btn sm" type="button" data-bg-mode="board"><span class="mr-bg-swatch" style="background:linear-gradient(135deg,#173b32,#254f43 72%,#b9783d 73%,#80512d 100%)"></span><span>Доска</span></button>
-          <button class="btn sm" type="button" data-bg-mode="gradient"><span class="mr-bg-swatch" style="background:linear-gradient(135deg,#f4eadf 0%,#f7c3a3 55%,#ed591a 100%)"></span><span>Градиент</span></button>
-          <label class="btn sm mr-bg-upload"><span class="mr-bg-swatch mr-bg-swatch-upload">+</span><span>Загрузить</span><input data-bg-file type="file" accept="image/png,image/jpeg,image/webp" hidden></label>
+          <button class="mr-bg-option" type="button" data-bg-mode="none">
+            <span class="mr-bg-preview mr-bg-preview-original"><i></i></span>
+            <span class="mr-bg-option-label">Оригинал</span>
+          </button>
+          <button class="mr-bg-option" type="button" data-bg-mode="blur">
+            <span class="mr-bg-preview mr-bg-preview-blur"><i></i></span>
+            <span class="mr-bg-option-label">Размытие</span>
+          </button>
+          <button class="mr-bg-option" type="button" data-bg-mode="studio">
+            <span class="mr-bg-preview" style="background-image:url('${asset('studio')}')"></span>
+            <span class="mr-bg-option-label">Студия</span>
+          </button>
+          <button class="mr-bg-option" type="button" data-bg-mode="mathroom">
+            <span class="mr-bg-preview" style="background-image:url('${asset('mathroom')}')"></span>
+            <span class="mr-bg-option-label">Mathroom</span>
+          </button>
+          <button class="mr-bg-option" type="button" data-bg-mode="classroom">
+            <span class="mr-bg-preview" style="background-image:url('${asset('classroom')}')"></span>
+            <span class="mr-bg-option-label">Класс</span>
+          </button>
+          <label class="mr-bg-option mr-bg-upload">
+            <span class="mr-bg-preview mr-bg-preview-upload"><b>+</b><small>JPG · PNG · WEBP</small></span>
+            <span class="mr-bg-option-label">Свой фон</span>
+            <input data-bg-file type="file" accept="image/png,image/jpeg,image/webp" hidden>
+          </label>
         </div>
         <div class="mr-bg-saved" data-bg-saved></div>
-        <div class="mr-bg-hint small muted">Загруженные фоны сохраняются в этом браузере и доступны в следующих уроках.</div>
+        <div class="mr-bg-hint small muted">Свои фоны сохраняются только в этом браузере. Встроенные фоны не передаются на сервер и подставляются локально.</div>
       </div>`;
     }
 
@@ -1456,9 +1610,9 @@
         status.textContent=this.virtualBgBusy ? 'Обработка…'
           : this.virtualBgMode==='none' ? 'Без обработки'
           : this.virtualBgMode==='blur' ? 'Размытие включено'
-          : this.virtualBgMode==='studio' ? 'Тёплый кабинет'
-          : this.virtualBgMode==='board' ? 'Меловая доска'
-          : this.virtualBgMode==='gradient' ? 'Фирменный градиент'
+          : this.virtualBgMode==='studio' ? 'Студия'
+          : this.virtualBgMode==='mathroom' ? 'Фон Mathroom'
+          : this.virtualBgMode==='classroom' ? 'Современный класс'
           : 'Свой фон';
       });
     }
@@ -1523,182 +1677,57 @@
       ctx.drawImage(img,(w-dw)/2,(h-dh)/2,dw,dh);
     }
 
-    drawBuiltInBackground(ctx,w,h,mode) {
-      const px=v=>Math.round(v);
-      const roundedRect=(x,y,rw,rh,r,fill)=>{
-        const rr=Math.min(r,rw/2,rh/2);
-        ctx.beginPath();
-        ctx.moveTo(x+rr,y);
-        ctx.arcTo(x+rw,y,x+rw,y+rh,rr);
-        ctx.arcTo(x+rw,y+rh,x,y+rh,rr);
-        ctx.arcTo(x,y+rh,x,y,rr);
-        ctx.arcTo(x,y,x+rw,y,rr);
-        ctx.closePath();
-        if(fill){ctx.fillStyle=fill;ctx.fill()}
+    builtInVirtualBackgroundUrl(mode) {
+      const files={
+        studio:'studio.svg',
+        mathroom:'mathroom.svg',
+        classroom:'classroom.svg'
       };
+      return files[mode] ? `./assets/virtual-bg/${files[mode]}?v=40.13` : '';
+    }
 
-      if(mode==='studio'){
-        /* Warm home-office scene. Detail stays mostly at the edges so the
-           segmented person remains visually dominant in the centre. */
-        const wall=ctx.createLinearGradient(0,0,w,h);
-        wall.addColorStop(0,'#d8c5af');
-        wall.addColorStop(.48,'#efe5d9');
-        wall.addColorStop(1,'#c9ad90');
-        ctx.fillStyle=wall;ctx.fillRect(0,0,w,h);
+    async ensureBuiltInBackgroundImage(mode) {
+      const url=this.builtInVirtualBackgroundUrl(mode);
+      if(!url)return null;
 
-        // Soft window / daylight.
-        const glow=ctx.createRadialGradient(w*.73,h*.23,4,w*.73,h*.23,w*.48);
-        glow.addColorStop(0,'rgba(255,252,238,.95)');
-        glow.addColorStop(.45,'rgba(255,246,226,.42)');
-        glow.addColorStop(1,'rgba(255,244,224,0)');
-        ctx.fillStyle=glow;ctx.fillRect(0,0,w,h);
+      const cached=this.virtualBgBuiltInImages?.get(mode);
+      if(cached)return cached;
 
-        // Left shelving unit.
-        ctx.fillStyle='rgba(91,65,45,.72)';
-        ctx.fillRect(0,0,w*.205,h);
-        ctx.fillStyle='rgba(244,232,216,.16)';
-        for(let y=h*.16;y<h*.88;y+=h*.215)ctx.fillRect(w*.025,y,w*.155,Math.max(3,h*.009));
+      const pending=this.virtualBgBuiltInPromises?.get(mode);
+      if(pending)return pending;
 
-        const books=[
-          ['#b96c4b',.035,.11,.028,.14],['#466b62',.069,.13,.024,.12],['#d6a25f',.099,.10,.021,.15],
-          ['#764d3d',.126,.14,.030,.11],['#657d8b',.038,.34,.022,.14],['#d08c55',.067,.37,.030,.11],
-          ['#596b4d',.105,.33,.025,.15],['#b76f62',.137,.36,.024,.12]
-        ];
-        for(const [color,x,y,bw,bh] of books){
-          roundedRect(w*x,h*y,w*bw,h*bh,Math.max(2,w*.004),color);
-        }
+      const promise=new Promise((resolve,reject)=>{
+        const img=new Image();
+        img.decoding='async';
+        img.onload=()=>{
+          this.virtualBgBuiltInImages.set(mode,img);
+          this.virtualBgBuiltInPromises.delete(mode);
+          resolve(img);
+        };
+        img.onerror=()=>{
+          this.virtualBgBuiltInPromises.delete(mode);
+          reject(new Error('Не удалось загрузить встроенный фон'));
+        };
+        img.src=url;
+      });
+      this.virtualBgBuiltInPromises.set(mode,promise);
+      return promise;
+    }
 
-        // Framed print behind the shoulder line.
-        ctx.fillStyle='rgba(255,252,246,.86)';
-        roundedRect(w*.73,h*.14,w*.17,h*.24,w*.008,'rgba(255,252,246,.88)');
-        ctx.strokeStyle='rgba(91,66,49,.38)';
-        ctx.lineWidth=Math.max(2,w*.003);
-        ctx.strokeRect(w*.735,h*.148,w*.16,h*.224);
-        ctx.fillStyle='rgba(237,89,26,.42)';
-        ctx.beginPath();ctx.arc(w*.815,h*.255,w*.035,0,Math.PI*2);ctx.fill();
-
-        // Low cabinet and plant.
-        roundedRect(w*.70,h*.69,w*.30,h*.31,w*.012,'rgba(116,80,53,.68)');
-        ctx.fillStyle='rgba(45,84,62,.82)';
-        const stems=[[.89,.70,.85,.48],[.90,.71,.95,.51],[.89,.70,.91,.43],[.88,.71,.82,.55]];
-        ctx.strokeStyle='rgba(45,84,62,.82)';ctx.lineWidth=Math.max(3,w*.006);
-        for(const [x1,y1,x2,y2] of stems){
-          ctx.beginPath();ctx.moveTo(w*x1,h*y1);ctx.lineTo(w*x2,h*y2);ctx.stroke();
-          ctx.beginPath();ctx.ellipse(w*x2,h*y2,w*.025,h*.045,-.45,0,Math.PI*2);ctx.fill();
-        }
-        roundedRect(w*.855,h*.68,w*.08,h*.095,w*.012,'#aa7350');
-
-        // Gentle vignette to give camera-like depth.
-        const vignette=ctx.createRadialGradient(w*.5,h*.46,w*.12,w*.5,h*.46,w*.74);
-        vignette.addColorStop(.45,'rgba(0,0,0,0)');
-        vignette.addColorStop(1,'rgba(55,35,20,.18)');
-        ctx.fillStyle=vignette;ctx.fillRect(0,0,w,h);
+    drawBuiltInBackground(ctx,w,h,mode) {
+      const img=this.virtualBgBuiltInImages?.get(mode);
+      if(img){
+        this.drawCover(ctx,img,w,h);
         return;
       }
 
-      if(mode==='board'){
-        /* Green chalkboard rather than a pure black virtual background. */
-        const g=ctx.createLinearGradient(0,0,w,h);
-        g.addColorStop(0,'#17392f');
-        g.addColorStop(.52,'#21493c');
-        g.addColorStop(1,'#16352d');
-        ctx.fillStyle=g;ctx.fillRect(0,0,w,h);
-
-        // Subtle chalk texture.
-        ctx.save();
-        ctx.globalAlpha=.055;
-        ctx.strokeStyle='#e8efe8';
-        ctx.lineWidth=1;
-        for(let y=8;y<h;y+=17){
-          ctx.beginPath();
-          ctx.moveTo(0,y);
-          ctx.lineTo(w,y+Math.sin(y*.07)*3);
-          ctx.stroke();
-        }
-        ctx.restore();
-
-        // Wooden frame.
-        const wood=ctx.createLinearGradient(0,0,w,0);
-        wood.addColorStop(0,'#7b4b2b');wood.addColorStop(.45,'#b27945');wood.addColorStop(1,'#714326');
-        ctx.fillStyle=wood;
-        ctx.fillRect(0,0,w,Math.max(10,h*.035));
-        ctx.fillRect(0,h-Math.max(12,h*.045),w,Math.max(12,h*.045));
-        ctx.fillRect(0,0,Math.max(9,w*.014),h);
-        ctx.fillRect(w-Math.max(9,w*.014),0,Math.max(9,w*.014),h);
-
-        // Keep formulas around the perimeter so they do not cover the face.
-        ctx.fillStyle='rgba(239,245,236,.38)';
-        ctx.font=`italic 600 ${Math.max(15,Math.round(w*.026))}px Georgia, serif`;
-        ctx.fillText('a² + b² = c²',w*.05,h*.20);
-        ctx.fillText('y = kx + b',w*.72,h*.18);
-        ctx.font=`italic 500 ${Math.max(13,Math.round(w*.022))}px Georgia, serif`;
-        ctx.fillText('S = πr²',w*.075,h*.78);
-        ctx.fillText('x₁,₂ = (−b ± √D) / 2a',w*.64,h*.80);
-
-        ctx.strokeStyle='rgba(239,245,236,.28)';
-        ctx.lineWidth=Math.max(1.5,w*.002);
-        ctx.beginPath();
-        ctx.moveTo(w*.72,h*.58);ctx.lineTo(w*.91,h*.58);
-        ctx.moveTo(w*.80,h*.68);ctx.lineTo(w*.80,h*.47);
-        ctx.stroke();
-        ctx.beginPath();
-        for(let i=0;i<=24;i++){
-          const x=w*(.73+i*.007);
-          const y=h*(.62-.006*i*i+.12*i);
-          if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);
-        }
-        ctx.stroke();
-
-        // Small brand tab, not a giant logo.
-        roundedRect(w*.04,h*.88,w*.16,h*.065,h*.015,'rgba(10,24,20,.42)');
-        ctx.fillStyle='rgba(255,255,255,.75)';
-        ctx.font=`800 ${Math.max(10,Math.round(w*.015))}px Inter,Arial,sans-serif`;
-        ctx.fillText('MATHROOM',w*.062,h*.922);
-        ctx.fillStyle='#ed591a';
-        ctx.beginPath();ctx.arc(w*.052,h*.908,Math.max(3,w*.006),0,Math.PI*2);ctx.fill();
-        return;
-      }
-
-      /* Brand abstract: cream/orange, no hard white field. */
-      const base=ctx.createLinearGradient(0,0,w,h);
-      base.addColorStop(0,'#efe5da');
-      base.addColorStop(.47,'#e7d2bf');
-      base.addColorStop(1,'#c88d68');
-      ctx.fillStyle=base;ctx.fillRect(0,0,w,h);
-
-      const orange=ctx.createRadialGradient(w*.12,h*.85,0,w*.12,h*.85,w*.52);
-      orange.addColorStop(0,'rgba(237,89,26,.78)');
-      orange.addColorStop(.55,'rgba(237,89,26,.28)');
-      orange.addColorStop(1,'rgba(237,89,26,0)');
-      ctx.fillStyle=orange;ctx.fillRect(0,0,w,h);
-
-      const cream=ctx.createRadialGradient(w*.88,h*.12,0,w*.88,h*.12,w*.48);
-      cream.addColorStop(0,'rgba(255,244,225,.82)');
-      cream.addColorStop(1,'rgba(255,244,225,0)');
-      ctx.fillStyle=cream;ctx.fillRect(0,0,w,h);
-
-      // Large soft geometric arcs.
-      ctx.save();
-      ctx.strokeStyle='rgba(255,255,255,.28)';
-      ctx.lineWidth=Math.max(18,w*.035);
-      ctx.beginPath();ctx.arc(w*.89,h*.72,w*.29,Math.PI*.85,Math.PI*1.75);ctx.stroke();
-      ctx.strokeStyle='rgba(109,69,45,.13)';
-      ctx.lineWidth=Math.max(10,w*.018);
-      ctx.beginPath();ctx.arc(w*.02,h*.18,w*.24,-Math.PI*.28,Math.PI*.58);ctx.stroke();
-      ctx.restore();
-
-      // Fine math grid on just one side.
-      ctx.save();ctx.globalAlpha=.13;ctx.strokeStyle='#6d4938';ctx.lineWidth=1;
-      const step=Math.max(30,Math.round(w*.052));
-      for(let x=w*.62;x<w;x+=step){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,h);ctx.stroke()}
-      for(let y=0;y<h*.58;y+=step){ctx.beginPath();ctx.moveTo(w*.62,y);ctx.lineTo(w,y);ctx.stroke()}
-      ctx.restore();
-
-      ctx.fillStyle='rgba(74,47,34,.70)';
-      ctx.font=`900 ${Math.max(18,Math.round(w*.035))}px Inter,Arial,sans-serif`;
-      ctx.fillText('MATHROOM',w*.055,h*.16);
-      ctx.fillStyle='#ed591a';
-      roundedRect(w*.055,h*.19,w*.11,Math.max(5,h*.012),Math.max(2,h*.006),'#ed591a');
+      /* Asset loading is awaited before processing starts. This neutral fallback
+         exists only for an exceptional frame during a cache transition. */
+      const g=ctx.createLinearGradient(0,0,w,h);
+      g.addColorStop(0,'#d9d7d1');
+      g.addColorStop(1,'#bdbab2');
+      ctx.fillStyle=g;
+      ctx.fillRect(0,0,w,h);
     }
 
     stopVirtualBackground() {
@@ -1724,6 +1753,10 @@
       const raw=this.localStream?.getVideoTracks?.()[0];
       if(!raw) throw new Error('Камера недоступна');
       if(!HTMLCanvasElement.prototype.captureStream) throw new Error('Этот браузер не поддерживает виртуальный фон');
+
+      if(['studio','mathroom','classroom'].includes(this.virtualBgMode)){
+        await this.ensureBuiltInBackgroundImage(this.virtualBgMode);
+      }
 
       this.stopVirtualBackground();
       const Seg=await this.ensureVirtualBgLibrary();
@@ -1873,22 +1906,29 @@
     }
 
     async setVirtualBackground(mode) {
-      if(!['none','blur','studio','board','gradient','custom'].includes(mode))return;
+      if(!['none','blur','studio','mathroom','classroom','custom'].includes(mode))return;
       if(mode==='custom'&&!this.virtualBgCustomImage)return;
 
       const previous=this.virtualBgMode;
-      this.virtualBgMode=mode;
-      localStorage.setItem(`mathroom.media.bg.${this.role}`,mode);
-      if(mode==='custom'&&this.virtualBgCustomId)localStorage.setItem(`mathroom.media.bgCustom.${this.role}`,this.virtualBgCustomId);
-      this.paintAllVirtualBgControls();
 
       try{
+        /* Load the exact background before switching state. This avoids the
+           one-frame grey flash that the previous implementation could show. */
+        if(['studio','mathroom','classroom'].includes(mode)){
+          await this.ensureBuiltInBackgroundImage(mode);
+        }
+
+        this.virtualBgMode=mode;
+        localStorage.setItem(`mathroom.media.bg.${this.role}`,mode);
+        if(mode==='custom'&&this.virtualBgCustomId)localStorage.setItem(`mathroom.media.bgCustom.${this.role}`,this.virtualBgCustomId);
+        this.paintAllVirtualBgControls();
+
         if(mode==='none'){
           if(this.virtualBgProcessor||this.virtualBgTrack)this.stopVirtualBackground();
           await this.syncOutgoingCameraTrack();
         }else{
-          // Switching between blur / built-ins / custom only changes compositing.
-          // Keep the same processed track to avoid a visible freeze or WebRTC track swap.
+          /* Once segmentation is running, changing an asset is only a background
+             swap. Keep the same processed MediaStreamTrack to avoid freezes. */
           if(!this.virtualBgProcessor||!this.virtualBgTrack||this.virtualBgTrack.readyState!=='live'){
             await this.startVirtualBackground();
             await this.syncOutgoingCameraTrack();
@@ -1898,12 +1938,8 @@
         this.paintAllVirtualBgControls();
       }catch(e){
         console.warn('[Mathroom virtual background]',e);
-        this.virtualBgMode=previous==='none'?'none':previous;
-        if(this.virtualBgMode==='none'){
-          localStorage.setItem(`mathroom.media.bg.${this.role}`,'none');
-          this.stopVirtualBackground();
-          await this.syncOutgoingCameraTrack();
-        }
+        this.virtualBgMode=previous;
+        localStorage.setItem(`mathroom.media.bg.${this.role}`,previous);
         this.paintPrejoin();
         this.paintAllVirtualBgControls();
         toast(e?.message||'Не удалось включить виртуальный фон');
