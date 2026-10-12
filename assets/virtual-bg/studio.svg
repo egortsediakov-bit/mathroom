@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900">
+<defs>
+  <linearGradient id="wall" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#CDB9A4"/><stop offset=".38" stop-color="#E8DDD0"/><stop offset=".72" stop-color="#EDE3D7"/><stop offset="1" stop-color="#B99C7E"/></linearGradient>
+  <linearGradient id="floor" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#9A765B"/><stop offset="1" stop-color="#6F513E"/></linearGradient>
+  <radialGradient id="day" cx="72%" cy="24%" r="55%"><stop stop-color="#FFF8EA" stop-opacity=".96"/><stop offset=".42" stop-color="#FFF3DD" stop-opacity=".46"/><stop offset="1" stop-color="#FFF0D6" stop-opacity="0"/></radialGradient>
+  <radialGradient id="safe" cx="50%" cy="46%" r="44%"><stop stop-color="#F5ECE1" stop-opacity=".56"/><stop offset="1" stop-color="#F5ECE1" stop-opacity="0"/></radialGradient>
+  <filter id="soft"><feGaussianBlur stdDeviation="9"/></filter>
+  <filter id="shadow"><feDropShadow dx="0" dy="16" stdDeviation="20" flood-color="#402817" flood-opacity=".18"/></filter>
+</defs>
+<rect width="1600" height="900" fill="url(#wall)"/>
+<rect y="728" width="1600" height="172" fill="url(#floor)"/>
+<path d="M0 720H1600" stroke="#7D5D47" stroke-opacity=".28" stroke-width="7"/>
+<rect width="1600" height="900" fill="url(#day)"/>
+<rect width="1600" height="900" fill="url(#safe)"/>
+
+<!-- shelving, intentionally pushed to the left edge -->
+<g filter="url(#shadow)">
+  <rect x="0" y="0" width="310" height="730" rx="0" fill="#6C4D39" fill-opacity=".76"/>
+  <rect x="34" y="88" width="240" height="6" rx="3" fill="#D5B89D" fill-opacity=".50"/>
+  <rect x="34" y="285" width="240" height="6" rx="3" fill="#D5B89D" fill-opacity=".50"/>
+  <rect x="34" y="482" width="240" height="6" rx="3" fill="#D5B89D" fill-opacity=".50"/>
+  <rect x="34" y="679" width="240" height="6" rx="3" fill="#D5B89D" fill-opacity=".50"/>
+  <g opacity=".93">
+    <rect x="49" y="133" width="33" height="117" rx="4" fill="#B86042"/><rect x="88" y="151" width="30" height="99" rx="4" fill="#536A61"/>
+    <rect x="124" y="118" width="28" height="132" rx="4" fill="#D79C50"/><rect x="158" y="144" width="42" height="106" rx="4" fill="#7A5344"/>
+    <rect x="207" y="126" width="31" height="124" rx="4" fill="#66788A"/>
+    <rect x="52" y="339" width="31" height="108" rx="4" fill="#5D7255"/><rect x="90" y="323" width="39" height="124" rx="4" fill="#C87C4A"/>
+    <rect x="136" y="350" width="29" height="97" rx="4" fill="#876257"/><rect x="172" y="313" width="33" height="134" rx="4" fill="#526B78"/>
+    <rect x="212" y="336" width="36" height="111" rx="4" fill="#B76D59"/>
+  </g>
+  <rect x="65" y="525" width="166" height="112" rx="9" fill="#F5EBDD" fill-opacity=".86"/>
+  <rect x="78" y="539" width="140" height="86" rx="5" fill="#DCC3A7"/>
+  <circle cx="148" cy="582" r="27" fill="#ED591A" fill-opacity=".52"/>
+</g>
+
+<!-- soft framed art on far right -->
+<g opacity=".86" filter="url(#shadow)">
+  <rect x="1214" y="112" width="242" height="302" rx="16" fill="#F7EFE4"/>
+  <rect x="1232" y="130" width="206" height="266" rx="8" fill="#D6C3AE"/>
+  <path d="M1264 327C1326 242 1372 267 1412 191" fill="none" stroke="#8C674F" stroke-width="10" stroke-linecap="round" opacity=".52"/>
+  <circle cx="1336" cy="225" r="46" fill="#ED591A" fill-opacity=".32"/>
+</g>
+
+<!-- sideboard and plant stay outside center portrait zone -->
+<g filter="url(#shadow)">
+  <rect x="1188" y="633" width="412" height="112" rx="18" fill="#72513D" fill-opacity=".82"/>
+  <rect x="1235" y="735" width="20" height="91" rx="8" fill="#604331"/>
+  <rect x="1536" y="735" width="20" height="91" rx="8" fill="#604331"/>
+  <rect x="1370" y="583" width="108" height="83" rx="22" fill="#A96D4B"/>
+  <g fill="#3E6A52">
+    <ellipse cx="1384" cy="531" rx="40" ry="82" transform="rotate(-27 1384 531)"/>
+    <ellipse cx="1435" cy="508" rx="38" ry="91" transform="rotate(18 1435 508)"/>
+    <ellipse cx="1480" cy="545" rx="34" ry="74" transform="rotate(39 1480 545)"/>
+    <ellipse cx="1413" cy="469" rx="31" ry="69" transform="rotate(-4 1413 469)"/>
+  </g>
+</g>
+
+<!-- warm lamp -->
+<g filter="url(#shadow)">
+  <rect x="1062" y="579" width="15" height="157" rx="7" fill="#6E5140"/>
+  <path d="M1014 580h112l-22-72h-68z" fill="#F1C58B"/>
+  <circle cx="1070" cy="588" r="77" fill="#FFD99D" opacity=".14" filter="url(#soft)"/>
+</g>
+</svg>
