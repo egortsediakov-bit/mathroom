@@ -2657,7 +2657,7 @@
     }
 
     async switchInputDevice(kind, deviceId = '', opts = {}) {
-      if (!navigator.mediaDevices?.getUserMedia) throw new Error('Браузер не поддерживает выбор устройств');
+      if(!navigator.mediaDevices?.getUserMedia)throw new Error('Браузер не поддерживает выбор устройств');
       const isAudio=kind==='audio';
 
       let stream=null;
@@ -2669,136 +2669,166 @@
           video:false
         });
         next=stream.getAudioTracks()[0]||null;
+        if(!next)throw new Error('Микрофон не найден');
       }else{
-        /* Camera availability must never depend on ideal resolution/frame-rate.
-           Some webcams/drivers reject a seemingly valid 720p/30 constraint set.
-           Retry progressively simpler constraints before declaring failure. */
-        const attempts=[
-          this.videoConstraints(deviceId),
-          deviceId ? {deviceId:{exact:deviceId}} : {width:{ideal:1280},height:{ideal:720}},
-          deviceId ? {deviceId:{exact:deviceId},width:{ideal:640},height:{ideal:480}} : true
-        ];
+        /* Fully release the previous camera pipeline before asking Windows /
+           Chromium to open the device again. A number of USB/virtual cameras
+           are exclusive and return NotReadableError while an old track,
+           MediaPipe source video or canvas pipeline still holds the device. */
+        this.stopVirtualBackground();
+
+        const previousTracks=this.localStream?.getVideoTracks?.()||[];
+        for(const track of previousTracks){
+          try{this.localStream.removeTrack(track)}catch{}
+          try{track.stop()}catch{}
+        }
+
+        /* Let the browser/device driver finish releasing the camera handle. */
+        await new Promise(resolve=>setTimeout(resolve,180));
+
+        const attempts=[];
+        if(deviceId){
+          attempts.push(this.videoConstraints(deviceId));
+          attempts.push({deviceId:{exact:deviceId},width:{ideal:1280},height:{ideal:720}});
+          attempts.push({deviceId:{exact:deviceId}});
+        }
+
+        /* Always finish with default-device attempts. Previously an invalid,
+           stale or busy saved device id meant every retry targeted the same
+           broken device and the camera could never recover. */
+        attempts.push({
+          width:{ideal:1280},
+          height:{ideal:720},
+          frameRate:{ideal:30},
+          aspectRatio:{ideal:16/9}
+        });
+        attempts.push({width:{ideal:640},height:{ideal:480}});
+        attempts.push(true);
+
         let lastError=null;
 
-        for(const video of attempts){
+        for(let i=0;i<attempts.length;i++){
           try{
-            stream=await navigator.mediaDevices.getUserMedia({audio:false,video});
+            stream=await navigator.mediaDevices.getUserMedia({
+              audio:false,
+              video:attempts[i]
+            });
             next=stream.getVideoTracks()[0]||null;
             if(next)break;
           }catch(e){
             lastError=e;
+            try{stream?.getTracks?.().forEach(t=>t.stop?.())}catch{}
+            stream=null;
+            next=null;
+
+            /* NotReadableError/AbortError often clear after the device driver
+               gets a little more time following the previous track stop. */
+            if(e?.name==='NotReadableError'||e?.name==='AbortError'){
+              await new Promise(resolve=>setTimeout(resolve,i<2?260:420));
+            }
           }
         }
 
         if(!next){
-          try{stream?.getTracks?.().forEach(t=>t.stop?.())}catch{}
-          throw lastError||new Error('Камера не найдена');
+          throw lastError||new Error('Камера не запустилась');
         }
       }
-
-      if(!next)throw new Error(isAudio?'Микрофон не найден':'Камера не найдена');
 
       if(isAudio){
         next.enabled=this.micEnabled;
         await this.configureSpeechTrack(next);
       }else{
-        next.enabled=this.cameraEnabled;
+        this.cameraEnabled=true;
+        next.enabled=true;
         this.configureCameraTrack(next);
+        localStorage.setItem(`mathroom.media.camera.${this.role}`,'1');
       }
 
       if(!this.localStream)this.localStream=new MediaStream();
-      const old=isAudio?this.localStream.getAudioTracks()[0]:this.localStream.getVideoTracks()[0];
 
-      if(old)this.localStream.removeTrack(old);
-      this.localStream.addTrack(next);
+      if(isAudio){
+        const old=this.localStream.getAudioTracks()[0];
+        if(old)this.localStream.removeTrack(old);
+        this.localStream.addTrack(next);
 
-      /* Commit and display the physical camera first. Background processing is
-         optional enhancement and must never make camera activation fail. */
-      if(!isAudio){
-        if(this.virtualBgProcessor||this.virtualBgTrack)this.stopVirtualBackground();
-
-        this.selectedVideoInput=deviceId||'';
-        localStorage.setItem(`mathroom.media.videoinput.${this.role}`,this.selectedVideoInput);
-
-        const sender=this.pc?.getSenders?.().find(s=>s.track?.kind==='video')
-          ||this.pc?.getTransceivers?.().find(t=>t.receiver?.track?.kind==='video')?.sender;
-
-        if(sender&&!this.screenTrack){
-          try{
-            await sender.replaceTrack(next);
-            await this.applyVideoSenderProfile(true);
-          }catch(e){
-            console.warn('[Mathroom devices] raw camera replaceTrack',e);
-          }
+        const sender=this.pc?.getSenders?.().find(s=>s.track?.kind==='audio')
+          ||this.pc?.getTransceivers?.().find(t=>t.receiver?.track?.kind==='audio')?.sender;
+        if(sender){
+          try{await sender.replaceTrack(next)}
+          catch(e){console.warn('[Mathroom devices] replaceTrack audio',e)}
         }
-
         old?.stop?.();
 
-        this.bindMedia();
-        this.bindPrejoinPreview();
-        this.paintPrejoin();
+        this.selectedAudioInput=deviceId||'';
+        try{localStorage.setItem(`mathroom.media.audioinput.${this.role}`,this.selectedAudioInput)}catch{}
+
+        try{this.bindMedia()}catch(e){console.warn('[Mathroom devices] bind audio',e)}
         await this.refreshDevices().catch(()=>{});
-
-        /* Start the selected effect after the camera is already live. Do not
-           await it: a CDN/model/CPU failure cannot roll the camera back. */
-        if(this.virtualBgMode!=='none'){
-          const rawTrack=next;
-          Promise.resolve().then(async()=>{
-            if(this.destroyed||rawTrack.readyState!=='live')return;
-            const current=this.localStream?.getVideoTracks?.()[0];
-            if(current!==rawTrack)return;
-
-            try{
-              await this.startVirtualBackground();
-
-              /* Another camera switch may have happened while the model loaded. */
-              if(this.localStream?.getVideoTracks?.()[0]!==rawTrack){
-                this.stopVirtualBackground();
-                return;
-              }
-
-              await this.syncOutgoingCameraTrack();
-              this.bindPrejoinPreview();
-              this.paintPrejoin();
-            }catch(e){
-              console.warn('[Mathroom virtual background] optional camera effect failed',e);
-              this.stopVirtualBackground();
-
-              /* Keep the selected mode so the user can retry it later; only the
-                 current camera session falls back to unprocessed video. */
-              const live=this.localStream?.getVideoTracks?.()[0];
-              if(live&&live.readyState==='live'){
-                const activeSender=this.pc?.getSenders?.().find(s=>s.track?.kind==='video')
-                  ||this.pc?.getTransceivers?.().find(t=>t.receiver?.track?.kind==='video')?.sender;
-                if(activeSender&&!this.screenTrack){
-                  await activeSender.replaceTrack(live).catch(()=>{});
-                }
-                this.bindMedia();
-                this.bindPrejoinPreview();
-              }
-            }
-          });
-        }
-
-        if(!opts.silent)toast('Камера переключена');
+        try{this.paintPrejoin()}catch{}
+        if(!opts.silent)toast('Микрофон переключён');
         return next;
       }
 
-      const sender=this.pc?.getSenders?.().find(s=>s.track?.kind==='audio')
-        ||this.pc?.getTransceivers?.().find(t=>t.receiver?.track?.kind==='audio')?.sender;
-      if(sender){
-        try{await sender.replaceTrack(next)}
-        catch(e){console.warn('[Mathroom devices] replaceTrack audio',e)}
+      /* Camera acquisition succeeded at this point. From here on, no UI/WebRTC
+         error is allowed to roll cameraEnabled back to false. */
+      this.localStream.addTrack(next);
+
+      const actualDeviceId=next.getSettings?.().deviceId||deviceId||'';
+      this.selectedVideoInput=actualDeviceId;
+      try{localStorage.setItem(`mathroom.media.videoinput.${this.role}`,actualDeviceId)}catch{}
+
+      const sender=this.pc?.getSenders?.().find(s=>s.track?.kind==='video')
+        ||this.pc?.getTransceivers?.().find(t=>t.receiver?.track?.kind==='video')?.sender;
+
+      if(sender&&!this.screenTrack){
+        try{
+          await sender.replaceTrack(next);
+          await this.applyVideoSenderProfile(true);
+        }catch(e){
+          console.warn('[Mathroom devices] raw camera replaceTrack',e);
+        }
       }
-      old?.stop?.();
 
-      this.selectedAudioInput=deviceId||'';
-      localStorage.setItem(`mathroom.media.audioinput.${this.role}`,this.selectedAudioInput);
-
-      this.bindMedia();
+      try{this.bindMedia()}catch(e){console.warn('[Mathroom devices] bind camera',e)}
+      try{this.bindPrejoinPreview()}catch(e){console.warn('[Mathroom devices] preview camera',e)}
+      try{this.paintPrejoin()}catch(e){console.warn('[Mathroom devices] paint camera',e)}
+      try{this.paint()}catch(e){console.warn('[Mathroom devices] paint lesson camera',e)}
       await this.refreshDevices().catch(()=>{});
-      this.paintPrejoin();
-      if(!opts.silent)toast('Микрофон переключён');
+
+      /* Virtual background is a strictly optional enhancement. It starts only
+         after a working raw camera has already been committed. */
+      if(this.virtualBgMode!=='none'){
+        const rawTrack=next;
+        setTimeout(async()=>{
+          if(this.destroyed||rawTrack.readyState!=='live')return;
+          if(this.localStream?.getVideoTracks?.()[0]!==rawTrack)return;
+
+          try{
+            await this.startVirtualBackground();
+            if(this.localStream?.getVideoTracks?.()[0]!==rawTrack){
+              this.stopVirtualBackground();
+              return;
+            }
+            await this.syncOutgoingCameraTrack();
+            this.bindPrejoinPreview();
+            this.paintPrejoin();
+          }catch(e){
+            console.warn('[Mathroom virtual background] optional camera effect failed',e);
+            this.stopVirtualBackground();
+
+            /* Keep raw camera live and restore it to WebRTC if the effect failed. */
+            if(rawTrack.readyState==='live'){
+              if(sender&&!this.screenTrack){
+                await sender.replaceTrack(rawTrack).catch(()=>{});
+              }
+              try{this.bindMedia()}catch{}
+              try{this.bindPrejoinPreview()}catch{}
+            }
+          }
+        },350);
+      }
+
+      if(!opts.silent)toast('Камера переключена');
       return next;
     }
 
@@ -3265,54 +3295,64 @@
       if(this.role==='student'&&!this.studentCameraAllowed)return toast('Камера отключена преподавателем');
       if(this.mediaActionLock?.camera)return;
       if(this.mediaActionLock)this.mediaActionLock.camera=true;
-      const cameraLockFailsafe=setTimeout(()=>{
-        if(this.mediaActionLock)this.mediaActionLock.camera=false;
-      },5000);
-      try{
-        let t=this.localStream?.getVideoTracks?.()[0];
 
-        if(!t || t.readyState!=='live'){
-        try{
+      try{
+        let raw=this.localStream?.getVideoTracks?.().find(t=>t.readyState==='live')||null;
+
+        if(!raw){
           this.cameraEnabled=true;
-          localStorage.setItem(`mathroom.media.camera.${this.role}`,'1');
-          t=await this.switchInputDevice('video',this.selectedVideoInput||'',{silent:true});
-          const outgoing=this.effectiveCameraTrack()||t;
-          const sender=this.pc?.getSenders?.().find(s=>s.track?.kind==='video')
-            ||this.pc?.getTransceivers?.().find(tr=>tr.receiver?.track?.kind==='video')?.sender;
-          if(sender){
-            await sender.replaceTrack(outgoing);
-            await this.applyVideoSenderProfile(true);
+          try{localStorage.setItem(`mathroom.media.camera.${this.role}`,'1')}catch{}
+          this.paint();
+
+          try{
+            raw=await this.switchInputDevice('video',this.selectedVideoInput||'',{silent:true});
+            raw.enabled=true;
+            this.cameraEnabled=true;
+            this.bindMedia();
+            this.paint();
+            toast('Камера включена');
+          }catch(e){
+            this.cameraEnabled=false;
+            try{localStorage.setItem(`mathroom.media.camera.${this.role}`,'0')}catch{}
+            this.paint();
+
+            console.warn('[Mathroom camera on demand]',e);
+            if(e?.name==='NotAllowedError'||e?.name==='SecurityError'){
+              toast('Доступ к камере запрещён браузером или системой');
+            }else if(e?.name==='NotReadableError'||e?.name==='AbortError'){
+              toast('Камера занята другим приложением или драйвер не отвечает');
+            }else if(e?.name==='NotFoundError'||e?.name==='OverconstrainedError'){
+              toast('Доступная камера не найдена');
+            }else{
+              toast('Не удалось запустить камеру');
+            }
           }
-          this.bindMedia();
-          this.paint();
-          toast('Камера включена');
-        }catch(e){
-          this.cameraEnabled=false;
-          localStorage.setItem(`mathroom.media.camera.${this.role}`,'0');
-          this.paint();
-          if(e?.name==='NotAllowedError'||e?.name==='SecurityError') toast('Доступ к камере не разрешён — урок продолжится без камеры');
-          else if(e?.name==='NotFoundError'||e?.name==='OverconstrainedError') toast('Камера не найдена — урок продолжится без камеры');
-          else { console.warn('[Mathroom camera on demand]',e); toast('Не удалось включить камеру — урок продолжится без неё'); }
-        }
           return;
         }
 
-        this.cameraEnabled=!this.cameraEnabled;
-        t.enabled=this.cameraEnabled;
-        if(this.virtualBgTrack)this.virtualBgTrack.enabled=this.cameraEnabled;
-        localStorage.setItem(`mathroom.media.camera.${this.role}`,this.cameraEnabled?'1':'0');
+        const next=raw.enabled===false||!this.cameraEnabled;
+        this.cameraEnabled=next;
+        raw.enabled=next;
+        if(this.virtualBgTrack)this.virtualBgTrack.enabled=next;
+        try{localStorage.setItem(`mathroom.media.camera.${this.role}`,next?'1':'0')}catch{}
+
         const sender=this.pc?.getSenders?.().find(s=>s.track?.kind==='video')
           ||this.pc?.getTransceivers?.().find(tr=>tr.receiver?.track?.kind==='video')?.sender;
-        if(sender){
+
+        if(sender&&!this.screenTrack){
           try{
-            await sender.replaceTrack(this.cameraEnabled?(this.effectiveCameraTrack()||t):null);
-            if(this.cameraEnabled)await this.applyVideoSenderProfile(true);
-          }catch(e){console.warn('[Mathroom camera toggle]',e)}
+            await sender.replaceTrack(next?(this.effectiveCameraTrack()||raw):null);
+            if(next)await this.applyVideoSenderProfile(true);
+          }catch(e){
+            console.warn('[Mathroom camera toggle]',e);
+          }
         }
+
         this.bindMedia();
+        this.bindPrejoinPreview();
+        this.paintPrejoin();
         this.paint();
       }finally{
-        clearTimeout(cameraLockFailsafe);
         if(this.mediaActionLock)this.mediaActionLock.camera=false;
       }
     }
