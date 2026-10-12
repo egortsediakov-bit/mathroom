@@ -141,6 +141,8 @@
       this.virtualBgLibPromise = null;
       this.virtualBgAdvancedLibPromise = null;
       this.virtualBgProcessorKind = '';
+      this.virtualBgSegTimer = null;
+      this.virtualBgSegWatchdog = null;
 
       this.devices = { audioinput:[], videoinput:[], audiooutput:[] };
       this.deviceModal = null;
@@ -1692,26 +1694,25 @@
       const {ImageSegmenter}=mod;
       const modelUrl='https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_multiclass_256x256/float32/latest/selfie_multiclass_256x256.tflite';
 
-      let processor;
-      try{
-        processor=await ImageSegmenter.createFromOptions(vision,{
-          baseOptions:{modelAssetPath:modelUrl,delegate:'GPU'},
-          runningMode:'VIDEO',
-          outputCategoryMask:true,
-          outputConfidenceMasks:false
-        });
-      }catch(gpuError){
-        console.warn('[Mathroom virtual background] multiclass GPU fallback',gpuError);
-        processor=await ImageSegmenter.createFromOptions(vision,{
-          baseOptions:{modelAssetPath:modelUrl,delegate:'CPU'},
-          runningMode:'VIDEO',
-          outputCategoryMask:true,
-          outputConfidenceMasks:false
-        });
-      }
+      /* Stability first. The Web GPU delegate can return corrupted category
+         masks on some browser/GPU combinations. The model is only 256×256, so
+         run inference on CPU at a lower cadence while video rendering stays
+         independent and smooth. */
+      const processor=await ImageSegmenter.createFromOptions(vision,{
+        baseOptions:{modelAssetPath:modelUrl,delegate:'CPU'},
+        runningMode:'VIDEO',
+        outputCategoryMask:true,
+        outputConfidenceMasks:false
+      });
+
+      const labels=processor.getLabels?.()||[];
+      const detectedBgIndex=labels.findIndex(x=>/background/i.test(String(x||'')));
+      const backgroundIndex=detectedBgIndex>=0?detectedBgIndex:0;
 
       const source=document.createElement('video');
-      source.autoplay=true;source.muted=true;source.playsInline=true;
+      source.autoplay=true;
+      source.muted=true;
+      source.playsInline=true;
       source.srcObject=new MediaStream([raw]);
       await source.play().catch(()=>{});
 
@@ -1733,12 +1734,13 @@
       const h=Math.max(240,Math.round(srcH*scale));
 
       const canvas=document.createElement('canvas');
-      canvas.width=w;canvas.height=h;
+      canvas.width=w;
+      canvas.height=h;
       const ctx=canvas.getContext('2d',{alpha:true,desynchronized:true});
       if(!ctx)throw new Error('Canvas виртуального фона недоступен');
 
       const blurCanvas=document.createElement('canvas');
-      const blurScale=isMobile?0.055:0.085;
+      const blurScale=isMobile?0.055:0.075;
       blurCanvas.width=Math.max(20,Math.round(w*blurScale));
       blurCanvas.height=Math.max(20,Math.round(h*blurScale));
       const blurCtx=blurCanvas.getContext('2d',{alpha:false});
@@ -1747,6 +1749,10 @@
       const maskCanvas=document.createElement('canvas');
       const maskCtx=maskCanvas.getContext('2d',{alpha:true,willReadFrequently:true});
       let previousAlpha=null;
+      let maskReady=false;
+      let lastGoodMaskAt=0;
+      let lastRenderAt=0;
+      let consecutiveMaskErrors=0;
 
       const output=canvas.captureStream(isMobile?20:24);
       const outTrack=output.getVideoTracks()[0];
@@ -1754,27 +1760,33 @@
       outTrack.enabled=this.cameraEnabled;
       try{outTrack.contentHint='motion'}catch{}
 
-      const renderBackground=()=>{
+      const drawBackground=()=>{
         ctx.globalCompositeOperation='destination-over';
+
         if(this.virtualBgMode==='blur'){
           if(blurCtx){
             blurCtx.clearRect(0,0,blurCanvas.width,blurCanvas.height);
             blurCtx.drawImage(source,0,0,blurCanvas.width,blurCanvas.height);
+
             ctx.save();
             ctx.imageSmoothingEnabled=true;
             ctx.imageSmoothingQuality='high';
+
+            /* Downscale/upscale does the heavy lifting. A small desktop Canvas
+               blur finishes the effect without repeatedly filtering 960px video. */
             if(!isMobile){
-              ctx.filter='blur(18px)';
+              ctx.filter='blur(8px)';
               ctx.drawImage(blurCanvas,0,0,blurCanvas.width,blurCanvas.height,0,0,w,h);
               ctx.filter='none';
             }else{
               ctx.drawImage(blurCanvas,0,0,blurCanvas.width,blurCanvas.height,0,0,w,h);
-              ctx.globalAlpha=.94;
-              ctx.drawImage(blurCanvas,0,0,blurCanvas.width,blurCanvas.height,0,0,w,h);
             }
             ctx.restore();
           }else{
-            ctx.save();ctx.filter='blur(22px)';ctx.drawImage(source,0,0,w,h);ctx.restore();
+            ctx.save();
+            ctx.filter='blur(18px)';
+            ctx.drawImage(source,0,0,w,h);
+            ctx.restore();
           }
         }else if(this.virtualBgMode==='custom'&&this.virtualBgCustomImage){
           this.drawCover(ctx,this.virtualBgCustomImage,w,h);
@@ -1783,71 +1795,78 @@
         }
       };
 
-      const renderResult=result=>{
+      const updateMask=result=>{
         const mask=result?.categoryMask;
         if(!mask)return;
-        let categories;
-        try{categories=mask.getAsUint8Array?.()}catch(e){
-          console.warn('[Mathroom virtual background] category mask read',e);
-          return;
-        }
-        if(!categories?.length)return;
 
-        let mw=Number(mask.width||0),mh=Number(mask.height||0);
-        if(!mw||!mh||mw*mh!==categories.length){
-          if(categories.length===256*256){mw=256;mh=256}
-          else{
-            const ratio=srcW/srcH;
-            mh=Math.max(1,Math.round(Math.sqrt(categories.length/Math.max(.1,ratio))));
-            mw=Math.max(1,Math.round(categories.length/mh));
-            if(mw*mh!==categories.length){
-              mw=categories.length;mh=1;
+        try{
+          const categories=mask.getAsUint8Array?.();
+          if(!categories?.length)throw new Error('Пустая маска');
+
+          let mw=Number(mask.width||0),mh=Number(mask.height||0);
+          if(!mw||!mh||mw*mh!==categories.length){
+            if(categories.length===256*256){
+              mw=256;mh=256;
+            }else{
+              throw new Error('Некорректный размер маски');
             }
           }
+
+          /* Reject obviously corrupted GPU/driver-style data instead of ever
+             presenting it as video. Selfie Multiclass has six categories. */
+          let bad=0;
+          const stride=Math.max(1,Math.floor(categories.length/512));
+          for(let i=0;i<categories.length;i+=stride){
+            if(categories[i]>5)bad++;
+          }
+          if(bad>2)throw new Error('Повреждённая карта сегментации');
+
+          if(maskCanvas.width!==mw||maskCanvas.height!==mh){
+            maskCanvas.width=mw;
+            maskCanvas.height=mh;
+            previousAlpha=new Uint8Array(mw*mh);
+          }
+          if(!maskCtx)throw new Error('Маска Canvas недоступна');
+
+          const img=maskCtx.createImageData(mw,mh);
+          const d=img.data;
+          let personPixels=0;
+
+          for(let p=0,i=0;p<categories.length;p++,i+=4){
+            const category=categories[p];
+            const person=category!==backgroundIndex;
+            if(person)personPixels++;
+
+            const prev=previousAlpha?.[p]||0;
+            /* Enter foreground quickly, release it even faster. This prevents
+               furniture remaining sharp after the person moves away. */
+            const a=person
+              ? Math.round(255*.88+prev*.12)
+              : Math.round(prev*.10);
+
+            if(previousAlpha)previousAlpha[p]=a;
+            d[i]=255;d[i+1]=255;d[i+2]=255;d[i+3]=a;
+          }
+
+          /* A completely full foreground mask is almost certainly a broken
+             result. Zero foreground is valid when nobody is in frame. */
+          if(personPixels>categories.length*.985){
+            throw new Error('Некорректная маска переднего плана');
+          }
+
+          maskCtx.putImageData(img,0,0);
+          maskReady=true;
+          lastGoodMaskAt=performance.now();
+          consecutiveMaskErrors=0;
+        }catch(e){
+          consecutiveMaskErrors++;
+          console.warn('[Mathroom virtual background] multiclass mask rejected',e);
+        }finally{
+          /* MPMask holds native/WASM/GPU memory and must be explicitly released
+             after copying its pixels. */
+          try{mask.close?.()}catch{}
+          try{result?.confidenceMasks?.forEach?.(m=>m?.close?.())}catch{}
         }
-
-        if(maskCanvas.width!==mw||maskCanvas.height!==mh){
-          maskCanvas.width=mw;maskCanvas.height=mh;
-          previousAlpha=new Uint8Array(mw*mh);
-        }
-        if(!maskCtx)return;
-
-        const img=maskCtx.createImageData(mw,mh);
-        const d=img.data;
-        let peoplePixels=0;
-
-        /* Selfie Multiclass categories:
-           0 background, 1 hair, 2 body/skin, 3 face, 4 clothes, 5 other
-           person-related pixels. Keeping only non-zero classes prevents a bed,
-           chair or wall from surviving merely because it touches the subject. */
-        for(let p=0,i=0;p<categories.length;p++,i+=4){
-          const person=categories[p]!==0;
-          if(person)peoplePixels++;
-          const target=person?255:0;
-          const prev=previousAlpha?.[p]||0;
-          /* Temporal smoothing removes single-frame mask flicker but releases
-             background quickly when a person leaves the camera. */
-          const a=person
-            ? Math.round(target*.82+prev*.18)
-            : Math.round(prev*.22);
-          if(previousAlpha)previousAlpha[p]=a;
-          d[i]=255;d[i+1]=255;d[i+2]=255;d[i+3]=a;
-        }
-        maskCtx.putImageData(img,0,0);
-
-        ctx.save();
-        ctx.clearRect(0,0,w,h);
-
-        /* Feather only the contour. The subject itself is never blurred. */
-        ctx.filter=isMobile?'blur(1.05px)':'blur(.72px)';
-        ctx.drawImage(maskCanvas,0,0,mw,mh,0,0,w,h);
-        ctx.filter='none';
-
-        ctx.globalCompositeOperation='source-in';
-        ctx.drawImage(source,0,0,w,h);
-
-        renderBackground();
-        ctx.restore();
       };
 
       this.virtualBgSourceVideo=source;
@@ -1855,35 +1874,106 @@
       this.virtualBgStream=output;
       this.virtualBgTrack=outTrack;
       this.virtualBgProcessor=processor;
-      this.virtualBgProcessorKind='multiclass';
+      this.virtualBgProcessorKind='multiclass-cpu';
 
-      const loop=async ts=>{
+      /* Render the camera independently from ML inference. The old path only
+         painted when segmentation finished, so slow inference directly became
+         a low-FPS/red/blank camera. */
+      const renderLoop=ts=>{
         if(this.virtualBgProcessor!==processor||this.destroyed)return;
-        this.virtualBgRaf=requestAnimationFrame(loop);
+        this.virtualBgRaf=requestAnimationFrame(renderLoop);
 
-        const hidden=document.visibilityState==='hidden';
-        const interval=hidden?Math.max(160,this.virtualBgFrameInterval):this.virtualBgFrameInterval;
-        if(this.screenTrack||ts-this.virtualBgLastFrame<interval||this.virtualBgBusy||source.readyState<2)return;
+        const renderInterval=isMobile?50:41; // 20 / 24 fps
+        if(ts-lastRenderAt<renderInterval||source.readyState<2)return;
+        lastRenderAt=ts;
 
-        this.virtualBgLastFrame=ts;
-        this.virtualBgBusy=true;
-        const t0=performance.now();
+        ctx.save();
+        ctx.clearRect(0,0,w,h);
+        ctx.globalCompositeOperation='source-over';
+
+        const maskFresh=maskReady&&(performance.now()-lastGoodMaskAt)<1400;
+
+        if(maskFresh&&maskCanvas.width&&maskCanvas.height){
+          ctx.filter=isMobile?'blur(.9px)':'blur(.65px)';
+          ctx.drawImage(maskCanvas,0,0,maskCanvas.width,maskCanvas.height,0,0,w,h);
+          ctx.filter='none';
+
+          ctx.globalCompositeOperation='source-in';
+          ctx.drawImage(source,0,0,w,h);
+
+          drawBackground();
+        }else{
+          /* Fail-open to normal camera. A broken/stalled ML model must never
+             break the lesson's camera feed. */
+          ctx.globalCompositeOperation='source-over';
+          ctx.drawImage(source,0,0,w,h);
+        }
+
+        ctx.restore();
+      };
+      this.virtualBgRaf=requestAnimationFrame(renderLoop);
+
+      const scheduleSegment=delay=>{
+        clearTimeout(this.virtualBgSegTimer);
+        this.virtualBgSegTimer=setTimeout(runSegment,delay);
+      };
+
+      const runSegment=()=>{
+        if(this.virtualBgProcessor!==processor||this.destroyed)return;
+        if(source.readyState<2||document.visibilityState==='hidden'){
+          scheduleSegment(300);
+          return;
+        }
+
+        const started=performance.now();
+        let settled=false;
+
+        clearTimeout(this.virtualBgSegWatchdog);
+        this.virtualBgSegWatchdog=setTimeout(()=>{
+          if(settled||this.virtualBgProcessor!==processor)return;
+          settled=true;
+          consecutiveMaskErrors++;
+          /* Continue the lesson even if one MediaPipe callback disappears. */
+          scheduleSegment(420);
+        },1000);
+
         try{
-          await processor.segmentForVideo(source,Math.floor(performance.now()),renderResult);
+          processor.segmentForVideo(source,Math.floor(performance.now()),result=>{
+            if(settled)return;
+            settled=true;
+            clearTimeout(this.virtualBgSegWatchdog);
+            this.virtualBgSegWatchdog=null;
+
+            updateMask(result);
+
+            const elapsed=performance.now()-started;
+            this.virtualBgAvgProcessMs=this.virtualBgAvgProcessMs
+              ?this.virtualBgAvgProcessMs*.80+elapsed*.20
+              :elapsed;
+
+            /* Adaptive inference cadence: expensive ML never gets to monopolize
+               the main UI/video thread. */
+            const next=this.virtualBgAvgProcessMs>180?420
+              :this.virtualBgAvgProcessMs>110?320
+              :this.virtualBgAvgProcessMs>70?250
+              :180;
+
+            scheduleSegment(next);
+          });
         }catch(e){
-          console.warn('[Mathroom virtual background] multiclass frame',e);
-        }finally{
-          const elapsed=performance.now()-t0;
-          this.virtualBgAvgProcessMs=this.virtualBgAvgProcessMs
-            ?this.virtualBgAvgProcessMs*.82+elapsed*.18
-            :elapsed;
-          this.virtualBgFrameInterval=this.virtualBgAvgProcessMs>90?(isMobile?120:100)
-            :this.virtualBgAvgProcessMs>65?(isMobile?92:78)
-            :(isMobile?66:54);
-          this.virtualBgBusy=false;
+          settled=true;
+          clearTimeout(this.virtualBgSegWatchdog);
+          this.virtualBgSegWatchdog=null;
+          consecutiveMaskErrors++;
+          console.warn('[Mathroom virtual background] multiclass inference',e);
+          scheduleSegment(420);
         }
       };
-      this.virtualBgRaf=requestAnimationFrame(loop);
+
+      /* Draw normal camera immediately; segmentation appears when ready. */
+      ctx.drawImage(source,0,0,w,h);
+      scheduleSegment(20);
+
       return outTrack;
     }
 
@@ -1961,6 +2051,10 @@
     stopVirtualBackground() {
       cancelAnimationFrame(this.virtualBgRaf);
       this.virtualBgRaf=0;
+      clearTimeout(this.virtualBgSegTimer);
+      clearTimeout(this.virtualBgSegWatchdog);
+      this.virtualBgSegTimer=null;
+      this.virtualBgSegWatchdog=null;
       this.virtualBgBusy=false;
       this.virtualBgAvgProcessMs=0;
       this.virtualBgFrameInterval=50;
