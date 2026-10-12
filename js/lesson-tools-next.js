@@ -1811,6 +1811,20 @@
       blurCanvas.height=Math.max(20,Math.round(h*blurScale));
       const blurCtx=blurCanvas.getContext('2d',{alpha:false});
       if(blurCtx)blurCtx.imageSmoothingEnabled=true;
+
+      /* Clean MediaPipe's probability mask before compositing. The raw mask can
+         classify bright bedding, walls and furniture as foreground, especially
+         when they touch the body. Process a small confidence map every frame:
+         this is cheap enough for realtime and removes those false positives
+         before the final soft edge is rendered at camera resolution. */
+      const maskCanvas=document.createElement('canvas');
+      const maskLong=isMobile?220:320;
+      const maskScale=Math.min(1,maskLong/Math.max(w,h));
+      maskCanvas.width=Math.max(96,Math.round(w*maskScale));
+      maskCanvas.height=Math.max(96,Math.round(h*maskScale));
+      const maskCtx=maskCanvas.getContext('2d',{alpha:true,willReadFrequently:true});
+      if(maskCtx)maskCtx.imageSmoothingEnabled=true;
+
       const output=canvas.captureStream(isMobile?20:24);
       const outTrack=output.getVideoTracks()[0];
       if(!outTrack) throw new Error('Не удалось создать обработанный видеопоток');
@@ -1829,12 +1843,92 @@
         ctx.save();
         ctx.clearRect(0,0,cw,ch);
 
-        // Canvas now has the exact source aspect ratio, so both mask and image
-        // use the same transform. A slightly wider feather on touch devices
-        // reduces shimmering around hair, ears and shoulders.
-        ctx.filter=isMobile?'blur(2.4px)':'blur(1.35px)';
-        ctx.drawImage(results.segmentationMask,0,0,cw,ch);
-        ctx.filter='none';
+        /* The segmentation texture contains foreground probability rather
+           than a perfect cutout. A direct draw made moderately confident white
+           objects (bed linen is a common example) stay completely sharp.
+           Convert confidence to a cleaner alpha mask first. */
+        if(maskCtx){
+          const mw=maskCanvas.width,mh=maskCanvas.height;
+          maskCtx.globalCompositeOperation='source-over';
+          maskCtx.filter='none';
+          maskCtx.clearRect(0,0,mw,mh);
+          maskCtx.drawImage(results.segmentationMask,0,0,mw,mh);
+
+          try{
+            const imageData=maskCtx.getImageData(0,0,mw,mh);
+            const d=imageData.data;
+            const total=mw*mh;
+            const confidence=new Uint8Array(total);
+
+            let minX=mw,minY=mh,maxX=-1,maxY=-1,seedCount=0;
+            const seedThreshold=isMobile?205:212; // ~0.80 / 0.83 confidence
+
+            for(let i=0,p=0;i<d.length;i+=4,p++){
+              /* Selfie Segmentation implementations have shipped both alpha
+                 probability and opaque-alpha grayscale textures. min(alpha,
+                 luminance) works for both representations. */
+              const lum=(d[i]+d[i+1]+d[i+2])/3;
+              const c=Math.min(d[i+3],lum);
+              confidence[p]=c;
+              if(c>=seedThreshold){
+                const x=p%mw,y=(p/mw)|0;
+                if(x<minX)minX=x;if(x>maxX)maxX=x;
+                if(y<minY)minY=y;if(y>maxY)maxY=y;
+                seedCount++;
+              }
+            }
+
+            /* A high-confidence core tells us where the person actually is.
+               Moderately confident pixels far away from that core are usually
+               bedding/walls and require much stronger evidence to survive. */
+            const haveCore=seedCount>Math.max(24,total*.0025)&&maxX>=minX&&maxY>=minY;
+            let left=0,right=mw-1,top=0,bottom=mh-1;
+            if(haveCore){
+              const bw=Math.max(1,maxX-minX+1),bh=Math.max(1,maxY-minY+1);
+              left=Math.max(0,Math.floor(minX-Math.max(12,bw*.42)));
+              right=Math.min(mw-1,Math.ceil(maxX+Math.max(12,bw*.42)));
+              top=Math.max(0,Math.floor(minY-Math.max(8,bh*.24)));
+              bottom=Math.min(mh-1,Math.ceil(maxY+Math.max(14,bh*.50)));
+            }
+
+            const low=isMobile?126:136;   // ~0.49 / 0.53
+            const high=isMobile?190:198; // ~0.75 / 0.78
+            const outsideLow=isMobile?208:216;
+
+            for(let p=0,i=0;p<total;p++,i+=4){
+              const x=p%mw,y=(p/mw)|0;
+              const outside=haveCore&&(x<left||x>right||y<top||y>bottom);
+              const c=confidence[p];
+
+              let a=0;
+              const lo=outside?outsideLow:low;
+              if(c>=high)a=255;
+              else if(c>lo){
+                const t=(c-lo)/Math.max(1,high-lo);
+                const smooth=t*t*(3-2*t);
+                a=Math.round(255*smooth);
+              }
+
+              d[i]=255;d[i+1]=255;d[i+2]=255;d[i+3]=a;
+            }
+
+            maskCtx.putImageData(imageData,0,0);
+          }catch(e){
+            /* Security/driver edge case: fall back to the raw mask rather than
+               losing the camera. */
+            console.warn('[Mathroom virtual background] mask cleanup fallback',e);
+            maskCtx.clearRect(0,0,mw,mh);
+            maskCtx.drawImage(results.segmentationMask,0,0,mw,mh);
+          }
+
+          ctx.filter=isMobile?'blur(2.1px)':'blur(1.45px)';
+          ctx.drawImage(maskCanvas,0,0,maskCanvas.width,maskCanvas.height,0,0,cw,ch);
+          ctx.filter='none';
+        }else{
+          ctx.filter=isMobile?'blur(2.1px)':'blur(1.45px)';
+          ctx.drawImage(results.segmentationMask,0,0,cw,ch);
+          ctx.filter='none';
+        }
 
         ctx.globalCompositeOperation='source-in';
         ctx.drawImage(results.image,0,0,cw,ch);
