@@ -1834,9 +1834,10 @@
       const processor=new Seg({
         locateFile:file=>`https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/${file}`
       });
-      /* modelSelection 0 is the general/portrait model; the landscape
-         model is kept for wider desktop camera frames. */
-      processor.setOptions({modelSelection:(isMobile||srcH>srcW)?0:1});
+      /* Accuracy matters more than a small speed gain here. The landscape
+         model tends to absorb nearby furniture/background around hair and
+         shoulders, so use the higher-quality general model on every layout. */
+      processor.setOptions({modelSelection:0});
       processor.onResults(results=>{
         if(!this.virtualBgCanvas||!results?.image)return;
         const cw=canvas.width,ch=canvas.height;
@@ -1860,10 +1861,13 @@
             const total=mw*mh;
             const confidence=new Uint8Array(total);
 
-            /* MediaPipe's mask representation is not identical in every
-               browser build: some expose probability in alpha, others in RGB
-               with opaque alpha. Detect the varying channel instead of taking
-               min(alpha,luminance), which could suppress the whole person. */
+            /* MediaPipe mask channel differs between browser builds. Detect
+               the varying channel first, then build a person-only silhouette
+               with hysteresis segmentation:
+               1) find confident foreground,
+               2) break thin bridges to furniture/background,
+               3) keep the best central connected component,
+               4) grow only a short distance into softer hair/edge pixels. */
             let alphaMin=255,alphaMax=0,lumMin=255,lumMax=0;
             for(let i=0;i<d.length;i+=4){
               const a=d[i+3];
@@ -1873,73 +1877,157 @@
             }
             const useAlpha=(alphaMax-alphaMin)>(lumMax-lumMin)*.55 && (alphaMax-alphaMin)>18;
 
-            let minX=mw,minY=mh,maxX=-1,maxY=-1,seedCount=0;
-            let rawSum=0;
-            const seedThreshold=isMobile?142:150;
+            const strong=new Uint8Array(total);
+            const eroded=new Uint8Array(total);
+            const opened=new Uint8Array(total);
+            const labels=new Int32Array(total);
+            const keep=new Uint8Array(total);
+            const queue=new Int32Array(total);
+
+            const strongThreshold=isMobile?132:140;
+            const growThreshold=isMobile?38:44;
+            const fullThreshold=isMobile?154:164;
 
             for(let i=0,p=0;i<d.length;i+=4,p++){
               const lum=(d[i]+d[i+1]+d[i+2])/3;
               const c=Math.max(0,Math.min(255,useAlpha?d[i+3]:lum));
               confidence[p]=c;
-              rawSum+=c;
-              if(c>=seedThreshold){
+              if(c>=strongThreshold)strong[p]=1;
+            }
+
+            /* One-pixel cross erosion removes narrow bridges from hair/shoulders
+               to chairs, bedding and wall fragments without shrinking the real
+               silhouette much at this low-resolution working mask. */
+            for(let y=1;y<mh-1;y++){
+              const row=y*mw;
+              for(let x=1;x<mw-1;x++){
+                const p=row+x;
+                if(strong[p]&&strong[p-1]&&strong[p+1]&&strong[p-mw]&&strong[p+mw]){
+                  eroded[p]=1;
+                }
+              }
+            }
+
+            /* Restore the eroded subject with a small dilation. */
+            for(let y=1;y<mh-1;y++){
+              const row=y*mw;
+              for(let x=1;x<mw-1;x++){
+                const p=row+x;
+                if(!eroded[p])continue;
+                opened[p]=1;
+                opened[p-1]=1;opened[p+1]=1;opened[p-mw]=1;opened[p+mw]=1;
+              }
+            }
+
+            /* Connected components on the opened confident mask. Prefer a large
+               component that intersects the central face/torso corridor. */
+            let label=0,bestLabel=0,bestScore=-1,bestArea=0;
+            const centerX=mw*.5,centerY=mh*.48;
+            const centerL=mw*.27,centerR=mw*.73;
+            const centerT=mh*.08,centerB=mh*.94;
+
+            for(let seed=0;seed<total;seed++){
+              if(!opened[seed]||labels[seed])continue;
+              label++;
+              let qh=0,qt=0,area=0,central=0,sumX=0,sumY=0;
+              queue[qt++]=seed;labels[seed]=label;
+
+              while(qh<qt){
+                const p=queue[qh++];
                 const x=p%mw,y=(p/mw)|0;
-                if(x<minX)minX=x;if(x>maxX)maxX=x;
-                if(y<minY)minY=y;if(y>maxY)maxY=y;
-                seedCount++;
+                area++;sumX+=x;sumY+=y;
+                if(x>=centerL&&x<=centerR&&y>=centerT&&y<=centerB)central++;
+
+                if(x>0){const n=p-1;if(opened[n]&&!labels[n]){labels[n]=label;queue[qt++]=n}}
+                if(x<mw-1){const n=p+1;if(opened[n]&&!labels[n]){labels[n]=label;queue[qt++]=n}}
+                if(y>0){const n=p-mw;if(opened[n]&&!labels[n]){labels[n]=label;queue[qt++]=n}}
+                if(y<mh-1){const n=p+mw;if(opened[n]&&!labels[n]){labels[n]=label;queue[qt++]=n}}
+              }
+
+              const cx=sumX/Math.max(1,area),cy=sumY/Math.max(1,area);
+              const dx=Math.abs(cx-centerX)/(mw*.5);
+              const dy=Math.abs(cy-centerY)/(mh*.55);
+              const centralRatio=central/Math.max(1,area);
+              const centerBonus=Math.max(0,1-(dx*.70+dy*.30));
+              const score=area*(1+centralRatio*2.8)*(0.45+centerBonus*.55);
+
+              if(score>bestScore){
+                bestScore=score;bestLabel=label;bestArea=area;
               }
             }
 
-            /* Use a generous person zone. Cleanup is intentionally conservative:
-               it should remove detached room/bedding fragments, never carve into
-               face, hair, shoulders or clothing. */
-            const haveCore=seedCount>Math.max(18,total*.0015)&&maxX>=minX&&maxY>=minY;
-            let left=Math.floor(mw*.12),right=Math.ceil(mw*.88),top=0,bottom=mh-1;
-            if(haveCore){
-              const bw=Math.max(1,maxX-minX+1),bh=Math.max(1,maxY-minY+1);
-              left=Math.max(0,Math.floor(minX-Math.max(22,bw*.72)));
-              right=Math.min(mw-1,Math.ceil(maxX+Math.max(22,bw*.72)));
-              top=Math.max(0,Math.floor(minY-Math.max(16,bh*.42)));
-              bottom=Math.min(mh-1,Math.ceil(maxY+Math.max(24,bh*.65)));
-            }
+            const validComponent=bestLabel>0&&bestArea>Math.max(18,total*.0012);
 
-            const low=isMobile?38:46;
-            const high=isMobile?132:145;
-            const outsideLow=isMobile?156:168;
-            const outsideHigh=isMobile?222:230;
-            let cleanSum=0;
-
-            for(let p=0,i=0;p<total;p++,i+=4){
-              const x=p%mw,y=(p/mw)|0;
-              const outside=(x<left||x>right||y<top||y>bottom);
-              const c=confidence[p];
-
-              const lo=outside?outsideLow:low;
-              const hi=outside?outsideHigh:high;
-              let a=0;
-
-              /* Very confident pixels always survive, even slightly outside the
-                 estimated box — this protects hands, hair and leaning poses. */
-              if(c>=232)a=255;
-              else if(c>=hi)a=255;
-              else if(c>lo){
-                const t=(c-lo)/Math.max(1,hi-lo);
-                const smooth=t*t*(3-2*t);
-                a=Math.round(255*smooth);
+            if(validComponent){
+              /* Seed the retained mask from the selected subject component. */
+              let qh=0,qt=0;
+              for(let p=0;p<total;p++){
+                if(labels[p]===bestLabel){
+                  keep[p]=1;
+                  queue[qt++]=p;
+                }
               }
 
-              cleanSum+=a;
-              d[i]=255;d[i+1]=255;d[i+2]=255;d[i+3]=a;
-            }
+              /* Geodesic growth: recover hair, ears, clothes and hands only near
+                 the selected person. It cannot flood across the entire room just
+                 because MediaPipe assigns a weak foreground probability there. */
+              const maxGrow=isMobile?12:10;
+              let layerEnd=qt;
+              for(let step=0;step<maxGrow&&qh<qt;step++){
+                const nextEnd=qt;
+                while(qh<layerEnd){
+                  const p=queue[qh++];
+                  const x=p%mw,y=(p/mw)|0;
+                  const visit=n=>{
+                    if(keep[n]||confidence[n]<growThreshold)return;
+                    keep[n]=1;queue[qt++]=n;
+                  };
+                  if(x>0)visit(p-1);
+                  if(x<mw-1)visit(p+1);
+                  if(y>0)visit(p-mw);
+                  if(y<mh-1)visit(p+mw);
+                }
+                layerEnd=qt;
+                if(layerEnd===nextEnd)break;
+              }
 
-            /* Catastrophe guard: if cleanup retained far less foreground than
-               MediaPipe supplied, prefer a soft raw probability mask. It is
-               better to leave a little background sharp than blur the person. */
-            const expectedRawAlpha=rawSum;
-            if(expectedRawAlpha>total*18 && cleanSum<expectedRawAlpha*.72){
+              /* Restore extremely confident nearby detail (fine hair/hand tips)
+                 without allowing detached high-confidence room islands. */
+              const halo=isMobile?5:4;
+              const haloKeep=new Uint8Array(keep);
+              for(let step=0;step<halo;step++){
+                const prev=new Uint8Array(haloKeep);
+                for(let y=1;y<mh-1;y++){
+                  const row=y*mw;
+                  for(let x=1;x<mw-1;x++){
+                    const p=row+x;
+                    if(haloKeep[p]||confidence[p]<fullThreshold)continue;
+                    if(prev[p-1]||prev[p+1]||prev[p-mw]||prev[p+mw])haloKeep[p]=1;
+                  }
+                }
+              }
+
               for(let p=0,i=0;p<total;p++,i+=4){
                 const c=confidence[p];
-                const lo=isMobile?22:28;
+                let a=0;
+                if(haloKeep[p]){
+                  const lo=isMobile?26:32;
+                  const hi=isMobile?112:122;
+                  if(c>=hi)a=255;
+                  else if(c>lo){
+                    const t=(c-lo)/(hi-lo);
+                    const smooth=t*t*(3-2*t);
+                    a=Math.round(255*smooth);
+                  }
+                }
+                d[i]=255;d[i+1]=255;d[i+2]=255;d[i+3]=a;
+              }
+            }else{
+              /* If no reliable central subject exists, fail safe to MediaPipe's
+                 soft mask rather than risking a missing/blurred person. */
+              for(let p=0,i=0;p<total;p++,i+=4){
+                const c=confidence[p];
+                const lo=isMobile?24:30;
                 const hi=isMobile?108:118;
                 let a=0;
                 if(c>=hi)a=255;
@@ -1961,11 +2049,11 @@
             maskCtx.drawImage(results.segmentationMask,0,0,mw,mh);
           }
 
-          ctx.filter=isMobile?'blur(1.65px)':'blur(1.05px)';
+          ctx.filter=isMobile?'blur(1.25px)':'blur(.8px)';
           ctx.drawImage(maskCanvas,0,0,maskCanvas.width,maskCanvas.height,0,0,cw,ch);
           ctx.filter='none';
         }else{
-          ctx.filter=isMobile?'blur(1.65px)':'blur(1.05px)';
+          ctx.filter=isMobile?'blur(1.25px)':'blur(.8px)';
           ctx.drawImage(results.segmentationMask,0,0,cw,ch);
           ctx.filter='none';
         }
