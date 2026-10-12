@@ -2304,8 +2304,10 @@
           this.cameraEnabled=false;
           localStorage.setItem(`mathroom.media.camera.${this.role}`,'0');
           this.paintPrejoin();
-          if(e?.name==='NotAllowedError')toast('Доступ к камере не разрешён');
-          else fail(e);
+          console.warn('[Mathroom camera device switch]',e,e?.mathroomCameraDiagnostics);
+          if(e?.name==='NotAllowedError'||e?.name==='SecurityError')toast('Доступ к камере не разрешён');
+          else if(e?.name==='NotReadableError'||e?.name==='AbortError')toast('Камера видна, но видеопоток занят или недоступен системе');
+          else toast('Не удалось запустить выбранную камеру');
         }
       };
       if (out) out.onchange = () => this.setAudioOutput(out.value).catch(fail);
@@ -2333,28 +2335,102 @@
     }
 
     async switchInputDevice(kind, deviceId = '', opts = {}) {
-      if (!navigator.mediaDevices?.getUserMedia) throw new Error('Браузер не поддерживает выбор устройств');
-      const isAudio = kind === 'audio';
-      const constraints = isAudio
-        ? { audio:this.audioConstraints(deviceId), video:false }
-        : { audio:false, video:this.videoConstraints(deviceId) };
-      const stream = await navigator.mediaDevices.getUserMedia(constraints);
-      const next = isAudio ? stream.getAudioTracks()[0] : stream.getVideoTracks()[0];
-      if (!next) throw new Error(isAudio ? 'Микрофон не найден' : 'Камера не найдена');
-      if (isAudio) {
-        next.enabled = this.micEnabled;
+      if(!navigator.mediaDevices?.getUserMedia)throw new Error('Браузер не поддерживает выбор устройств');
+      const isAudio=kind==='audio';
+
+      let stream=null;
+      let next=null;
+
+      if(isAudio){
+        stream=await navigator.mediaDevices.getUserMedia({
+          audio:this.audioConstraints(deviceId),
+          video:false
+        });
+        next=stream.getAudioTracks()[0]||null;
+        if(!next)throw new Error('Микрофон не найден');
+      }else{
+        /* Camera probe. Do not stop anything before a replacement is acquired.
+           If the selected camera cannot start, try every other enumerated video
+           input and finally the browser default with no resolution constraints. */
+        const attempts=[];
+        const seen=new Set();
+
+        const push=(id,constraints,label)=>{
+          const key=id||label;
+          if(seen.has(key))return;
+          seen.add(key);
+          attempts.push({id:id||'',constraints,label});
+        };
+
+        if(deviceId){
+          push(deviceId,this.videoConstraints(deviceId),'selected-ideal');
+          push(deviceId,{deviceId:{exact:deviceId}},'selected-plain');
+        }
+
+        try{
+          const list=await navigator.mediaDevices.enumerateDevices();
+          for(const d of list){
+            if(d.kind!=='videoinput'||!d.deviceId||d.deviceId===deviceId)continue;
+            push(d.deviceId,{deviceId:{exact:d.deviceId}},d.label||'other-camera');
+          }
+        }catch{}
+
+        push('',true,'browser-default');
+
+        const errors=[];
+        for(const attempt of attempts){
+          try{
+            stream=await navigator.mediaDevices.getUserMedia({
+              audio:false,
+              video:attempt.constraints
+            });
+            next=stream.getVideoTracks()[0]||null;
+            if(next){
+              const actual=next.getSettings?.().deviceId||attempt.id||'';
+              if(actual&&actual!==deviceId){
+                this.selectedVideoInput=actual;
+                try{localStorage.setItem(`mathroom.media.videoinput.${this.role}`,actual)}catch{}
+              }
+              break;
+            }
+            stream?.getTracks?.().forEach(t=>t.stop?.());
+            stream=null;
+          }catch(e){
+            errors.push({
+              name:e?.name||'Error',
+              message:e?.message||String(e),
+              label:attempt.label
+            });
+            try{stream?.getTracks?.().forEach(t=>t.stop?.())}catch{}
+            stream=null;
+          }
+        }
+
+        if(!next){
+          const names=[...new Set(errors.map(x=>x.name))].join(', ');
+          const messages=[...new Set(errors.map(x=>x.message).filter(Boolean))].join(' | ');
+          const err=new Error(messages||'Не удалось получить видеопоток ни от одной камеры');
+          err.name=errors.at(-1)?.name||'NotReadableError';
+          err.mathroomCameraDiagnostics={names,errors};
+          throw err;
+        }
+      }
+
+      if(isAudio){
+        next.enabled=this.micEnabled;
         await this.configureSpeechTrack(next);
-      } else {
-        next.enabled = this.cameraEnabled;
+      }else{
+        next.enabled=this.cameraEnabled;
         this.configureCameraTrack(next);
       }
 
-      if (!this.localStream) this.localStream = new MediaStream();
-      const old = isAudio ? this.localStream.getAudioTracks()[0] : this.localStream.getVideoTracks()[0];
-      if (old) this.localStream.removeTrack(old);
+      if(!this.localStream)this.localStream=new MediaStream();
+      const old=isAudio?this.localStream.getAudioTracks()[0]:this.localStream.getVideoTracks()[0];
+
+      if(old)this.localStream.removeTrack(old);
       this.localStream.addTrack(next);
 
-      if(!isAudio && this.virtualBgMode!=='none'){
+      if(!isAudio&&this.virtualBgMode!=='none'){
         try{await this.startVirtualBackground()}
         catch(e){
           console.warn('[Mathroom virtual background] restart after camera switch',e);
@@ -2364,28 +2440,34 @@
         }
       }
 
-      const sender = this.pc?.getSenders?.().find(s => s.track?.kind === kind)
-        || this.pc?.getTransceivers?.().find(t => t.receiver?.track?.kind === kind)?.sender;
-      const outgoing = isAudio ? next : this.effectiveCameraTrack();
-      if (sender && !(kind === 'video' && this.screenTrack)) {
-        try {
+      const sender=this.pc?.getSenders?.().find(s=>s.track?.kind===kind)
+        ||this.pc?.getTransceivers?.().find(t=>t.receiver?.track?.kind===kind)?.sender;
+      const outgoing=isAudio?next:this.effectiveCameraTrack();
+
+      if(sender&&!(kind==='video'&&this.screenTrack)){
+        try{
           await sender.replaceTrack(outgoing);
           if(!isAudio)await this.applyVideoSenderProfile(true);
-        } catch (e) { console.warn('[Mathroom devices] replaceTrack', kind, e); }
+        }catch(e){
+          console.warn('[Mathroom devices] replaceTrack',kind,e);
+        }
       }
+
       old?.stop?.();
 
-      if (isAudio) {
-        this.selectedAudioInput = deviceId || '';
-        localStorage.setItem(`mathroom.media.audioinput.${this.role}`, this.selectedAudioInput);
-      } else {
-        this.selectedVideoInput = deviceId || '';
-        localStorage.setItem(`mathroom.media.videoinput.${this.role}`, this.selectedVideoInput);
+      if(isAudio){
+        this.selectedAudioInput=deviceId||'';
+        localStorage.setItem(`mathroom.media.audioinput.${this.role}`,this.selectedAudioInput);
+      }else{
+        const actual=next.getSettings?.().deviceId||this.selectedVideoInput||deviceId||'';
+        this.selectedVideoInput=actual;
+        localStorage.setItem(`mathroom.media.videoinput.${this.role}`,actual);
       }
+
       this.bindMedia();
       await this.refreshDevices().catch(()=>{});
       this.paintPrejoin();
-      if (!opts.silent) toast(isAudio ? 'Микрофон переключён' : 'Камера переключена');
+      if(!opts.silent)toast(isAudio?'Микрофон переключён':'Камера переключена');
       return next;
     }
 
@@ -2598,12 +2680,15 @@
           this.paintPrejoin();
 
           if(e?.name==='NotAllowedError'||e?.name==='SecurityError'){
-            toast('Доступ к камере не разрешён — в урок всё равно можно войти без неё');
+            toast('Доступ к камере запрещён браузером или Windows');
+          }else if(e?.name==='NotReadableError'||e?.name==='AbortError'){
+            console.warn('[Mathroom prejoin camera busy]',e,e?.mathroomCameraDiagnostics);
+            toast('Браузер видит камеру, но Windows не отдаёт видеопоток. Закрой другие приложения/вкладки с камерой и попробуй снова.');
           }else if(e?.name==='NotFoundError'||e?.name==='OverconstrainedError'){
-            toast('Камера не найдена — в урок всё равно можно войти');
+            toast('Доступная камера не найдена');
           }else{
-            console.warn('[Mathroom prejoin camera]',e);
-            toast('Не удалось включить камеру — в урок можно войти без неё');
+            console.warn('[Mathroom prejoin camera]',e,e?.mathroomCameraDiagnostics);
+            toast('Не удалось запустить ни одну доступную камеру');
           }
         }finally{
           if(btn)delete btn.dataset.busy;
