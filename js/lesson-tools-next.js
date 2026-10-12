@@ -1891,9 +1891,10 @@
               bottom=Math.min(mh-1,Math.ceil(maxY+Math.max(14,bh*.50)));
             }
 
-            const low=isMobile?126:136;   // ~0.49 / 0.53
-            const high=isMobile?190:198; // ~0.75 / 0.78
+            const low=isMobile?126:136;        // ~0.49 / 0.53
+            const high=isMobile?190:198;      // ~0.75 / 0.78
             const outsideLow=isMobile?208:216;
+            const outsideHigh=isMobile?232:238;
 
             for(let p=0,i=0;p<total;p++,i+=4){
               const x=p%mw,y=(p/mw)|0;
@@ -1902,9 +1903,10 @@
 
               let a=0;
               const lo=outside?outsideLow:low;
-              if(c>=high)a=255;
+              const hi=outside?outsideHigh:high;
+              if(c>=hi)a=255;
               else if(c>lo){
-                const t=(c-lo)/Math.max(1,high-lo);
+                const t=(c-lo)/Math.max(1,hi-lo);
                 const smooth=t*t*(3-2*t);
                 a=Math.round(255*smooth);
               }
