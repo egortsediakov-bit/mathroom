@@ -1410,7 +1410,7 @@
     }
 
     virtualBgControlsHtml() {
-      const asset=v=>`./assets/virtual-bg/${v}.svg?v=40.13`;
+      const asset=v=>this.builtInVirtualBackgroundUrl(v);
       return `<div class="mr-prejoin-bg mr-prejoin-wide">
         <div class="mr-prejoin-bg-head">
           <div><b>Фон камеры</b><div class="small muted">Центр каждого фона специально оставлен спокойным под человека</div></div>
@@ -1683,7 +1683,17 @@
         mathroom:'mathroom.svg',
         classroom:'classroom.svg'
       };
-      return files[mode] ? `./assets/virtual-bg/${files[mode]}?v=40.13` : '';
+      if(!files[mode])return '';
+
+      const scriptSrc=document.querySelector('script[src*="lesson-tools-next.js"]')?.src||'';
+      try{
+        const base=scriptSrc
+          ? new URL('../assets/virtual-bg/',scriptSrc)
+          : new URL('./assets/virtual-bg/',document.baseURI);
+        return new URL(files[mode]+'?v=40.13',base).href;
+      }catch{
+        return `./assets/virtual-bg/${files[mode]}?v=40.13`;
+      }
     }
 
     async ensureBuiltInBackgroundImage(mode) {
