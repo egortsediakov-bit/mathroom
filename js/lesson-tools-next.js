@@ -1860,16 +1860,28 @@
             const total=mw*mh;
             const confidence=new Uint8Array(total);
 
+            /* MediaPipe's mask representation is not identical in every
+               browser build: some expose probability in alpha, others in RGB
+               with opaque alpha. Detect the varying channel instead of taking
+               min(alpha,luminance), which could suppress the whole person. */
+            let alphaMin=255,alphaMax=0,lumMin=255,lumMax=0;
+            for(let i=0;i<d.length;i+=4){
+              const a=d[i+3];
+              const lum=(d[i]+d[i+1]+d[i+2])/3;
+              if(a<alphaMin)alphaMin=a;if(a>alphaMax)alphaMax=a;
+              if(lum<lumMin)lumMin=lum;if(lum>lumMax)lumMax=lum;
+            }
+            const useAlpha=(alphaMax-alphaMin)>(lumMax-lumMin)*.55 && (alphaMax-alphaMin)>18;
+
             let minX=mw,minY=mh,maxX=-1,maxY=-1,seedCount=0;
-            const seedThreshold=isMobile?205:212; // ~0.80 / 0.83 confidence
+            let rawSum=0;
+            const seedThreshold=isMobile?142:150;
 
             for(let i=0,p=0;i<d.length;i+=4,p++){
-              /* Selfie Segmentation implementations have shipped both alpha
-                 probability and opaque-alpha grayscale textures. min(alpha,
-                 luminance) works for both representations. */
               const lum=(d[i]+d[i+1]+d[i+2])/3;
-              const c=Math.min(d[i+3],lum);
+              const c=Math.max(0,Math.min(255,useAlpha?d[i+3]:lum));
               confidence[p]=c;
+              rawSum+=c;
               if(c>=seedThreshold){
                 const x=p%mw,y=(p/mw)|0;
                 if(x<minX)minX=x;if(x>maxX)maxX=x;
@@ -1878,40 +1890,66 @@
               }
             }
 
-            /* A high-confidence core tells us where the person actually is.
-               Moderately confident pixels far away from that core are usually
-               bedding/walls and require much stronger evidence to survive. */
-            const haveCore=seedCount>Math.max(24,total*.0025)&&maxX>=minX&&maxY>=minY;
-            let left=0,right=mw-1,top=0,bottom=mh-1;
+            /* Use a generous person zone. Cleanup is intentionally conservative:
+               it should remove detached room/bedding fragments, never carve into
+               face, hair, shoulders or clothing. */
+            const haveCore=seedCount>Math.max(18,total*.0015)&&maxX>=minX&&maxY>=minY;
+            let left=Math.floor(mw*.12),right=Math.ceil(mw*.88),top=0,bottom=mh-1;
             if(haveCore){
               const bw=Math.max(1,maxX-minX+1),bh=Math.max(1,maxY-minY+1);
-              left=Math.max(0,Math.floor(minX-Math.max(12,bw*.42)));
-              right=Math.min(mw-1,Math.ceil(maxX+Math.max(12,bw*.42)));
-              top=Math.max(0,Math.floor(minY-Math.max(8,bh*.24)));
-              bottom=Math.min(mh-1,Math.ceil(maxY+Math.max(14,bh*.50)));
+              left=Math.max(0,Math.floor(minX-Math.max(22,bw*.72)));
+              right=Math.min(mw-1,Math.ceil(maxX+Math.max(22,bw*.72)));
+              top=Math.max(0,Math.floor(minY-Math.max(16,bh*.42)));
+              bottom=Math.min(mh-1,Math.ceil(maxY+Math.max(24,bh*.65)));
             }
 
-            const low=isMobile?126:136;        // ~0.49 / 0.53
-            const high=isMobile?190:198;      // ~0.75 / 0.78
-            const outsideLow=isMobile?208:216;
-            const outsideHigh=isMobile?232:238;
+            const low=isMobile?38:46;
+            const high=isMobile?132:145;
+            const outsideLow=isMobile?156:168;
+            const outsideHigh=isMobile?222:230;
+            let cleanSum=0;
 
             for(let p=0,i=0;p<total;p++,i+=4){
               const x=p%mw,y=(p/mw)|0;
-              const outside=haveCore&&(x<left||x>right||y<top||y>bottom);
+              const outside=(x<left||x>right||y<top||y>bottom);
               const c=confidence[p];
 
-              let a=0;
               const lo=outside?outsideLow:low;
               const hi=outside?outsideHigh:high;
-              if(c>=hi)a=255;
+              let a=0;
+
+              /* Very confident pixels always survive, even slightly outside the
+                 estimated box — this protects hands, hair and leaning poses. */
+              if(c>=232)a=255;
+              else if(c>=hi)a=255;
               else if(c>lo){
                 const t=(c-lo)/Math.max(1,hi-lo);
                 const smooth=t*t*(3-2*t);
                 a=Math.round(255*smooth);
               }
 
+              cleanSum+=a;
               d[i]=255;d[i+1]=255;d[i+2]=255;d[i+3]=a;
+            }
+
+            /* Catastrophe guard: if cleanup retained far less foreground than
+               MediaPipe supplied, prefer a soft raw probability mask. It is
+               better to leave a little background sharp than blur the person. */
+            const expectedRawAlpha=rawSum;
+            if(expectedRawAlpha>total*18 && cleanSum<expectedRawAlpha*.72){
+              for(let p=0,i=0;p<total;p++,i+=4){
+                const c=confidence[p];
+                const lo=isMobile?22:28;
+                const hi=isMobile?108:118;
+                let a=0;
+                if(c>=hi)a=255;
+                else if(c>lo){
+                  const t=(c-lo)/(hi-lo);
+                  const smooth=t*t*(3-2*t);
+                  a=Math.round(255*smooth);
+                }
+                d[i]=255;d[i+1]=255;d[i+2]=255;d[i+3]=a;
+              }
             }
 
             maskCtx.putImageData(imageData,0,0);
@@ -1923,11 +1961,11 @@
             maskCtx.drawImage(results.segmentationMask,0,0,mw,mh);
           }
 
-          ctx.filter=isMobile?'blur(2.1px)':'blur(1.45px)';
+          ctx.filter=isMobile?'blur(1.65px)':'blur(1.05px)';
           ctx.drawImage(maskCanvas,0,0,maskCanvas.width,maskCanvas.height,0,0,cw,ch);
           ctx.filter='none';
         }else{
-          ctx.filter=isMobile?'blur(2.1px)':'blur(1.45px)';
+          ctx.filter=isMobile?'blur(1.65px)':'blur(1.05px)';
           ctx.drawImage(results.segmentationMask,0,0,cw,ch);
           ctx.filter='none';
         }
