@@ -1,0 +1,69 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900">
+<defs>
+  <linearGradient id="wall" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#9FADA2"/><stop offset=".46" stop-color="#C8D0C7"/><stop offset="1" stop-color="#98A597"/></linearGradient>
+  <linearGradient id="wood" x1="0" y1="0" x2="1" y2="0"><stop stop-color="#8A6549"/><stop offset=".5" stop-color="#B18561"/><stop offset="1" stop-color="#74533C"/></linearGradient>
+  <radialGradient id="light" cx="53%" cy="29%" r="58%"><stop stop-color="#F5F2E9" stop-opacity=".72"/><stop offset="1" stop-color="#F5F2E9" stop-opacity="0"/></radialGradient>
+  <filter id="shadow"><feDropShadow dx="0" dy="13" stdDeviation="17" flood-color="#25322C" flood-opacity=".15"/></filter>
+</defs>
+<rect width="1600" height="900" fill="url(#wall)"/>
+<rect width="1600" height="900" fill="url(#light)"/>
+<rect y="752" width="1600" height="148" fill="#7E887E" opacity=".56"/>
+
+<!-- whiteboard pushed left -->
+<g filter="url(#shadow)">
+  <rect x="-42" y="94" width="448" height="463" rx="21" fill="#DFE4DE"/>
+  <rect x="-23" y="114" width="406" height="421" rx="12" fill="#F0F2EC"/>
+  <g stroke="#75817A" stroke-opacity=".13" stroke-width="2">
+    <path d="M20 190H350M20 255H350M20 320H350M20 385H350M20 450H350"/>
+    <path d="M76 145V508M142 145V508M208 145V508M274 145V508M340 145V508"/>
+  </g>
+  <g fill="#53615A" opacity=".48" font-family="Georgia,serif" font-style="italic">
+    <text x="43" y="218" font-size="34">S = πr²</text>
+    <text x="164" y="342" font-size="29">y = 2x + 3</text>
+    <text x="48" y="456" font-size="29">x² − 5x + 6 = 0</text>
+  </g>
+  <rect x="50" y="555" width="292" height="17" rx="8" fill="#6D756F"/>
+  <rect x="88" y="548" width="78" height="13" rx="6" fill="#ED591A"/>
+</g>
+
+<!-- right shelving -->
+<g filter="url(#shadow)">
+  <rect x="1278" y="88" width="322" height="664" fill="#6B5748" opacity=".70"/>
+  <rect x="1312" y="145" width="249" height="7" rx="3" fill="#D5C0A8" opacity=".45"/>
+  <rect x="1312" y="323" width="249" height="7" rx="3" fill="#D5C0A8" opacity=".45"/>
+  <rect x="1312" y="501" width="249" height="7" rx="3" fill="#D5C0A8" opacity=".45"/>
+  <rect x="1312" y="679" width="249" height="7" rx="3" fill="#D5C0A8" opacity=".45"/>
+  <g>
+    <rect x="1338" y="185" width="34" height="103" rx="4" fill="#C56F4E"/>
+    <rect x="1380" y="170" width="27" height="118" rx="4" fill="#516C61"/>
+    <rect x="1415" y="199" width="37" height="89" rx="4" fill="#D4A054"/>
+    <rect x="1460" y="179" width="31" height="109" rx="4" fill="#6D6173"/>
+    <rect x="1499" y="193" width="34" height="95" rx="4" fill="#59727C"/>
+    <rect x="1338" y="376" width="30" height="90" rx="4" fill="#667756"/>
+    <rect x="1376" y="352" width="38" height="114" rx="4" fill="#C27A4F"/>
+    <rect x="1422" y="384" width="31" height="82" rx="4" fill="#8B6454"/>
+    <rect x="1461" y="360" width="29" height="106" rx="4" fill="#5B7181"/>
+  </g>
+  <rect x="1346" y="548" width="167" height="93" rx="12" fill="#E4D9C9" opacity=".82"/>
+  <path d="M1385 610l37-37 51 50" fill="none" stroke="#76827B" stroke-width="8" stroke-linecap="round" opacity=".48"/>
+  <circle cx="1464" cy="576" r="16" fill="#ED591A" opacity=".42"/>
+</g>
+
+<!-- right-side plant, intentionally below shoulder level -->
+<g>
+  <rect x="1125" y="696" width="110" height="88" rx="18" fill="#82634C"/>
+  <g fill="#476B58">
+    <ellipse cx="1152" cy="642" rx="34" ry="77" transform="rotate(-32 1152 642)"/>
+    <ellipse cx="1191" cy="625" rx="31" ry="82" transform="rotate(20 1191 625)"/>
+    <ellipse cx="1224" cy="659" rx="27" ry="63" transform="rotate(42 1224 659)"/>
+  </g>
+</g>
+
+<!-- central safe zone remains calm -->
+<ellipse cx="800" cy="430" rx="360" ry="360" fill="#E9ECE5" opacity=".18"/>
+<path d="M548 90h477" stroke="#EEF0EB" stroke-opacity=".18" stroke-width="5" stroke-linecap="round"/>
+<g transform="translate(1110 95)" opacity=".68">
+  <circle cx="14" cy="14" r="10" fill="#ED591A"/>
+  <text x="38" y="22" font-family="Inter,Arial,sans-serif" font-size="22" font-weight="800" fill="#445149" letter-spacing="1.5">MATHROOM</text>
+</g>
+</svg>
