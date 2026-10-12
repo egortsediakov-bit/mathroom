@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900">
+<defs>
+  <linearGradient id="base" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#D7D6D1"/><stop offset=".48" stop-color="#ECEBE6"/><stop offset="1" stop-color="#C8C5BD"/></linearGradient>
+  <radialGradient id="center" cx="50%" cy="44%" r="47%"><stop stop-color="#F7F6F2" stop-opacity=".78"/><stop offset="1" stop-color="#F7F6F2" stop-opacity="0"/></radialGradient>
+  <linearGradient id="orange" x1="0" y1="1" x2="1" y2="0"><stop stop-color="#B83E0D"/><stop offset=".55" stop-color="#ED591A"/><stop offset="1" stop-color="#FF7A37"/></linearGradient>
+  <filter id="soft"><feGaussianBlur stdDeviation="18"/></filter>
+</defs>
+<rect width="1600" height="900" fill="url(#base)"/>
+<rect width="1600" height="900" fill="url(#center)"/>
+
+<!-- left architectural panels -->
+<rect x="0" y="0" width="288" height="900" fill="#B8B6AF" opacity=".58"/>
+<rect x="26" y="0" width="9" height="900" fill="#292B2C" opacity=".82"/>
+<rect x="62" y="104" width="162" height="162" rx="24" fill="#D1D0CA"/>
+<path d="M89 233L184 138" stroke="#8B8A85" stroke-width="7" stroke-linecap="round" opacity=".42"/>
+<circle cx="137" cy="186" r="31" fill="#ED591A" opacity=".20"/>
+<rect x="63" y="334" width="159" height="8" rx="4" fill="#8E8D88" opacity=".32"/>
+<rect x="63" y="369" width="113" height="8" rx="4" fill="#8E8D88" opacity=".23"/>
+<rect x="63" y="404" width="136" height="8" rx="4" fill="#8E8D88" opacity=".18"/>
+
+<!-- subtle right-side signature arc -->
+<path d="M1327 64C1570 185 1615 428 1507 618C1457 706 1375 782 1262 836" fill="none" stroke="url(#orange)" stroke-width="82" stroke-linecap="round" opacity=".93"/>
+<path d="M1375 103C1545 223 1560 423 1473 566" fill="none" stroke="#F3ECE3" stroke-width="3" opacity=".46"/>
+
+<!-- low-contrast math motifs, strictly outside portrait-safe center -->
+<g fill="none" stroke="#565754" stroke-linecap="round" stroke-linejoin="round" opacity=".15">
+  <path d="M1120 175h166M1203 98v154" stroke-width="3"/>
+  <path d="M1116 518c42-62 80-51 111-6s70 57 118-15" stroke-width="4"/>
+  <circle cx="1208" cy="522" r="86" stroke-width="2"/>
+</g>
+<g fill="#555653" opacity=".24" font-family="Inter,Arial,sans-serif">
+  <text x="1070" y="303" font-size="29" font-weight="600">y = kx + b</text>
+  <text x="1125" y="684" font-size="25" font-weight="600">a² + b² = c²</text>
+</g>
+
+<!-- understated brand plaque -->
+<g transform="translate(1100 70)">
+  <rect width="275" height="72" rx="22" fill="#F4F2ED" opacity=".84"/>
+  <circle cx="39" cy="36" r="12" fill="#ED591A"/>
+  <text x="68" y="45" fill="#222324" font-family="Inter,Arial,sans-serif" font-size="26" font-weight="800" letter-spacing="2">MATHROOM</text>
+</g>
+
+<!-- grounded lower plane -->
+<path d="M0 781C346 748 681 758 930 789C1189 822 1405 823 1600 788V900H0Z" fill="#B7B4AC" opacity=".31"/>
+<ellipse cx="780" cy="833" rx="455" ry="55" fill="#7F7E79" opacity=".08" filter="url(#soft)"/>
+</svg>
