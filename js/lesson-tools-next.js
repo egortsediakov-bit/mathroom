@@ -2208,6 +2208,70 @@
                 }
               }
 
+              /* v40.39: trim connected false positives (bed linen, chair,
+                 bags, wall fragments) even when SelfieSegmentation connected
+                 them to the participant. The envelope follows the primary face
+                 and may lean slightly toward the primary person box lower down. */
+              const envelopeNow=performance.now();
+              const envelopeFaceFresh=!!primaryFaceAnchor
+                &&primaryFaceSeenAt>0
+                &&envelopeNow-primaryFaceSeenAt<1250;
+              const envelopePersonFresh=!!primaryPersonBox
+                &&primaryPersonSeenAt>0
+                &&envelopeNow-primaryPersonSeenAt<1450;
+
+              if(envelopeFaceFresh){
+                const fx=primaryFaceAnchor.cx;
+                const fy=primaryFaceAnchor.cy;
+                const fw=Math.max(.035,primaryFaceAnchor.w);
+                const fh=Math.max(.045,primaryFaceAnchor.h);
+
+                let lowerCenterX=fx;
+                if(envelopePersonFresh){
+                  const candidate=primaryPersonBox.x+primaryPersonBox.w/2;
+                  lowerCenterX=Math.max(fx-.11,Math.min(fx+.11,candidate));
+                }
+
+                const top=fy-fh*1.65;
+                const headEnd=fy+fh*1.10;
+                const shoulderEnd=fy+fh*2.65;
+
+                for(let p=0;p<total;p++){
+                  if(!haloKeep[p])continue;
+
+                  const x=((p%mw)+.5)/mw;
+                  const y=(((p/mw)|0)+.5)/mh;
+                  if(y<top){
+                    haloKeep[p]=0;
+                    continue;
+                  }
+
+                  const lowerT=Math.max(0,Math.min(1,(y-headEnd)/Math.max(.001,1-headEnd)));
+                  const axisX=fx+(lowerCenterX-fx)*lowerT;
+                  let radius;
+
+                  if(y<=headEnd){
+                    radius=Math.max(.075,fw*1.28);
+                  }else if(y<=shoulderEnd){
+                    const t=(y-headEnd)/Math.max(.001,shoulderEnd-headEnd);
+                    radius=Math.max(.075,fw*1.28)
+                      +(Math.max(.185,fw*2.20)-Math.max(.075,fw*1.28))*t;
+                  }else{
+                    const t=Math.max(0,Math.min(1,(y-shoulderEnd)/Math.max(.001,1-shoulderEnd)));
+                    radius=Math.max(.185,fw*2.20)
+                      +(Math.max(.285,fw*3.25)-Math.max(.185,fw*2.20))*t;
+                  }
+
+                  /* At the very bottom allow a little extra width for hands /
+                     forearms without reopening the whole room. */
+                  if(y>.82)radius+=.025;
+
+                  if(Math.abs(x-axisX)>Math.min(.33,radius)){
+                    haloKeep[p]=0;
+                  }
+                }
+              }
+
               /* Keep one participant only. Secondary faces are stronger
                  evidence than the shared selfie mask, so use them as erase
                  seeds. A flood through the current foreground removes the
@@ -3220,7 +3284,15 @@
       if(old)this.localStream.removeTrack(old);
       this.localStream.addTrack(next);
 
-      if(!isAudio&&this.virtualBgMode!=='none'){
+      /* Camera-on should feel instant. When deferVirtualBg is requested,
+         expose/send the raw camera first and let the expensive segmentation
+         pipeline start after the UI is already live. */
+      if(!isAudio&&opts.deferVirtualBg){
+        this.bindPrejoinPreview();
+        this.bindMedia();
+        this.paintPrejoin();
+        this.paint();
+      }else if(!isAudio&&this.virtualBgMode!=='none'){
         try{await this.startVirtualBackground()}
         catch(e){
           console.warn('[Mathroom virtual background] restart after camera switch',e);
@@ -3232,7 +3304,9 @@
 
       const sender=this.pc?.getSenders?.().find(s=>s.track?.kind===kind)
         ||this.pc?.getTransceivers?.().find(t=>t.receiver?.track?.kind===kind)?.sender;
-      const outgoing=isAudio?next:this.effectiveCameraTrack();
+      const outgoing=isAudio
+        ?next
+        :(opts.deferVirtualBg?next:this.effectiveCameraTrack());
 
       if(sender&&!(kind==='video'&&this.screenTrack)){
         try{
@@ -3450,20 +3524,48 @@
           localStorage.setItem(`mathroom.media.camera.${this.role}`,'1');
 
           /* Camera permission is requested only because the user explicitly
-             pressed Camera. Failure never disables the Join button. */
-          await this.switchInputDevice('video',this.selectedVideoInput||'',{silent:true});
-
-          if(this.virtualBgMode!=='none'){
-            try{
-              await this.startVirtualBackground();
-              await this.syncOutgoingCameraTrack();
-            }catch(e){
-              console.warn('[Mathroom prejoin virtual background]',e);
-            }
-          }
+             pressed Camera. Show the raw camera immediately; segmentation is
+             allowed to finish in the background and swap in afterwards. */
+          const rawTrack=await this.switchInputDevice(
+            'video',
+            this.selectedVideoInput||'',
+            {silent:true,deferVirtualBg:true}
+          );
 
           this.bindPrejoinPreview();
           this.paintPrejoin();
+
+          if(this.virtualBgMode!=='none'){
+            const rawId=rawTrack?.id||'';
+            Promise.resolve().then(async()=>{
+              try{
+                if(
+                  !this.cameraEnabled ||
+                  this.destroyed ||
+                  this.localStream?.getVideoTracks?.()[0]?.id!==rawId ||
+                  this.virtualBgMode==='none'
+                )return;
+
+                await this.startVirtualBackground();
+
+                if(
+                  !this.cameraEnabled ||
+                  this.destroyed ||
+                  this.localStream?.getVideoTracks?.()[0]?.id!==rawId ||
+                  this.virtualBgMode==='none'
+                ){
+                  if(this.virtualBgMode==='none')this.stopVirtualBackground();
+                  return;
+                }
+
+                await this.syncOutgoingCameraTrack();
+                this.bindPrejoinPreview();
+                this.paintPrejoin();
+              }catch(e){
+                console.warn('[Mathroom prejoin virtual background]',e);
+              }
+            });
+          }
         }catch(e){
           this.cameraEnabled=false;
           localStorage.setItem(`mathroom.media.camera.${this.role}`,'0');
@@ -3485,6 +3587,16 @@
         }
       };
       this.bindVirtualBgControls(backdrop);
+
+      /* Preload only the lightweight virtual-background runtimes while the
+         user is reading the prejoin screen. This removes CDN startup latency
+         from the Camera button without asking for camera permission. COCO/TFJS
+         stays lazy because it is much heavier. */
+      if(this.virtualBgMode!=='none'){
+        this.ensureVirtualBgLibrary().catch(e=>console.warn('[Mathroom virtual background] segmentation prewarm',e));
+        this.ensureVirtualBgFaceLibrary().catch(e=>console.warn('[Mathroom virtual background] face prewarm',e));
+      }
+
       join.onclick = () => this.joinCall();
       try {
         await this.acquireMedia();
@@ -3744,17 +3856,45 @@
         try{
           this.cameraEnabled=true;
           localStorage.setItem(`mathroom.media.camera.${this.role}`,'1');
-          t=await this.switchInputDevice('video',this.selectedVideoInput||'',{silent:true});
-          const outgoing=this.effectiveCameraTrack()||t;
+          t=await this.switchInputDevice(
+            'video',
+            this.selectedVideoInput||'',
+            {silent:true,deferVirtualBg:true}
+          );
           const sender=this.pc?.getSenders?.().find(s=>s.track?.kind==='video')
             ||this.pc?.getTransceivers?.().find(tr=>tr.receiver?.track?.kind==='video')?.sender;
           if(sender){
-            await sender.replaceTrack(outgoing);
+            await sender.replaceTrack(t);
             await this.applyVideoSenderProfile(true);
           }
           this.bindMedia();
           this.paint();
           toast('Камера включена');
+
+          if(this.virtualBgMode!=='none'){
+            const rawId=t?.id||'';
+            Promise.resolve().then(async()=>{
+              try{
+                if(
+                  !this.cameraEnabled ||
+                  this.destroyed ||
+                  this.localStream?.getVideoTracks?.()[0]?.id!==rawId ||
+                  this.virtualBgMode==='none'
+                )return;
+                await this.startVirtualBackground();
+                if(
+                  !this.cameraEnabled ||
+                  this.destroyed ||
+                  this.localStream?.getVideoTracks?.()[0]?.id!==rawId ||
+                  this.virtualBgMode==='none'
+                )return;
+                await this.syncOutgoingCameraTrack();
+                this.paint();
+              }catch(e){
+                console.warn('[Mathroom camera virtual background async]',e);
+              }
+            });
+          }
         }catch(e){
           this.cameraEnabled=false;
           localStorage.setItem(`mathroom.media.camera.${this.role}`,'0');
