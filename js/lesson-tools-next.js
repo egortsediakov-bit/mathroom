@@ -1888,6 +1888,9 @@
       let faceMisses=0;
       let faceBusy=false;
       let faceLastCheck=0;
+      let primaryFaceBox=null;
+      let primaryFaceSeenAt=0;
+      let visibleFaceCount=0;
 
       processor.onResults(results=>{
         if(!this.virtualBgCanvas||!results?.image)return;
@@ -1970,23 +1973,37 @@
               }
             }
 
-            /* Connected components on the opened confident mask. Prefer a large
-               component that intersects the central face/torso corridor. */
+            /* Connected components on the opened confident mask.
+               When face detection has a fresh primary face, anchor selection to
+               the component containing that face instead of simply choosing the
+               biggest/most central "person". This is what separates the tutor
+               from another person sitting farther back in the room. */
             let label=0,bestLabel=0,bestScore=-1,bestArea=0;
             const centerX=mw*.5,centerY=mh*.48;
             const centerL=mw*.27,centerR=mw*.73;
             const centerT=mh*.08,centerB=mh*.94;
 
+            const faceAnchorFresh=!!primaryFaceBox
+              &&primaryFaceSeenAt>0
+              &&performance.now()-primaryFaceSeenAt<1100;
+            const anchorX=faceAnchorFresh?primaryFaceBox.cx*mw:0;
+            const anchorY=faceAnchorFresh?primaryFaceBox.cy*mh:0;
+            const anchorPadX=faceAnchorFresh?Math.max(3,primaryFaceBox.w*mw*.52):0;
+            const anchorPadY=faceAnchorFresh?Math.max(3,primaryFaceBox.h*mh*.55):0;
+
             for(let seed=0;seed<total;seed++){
               if(!opened[seed]||labels[seed])continue;
               label++;
               let qh=0,qt=0,area=0,central=0,sumX=0,sumY=0;
+              let minCX=mw,minCY=mh,maxCX=-1,maxCY=-1;
               queue[qt++]=seed;labels[seed]=label;
 
               while(qh<qt){
                 const p=queue[qh++];
                 const x=p%mw,y=(p/mw)|0;
                 area++;sumX+=x;sumY+=y;
+                if(x<minCX)minCX=x;if(x>maxCX)maxCX=x;
+                if(y<minCY)minCY=y;if(y>maxCY)maxCY=y;
                 if(x>=centerL&&x<=centerR&&y>=centerT&&y<=centerB)central++;
 
                 if(x>0){const n=p-1;if(opened[n]&&!labels[n]){labels[n]=label;queue[qt++]=n}}
@@ -2000,7 +2017,19 @@
               const dy=Math.abs(cy-centerY)/(mh*.55);
               const centralRatio=central/Math.max(1,area);
               const centerBonus=Math.max(0,1-(dx*.70+dy*.30));
-              const score=area*(1+centralRatio*2.8)*(0.45+centerBonus*.55);
+
+              const containsPrimaryFace=faceAnchorFresh
+                &&anchorX>=minCX-anchorPadX
+                &&anchorX<=maxCX+anchorPadX
+                &&anchorY>=minCY-anchorPadY
+                &&anchorY<=maxCY+anchorPadY;
+
+              /* A face-anchored component wins decisively. If no face box is
+                 available yet, preserve the previous centrality heuristic. */
+              const baseScore=area*(1+centralRatio*2.8)*(0.45+centerBonus*.55);
+              const score=faceAnchorFresh
+                ?(containsPrimaryFace?baseScore*50:baseScore*.015)
+                :baseScore;
 
               if(score>bestScore){
                 bestScore=score;bestLabel=label;bestArea=area;
@@ -2054,6 +2083,39 @@
                     const p=row+x;
                     if(haloKeep[p]||confidence[p]<fullThreshold)continue;
                     if(prev[p-1]||prev[p+1]||prev[p-mw]||prev[p+mw])haloKeep[p]=1;
+                  }
+                }
+              }
+
+              /* With multiple visible faces, keep only a generous body envelope
+                 around the largest (nearest) face. The envelope is narrower
+                 around head/shoulders and widens toward the bottom for arms and
+                 torso. This prevents a distant person from remaining sharp even
+                 if SelfieSegmentation connects them through bedding/furniture. */
+              if(visibleFaceCount>1&&faceAnchorFresh&&primaryFaceBox){
+                const pcx=primaryFaceBox.cx;
+                const pcy=primaryFaceBox.cy;
+                const pfw=Math.max(.035,primaryFaceBox.w);
+                const pfh=Math.max(.045,primaryFaceBox.h);
+                const top=Math.max(0,pcy-pfh*1.35);
+
+                for(let p=0;p<total;p++){
+                  if(!haloKeep[p])continue;
+                  const x=(p%mw)/mw;
+                  const y=((p/mw)|0)/mh;
+
+                  if(y<top){
+                    haloKeep[p]=0;
+                    continue;
+                  }
+
+                  const down=Math.max(0,Math.min(1,(y-pcy)/Math.max(.18,1-pcy)));
+                  const headRadius=Math.max(.15,pfw*1.65);
+                  const lowerRadius=Math.min(.46,Math.max(.34,pfw*3.0));
+                  const radius=headRadius+(lowerRadius-headRadius)*down;
+
+                  if(Math.abs(x-pcx)>radius){
+                    haloKeep[p]=0;
                   }
                 }
               }
@@ -2181,30 +2243,70 @@
             ?faceResults.detections
             :[];
 
-          /* Ignore tiny accidental detections in posters/screens. A genuine
-             webcam face normally occupies comfortably more than this. */
-          const valid=detections.some(d=>{
-            const b=d?.boundingBox||{};
-            const bw=Number(b.width||0);
-            const bh=Number(b.height||0);
-            const area=bw*bh;
-            const score=Number(d?.score?.[0]??d?.score??1);
-            return score>=.50 && area>=.004;
-          });
+          const sw=Math.max(1,Number(source.videoWidth)||srcW);
+          const sh=Math.max(1,Number(source.videoHeight)||srcH);
 
+          const boxes=[];
+          for(const d of detections){
+            const score=Number(d?.score?.[0]??d?.score??1);
+            if(score<.50)continue;
+
+            const b=d?.boundingBox||d?.locationData?.relativeBoundingBox||{};
+            let bw=Number(b.width??b.w??0);
+            let bh=Number(b.height??b.h??0);
+            let cx=Number(b.xCenter??b.centerX??NaN);
+            let cy=Number(b.yCenter??b.centerY??NaN);
+            const xMin=Number(b.xMin??b.xmin??NaN);
+            const yMin=Number(b.yMin??b.ymin??NaN);
+
+            if(!Number.isFinite(cx)&&Number.isFinite(xMin))cx=xMin+bw/2;
+            if(!Number.isFinite(cy)&&Number.isFinite(yMin))cy=yMin+bh/2;
+
+            /* Some builds expose pixel-space boxes, others normalized boxes. */
+            if(bw>1.5)bw/=sw;
+            if(bh>1.5)bh/=sh;
+            if(cx>1.5)cx/=sw;
+            if(cy>1.5)cy/=sh;
+
+            if(!Number.isFinite(cx)||!Number.isFinite(cy)||bw<=0||bh<=0)continue;
+
+            cx=Math.max(0,Math.min(1,cx));
+            cy=Math.max(0,Math.min(1,cy));
+            bw=Math.max(0,Math.min(1,bw));
+            bh=Math.max(0,Math.min(1,bh));
+
+            const area=bw*bh;
+            /* Keep small faces as secondary-person evidence, but a primary face
+               must still be large enough to avoid posters/noise opening the gate. */
+            if(area>=.001){
+              boxes.push({cx,cy,w:bw,h:bh,area,score});
+            }
+          }
+
+          boxes.sort((a,b)=>b.area-a.area);
+          const primary=boxes[0]||null;
+          const valid=!!primary&&primary.area>=.0035;
           const now=performance.now();
+
           if(valid){
+            primaryFaceBox=primary;
+            primaryFaceSeenAt=now;
+            visibleFaceCount=boxes.length;
             facePresent=true;
             faceLastSeen=now;
             faceMisses=0;
           }else{
+            visibleFaceCount=0;
             faceMisses++;
             /* Close conservatively, but much faster than before. Re-entry is
                intentionally immediate on the first valid face detection. */
             if(faceMisses>=2 && (!faceLastSeen||now-faceLastSeen>650)){
               facePresent=false;
+              primaryFaceBox=null;
+              primaryFaceSeenAt=0;
             }
           }
+
           faceBusy=false;
           faceGateEnabled=true;
         });
