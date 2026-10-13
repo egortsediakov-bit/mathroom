@@ -2029,7 +2029,7 @@
                  available yet, preserve the previous centrality heuristic. */
               const baseScore=area*(1+centralRatio*2.8)*(0.45+centerBonus*.55);
               const score=faceAnchorFresh
-                ?(containsPrimaryFace?baseScore*50:baseScore*.015)
+                ?(containsPrimaryFace?baseScore*100:-1)
                 :baseScore;
 
               if(score>bestScore){
@@ -2088,20 +2088,35 @@
                 }
               }
 
-              /* With multiple visible faces, keep only a generous body envelope
-                 around the largest (nearest) face. The envelope is narrower
-                 around head/shoulders and widens toward the bottom for arms and
-                 torso. This prevents a distant person from remaining sharp even
-                 if SelfieSegmentation connects them through bedding/furniture. */
-              if(secondaryFaceBoxes.length&&faceAnchorFresh&&primaryFaceBox){
+              /* Primary-participant ROI.
+                 SelfieSegmentation can merge several people, bedding and chairs
+                 into one giant connected foreground. The only stable way to
+                 guarantee "keep the tutor, blur the room" is to intersect the
+                 segmentation mask with a body-shaped region anchored to the
+                 largest/nearest detected face.
+
+                 The region is intentionally narrow around the head, expands at
+                 shoulders/torso, and becomes generous near the bottom so hands
+                 and forearms close to the camera are preserved. */
+              if(faceAnchorFresh&&primaryFaceBox){
                 const pcx=primaryFaceBox.cx;
                 const pcy=primaryFaceBox.cy;
                 const pfw=Math.max(.035,primaryFaceBox.w);
                 const pfh=Math.max(.045,primaryFaceBox.h);
-                const top=Math.max(0,pcy-pfh*1.35);
+
+                const top=Math.max(0,pcy-pfh*1.45);
+                const headEnd=Math.min(1,pcy+pfh*1.15);
+                const shoulderEnd=Math.min(1,pcy+pfh*2.65);
+
+                /* Widths are capped in normalized frame units so a noisy /
+                   oversized face box cannot suddenly reveal half the room. */
+                const headRadius=Math.min(.245,Math.max(.115,pfw*1.18));
+                const shoulderRadius=Math.min(.315,Math.max(.20,pfw*1.72));
+                const bottomRadius=Math.min(.43,Math.max(.34,pfw*2.55));
 
                 for(let p=0;p<total;p++){
                   if(!haloKeep[p])continue;
+
                   const x=(p%mw)/mw;
                   const y=((p/mw)|0)/mh;
 
@@ -2110,12 +2125,23 @@
                     continue;
                   }
 
-                  const down=Math.max(0,Math.min(1,(y-pcy)/Math.max(.18,1-pcy)));
-                  const headRadius=Math.max(.15,pfw*1.65);
-                  const lowerRadius=Math.min(.46,Math.max(.34,pfw*3.0));
-                  const radius=headRadius+(lowerRadius-headRadius)*down;
+                  let radius=headRadius;
 
-                  if(Math.abs(x-pcx)>radius){
+                  if(y>headEnd&&y<=shoulderEnd){
+                    const t=(y-headEnd)/Math.max(.001,shoulderEnd-headEnd);
+                    const smooth=t*t*(3-2*t);
+                    radius=headRadius+(shoulderRadius-headRadius)*smooth;
+                  }else if(y>shoulderEnd){
+                    const t=(y-shoulderEnd)/Math.max(.001,1-shoulderEnd);
+                    const smooth=t*t*(3-2*t);
+                    radius=shoulderRadius+(bottomRadius-shoulderRadius)*smooth;
+                  }
+
+                  /* Slightly more room below the face on the side where the
+                     participant's connected mask actually extends, while still
+                     preventing distant faces/bed from surviving near head level. */
+                  const dx=Math.abs(x-pcx);
+                  if(dx>radius){
                     haloKeep[p]=0;
                   }
                 }
@@ -2393,7 +2419,19 @@
           const now=performance.now();
 
           if(valid){
-            primaryFaceBox=primary;
+            if(primaryFaceBox&&primaryFaceSeenAt>0&&now-primaryFaceSeenAt<900){
+              const k=.38;
+              primaryFaceBox={
+                cx:primaryFaceBox.cx*(1-k)+primary.cx*k,
+                cy:primaryFaceBox.cy*(1-k)+primary.cy*k,
+                w:primaryFaceBox.w*(1-k)+primary.w*k,
+                h:primaryFaceBox.h*(1-k)+primary.h*k,
+                area:primaryFaceBox.area*(1-k)+primary.area*k,
+                score:primary.score
+              };
+            }else{
+              primaryFaceBox=primary;
+            }
             primaryFaceSeenAt=now;
             visibleFaceCount=boxes.length;
 
