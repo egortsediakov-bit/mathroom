@@ -1863,6 +1863,11 @@
       const maskCtx=maskCanvas.getContext('2d',{alpha:true,willReadFrequently:true});
       if(maskCtx)maskCtx.imageSmoothingEnabled=true;
 
+      const primaryCropCanvas=document.createElement('canvas');
+      primaryCropCanvas.width=w;
+      primaryCropCanvas.height=h;
+      const primaryCropCtx=primaryCropCanvas.getContext('2d',{alpha:true});
+
       const output=canvas.captureStream(isMobile?20:24);
       const outTrack=output.getVideoTracks()[0];
       if(!outTrack) throw new Error('Не удалось создать обработанный видеопоток');
@@ -2275,6 +2280,119 @@
 
         ctx.globalCompositeOperation='source-in';
         ctx.drawImage(results.image,0,0,cw,ch);
+
+        /* Final primary-participant crop.
+           Do this AFTER the segmentation result has already been composited.
+           That makes it impossible for a second person/bed/chair to remain sharp
+           merely because SelfieSegmentation merged them into the same mask.
+
+           The shape is anchored to the largest/nearest detected face and grows
+           from head -> shoulders -> torso/arms. A soft edge avoids a visible
+           geometric cutout. */
+        const primaryCropFresh=!!primaryFaceBox
+          &&primaryFaceSeenAt>0
+          &&performance.now()-primaryFaceSeenAt<1100;
+
+        if(primaryCropFresh){
+          const fx=primaryFaceBox.cx*cw;
+          const fy=primaryFaceBox.cy*ch;
+          const fw=Math.max(cw*.035,primaryFaceBox.w*cw);
+          const fh=Math.max(ch*.045,primaryFaceBox.h*ch);
+
+          const crop=primaryCropCanvas;
+          const cropCtx=primaryCropCtx;
+
+          if(cropCtx){
+            if(crop.width!==cw||crop.height!==ch){
+              crop.width=cw;crop.height=ch;
+            }
+            cropCtx.clearRect(0,0,cw,ch);
+
+            /* A softly feathered body silhouette made from overlapping ellipses.
+               Head zone stays tight; shoulder/body zones grow downward. */
+            const drawSoftEllipse=(x,y,rx,ry,feather=18)=>{
+              cropCtx.save();
+              cropCtx.filter=`blur(${Math.max(4,feather)}px)`;
+              cropCtx.fillStyle='#fff';
+              cropCtx.beginPath();
+              cropCtx.ellipse(x,y,rx,ry,0,0,Math.PI*2);
+              cropCtx.fill();
+              cropCtx.restore();
+
+              cropCtx.fillStyle='#fff';
+              cropCtx.beginPath();
+              cropCtx.ellipse(x,y,Math.max(1,rx-feather*.55),Math.max(1,ry-feather*.55),0,0,Math.PI*2);
+              cropCtx.fill();
+            };
+
+            /* Hair + head. */
+            drawSoftEllipse(
+              fx,
+              fy-fh*.02,
+              Math.min(cw*.22,Math.max(fw*1.35,cw*.10)),
+              Math.min(ch*.25,Math.max(fh*1.55,ch*.11)),
+              Math.max(7,cw*.010)
+            );
+
+            /* Neck + shoulders. */
+            drawSoftEllipse(
+              fx,
+              fy+fh*1.55,
+              Math.min(cw*.32,Math.max(fw*2.15,cw*.21)),
+              Math.min(ch*.30,Math.max(fh*2.35,ch*.18)),
+              Math.max(10,cw*.014)
+            );
+
+            /* Main torso. Slightly shifted down; broad enough for a seated user. */
+            drawSoftEllipse(
+              fx,
+              fy+fh*3.65,
+              Math.min(cw*.39,Math.max(fw*2.75,cw*.30)),
+              Math.min(ch*.43,Math.max(fh*3.6,ch*.29)),
+              Math.max(13,cw*.018)
+            );
+
+            /* Lower body / forearms close to camera. This intentionally reaches
+               wider near the bottom than near the face. */
+            drawSoftEllipse(
+              fx,
+              ch*.99,
+              Math.min(cw*.48,Math.max(fw*3.6,cw*.39)),
+              Math.min(ch*.31,Math.max(fh*3.2,ch*.22)),
+              Math.max(15,cw*.020)
+            );
+
+            /* Intersect the already-rendered sharp foreground with this crop. */
+            ctx.globalCompositeOperation='destination-in';
+            ctx.drawImage(crop,0,0,cw,ch);
+
+            /* Explicitly carve each clearly smaller secondary face/person from
+               the final sharp layer too. This is independent of mask cleanup. */
+            if(secondaryFaceBoxes.length){
+              ctx.globalCompositeOperation='destination-out';
+              for(const face of secondaryFaceBoxes){
+                const sx=face.cx*cw;
+                const sy=face.cy*ch;
+                const sfw=Math.max(4,face.w*cw);
+                const sfh=Math.max(5,face.h*ch);
+
+                ctx.save();
+                ctx.filter=`blur(${Math.max(8,cw*.012)}px)`;
+                ctx.fillStyle='#000';
+
+                ctx.beginPath();
+                ctx.ellipse(sx,sy+sfh*.15,sfw*1.45,sfh*1.75,0,0,Math.PI*2);
+                ctx.fill();
+
+                ctx.beginPath();
+                ctx.ellipse(sx,sy+sfh*2.55,sfw*3.25,sfh*3.65,0,0,Math.PI*2);
+                ctx.fill();
+
+                ctx.restore();
+              }
+            }
+          }
+        }
 
         ctx.globalCompositeOperation='destination-over';
         if(this.virtualBgMode==='blur'){
