@@ -143,6 +143,7 @@
       this.virtualBgFaceDetector = null;
       this.virtualBgPersonLibPromise = null;
       this.virtualBgPersonDetector = null;
+      this.virtualBgPersonModel = null;
 
       this.devices = { audioinput:[], videoinput:[], audiooutput:[] };
       this.deviceModal = null;
@@ -1708,7 +1709,9 @@
     }
 
     async ensureVirtualBgPersonLibrary() {
-      if(window.cocoSsd?.load&&window.tf)return {tf:window.tf,cocoSsd:window.cocoSsd};
+      if(this.virtualBgPersonModel){
+        return {tf:window.tf,cocoSsd:window.cocoSsd,model:this.virtualBgPersonModel};
+      }
       if(this.virtualBgPersonLibPromise)return this.virtualBgPersonLibPromise;
 
       const loadScript=(src,attr)=>new Promise((resolve,reject)=>{
@@ -1728,22 +1731,35 @@
       });
 
       this.virtualBgPersonLibPromise=(async()=>{
-        await loadScript(
-          'https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js',
-          'data-mr-tfjs'
-        );
-        await loadScript(
-          'https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3/dist/coco-ssd.min.js',
-          'data-mr-coco-ssd'
-        );
+        if(!window.tf){
+          await loadScript(
+            'https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js',
+            'data-mr-tfjs'
+          );
+        }
+        if(!window.cocoSsd?.load){
+          await loadScript(
+            'https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3/dist/coco-ssd.min.js',
+            'data-mr-coco-ssd'
+          );
+        }
         if(!window.tf||!window.cocoSsd?.load)throw new Error('Детектор людей не загрузился');
+
+        /* Explicit backend readiness avoids first detect() unexpectedly doing
+           backend initialization in the middle of the camera render loop. */
+        try{
+          await window.tf.ready();
+        }catch{}
+
         const model=await window.cocoSsd.load({base:'lite_mobilenet_v2'});
+        this.virtualBgPersonModel=model;
         return {tf:window.tf,cocoSsd:window.cocoSsd,model};
       })();
 
       try{return await this.virtualBgPersonLibPromise}
       catch(e){
         this.virtualBgPersonLibPromise=null;
+        this.virtualBgPersonModel=null;
         throw e;
       }
     }
@@ -1829,7 +1845,8 @@
       this.virtualBgProcessor=null;
       try{this.virtualBgFaceDetector?.close?.()}catch{}
       this.virtualBgFaceDetector=null;
-      try{this.virtualBgPersonDetector?.dispose?.()}catch{}
+      /* COCO model is cached for the page lifetime. Disposing it here made
+         subsequent background/camera restarts reuse a dead model. */
       this.virtualBgPersonDetector=null;
       try{this.virtualBgSourceVideo?.pause?.()}catch{}
       if(this.virtualBgSourceVideo)this.virtualBgSourceVideo.srcObject=null;
@@ -1943,9 +1960,23 @@
       let personDetector=null;
       let personBusy=false;
       let personLastCheck=0;
+      let personEnabled=true;
+      let personSlowStrikes=0;
+      let personNextAllowedAt=performance.now()+2200;
       let primaryPersonBox=null;   // normalized x,y,w,h
       let secondaryPersonBoxes=[];
       let primaryPersonSeenAt=0;
+
+      /* COCO never sees the full webcam frame. Running object detection on a
+         small copy cuts both GPU compilation/inference pressure and readback
+         cost, while normalized boxes remain accurate enough for our purpose. */
+      const personDetectCanvas=document.createElement('canvas');
+      const personDetectLong=isMobile?192:256;
+      const personDetectScale=Math.min(1,personDetectLong/Math.max(srcW,srcH));
+      personDetectCanvas.width=Math.max(112,Math.round(srcW*personDetectScale));
+      personDetectCanvas.height=Math.max(80,Math.round(srcH*personDetectScale));
+      const personDetectCtx=personDetectCanvas.getContext('2d',{alpha:false});
+      if(personDetectCtx)personDetectCtx.imageSmoothingEnabled=true;
 
       processor.onResults(results=>{
         if(!this.virtualBgCanvas||!results?.image)return;
@@ -2306,6 +2337,10 @@
         }
         personDetector=model;
         this.virtualBgPersonDetector=model;
+        /* Let the camera + SelfieSegmentation settle before the first TFJS
+           inference. The model can load in parallel but never competes with the
+           initial video startup. */
+        personNextAllowedAt=performance.now()+1800;
       }).catch(e=>{
         console.warn('[Mathroom virtual background] person detector unavailable',e);
       });
@@ -2462,15 +2497,49 @@
         const hidden=document.visibilityState==='hidden';
         const interval=hidden ? Math.max(140,this.virtualBgFrameInterval) : this.virtualBgFrameInterval;
 
-        if(personDetector&&!personBusy&&!this.screenTrack&&source.readyState>=2&&ts-personLastCheck>=380){
+        if(
+          personEnabled &&
+          personDetector &&
+          personDetectCtx &&
+          !personBusy &&
+          !this.screenTrack &&
+          source.readyState>=2 &&
+          performance.now()>=personNextAllowedAt &&
+          ts-personLastCheck>=900
+        ){
           personLastCheck=ts;
           personBusy=true;
 
-          Promise.resolve(personDetector.detect(source,6,.34)).then(predictions=>{
+          /* Copy only a small frame for object detection. This keeps the camera
+             render path responsive even on weaker integrated GPUs. */
+          personDetectCtx.drawImage(
+            source,
+            0,0,personDetectCanvas.width,personDetectCanvas.height
+          );
+
+          const detectStarted=performance.now();
+
+          Promise.resolve(personDetector.detect(personDetectCanvas,6,.34)).then(predictions=>{
             if(this.virtualBgProcessor!==processor)return;
 
-            const sw=Math.max(1,Number(source.videoWidth)||srcW);
-            const sh=Math.max(1,Number(source.videoHeight)||srcH);
+            const elapsed=performance.now()-detectStarted;
+            if(elapsed>420)personSlowStrikes++;
+            else personSlowStrikes=Math.max(0,personSlowStrikes-1);
+
+            /* If object detection is too expensive on this machine, back off
+               aggressively. After repeated slow passes, disable COCO for this
+               background session; face anchors + segmentation keep working. */
+            if(personSlowStrikes>=2){
+              personEnabled=false;
+              secondaryPersonBoxes=[];
+              console.warn('[Mathroom virtual background] person detector disabled for performance',elapsed);
+              return;
+            }
+
+            personNextAllowedAt=performance.now()+(elapsed>240?1800:1100);
+
+            const sw=personDetectCanvas.width;
+            const sh=personDetectCanvas.height;
 
             const people=(Array.isArray(predictions)?predictions:[])
               .filter(p=>p?.class==='person'&&Number(p?.score||0)>=.34&&Array.isArray(p?.bbox))
@@ -2517,25 +2586,20 @@
                 }
               }
 
-              /* If COCO missed/cropped the main body box, choose the box whose
-                 upper region lies nearest the face anchor. This handles a tutor
-                 leaning into the frame from the side. */
               if(primaryIndex<0&&faceFresh){
                 let best=Infinity;
                 for(let i=0;i<people.length;i++){
                   const b=people[i];
                   const bx=b.x+b.w/2;
                   const by=b.y+b.h*.22;
-                  const dx=(bx-primaryFaceAnchor.cx);
-                  const dy=(by-primaryFaceAnchor.cy);
+                  const dx=bx-primaryFaceAnchor.cx;
+                  const dy=by-primaryFaceAnchor.cy;
                   const dist=dx*dx+dy*dy;
                   if(dist<best){best=dist;primaryIndex=i}
                 }
               }
 
               if(primaryIndex<0){
-                /* No face anchor yet: prefer the largest person near the lower
-                   half/foreground, but this is only a short startup fallback. */
                 let best=-Infinity;
                 for(let i=0;i<people.length;i++){
                   const b=people[i];
@@ -2547,8 +2611,8 @@
               }
 
               const selected=people[Math.max(0,primaryIndex)];
-              if(primaryPersonBox&&performance.now()-primaryPersonSeenAt<1100){
-                const k=.42;
+              if(primaryPersonBox&&performance.now()-primaryPersonSeenAt<1400){
+                const k=.38;
                 primaryPersonBox={
                   x:primaryPersonBox.x*(1-k)+selected.x*k,
                   y:primaryPersonBox.y*(1-k)+selected.y*k,
@@ -2561,8 +2625,6 @@
 
               primaryPersonSeenAt=performance.now();
 
-              /* Ignore duplicate/strongly-overlapping person boxes so only real
-                 separate background people are erased. */
               const pL=selected.x,pT=selected.y,pR=selected.x+selected.w,pB=selected.y+selected.h;
               const pArea=selected.w*selected.h;
               secondaryPersonBoxes=people.filter((b,i)=>{
@@ -2576,14 +2638,18 @@
                 const iou=union>0?inter/union:0;
                 return iou<.58;
               });
-            }else{
-              if(performance.now()-primaryPersonSeenAt>950){
-                primaryPersonBox=null;
-                secondaryPersonBoxes=[];
-              }
+            }else if(performance.now()-primaryPersonSeenAt>1400){
+              primaryPersonBox=null;
+              secondaryPersonBoxes=[];
             }
           }).catch(e=>{
             console.warn('[Mathroom virtual background] person detect',e);
+            personSlowStrikes++;
+            personNextAllowedAt=performance.now()+1800;
+            if(personSlowStrikes>=2){
+              personEnabled=false;
+              secondaryPersonBoxes=[];
+            }
           }).finally(()=>{
             personBusy=false;
           });
