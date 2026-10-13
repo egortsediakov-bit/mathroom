@@ -2442,8 +2442,9 @@
           locateFile:file=>`https://cdn.jsdelivr.net/npm/@mediapipe/face_detection/${file}`
         });
         detector.setOptions({
-          /* 1 = full-range model (better for small/distant faces). */
-          modelSelection:1,
+          /* MediaPipe FaceDetection Solution for JavaScript uses string models.
+             "full" is the full-range detector for faces farther from camera. */
+          model:'full',
           minDetectionConfidence:.40
         });
 
@@ -2604,6 +2605,22 @@
         /* Gate becomes active immediately. Until the first positive detection,
            an empty room is treated as background, which is the safe default. */
         faceGateEnabled=true;
+
+        /* Browser/CDN compatibility fail-safe. If the detector initializes but
+           never emits results, fall back to the existing segmentation rather
+           than keeping the participant blurred forever. */
+        setTimeout(()=>{
+          if(
+            this.virtualBgProcessor===processor &&
+            faceGateEnabled &&
+            !facePresent &&
+            !faceLastSeen &&
+            primaryFaceSeenAt===0
+          ){
+            console.warn('[Mathroom virtual background] face detector timeout fallback');
+            faceGateEnabled=false;
+          }
+        },2600);
       }).catch(e=>{
         /* Background remains fully functional without the optional gate. */
         faceGateEnabled=false;
