@@ -1982,6 +1982,11 @@
       const personDetectCtx=personDetectCanvas.getContext('2d',{alpha:false});
       if(personDetectCtx)personDetectCtx.imageSmoothingEnabled=true;
 
+      /* v40.37: keep the final alpha mask temporally stable. This removes
+         one-frame holes around hair/shoulders without letting old foreground
+         linger for long when somebody leaves the frame. */
+      let temporalMaskAlpha=null;
+
       processor.onResults(results=>{
         if(!this.virtualBgCanvas||!results?.image)return;
         const cw=canvas.width,ch=canvas.height;
@@ -2063,24 +2068,54 @@
               }
             }
 
-            /* Connected components on the opened confident mask. Prefer a large
-               component that intersects the central face/torso corridor. */
+            /* Connected components on the opened confident mask. The main
+               subject must be the component associated with the primary face
+               (or, while face detection is briefly unavailable, the primary
+               person box). This is the key difference between "person
+               segmentation" and "keep the participant nearest the camera". */
             let label=0,bestLabel=0,bestScore=-1,bestArea=0;
+            let bestFaceHits=0,bestPersonHits=0;
             const centerX=mw*.5,centerY=mh*.48;
             const centerL=mw*.27,centerR=mw*.73;
             const centerT=mh*.08,centerB=mh*.94;
+            const componentNow=performance.now();
+            const componentFaceFresh=!!primaryFaceAnchor
+              &&primaryFaceSeenAt>0
+              &&componentNow-primaryFaceSeenAt<1250;
+            const componentPersonFresh=!!primaryPersonBox
+              &&primaryPersonSeenAt>0
+              &&componentNow-primaryPersonSeenAt<1450;
 
             for(let seed=0;seed<total;seed++){
               if(!opened[seed]||labels[seed])continue;
               label++;
               let qh=0,qt=0,area=0,central=0,sumX=0,sumY=0;
+              let faceHits=0,personHits=0;
               queue[qt++]=seed;labels[seed]=label;
 
               while(qh<qt){
                 const p=queue[qh++];
                 const x=p%mw,y=(p/mw)|0;
+                const nx=(x+.5)/mw,ny=(y+.5)/mh;
                 area++;sumX+=x;sumY+=y;
                 if(x>=centerL&&x<=centerR&&y>=centerT&&y<=centerB)central++;
+
+                if(componentFaceFresh){
+                  const fx=primaryFaceAnchor.cx,fy=primaryFaceAnchor.cy;
+                  const rx=Math.max(.045,primaryFaceAnchor.w*.95);
+                  const ry=Math.max(.055,primaryFaceAnchor.h*1.10);
+                  if(Math.abs(nx-fx)<=rx&&Math.abs(ny-fy)<=ry)faceHits++;
+                }
+
+                if(componentPersonFresh){
+                  const b=primaryPersonBox;
+                  const padX=Math.max(.018,b.w*.04);
+                  const padY=Math.max(.018,b.h*.035);
+                  if(
+                    nx>=b.x-padX&&nx<=b.x+b.w+padX&&
+                    ny>=b.y-padY&&ny<=b.y+b.h+padY
+                  )personHits++;
+                }
 
                 if(x>0){const n=p-1;if(opened[n]&&!labels[n]){labels[n]=label;queue[qt++]=n}}
                 if(x<mw-1){const n=p+1;if(opened[n]&&!labels[n]){labels[n]=label;queue[qt++]=n}}
@@ -2093,14 +2128,36 @@
               const dy=Math.abs(cy-centerY)/(mh*.55);
               const centralRatio=central/Math.max(1,area);
               const centerBonus=Math.max(0,1-(dx*.70+dy*.30));
-              const score=area*(1+centralRatio*2.8)*(0.45+centerBonus*.55);
+
+              let score=area*(1+centralRatio*1.8)*(0.52+centerBonus*.48);
+              if(componentFaceFresh){
+                score*=faceHits>0
+                  ? 5.5+Math.min(3.5,faceHits/Math.max(1,area*.012))
+                  : .12;
+              }else if(componentPersonFresh){
+                score*=personHits>0
+                  ? 2.6+Math.min(1.8,personHits/Math.max(1,area*.08))
+                  : .30;
+              }
 
               if(score>bestScore){
-                bestScore=score;bestLabel=label;bestArea=area;
+                bestScore=score;
+                bestLabel=label;
+                bestArea=area;
+                bestFaceHits=faceHits;
+                bestPersonHits=personHits;
               }
             }
 
-            const validComponent=bestLabel>0&&bestArea>Math.max(18,total*.0012);
+            const componentAnchored=componentFaceFresh
+              ? bestFaceHits>0
+              : componentPersonFresh
+                ? bestPersonHits>0
+                : true;
+            const validComponent=
+              bestLabel>0 &&
+              bestArea>Math.max(18,total*.0012) &&
+              componentAnchored;
 
             if(validComponent){
               /* Seed the retained mask from the selected subject component. */
@@ -2151,26 +2208,66 @@
                 }
               }
 
-              /* Remove background people without cropping the tutor.
-                 The old protection used the whole primary COCO rectangle, which
-                 could cover half the room and accidentally protect people behind
-                 the tutor. Now protection is derived from the primary face and
-                 expands gradually down the torso. This is ONLY protection from
-                 secondary-person erasing; it never crops the tutor itself. */
+              /* Keep one participant only. Secondary faces are stronger
+                 evidence than the shared selfie mask, so use them as erase
+                 seeds. A flood through the current foreground removes the
+                 second person's whole silhouette even when they are reclining
+                 or touching bedding; the primary subject region is a barrier. */
               const faceFresh=!!primaryFaceAnchor
                 &&primaryFaceSeenAt>0
-                &&performance.now()-primaryFaceSeenAt<1200;
+                &&performance.now()-primaryFaceSeenAt<1250;
+              const personFresh=!!primaryPersonBox
+                &&primaryPersonSeenAt>0
+                &&performance.now()-primaryPersonSeenAt<1450;
+
+              const primaryProtected=(x,y)=>{
+                if(faceFresh){
+                  const fx=primaryFaceAnchor.cx;
+                  const fy=primaryFaceAnchor.cy;
+                  const fw=Math.max(.035,primaryFaceAnchor.w);
+                  const fh=Math.max(.045,primaryFaceAnchor.h);
+                  const top=fy-fh*1.55;
+                  const headEnd=fy+fh*1.15;
+                  const shoulderEnd=fy+fh*2.95;
+
+                  if(y>=top){
+                    let radius=Math.max(.105,fw*1.48);
+                    if(y>headEnd&&y<=shoulderEnd){
+                      const t=(y-headEnd)/Math.max(.001,shoulderEnd-headEnd);
+                      radius=Math.max(.105,fw*1.48)
+                        +(Math.max(.225,fw*2.45)-Math.max(.105,fw*1.48))*t;
+                    }else if(y>shoulderEnd){
+                      const t=Math.max(0,Math.min(1,(y-shoulderEnd)/Math.max(.001,1-shoulderEnd)));
+                      radius=Math.max(.225,fw*2.45)
+                        +(Math.max(.35,fw*3.75)-Math.max(.225,fw*2.45))*t;
+                    }
+                    if(Math.abs(x-fx)<=Math.min(.44,radius))return true;
+                  }
+                }
+
+                if(personFresh){
+                  const b=primaryPersonBox;
+                  const padX=Math.max(.018,b.w*.045);
+                  const padY=Math.max(.018,b.h*.035);
+                  const inBox=
+                    x>=b.x-padX&&x<=b.x+b.w+padX&&
+                    y>=b.y-padY&&y<=b.y+b.h+padY;
+                  if(inBox){
+                    if(!faceFresh)return true;
+                    const maxSide=Math.max(.34,primaryFaceAnchor.w*3.9);
+                    if(Math.abs(x-primaryFaceAnchor.cx)<=Math.min(.44,maxSide))return true;
+                  }
+                }
+                return false;
+              };
 
               const removalBoxes=[...secondaryPersonBoxes];
 
-              /* COCO can miss seated/reclining people. Secondary faces provide
-                 independent anchors; expand each face into a conservative body
-                 box so the person behind is still removed from foreground. */
-              if(faceFresh&&secondaryFaceAnchors.length){
+              if(secondaryFaceAnchors.length){
                 for(const face of secondaryFaceAnchors){
-                  const halfW=Math.min(.24,Math.max(.065,face.w*2.35));
-                  const top=Math.max(0,face.cy-face.h*1.55);
-                  const bottom=Math.min(1,face.cy+Math.max(.24,face.h*6.0));
+                  const halfW=Math.min(.40,Math.max(.14,face.w*4.6));
+                  const top=Math.max(0,face.cy-Math.max(.08,face.h*1.8));
+                  const bottom=Math.min(1,face.cy+Math.max(.30,face.h*7.0));
                   removalBoxes.push({
                     x:Math.max(0,face.cx-halfW),
                     y:top,
@@ -2178,6 +2275,69 @@
                     h:bottom-top,
                     _fromFace:true
                   });
+                }
+
+                const sourceKeep=new Uint8Array(haloKeep);
+                const erased=new Uint8Array(total);
+                const eraseQueue=new Int32Array(total);
+
+                for(const face of secondaryFaceAnchors){
+                  let seed=-1;
+                  let bestSeedDist=Infinity;
+                  const sx=Math.round(face.cx*(mw-1));
+                  const sy=Math.round(face.cy*(mh-1));
+                  const rx=Math.max(3,Math.ceil(face.w*mw*1.25));
+                  const ry=Math.max(3,Math.ceil(face.h*mh*1.35));
+                  const x0=Math.max(0,sx-rx),x1=Math.min(mw-1,sx+rx);
+                  const y0=Math.max(0,sy-ry),y1=Math.min(mh-1,sy+ry);
+
+                  for(let yy=y0;yy<=y1;yy++){
+                    for(let xx=x0;xx<=x1;xx++){
+                      const p=yy*mw+xx;
+                      if(!sourceKeep[p])continue;
+                      const nx=(xx+.5)/mw,ny=(yy+.5)/mh;
+                      if(primaryProtected(nx,ny))continue;
+                      const dd=((xx-sx)/Math.max(1,rx))**2+((yy-sy)/Math.max(1,ry))**2;
+                      if(dd<bestSeedDist){bestSeedDist=dd;seed=p}
+                    }
+                  }
+
+                  if(seed<0)continue;
+
+                  let qh=0,qt=0;
+                  eraseQueue[qt++]=seed;
+                  erased[seed]=1;
+                  const maxDx=Math.min(.50,Math.max(.20,face.w*5.8));
+                  const maxUp=Math.min(.30,Math.max(.10,face.h*2.7));
+                  const maxDown=Math.min(.72,Math.max(.34,face.h*8.0));
+
+                  while(qh<qt){
+                    const p=eraseQueue[qh++];
+                    const x=p%mw,y=(p/mw)|0;
+                    const nx=(x+.5)/mw,ny=(y+.5)/mh;
+
+                    if(
+                      Math.abs(nx-face.cx)>maxDx ||
+                      ny<face.cy-maxUp ||
+                      ny>face.cy+maxDown ||
+                      primaryProtected(nx,ny)
+                    )continue;
+
+                    haloKeep[p]=0;
+
+                    const visit=n=>{
+                      if(erased[n]||!sourceKeep[n])return;
+                      const xx=n%mw,yy=(n/mw)|0;
+                      const vx=(xx+.5)/mw,vy=(yy+.5)/mh;
+                      if(primaryProtected(vx,vy))return;
+                      erased[n]=1;
+                      eraseQueue[qt++]=n;
+                    };
+                    if(x>0)visit(p-1);
+                    if(x<mw-1)visit(p+1);
+                    if(y>0)visit(p-mw);
+                    if(y<mh-1)visit(p+mw);
+                  }
                 }
               }
 
@@ -2190,41 +2350,10 @@
 
                   for(let p=0;p<total;p++){
                     if(!haloKeep[p])continue;
-                    const x=(p%mw)/mw;
-                    const y=((p/mw)|0)/mh;
-                    const insideSecondary=x>=px&&x<=pr&&y>=py&&y<=pb;
-                    if(!insideSecondary)continue;
-
-                    let protectedPrimary=false;
-
-                    if(faceFresh){
-                      const fx=primaryFaceAnchor.cx;
-                      const fy=primaryFaceAnchor.cy;
-                      const fw=Math.max(.035,primaryFaceAnchor.w);
-                      const fh=Math.max(.045,primaryFaceAnchor.h);
-
-                      const top=fy-fh*1.45;
-                      const headEnd=fy+fh*1.10;
-                      const shoulderEnd=fy+fh*2.80;
-
-                      if(y>=top){
-                        let radius=Math.max(.10,fw*1.40);
-
-                        if(y>headEnd&&y<=shoulderEnd){
-                          const t=(y-headEnd)/Math.max(.001,shoulderEnd-headEnd);
-                          radius=Math.max(.10,fw*1.40)
-                            +(Math.max(.21,fw*2.25)-Math.max(.10,fw*1.40))*t;
-                        }else if(y>shoulderEnd){
-                          const t=Math.max(0,Math.min(1,(y-shoulderEnd)/Math.max(.001,1-shoulderEnd)));
-                          radius=Math.max(.21,fw*2.25)
-                            +(Math.max(.32,fw*3.40)-Math.max(.21,fw*2.25))*t;
-                        }
-
-                        protectedPrimary=Math.abs(x-fx)<=Math.min(.42,radius);
-                      }
-                    }
-
-                    if(!protectedPrimary)haloKeep[p]=0;
+                    const x=((p%mw)+.5)/mw;
+                    const y=(((p/mw)|0)+.5)/mh;
+                    if(x<px||x>pr||y<py||y>pb)continue;
+                    if(!primaryProtected(x,y))haloKeep[p]=0;
                   }
                 }
               }
@@ -2245,21 +2374,39 @@
                 d[i]=255;d[i+1]=255;d[i+2]=255;d[i+3]=a;
               }
             }else{
-              /* If no reliable central subject exists, fail safe to MediaPipe's
-                 soft mask rather than risking a missing/blurred person. */
+              /* If a primary detector says somebody is present but the selected
+                 mask component does not reach that primary anchor, do not keep
+                 an unrelated object sharp for this frame. */
+              const anchorExpected=componentFaceFresh||componentPersonFresh;
               for(let p=0,i=0;p<total;p++,i+=4){
                 const c=confidence[p];
-                const lo=isMobile?24:30;
-                const hi=isMobile?108:118;
                 let a=0;
-                if(c>=hi)a=255;
-                else if(c>lo){
-                  const t=(c-lo)/(hi-lo);
-                  const smooth=t*t*(3-2*t);
-                  a=Math.round(255*smooth);
+                if(!anchorExpected){
+                  const lo=isMobile?24:30;
+                  const hi=isMobile?108:118;
+                  if(c>=hi)a=255;
+                  else if(c>lo){
+                    const t=(c-lo)/(hi-lo);
+                    const smooth=t*t*(3-2*t);
+                    a=Math.round(255*smooth);
+                  }
                 }
                 d[i]=255;d[i+1]=255;d[i+2]=255;d[i+3]=a;
               }
+            }
+
+            /* Stabilize the edge over time, but release quickly so a removed
+               background person does not leave a visible ghost. */
+            if(!temporalMaskAlpha||temporalMaskAlpha.length!==total){
+              temporalMaskAlpha=new Uint8Array(total);
+            }
+            for(let p=0,i=3;p<total;p++,i+=4){
+              const target=d[i];
+              const prev=temporalMaskAlpha[p];
+              const gain=target>=prev?.58:.86;
+              const next=Math.round(prev+(target-prev)*gain);
+              temporalMaskAlpha[p]=next<4?0:next;
+              d[i]=temporalMaskAlpha[p];
             }
 
             maskCtx.putImageData(imageData,0,0);
@@ -2271,11 +2418,11 @@
             maskCtx.drawImage(results.segmentationMask,0,0,mw,mh);
           }
 
-          ctx.filter=isMobile?'blur(1.25px)':'blur(.8px)';
+          ctx.filter=isMobile?'blur(1.45px)':'blur(1.05px)';
           ctx.drawImage(maskCanvas,0,0,maskCanvas.width,maskCanvas.height,0,0,cw,ch);
           ctx.filter='none';
         }else{
-          ctx.filter=isMobile?'blur(1.25px)':'blur(.8px)';
+          ctx.filter=isMobile?'blur(1.45px)':'blur(1.05px)';
           ctx.drawImage(results.segmentationMask,0,0,cw,ch);
           ctx.filter='none';
         }
@@ -2302,6 +2449,7 @@
         const presenceConfirmed=facePresenceFresh||personPresenceFresh;
 
         if(!presenceConfirmed){
+          temporalMaskAlpha?.fill(0);
           ctx.globalCompositeOperation='source-over';
           ctx.clearRect(0,0,cw,ch);
         }
@@ -2457,7 +2605,7 @@
                 const duplicate=
                   dx<Math.max(primary.w,face.w)*.40 &&
                   dy<Math.max(primary.h,face.h)*.40;
-                return !duplicate && face.area<=primary.area*.92;
+                return !duplicate;
               });
             if(primaryFaceAnchor&&now-primaryFaceSeenAt<800){
               const k=.45;
