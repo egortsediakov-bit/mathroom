@@ -139,6 +139,8 @@
       this.virtualBgFrameInterval = 50;
       this.virtualBgAvgProcessMs = 0;
       this.virtualBgLibPromise = null;
+      this.virtualBgFaceLibPromise = null;
+      this.virtualBgFaceDetector = null;
 
       this.devices = { audioinput:[], videoinput:[], audiooutput:[] };
       this.deviceModal = null;
@@ -1669,6 +1671,40 @@
       catch(e){this.virtualBgLibPromise=null;throw e}
     }
 
+    async ensureVirtualBgFaceLibrary() {
+      if(window.FaceDetection)return window.FaceDetection;
+      if(this.virtualBgFaceLibPromise)return this.virtualBgFaceLibPromise;
+
+      this.virtualBgFaceLibPromise=new Promise((resolve,reject)=>{
+        const existing=document.querySelector('script[data-mr-face-detection]');
+        if(existing){
+          const ready=()=>window.FaceDetection
+            ?resolve(window.FaceDetection)
+            :reject(new Error('Детектор лица не загрузился'));
+          if(window.FaceDetection)return ready();
+          existing.addEventListener('load',ready,{once:true});
+          existing.addEventListener('error',()=>reject(new Error('Не удалось загрузить детектор лица')),{once:true});
+          return;
+        }
+
+        const script=document.createElement('script');
+        script.src='https://cdn.jsdelivr.net/npm/@mediapipe/face_detection/face_detection.js';
+        script.async=true;
+        script.dataset.mrFaceDetection='1';
+        script.onload=()=>window.FaceDetection
+          ?resolve(window.FaceDetection)
+          :reject(new Error('Детектор лица недоступен'));
+        script.onerror=()=>reject(new Error('Не удалось загрузить детектор лица'));
+        document.head.appendChild(script);
+      });
+
+      try{return await this.virtualBgFaceLibPromise}
+      catch(e){
+        this.virtualBgFaceLibPromise=null;
+        throw e;
+      }
+    }
+
     drawCover(ctx,img,w,h) {
       const iw=img.videoWidth||img.naturalWidth||img.width||w;
       const ih=img.videoHeight||img.naturalHeight||img.height||h;
@@ -1748,6 +1784,8 @@
       this.virtualBgFrameInterval=50;
       try{this.virtualBgProcessor?.close?.()}catch{}
       this.virtualBgProcessor=null;
+      try{this.virtualBgFaceDetector?.close?.()}catch{}
+      this.virtualBgFaceDetector=null;
       try{this.virtualBgSourceVideo?.pause?.()}catch{}
       if(this.virtualBgSourceVideo)this.virtualBgSourceVideo.srcObject=null;
       this.virtualBgSourceVideo=null;
@@ -1838,6 +1876,19 @@
          model tends to absorb nearby furniture/background around hair and
          shoulders, so use the higher-quality general model on every layout. */
       processor.setOptions({modelSelection:0});
+
+      /* Face presence is only a gate for accepting the person mask. It never
+         owns or reopens the camera, so a face-detector failure cannot break
+         video. A short hold after the last detection avoids flicker when the
+         user turns their head or briefly covers part of the face. */
+      let faceDetector=null;
+      let faceGateEnabled=false;
+      let facePresent=false;
+      let faceLastSeen=0;
+      let faceMisses=0;
+      let faceBusy=false;
+      let faceLastCheck=0;
+
       processor.onResults(results=>{
         if(!this.virtualBgCanvas||!results?.image)return;
         const cw=canvas.width,ch=canvas.height;
@@ -2058,6 +2109,20 @@
           ctx.filter='none';
         }
 
+        /* SelfieSegmentation sometimes classifies a bed, chair or blanket as
+           a person even when the frame is empty. Once face detection is ready,
+           accept foreground only while a real face is present (with a short
+           hysteresis window). Clearing here makes source-in draw no sharp
+           foreground at all, so blur/replacement covers the entire frame. */
+        const faceGateOpen=!faceGateEnabled
+          ||facePresent
+          ||(faceLastSeen>0&&performance.now()-faceLastSeen<1600);
+
+        if(!faceGateOpen){
+          ctx.globalCompositeOperation='source-over';
+          ctx.clearRect(0,0,cw,ch);
+        }
+
         ctx.globalCompositeOperation='source-in';
         ctx.drawImage(results.image,0,0,cw,ch);
 
@@ -2096,12 +2161,86 @@
       this.virtualBgTrack=outTrack;
       this.virtualBgProcessor=processor;
 
+      /* Load the presence detector in parallel after video is already working.
+         This deliberately does not delay camera/background startup. */
+      this.ensureVirtualBgFaceLibrary().then(FaceDetection=>{
+        if(this.destroyed||this.virtualBgProcessor!==processor)return;
+
+        const detector=new FaceDetection({
+          locateFile:file=>`https://cdn.jsdelivr.net/npm/@mediapipe/face_detection/${file}`
+        });
+        detector.setOptions({
+          model:'short',
+          minDetectionConfidence:.58
+        });
+
+        detector.onResults(faceResults=>{
+          if(this.virtualBgProcessor!==processor)return;
+
+          const detections=Array.isArray(faceResults?.detections)
+            ?faceResults.detections
+            :[];
+
+          /* Ignore tiny accidental detections in posters/screens. A genuine
+             webcam face normally occupies comfortably more than this. */
+          const valid=detections.some(d=>{
+            const b=d?.boundingBox||{};
+            const bw=Number(b.width||0);
+            const bh=Number(b.height||0);
+            const area=bw*bh;
+            const score=Number(d?.score?.[0]??d?.score??1);
+            return score>=.50 && area>=.004;
+          });
+
+          const now=performance.now();
+          if(valid){
+            facePresent=true;
+            faceLastSeen=now;
+            faceMisses=0;
+          }else{
+            faceMisses++;
+            if(faceMisses>=2 && (!faceLastSeen||now-faceLastSeen>900)){
+              facePresent=false;
+            }
+          }
+          faceBusy=false;
+          faceGateEnabled=true;
+        });
+
+        if(this.virtualBgProcessor!==processor){
+          try{detector.close?.()}catch{}
+          return;
+        }
+
+        faceDetector=detector;
+        this.virtualBgFaceDetector=detector;
+        /* Gate becomes active immediately. Until the first positive detection,
+           an empty room is treated as background, which is the safe default. */
+        faceGateEnabled=true;
+      }).catch(e=>{
+        /* Background remains fully functional without the optional gate. */
+        console.warn('[Mathroom virtual background] face gate unavailable',e);
+      });
+
       const loop=async ts=>{
         if(!this.virtualBgProcessor||this.destroyed)return;
         this.virtualBgRaf=requestAnimationFrame(loop);
 
         const hidden=document.visibilityState==='hidden';
         const interval=hidden ? Math.max(140,this.virtualBgFrameInterval) : this.virtualBgFrameInterval;
+
+        /* Presence check runs only ~2.5 times/sec and never blocks the main
+           segmentation loop. */
+        if(faceDetector&&!faceBusy&&!this.screenTrack&&source.readyState>=2&&ts-faceLastCheck>=400){
+          faceLastCheck=ts;
+          faceBusy=true;
+          Promise.resolve(faceDetector.send({image:source}))
+            .catch(e=>{
+              faceBusy=false;
+              console.warn('[Mathroom virtual background] face check',e);
+            });
+        }
+
         if(this.screenTrack||ts-this.virtualBgLastFrame<interval||this.virtualBgBusy||source.readyState<2)return;
 
         this.virtualBgLastFrame=ts;
