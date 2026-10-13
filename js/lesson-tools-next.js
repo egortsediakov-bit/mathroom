@@ -1944,7 +1944,11 @@
          video. A short hold after the last detection avoids flicker when the
          user turns their head or briefly covers part of the face. */
       let faceDetector=null;
-      let faceGateEnabled=false;
+      /* Presence gate starts closed. A sharp foreground is allowed only after
+         either Face Detection or person-instance detection confirms that a real
+         person is currently in frame. This prevents clothing/furniture from
+         surviving in an otherwise empty room. */
+      let faceGateEnabled=true;
       let facePresent=false;
       let faceLastSeen=0;
       let faceMisses=0;
@@ -2281,11 +2285,23 @@
            accept foreground only while a real face is present (with a short
            hysteresis window). Clearing here makes source-in draw no sharp
            foreground at all, so blur/replacement covers the entire frame. */
-        const faceGateOpen=!faceGateEnabled
-          ||facePresent
-          ||(faceLastSeen>0&&performance.now()-faceLastSeen<750);
+        const nowForPresence=performance.now();
+        const facePresenceFresh=
+          facePresent ||
+          (faceLastSeen>0&&nowForPresence-faceLastSeen<700);
 
-        if(!faceGateOpen){
+        const personPresenceFresh=
+          !!primaryPersonBox &&
+          primaryPersonSeenAt>0 &&
+          nowForPresence-primaryPersonSeenAt<1250;
+
+        /* Never fail open. A real person must be confirmed by at least one
+           independent detector. SelfieSegmentation alone is not allowed to keep
+           foreground sharp because it confuses clothing, beds and chairs with
+           people in an empty frame. */
+        const presenceConfirmed=facePresenceFresh||personPresenceFresh;
+
+        if(!presenceConfirmed){
           ctx.globalCompositeOperation='source-over';
           ctx.clearRect(0,0,cw,ch);
         }
@@ -2486,7 +2502,15 @@
            an empty room is treated as background, which is the safe default. */
         faceGateEnabled=true;
       }).catch(e=>{
-        /* Background remains fully functional without the optional gate. */
+        /* Do not fail open to SelfieSegmentation. Person-instance detection can
+           still confirm presence; otherwise the safe result is a fully blurred
+           frame instead of a random sharp object. */
+        faceGateEnabled=true;
+        facePresent=false;
+        faceLastSeen=0;
+        primaryFaceAnchor=null;
+        primaryFaceSeenAt=0;
+        secondaryFaceAnchors=[];
         console.warn('[Mathroom virtual background] face gate unavailable',e);
       });
 
@@ -2531,7 +2555,9 @@
                background session; face anchors + segmentation keep working. */
             if(personSlowStrikes>=2){
               personEnabled=false;
+              primaryPersonBox=null;
               secondaryPersonBoxes=[];
+              primaryPersonSeenAt=0;
               console.warn('[Mathroom virtual background] person detector disabled for performance',elapsed);
               return;
             }
@@ -2638,9 +2664,10 @@
                 const iou=union>0?inter/union:0;
                 return iou<.58;
               });
-            }else if(performance.now()-primaryPersonSeenAt>1400){
+            }else if(performance.now()-primaryPersonSeenAt>650){
               primaryPersonBox=null;
               secondaryPersonBoxes=[];
+              primaryPersonSeenAt=0;
             }
           }).catch(e=>{
             console.warn('[Mathroom virtual background] person detect',e);
@@ -2648,7 +2675,9 @@
             personNextAllowedAt=performance.now()+1800;
             if(personSlowStrikes>=2){
               personEnabled=false;
+              primaryPersonBox=null;
               secondaryPersonBoxes=[];
+              primaryPersonSeenAt=0;
             }
           }).finally(()=>{
             personBusy=false;
