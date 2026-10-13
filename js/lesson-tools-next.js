@@ -1891,6 +1891,7 @@
       let primaryFaceBox=null;
       let primaryFaceSeenAt=0;
       let visibleFaceCount=0;
+      let secondaryFaceBoxes=[];
 
       processor.onResults(results=>{
         if(!this.virtualBgCanvas||!results?.image)return;
@@ -2092,7 +2093,7 @@
                  around head/shoulders and widens toward the bottom for arms and
                  torso. This prevents a distant person from remaining sharp even
                  if SelfieSegmentation connects them through bedding/furniture. */
-              if(visibleFaceCount>1&&faceAnchorFresh&&primaryFaceBox){
+              if(secondaryFaceBoxes.length&&faceAnchorFresh&&primaryFaceBox){
                 const pcx=primaryFaceBox.cx;
                 const pcy=primaryFaceBox.cy;
                 const pfw=Math.max(.035,primaryFaceBox.w);
@@ -2154,6 +2155,67 @@
             }
 
             maskCtx.putImageData(imageData,0,0);
+
+            /* Explicitly remove distant/background people from the accepted
+               foreground. Selfie Segmentation can merge two people through a
+               bed/chair/blanket into one component, so connected-components
+               alone cannot solve this case. Face Detection gives us independent
+               anchors: carve a generous head+torso envelope around each clearly
+               smaller secondary face before compositing. */
+            if(
+              faceGateEnabled &&
+              secondaryFaceBoxes.length &&
+              primaryFaceBox &&
+              performance.now()-primaryFaceSeenAt<1100
+            ){
+              maskCtx.save();
+              maskCtx.globalCompositeOperation='destination-out';
+              maskCtx.filter='blur(2px)';
+              maskCtx.fillStyle='#000';
+
+              for(const face of secondaryFaceBoxes){
+                const fx=face.cx*mw;
+                const fy=face.cy*mh;
+                const fw=Math.max(4,face.w*mw);
+                const fh=Math.max(5,face.h*mh);
+
+                /* Head / hair / shoulders. */
+                maskCtx.beginPath();
+                maskCtx.ellipse(
+                  fx,
+                  fy+fh*.10,
+                  fw*1.25,
+                  fh*1.55,
+                  0,0,Math.PI*2
+                );
+                maskCtx.fill();
+
+                /* Upper body. A distant person may be seated/lying down, so use
+                   a broad oval rather than assuming a vertical standing pose. */
+                maskCtx.beginPath();
+                maskCtx.ellipse(
+                  fx,
+                  fy+fh*2.30,
+                  fw*2.85,
+                  fh*3.20,
+                  0,0,Math.PI*2
+                );
+                maskCtx.fill();
+
+                /* Lower/side body halo catches arms or a reclined torso. */
+                maskCtx.beginPath();
+                maskCtx.ellipse(
+                  fx,
+                  fy+fh*4.65,
+                  fw*3.40,
+                  fh*3.35,
+                  0,0,Math.PI*2
+                );
+                maskCtx.fill();
+              }
+
+              maskCtx.restore();
+            }
           }catch(e){
             /* Security/driver edge case: fall back to the raw mask rather than
                losing the camera. */
@@ -2248,58 +2310,107 @@
 
           const boxes=[];
           for(const d of detections){
-            const score=Number(d?.score?.[0]??d?.score??1);
-            if(score<.50)continue;
+            const rawScore=d?.score?.[0]??d?.score??d?.categories?.[0]?.score??1;
+            const score=Number(rawScore);
+            if(Number.isFinite(score)&&score<.48)continue;
 
-            const b=d?.boundingBox||d?.locationData?.relativeBoundingBox||{};
+            const b=d?.boundingBox
+              ||d?.locationData?.relativeBoundingBox
+              ||d?.locationData?.boundingBox
+              ||{};
+
             let bw=Number(b.width??b.w??0);
             let bh=Number(b.height??b.h??0);
-            let cx=Number(b.xCenter??b.centerX??NaN);
-            let cy=Number(b.yCenter??b.centerY??NaN);
-            const xMin=Number(b.xMin??b.xmin??NaN);
-            const yMin=Number(b.yMin??b.ymin??NaN);
+            let cx=Number(b.xCenter??b.centerX??b.x_center??NaN);
+            let cy=Number(b.yCenter??b.centerY??b.y_center??NaN);
 
-            if(!Number.isFinite(cx)&&Number.isFinite(xMin))cx=xMin+bw/2;
-            if(!Number.isFinite(cy)&&Number.isFinite(yMin))cy=yMin+bh/2;
+            const xMin=Number(
+              b.xMin??b.xmin??b.originX??b.origin_x??b.left??NaN
+            );
+            const yMin=Number(
+              b.yMin??b.ymin??b.originY??b.origin_y??b.top??NaN
+            );
 
-            /* Some builds expose pixel-space boxes, others normalized boxes. */
+            /* Classic MediaPipe solutions use normalized xmin/ymin/width/height.
+               Tasks Vision uses pixel originX/originY/width/height. Support both. */
             if(bw>1.5)bw/=sw;
             if(bh>1.5)bh/=sh;
-            if(cx>1.5)cx/=sw;
-            if(cy>1.5)cy/=sh;
+
+            let nxMin=xMin;
+            let nyMin=yMin;
+            if(Number.isFinite(nxMin)&&Math.abs(nxMin)>1.5)nxMin/=sw;
+            if(Number.isFinite(nyMin)&&Math.abs(nyMin)>1.5)nyMin/=sh;
+
+            if(!Number.isFinite(cx)&&Number.isFinite(nxMin))cx=nxMin+bw/2;
+            if(!Number.isFinite(cy)&&Number.isFinite(nyMin))cy=nyMin+bh/2;
+
+            if(Number.isFinite(cx)&&Math.abs(cx)>1.5)cx/=sw;
+            if(Number.isFinite(cy)&&Math.abs(cy)>1.5)cy/=sh;
+
+            /* Last-resort box from the six normalized face landmarks. */
+            const landmarks=Array.isArray(d?.landmarks)?d.landmarks:[];
+            if(
+              (!Number.isFinite(cx)||!Number.isFinite(cy)||bw<=0||bh<=0) &&
+              landmarks.length
+            ){
+              let minX=1,minY=1,maxX=0,maxY=0,count=0;
+              for(const lm of landmarks){
+                const x=Number(lm?.x);
+                const y=Number(lm?.y);
+                if(!Number.isFinite(x)||!Number.isFinite(y))continue;
+                minX=Math.min(minX,x);minY=Math.min(minY,y);
+                maxX=Math.max(maxX,x);maxY=Math.max(maxY,y);
+                count++;
+              }
+              if(count>=3){
+                const lw=Math.max(.02,maxX-minX);
+                const lh=Math.max(.02,maxY-minY);
+                cx=(minX+maxX)/2;
+                cy=(minY+maxY)/2;
+                /* Six face keypoints cover mainly the inner face. Expand to a
+                   practical head box. */
+                bw=Math.max(bw,lw*1.75);
+                bh=Math.max(bh,lh*2.05);
+              }
+            }
 
             if(!Number.isFinite(cx)||!Number.isFinite(cy)||bw<=0||bh<=0)continue;
 
             cx=Math.max(0,Math.min(1,cx));
             cy=Math.max(0,Math.min(1,cy));
-            bw=Math.max(0,Math.min(1,bw));
-            bh=Math.max(0,Math.min(1,bh));
+            bw=Math.max(.015,Math.min(1,bw));
+            bh=Math.max(.020,Math.min(1,bh));
 
             const area=bw*bh;
-            /* Keep small faces as secondary-person evidence, but a primary face
-               must still be large enough to avoid posters/noise opening the gate. */
-            if(area>=.001){
-              boxes.push({cx,cy,w:bw,h:bh,area,score});
+            if(area>=.0008){
+              boxes.push({cx,cy,w:bw,h:bh,area,score:Number.isFinite(score)?score:1});
             }
           }
 
           boxes.sort((a,b)=>b.area-a.area);
           const primary=boxes[0]||null;
-          const valid=!!primary&&primary.area>=.0035;
+          const valid=!!primary&&primary.area>=.0028;
           const now=performance.now();
 
           if(valid){
             primaryFaceBox=primary;
             primaryFaceSeenAt=now;
             visibleFaceCount=boxes.length;
+
+            /* Only classify a face as "background person" when it is clearly
+               farther from the camera. Similar-size faces may represent two real
+               participants standing side by side, so do not erase those. */
+            secondaryFaceBoxes=boxes
+              .slice(1)
+              .filter(face=>face.area<=primary.area*.72);
+
             facePresent=true;
             faceLastSeen=now;
             faceMisses=0;
           }else{
             visibleFaceCount=0;
+            secondaryFaceBoxes=[];
             faceMisses++;
-            /* Close conservatively, but much faster than before. Re-entry is
-               intentionally immediate on the first valid face detection. */
             if(faceMisses>=2 && (!faceLastSeen||now-faceLastSeen>650)){
               facePresent=false;
               primaryFaceBox=null;
