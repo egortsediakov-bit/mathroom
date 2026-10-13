@@ -1933,6 +1933,8 @@
       let faceMisses=0;
       let faceBusy=false;
       let faceLastCheck=0;
+      let primaryFaceAnchor=null; // normalized {cx,cy,w,h,area}
+      let primaryFaceSeenAt=0;
 
       /* Object detector state. Unlike SelfieSegmentation, COCO-SSD returns
          separate boxes for separate people, which gives us the missing instance
@@ -2113,30 +2115,27 @@
                 }
               }
 
-              /* Instance-aware person filtering.
-                 COCO-SSD supplies separate person boxes, so constrain the sharp
-                 segmentation to the primary person's box and explicitly remove
-                 all secondary people. This avoids geometric head/neck crops and
-                 preserves the real SelfieSegmentation contour inside the box. */
+              /* Instance-aware background-person removal.
+                 Never crop the primary participant by the COCO box: object
+                 detector boxes are intentionally coarse and were clipping hair,
+                 shoulders and neck. COCO is used only to remove other people.
+
+                 A generous protected rectangle around the selected primary box
+                 prevents an overlapping secondary detection from punching holes
+                 through the tutor. */
               const personBoxFresh=!!primaryPersonBox
                 &&primaryPersonSeenAt>0
                 &&performance.now()-primaryPersonSeenAt<1300;
 
-              if(personBoxFresh){
-                const padX=Math.max(.035,primaryPersonBox.w*.12);
-                const padTop=Math.max(.035,primaryPersonBox.h*.09);
-                const padBottom=Math.max(.055,primaryPersonBox.h*.14);
-                const left=Math.max(0,primaryPersonBox.x-padX);
-                const right=Math.min(1,primaryPersonBox.x+primaryPersonBox.w+padX);
-                const top=Math.max(0,primaryPersonBox.y-padTop);
-                const bottom=Math.min(1,primaryPersonBox.y+primaryPersonBox.h+padBottom);
+              if(personBoxFresh&&secondaryPersonBoxes.length){
+                const protectPadX=Math.max(.055,primaryPersonBox.w*.18);
+                const protectPadTop=Math.max(.055,primaryPersonBox.h*.14);
+                const protectPadBottom=Math.max(.075,primaryPersonBox.h*.20);
 
-                for(let p=0;p<total;p++){
-                  if(!haloKeep[p])continue;
-                  const x=(p%mw)/mw;
-                  const y=((p/mw)|0)/mh;
-                  if(x<left||x>right||y<top||y>bottom)haloKeep[p]=0;
-                }
+                const protectL=Math.max(0,primaryPersonBox.x-protectPadX);
+                const protectR=Math.min(1,primaryPersonBox.x+primaryPersonBox.w+protectPadX);
+                const protectT=Math.max(0,primaryPersonBox.y-protectPadTop);
+                const protectB=Math.min(1,primaryPersonBox.y+primaryPersonBox.h+protectPadBottom);
 
                 for(const box of secondaryPersonBoxes){
                   const px=Math.max(0,box.x-Math.max(.018,box.w*.08));
@@ -2148,7 +2147,9 @@
                     if(!haloKeep[p])continue;
                     const x=(p%mw)/mw;
                     const y=((p/mw)|0)/mh;
-                    if(x>=px&&x<=pr&&y>=py&&y<=pb)haloKeep[p]=0;
+                    const insideSecondary=x>=px&&x<=pr&&y>=py&&y<=pb;
+                    const protectedPrimary=x>=protectL&&x<=protectR&&y>=protectT&&y<=protectB;
+                    if(insideSecondary&&!protectedPrimary)haloKeep[p]=0;
                   }
                 }
               }
@@ -2289,30 +2290,101 @@
             ?faceResults.detections
             :[];
 
-          /* Ignore tiny accidental detections in posters/screens. A genuine
-             webcam face normally occupies comfortably more than this. */
-          const valid=detections.some(d=>{
-            const b=d?.boundingBox||{};
-            const bw=Number(b.width||0);
-            const bh=Number(b.height||0);
-            const area=bw*bh;
-            const score=Number(d?.score?.[0]??d?.score??1);
-            return score>=.50 && area>=.004;
-          });
+          const sw=Math.max(1,Number(source.videoWidth)||srcW);
+          const sh=Math.max(1,Number(source.videoHeight)||srcH);
+          const faces=[];
 
+          for(const d of detections){
+            const score=Number(d?.score?.[0]??d?.score??1);
+            if(Number.isFinite(score)&&score<.48)continue;
+
+            const b=d?.boundingBox
+              ||d?.locationData?.relativeBoundingBox
+              ||d?.locationData?.boundingBox
+              ||{};
+
+            let bw=Number(b.width??b.w??0);
+            let bh=Number(b.height??b.h??0);
+            let x=Number(b.xMin??b.xmin??b.originX??b.origin_x??b.left??NaN);
+            let y=Number(b.yMin??b.ymin??b.originY??b.origin_y??b.top??NaN);
+
+            if(bw>1.5)bw/=sw;
+            if(bh>1.5)bh/=sh;
+            if(Number.isFinite(x)&&Math.abs(x)>1.5)x/=sw;
+            if(Number.isFinite(y)&&Math.abs(y)>1.5)y/=sh;
+
+            let cx=Number(b.xCenter??b.centerX??b.x_center??NaN);
+            let cy=Number(b.yCenter??b.centerY??b.y_center??NaN);
+            if(Number.isFinite(cx)&&Math.abs(cx)>1.5)cx/=sw;
+            if(Number.isFinite(cy)&&Math.abs(cy)>1.5)cy/=sh;
+            if(!Number.isFinite(cx)&&Number.isFinite(x))cx=x+bw/2;
+            if(!Number.isFinite(cy)&&Number.isFinite(y))cy=y+bh/2;
+
+            if(!Number.isFinite(cx)||!Number.isFinite(cy)||bw<=0||bh<=0){
+              const lm=Array.isArray(d?.landmarks)?d.landmarks:[];
+              if(lm.length){
+                let minX=1,minY=1,maxX=0,maxY=0,count=0;
+                for(const p of lm){
+                  const lx=Number(p?.x),ly=Number(p?.y);
+                  if(!Number.isFinite(lx)||!Number.isFinite(ly))continue;
+                  minX=Math.min(minX,lx);minY=Math.min(minY,ly);
+                  maxX=Math.max(maxX,lx);maxY=Math.max(maxY,ly);
+                  count++;
+                }
+                if(count>=3){
+                  const lw=Math.max(.02,maxX-minX);
+                  const lh=Math.max(.02,maxY-minY);
+                  cx=(minX+maxX)/2;
+                  cy=(minY+maxY)/2;
+                  bw=Math.max(.04,lw*1.8);
+                  bh=Math.max(.05,lh*2.1);
+                }
+              }
+            }
+
+            if(!Number.isFinite(cx)||!Number.isFinite(cy)||bw<=0||bh<=0)continue;
+
+            cx=Math.max(0,Math.min(1,cx));
+            cy=Math.max(0,Math.min(1,cy));
+            bw=Math.max(.02,Math.min(1,bw));
+            bh=Math.max(.025,Math.min(1,bh));
+            const area=bw*bh;
+            if(area>=.0015)faces.push({cx,cy,w:bw,h:bh,area,score:Number.isFinite(score)?score:1});
+          }
+
+          faces.sort((a,b)=>b.area-a.area);
+          const primary=faces[0]||null;
           const now=performance.now();
+          const valid=!!primary&&primary.area>=.003;
+
           if(valid){
+            if(primaryFaceAnchor&&now-primaryFaceSeenAt<800){
+              const k=.45;
+              primaryFaceAnchor={
+                cx:primaryFaceAnchor.cx*(1-k)+primary.cx*k,
+                cy:primaryFaceAnchor.cy*(1-k)+primary.cy*k,
+                w:primaryFaceAnchor.w*(1-k)+primary.w*k,
+                h:primaryFaceAnchor.h*(1-k)+primary.h*k,
+                area:primaryFaceAnchor.area*(1-k)+primary.area*k
+              };
+            }else{
+              primaryFaceAnchor=primary;
+            }
+            primaryFaceSeenAt=now;
             facePresent=true;
             faceLastSeen=now;
             faceMisses=0;
           }else{
             faceMisses++;
-            /* Close conservatively, but much faster than before. Re-entry is
-               intentionally immediate on the first valid face detection. */
             if(faceMisses>=2 && (!faceLastSeen||now-faceLastSeen>650)){
               facePresent=false;
+              if(now-primaryFaceSeenAt>850){
+                primaryFaceAnchor=null;
+                primaryFaceSeenAt=0;
+              }
             }
           }
+
           faceBusy=false;
           faceGateEnabled=true;
         });
@@ -2339,7 +2411,7 @@
         const hidden=document.visibilityState==='hidden';
         const interval=hidden ? Math.max(140,this.virtualBgFrameInterval) : this.virtualBgFrameInterval;
 
-        if(personDetector&&!personBusy&&!this.screenTrack&&source.readyState>=2&&ts-personLastCheck>=520){
+        if(personDetector&&!personBusy&&!this.screenTrack&&source.readyState>=2&&ts-personLastCheck>=380){
           personLastCheck=ts;
           personBusy=true;
 
@@ -2364,30 +2436,66 @@
               .filter(b=>b.w*b.h>=.006);
 
             if(people.length){
-              let primaryIndex=0;
+              let primaryIndex=-1;
+              const faceFresh=!!primaryFaceAnchor
+                &&primaryFaceSeenAt>0
+                &&performance.now()-primaryFaceSeenAt<1100;
 
-              /* Prefer the person box containing the current face anchor. This
-                 prevents a large reclining/background body from becoming primary. */
-              if(facePresent&&faceLastSeen&&performance.now()-faceLastSeen<1100){
+              if(faceFresh){
+                const fx=primaryFaceAnchor.cx;
+                const fy=primaryFaceAnchor.cy;
                 let best=-Infinity;
+
                 for(let i=0;i<people.length;i++){
                   const b=people[i];
-                  const cx=b.x+b.w/2;
-                  const cy=b.y+b.h*.28;
-                  const centerBias=1-Math.min(1,Math.abs(cx-.5));
-                  const size=b.w*b.h;
-                  const score=size*2+centerBias*.2-b.y*.08;
+                  const padX=Math.max(.025,b.w*.06);
+                  const padY=Math.max(.025,b.h*.05);
+                  const containsFace=
+                    fx>=b.x-padX &&
+                    fx<=b.x+b.w+padX &&
+                    fy>=b.y-padY &&
+                    fy<=b.y+b.h*.58;
+
+                  if(!containsFace)continue;
+
+                  const boxCenterX=b.x+b.w/2;
+                  const faceDistance=Math.abs(boxCenterX-fx);
+                  const area=b.w*b.h;
+                  const score=area*1.6+b.score*.35-faceDistance*.45;
                   if(score>best){best=score;primaryIndex=i}
-                }
-              }else{
-                let best=-1;
-                for(let i=0;i<people.length;i++){
-                  const area=people[i].w*people[i].h;
-                  if(area>best){best=area;primaryIndex=i}
                 }
               }
 
-              const selected=people[primaryIndex];
+              /* If COCO missed/cropped the main body box, choose the box whose
+                 upper region lies nearest the face anchor. This handles a tutor
+                 leaning into the frame from the side. */
+              if(primaryIndex<0&&faceFresh){
+                let best=Infinity;
+                for(let i=0;i<people.length;i++){
+                  const b=people[i];
+                  const bx=b.x+b.w/2;
+                  const by=b.y+b.h*.22;
+                  const dx=(bx-primaryFaceAnchor.cx);
+                  const dy=(by-primaryFaceAnchor.cy);
+                  const dist=dx*dx+dy*dy;
+                  if(dist<best){best=dist;primaryIndex=i}
+                }
+              }
+
+              if(primaryIndex<0){
+                /* No face anchor yet: prefer the largest person near the lower
+                   half/foreground, but this is only a short startup fallback. */
+                let best=-Infinity;
+                for(let i=0;i<people.length;i++){
+                  const b=people[i];
+                  const area=b.w*b.h;
+                  const centerBias=1-Math.min(1,Math.abs((b.x+b.w/2)-.5));
+                  const score=area*1.5+centerBias*.10+b.h*.12;
+                  if(score>best){best=score;primaryIndex=i}
+                }
+              }
+
+              const selected=people[Math.max(0,primaryIndex)];
               if(primaryPersonBox&&performance.now()-primaryPersonSeenAt<1100){
                 const k=.42;
                 primaryPersonBox={
@@ -2401,7 +2509,22 @@
               }
 
               primaryPersonSeenAt=performance.now();
-              secondaryPersonBoxes=people.filter((_,i)=>i!==primaryIndex);
+
+              /* Ignore duplicate/strongly-overlapping person boxes so only real
+                 separate background people are erased. */
+              const pL=selected.x,pT=selected.y,pR=selected.x+selected.w,pB=selected.y+selected.h;
+              const pArea=selected.w*selected.h;
+              secondaryPersonBoxes=people.filter((b,i)=>{
+                if(i===primaryIndex)return false;
+                const l=Math.max(pL,b.x);
+                const t=Math.max(pT,b.y);
+                const r=Math.min(pR,b.x+b.w);
+                const bt=Math.min(pB,b.y+b.h);
+                const inter=Math.max(0,r-l)*Math.max(0,bt-t);
+                const union=pArea+b.w*b.h-inter;
+                const iou=union>0?inter/union:0;
+                return iou<.58;
+              });
             }else{
               if(performance.now()-primaryPersonSeenAt>950){
                 primaryPersonBox=null;
