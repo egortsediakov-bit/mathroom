@@ -2116,7 +2116,7 @@
            foreground at all, so blur/replacement covers the entire frame. */
         const faceGateOpen=!faceGateEnabled
           ||facePresent
-          ||(faceLastSeen>0&&performance.now()-faceLastSeen<1600);
+          ||(faceLastSeen>0&&performance.now()-faceLastSeen<750);
 
         if(!faceGateOpen){
           ctx.globalCompositeOperation='source-over';
@@ -2199,7 +2199,9 @@
             faceMisses=0;
           }else{
             faceMisses++;
-            if(faceMisses>=2 && (!faceLastSeen||now-faceLastSeen>900)){
+            /* Close conservatively, but much faster than before. Re-entry is
+               intentionally immediate on the first valid face detection. */
+            if(faceMisses>=2 && (!faceLastSeen||now-faceLastSeen>650)){
               facePresent=false;
             }
           }
@@ -2229,9 +2231,15 @@
         const hidden=document.visibilityState==='hidden';
         const interval=hidden ? Math.max(140,this.virtualBgFrameInterval) : this.virtualBgFrameInterval;
 
-        /* Presence check runs only ~2.5 times/sec and never blocks the main
-           segmentation loop. */
-        if(faceDetector&&!faceBusy&&!this.screenTrack&&source.readyState>=2&&ts-faceLastCheck>=400){
+        /* Fast reacquisition, cheap steady-state:
+           - no face: scan ~8 times/sec so a returning person appears almost at once;
+           - face present/recent: scan ~3 times/sec to keep CPU use low.
+           Face detection is still independent from the camera/segmentation loop. */
+        const faceCheckInterval=(
+          !facePresent && (!faceLastSeen||performance.now()-faceLastSeen>750)
+        ) ? 125 : 330;
+
+        if(faceDetector&&!faceBusy&&!this.screenTrack&&source.readyState>=2&&ts-faceLastCheck>=faceCheckInterval){
           faceLastCheck=ts;
           faceBusy=true;
           Promise.resolve(faceDetector.send({image:source}))
