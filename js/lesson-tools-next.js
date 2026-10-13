@@ -1887,7 +1887,11 @@
          video. A short hold after the last detection avoids flicker when the
          user turns their head or briefly covers part of the face. */
       let faceDetector=null;
-      let faceGateEnabled=false;
+      /* Safe by default: while the detector is loading, the virtual background
+         shows no sharp foreground. This prevents the initial 1–2 frames where
+         every person/bed could appear unblurred. If FaceDetection cannot load,
+         we explicitly disable the gate and fall back to segmentation. */
+      let faceGateEnabled=true;
       let facePresent=false;
       let faceLastSeen=0;
       let faceMisses=0;
@@ -2438,8 +2442,9 @@
           locateFile:file=>`https://cdn.jsdelivr.net/npm/@mediapipe/face_detection/${file}`
         });
         detector.setOptions({
-          model:'short',
-          minDetectionConfidence:.58
+          /* 1 = full-range model (better for small/distant faces). */
+          modelSelection:1,
+          minDetectionConfidence:.40
         });
 
         detector.onResults(faceResults=>{
@@ -2456,7 +2461,7 @@
           for(const d of detections){
             const rawScore=d?.score?.[0]??d?.score??d?.categories?.[0]?.score??1;
             const score=Number(rawScore);
-            if(Number.isFinite(score)&&score<.48)continue;
+            if(Number.isFinite(score)&&score<.36)continue;
 
             const b=d?.boundingBox
               ||d?.locationData?.relativeBoundingBox
@@ -2558,7 +2563,18 @@
                participants standing side by side, so do not erase those. */
             secondaryFaceBoxes=boxes
               .slice(1)
-              .filter(face=>face.area<=primary.area*.72);
+              .filter(face=>{
+                const dx=Math.abs(face.cx-primary.cx);
+                const dy=Math.abs(face.cy-primary.cy);
+                const duplicate=dx<Math.max(primary.w,face.w)*.42
+                  &&dy<Math.max(primary.h,face.h)*.42;
+                if(duplicate)return false;
+
+                /* Anything clearly smaller/farther than the primary is treated
+                   as background. Allow up to 92% of primary area so seated people
+                   a little farther back are still removed. */
+                return face.area<=primary.area*.92;
+              });
 
             facePresent=true;
             faceLastSeen=now;
@@ -2590,6 +2606,10 @@
         faceGateEnabled=true;
       }).catch(e=>{
         /* Background remains fully functional without the optional gate. */
+        faceGateEnabled=false;
+        facePresent=false;
+        primaryFaceBox=null;
+        secondaryFaceBoxes=[];
         console.warn('[Mathroom virtual background] face gate unavailable',e);
       });
 
@@ -2606,7 +2626,7 @@
            Face detection is still independent from the camera/segmentation loop. */
         const faceCheckInterval=(
           !facePresent && (!faceLastSeen||performance.now()-faceLastSeen>750)
-        ) ? 125 : 330;
+        ) ? 110 : (visibleFaceCount>1?170:220);
 
         if(faceDetector&&!faceBusy&&!this.screenTrack&&source.readyState>=2&&ts-faceLastCheck>=faceCheckInterval){
           faceLastCheck=ts;
