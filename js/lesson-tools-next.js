@@ -2227,38 +2227,52 @@
                   const fw=Math.max(.035,primaryFaceAnchor.w);
                   const fh=Math.max(.045,primaryFaceAnchor.h);
                   const top=fy-fh*1.55;
-                  const headEnd=fy+fh*1.15;
-                  const shoulderEnd=fy+fh*2.95;
+                  const headEnd=fy+fh*1.10;
+                  const shoulderEnd=fy+fh*2.65;
 
                   if(y>=top){
-                    let radius=Math.max(.105,fw*1.48);
+                    /* Protect only the visible participant corridor. A wide
+                       cone here makes somebody standing directly behind the
+                       tutor impossible to remove. */
+                    let radius=Math.max(.085,fw*1.30);
                     if(y>headEnd&&y<=shoulderEnd){
                       const t=(y-headEnd)/Math.max(.001,shoulderEnd-headEnd);
-                      radius=Math.max(.105,fw*1.48)
-                        +(Math.max(.225,fw*2.45)-Math.max(.105,fw*1.48))*t;
+                      radius=Math.max(.085,fw*1.30)
+                        +(Math.max(.165,fw*2.00)-Math.max(.085,fw*1.30))*t;
                     }else if(y>shoulderEnd){
                       const t=Math.max(0,Math.min(1,(y-shoulderEnd)/Math.max(.001,1-shoulderEnd)));
-                      radius=Math.max(.225,fw*2.45)
-                        +(Math.max(.35,fw*3.75)-Math.max(.225,fw*2.45))*t;
+                      radius=Math.max(.165,fw*2.00)
+                        +(Math.max(.245,fw*2.95)-Math.max(.165,fw*2.00))*t;
                     }
-                    if(Math.abs(x-fx)<=Math.min(.44,radius))return true;
+                    if(Math.abs(x-fx)<=Math.min(.30,radius))return true;
                   }
                 }
 
                 if(personFresh){
                   const b=primaryPersonBox;
-                  const padX=Math.max(.018,b.w*.045);
-                  const padY=Math.max(.018,b.h*.035);
+                  const padX=Math.max(.012,b.w*.03);
+                  const padY=Math.max(.014,b.h*.03);
                   const inBox=
                     x>=b.x-padX&&x<=b.x+b.w+padX&&
                     y>=b.y-padY&&y<=b.y+b.h+padY;
                   if(inBox){
                     if(!faceFresh)return true;
-                    const maxSide=Math.max(.34,primaryFaceAnchor.w*3.9);
-                    if(Math.abs(x-primaryFaceAnchor.cx)<=Math.min(.44,maxSide))return true;
+                    const maxSide=Math.max(.22,primaryFaceAnchor.w*2.85);
+                    if(Math.abs(x-primaryFaceAnchor.cx)<=Math.min(.30,maxSide))return true;
                   }
                 }
                 return false;
+              };
+
+              const overlapsPrimaryFace=(x,y)=>{
+                if(!faceFresh)return false;
+                const fx=primaryFaceAnchor.cx;
+                const fy=primaryFaceAnchor.cy;
+                const rx=Math.max(.055,primaryFaceAnchor.w*.88);
+                const ry=Math.max(.065,primaryFaceAnchor.h*.95);
+                const dx=(x-fx)/rx;
+                const dy=(y-fy)/ry;
+                return dx*dx+dy*dy<=1;
               };
 
               const removalBoxes=[...secondaryPersonBoxes];
@@ -2275,6 +2289,28 @@
                     h:bottom-top,
                     _fromFace:true
                   });
+
+                  /* Secondary face core has priority over torso protection.
+                     Only preserve pixels that genuinely overlap the primary
+                     face itself, which also protects against duplicate face
+                     detections of the same participant. */
+                  const rx=Math.max(.05,face.w*1.18);
+                  const ry=Math.max(.06,face.h*1.28);
+                  const x0=Math.max(0,Math.floor((face.cx-rx)*mw));
+                  const x1=Math.min(mw-1,Math.ceil((face.cx+rx)*mw));
+                  const y0=Math.max(0,Math.floor((face.cy-ry)*mh));
+                  const y1=Math.min(mh-1,Math.ceil((face.cy+ry)*mh));
+
+                  for(let yy=y0;yy<=y1;yy++){
+                    for(let xx=x0;xx<=x1;xx++){
+                      const nx=(xx+.5)/mw,ny=(yy+.5)/mh;
+                      const dx=(nx-face.cx)/rx;
+                      const dy=(ny-face.cy)/ry;
+                      if(dx*dx+dy*dy>1)continue;
+                      if(overlapsPrimaryFace(nx,ny))continue;
+                      haloKeep[yy*mw+xx]=0;
+                    }
+                  }
                 }
 
                 const sourceKeep=new Uint8Array(haloKeep);
@@ -2296,7 +2332,7 @@
                       const p=yy*mw+xx;
                       if(!sourceKeep[p])continue;
                       const nx=(xx+.5)/mw,ny=(yy+.5)/mh;
-                      if(primaryProtected(nx,ny))continue;
+                      if(overlapsPrimaryFace(nx,ny))continue;
                       const dd=((xx-sx)/Math.max(1,rx))**2+((yy-sy)/Math.max(1,ry))**2;
                       if(dd<bestSeedDist){bestSeedDist=dd;seed=p}
                     }
@@ -2316,11 +2352,17 @@
                     const x=p%mw,y=(p/mw)|0;
                     const nx=(x+.5)/mw,ny=(y+.5)/mh;
 
+                    const faceRx=Math.max(.05,face.w*1.18);
+                    const faceRy=Math.max(.06,face.h*1.28);
+                    const fdx=(nx-face.cx)/faceRx;
+                    const fdy=(ny-face.cy)/faceRy;
+                    const insideSecondaryFace=fdx*fdx+fdy*fdy<=1;
+
                     if(
                       Math.abs(nx-face.cx)>maxDx ||
                       ny<face.cy-maxUp ||
                       ny>face.cy+maxDown ||
-                      primaryProtected(nx,ny)
+                      (primaryProtected(nx,ny)&&!insideSecondaryFace)
                     )continue;
 
                     haloKeep[p]=0;
