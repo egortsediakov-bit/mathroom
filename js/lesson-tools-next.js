@@ -1756,14 +1756,14 @@
             wctx.fillStyle='#777';
             wctx.fillRect(0,0,warm.width,warm.height);
           }
-          await model.segmentMultiPersonParts(warm,{
+          await model.segmentMultiPerson(warm,{
             flipHorizontal:false,
             internalResolution:'low',
-            segmentationThreshold:.60,
+            segmentationThreshold:.54,
             maxDetections:3,
-            scoreThreshold:.15,
+            scoreThreshold:.14,
             nmsRadius:20,
-            minKeypointScore:.15,
+            minKeypointScore:.12,
             refineSteps:3
           });
           this.virtualBgBodyPixWarm=true;
@@ -2212,6 +2212,12 @@
       const maskPixels=maskImage.data;
       const temporalAlpha=new Uint8Array(maskCanvas.width*maskCanvas.height);
 
+      const selfieMaskCanvas=document.createElement('canvas');
+      selfieMaskCanvas.width=maskCanvas.width;
+      selfieMaskCanvas.height=maskCanvas.height;
+      const selfieMaskCtx=selfieMaskCanvas.getContext('2d',{alpha:true,willReadFrequently:true});
+      if(!selfieMaskCtx)throw new Error('Canvas вероятностной маски недоступен');
+
       /* Coarse primary-person identity mask. It is never rendered directly. */
       const idCanvas=document.createElement('canvas');
       idCanvas.width=maskCanvas.width;
@@ -2374,23 +2380,116 @@
         if(sw!==maskCanvas.width||sh!==maskCanvas.height)return null;
         const total=sw*sh;
 
-        /* Distance-from-primary dilation. The BodyPix mask determines WHO;
-           the dilation makes it deliberately forgiving about hair, hands and
-           motion. The detailed visible edge still comes from SelfieSegmentation. */
+        const keypoints=Array.isArray(primary.seg?.pose?.keypoints)
+          ?primary.seg.pose.keypoints
+          :[];
+        const validKp=keypoints
+          .map(k=>({
+            name:String(k?.part||''),
+            x:Number(k?.position?.x)/sw,
+            y:Number(k?.position?.y)/sh,
+            score:Number(k?.score)||0
+          }))
+          .filter(k=>Number.isFinite(k.x)&&Number.isFinite(k.y)&&k.score>=.14);
+
+        const byName=new Map(validKp.map(k=>[k.name,k]));
+        const lShoulder=byName.get('leftShoulder');
+        const rShoulder=byName.get('rightShoulder');
+        const lHip=byName.get('leftHip');
+        const rHip=byName.get('rightHip');
+        const nose=byName.get('nose');
+        const lEye=byName.get('leftEye');
+        const rEye=byName.get('rightEye');
+        const lEar=byName.get('leftEar');
+        const rEar=byName.get('rightEar');
+
+        /* Global anatomical ROI: intentionally broad. It is used only to stop
+           a giant cast shadow from becoming part of the coarse identity
+           envelope. Fine shoulders/hair/hands are recovered by dilation and
+           the high-quality Selfie mask. */
+        let gate=null;
+        if(validKp.length>=5){
+          let minX=1,minY=1,maxX=0,maxY=0;
+          for(const k of validKp){
+            minX=Math.min(minX,k.x);minY=Math.min(minY,k.y);
+            maxX=Math.max(maxX,k.x);maxY=Math.max(maxY,k.y);
+          }
+
+          const shoulderSpan=(lShoulder&&rShoulder)
+            ?Math.hypot(lShoulder.x-rShoulder.x,lShoulder.y-rShoulder.y)
+            :Math.max(.12,primary.box.w*.28);
+          const torsoBottom=Math.max(
+            lHip?.y||0,
+            rHip?.y||0,
+            (lShoulder?.y||rShoulder?.y||primary.cy)+Math.max(.28,primary.box.h*.52)
+          );
+
+          minX=Math.min(minX,primary.cx-shoulderSpan*1.55);
+          maxX=Math.max(maxX,primary.cx+shoulderSpan*1.55);
+          minY=Math.min(minY,(nose?.y||lEye?.y||rEye?.y||primary.box.y)-shoulderSpan*.80);
+          maxY=Math.max(maxY,torsoBottom+Math.max(.18,shoulderSpan*.85));
+
+          /* Reclining users need significantly more horizontal room than a
+             standing pose, so expand asymmetrically based on the instance box. */
+          const padX=Math.max(.055,shoulderSpan*.42,primary.box.w*.10);
+          const padY=Math.max(.055,shoulderSpan*.34,primary.box.h*.08);
+
+          gate={
+            x:Math.max(0,minX-padX),
+            y:Math.max(0,minY-padY),
+            r:Math.min(1,maxX+padX),
+            b:Math.min(1,maxY+padY)
+          };
+
+          const facePts=[nose,lEye,rEye,lEar,rEar].filter(Boolean);
+          if(facePts.length){
+            const fx=facePts.reduce((s,p)=>s+p.x,0)/facePts.length;
+            const fy=facePts.reduce((s,p)=>s+p.y,0)/facePts.length;
+            gate.face={
+              x:fx,y:fy,
+              rx:Math.max(.075,shoulderSpan*.46),
+              ry:Math.max(.10,shoulderSpan*.62)
+            };
+          }
+        }
+
+        const insideGate=(x,y)=>{
+          if(!gate)return true;
+          if(x>=gate.x&&x<=gate.r&&y>=gate.y&&y<=gate.b)return true;
+          const f=gate.face;
+          if(f){
+            const dx=(x-f.x)/f.rx,dy=(y-f.y)/f.ry;
+            if(dx*dx+dy*dy<=1)return true;
+          }
+          return false;
+        };
+
+        /* Distance-from-primary dilation. BodyPix determines WHO; Selfie
+           Segmentation determines the actual visible edge. */
         const dist=new Int16Array(total);
         dist.fill(-1);
         const queue=new Int32Array(total);
         let qh=0,qt=0;
 
         for(let p=0;p<total;p++){
-          if(data[p]){
-            dist[p]=0;
-            queue[qt++]=p;
+          if(!data[p])continue;
+          const x=p%sw,y=(p/sw)|0;
+          const nx=(x+.5)/sw,ny=(y+.5)/sh;
+          if(!insideGate(nx,ny))continue;
+          dist[p]=0;
+          queue[qt++]=p;
+        }
+
+        /* If pose confidence is too weak, never throw away the entire BodyPix
+           instance; fall back to its original person mask. */
+        if(!qt){
+          for(let p=0;p<total;p++){
+            if(data[p]){dist[p]=0;queue[qt++]=p}
           }
         }
         if(!qt)return null;
 
-        const maxGrow=mobile?11:13;
+        const maxGrow=mobile?12:14;
         while(qh<qt){
           const p=queue[qh++];
           const d=dist[p];
@@ -2424,17 +2523,12 @@
         const mask=results?.segmentationMask||null;
         if(!mask)return false;
 
-        /* Draw MediaPipe probability mask into the final low-res alpha map. */
-        const scratch=document.createElement('canvas');
-        scratch.width=maskCanvas.width;
-        scratch.height=maskCanvas.height;
-        const sctx=scratch.getContext('2d',{alpha:true,willReadFrequently:true});
-        if(!sctx)return false;
-        sctx.clearRect(0,0,scratch.width,scratch.height);
-        sctx.drawImage(mask,0,0,scratch.width,scratch.height);
+        /* Draw MediaPipe probability mask into the reusable low-res alpha map. */
+        selfieMaskCtx.clearRect(0,0,selfieMaskCanvas.width,selfieMaskCanvas.height);
+        selfieMaskCtx.drawImage(mask,0,0,selfieMaskCanvas.width,selfieMaskCanvas.height);
 
         let imageData;
-        try{imageData=sctx.getImageData(0,0,scratch.width,scratch.height)}
+        try{imageData=selfieMaskCtx.getImageData(0,0,selfieMaskCanvas.width,selfieMaskCanvas.height)}
         catch{return false}
         const d=imageData.data;
         const total=maskCanvas.width*maskCanvas.height;
