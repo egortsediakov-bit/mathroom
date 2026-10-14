@@ -1919,6 +1919,15 @@
       source.autoplay=true;source.muted=true;source.playsInline=true;
       source.srcObject=new MediaStream([raw]);
       await source.play().catch(()=>{});
+      if(source.readyState<2){
+        await new Promise(resolve=>{
+          let done=false;
+          const finish=()=>{if(done)return;done=true;resolve()};
+          source.addEventListener('loadeddata',finish,{once:true});
+          source.addEventListener('canplay',finish,{once:true});
+          setTimeout(finish,1600);
+        });
+      }
 
       const settings=raw.getSettings?.()||{};
       /* Mobile front cameras often expose settings.width/settings.height in a
@@ -1985,7 +1994,7 @@
          second ML pass over the full webcam image while the segmentation model
          is running. */
       const faceCanvas=document.createElement('canvas');
-      const faceLong=isMobile?224:288;
+      const faceLong=isMobile?256:320;
       const faceScale=Math.min(1,faceLong/Math.max(srcW,srcH));
       faceCanvas.width=Math.max(128,Math.round(srcW*faceScale));
       faceCanvas.height=Math.max(96,Math.round(srcH*faceScale));
@@ -2013,6 +2022,9 @@
          video. A short hold after the last detection avoids flicker when the
          user turns their head or briefly covers part of the face. */
       let faceDetector=null;
+      let firstCompositeDone=false;
+      let resolveFirstComposite=null;
+      const firstCompositePromise=new Promise(resolve=>{resolveFirstComposite=resolve});
       /* Presence gate starts closed. A sharp foreground is allowed only after
          either Face Detection or person-instance detection confirms that a real
          person is currently in frame. This prevents clothing/furniture from
@@ -2631,6 +2643,77 @@
         }
         ctx.restore();
 
+        /* Secondary/background people can be merged into the same MediaPipe
+           person mask as the participant. Face Detection gives us separate
+           faces, so explicitly cover every secondary face + upper body with the
+           selected background (or blur). A protected zone around the primary
+           face/torso prevents this safety pass from erasing the participant. */
+        if(secondaryFaceAnchors.length){
+          const primary=primaryFaceAnchor;
+          const pFresh=!!primary&&primaryFaceSeenAt>0&&performance.now()-primaryFaceSeenAt<1500;
+          for(const face of secondaryFaceAnchors){
+            const sx=face.cx*cw,sy=face.cy*ch;
+            const fw=Math.max(28,face.w*cw),fh=Math.max(34,face.h*ch);
+            const faceRx=Math.max(fw*1.55,38);
+            const faceRy=Math.max(fh*1.75,44);
+            const torsoTop=sy+fh*.35;
+            const torsoW=Math.max(faceRx*2.8,fw*4.8);
+            const torsoH=Math.max(ch*.34,fh*6.0);
+
+            const path=new Path2D();
+            path.ellipse(sx,sy,faceRx,faceRy,0,0,Math.PI*2);
+            path.roundRect(
+              sx-torsoW/2,
+              torsoTop,
+              torsoW,
+              torsoH,
+              Math.min(34,torsoW*.16)
+            );
+
+            /* Subtract a generous protected participant corridor. */
+            if(pFresh){
+              const px=primary.cx*cw,py=primary.cy*ch;
+              const pfw=Math.max(32,primary.w*cw),pfh=Math.max(38,primary.h*ch);
+              path.ellipse(px,py,Math.max(54,pfw*1.45),Math.max(64,pfh*1.70),0,0,Math.PI*2);
+              path.roundRect(
+                px-Math.max(cw*.18,pfw*2.2),
+                py+pfh*.35,
+                Math.max(cw*.36,pfw*4.4),
+                Math.max(ch*.68,pfh*7.0),
+                42
+              );
+            }
+
+            ctx.save();
+            try{ctx.clip(path,'evenodd')}catch{ctx.clip(path)}
+            if(this.virtualBgMode==='blur'){
+              if(blurCtx){
+                blurCtx.clearRect(0,0,blurCanvas.width,blurCanvas.height);
+                blurCtx.drawImage(source,0,0,blurCanvas.width,blurCanvas.height);
+                ctx.imageSmoothingEnabled=true;
+                ctx.imageSmoothingQuality='high';
+                ctx.drawImage(blurCanvas,0,0,blurCanvas.width,blurCanvas.height,0,0,cw,ch);
+                ctx.globalAlpha=.94;
+                ctx.drawImage(blurCanvas,0,0,blurCanvas.width,blurCanvas.height,0,0,cw,ch);
+              }else{
+                ctx.filter='blur(24px)';
+                ctx.drawImage(source,0,0,cw,ch);
+                ctx.filter='none';
+              }
+            }else if(this.virtualBgMode==='custom'&&this.virtualBgCustomImage){
+              this.drawCover(ctx,this.virtualBgCustomImage,cw,ch);
+            }else if(this.virtualBgMode!=='none'){
+              this.drawBuiltInBackground(ctx,cw,ch,this.virtualBgMode);
+            }
+            ctx.restore();
+          }
+        }
+
+        if(!firstCompositeDone){
+          firstCompositeDone=true;
+          try{resolveFirstComposite?.(true)}catch{}
+        }
+
         /* captureStream can exist before its first painted frame. Some Chromium
            builds keep showing the previously attached raw camera until the
            processed canvas produces a real frame. Rebind once on that first
@@ -2684,7 +2767,7 @@
         });
         detector.setOptions({
           model:'full',
-          minDetectionConfidence:.42
+          minDetectionConfidence:.34
         });
 
         detector.onResults(faceResults=>{
@@ -2700,7 +2783,7 @@
 
           for(const d of detections){
             const score=Number(d?.score?.[0]??d?.score??1);
-            if(Number.isFinite(score)&&score<.48)continue;
+            if(Number.isFinite(score)&&score<.36)continue;
 
             const b=d?.boundingBox
               ||d?.locationData?.relativeBoundingBox
@@ -2759,7 +2842,7 @@
           faces.sort((a,b)=>b.area-a.area);
           const primary=faces[0]||null;
           const now=performance.now();
-          const valid=!!primary&&primary.area>=.003;
+          const valid=!!primary&&primary.area>=.0018;
 
           if(valid){
             secondaryFaceAnchors=faces
@@ -3011,7 +3094,7 @@
            Face detection is still independent from the camera/segmentation loop. */
         const faceCheckInterval=(
           !facePresent && (!faceLastSeen||performance.now()-faceLastSeen>900)
-        ) ? 320 : (secondaryFaceAnchors.length?420:620);
+        ) ? 220 : (secondaryFaceAnchors.length?280:500);
 
         if(faceDetector&&!faceBusy&&!this.screenTrack&&source.readyState>=2&&ts-faceLastCheck>=faceCheckInterval){
           faceLastCheck=ts;
@@ -3046,6 +3129,14 @@
         }
       };
       this.virtualBgRaf=requestAnimationFrame(loop);
+
+      const firstFrameReady=await Promise.race([
+        firstCompositePromise,
+        new Promise(resolve=>setTimeout(()=>resolve(false),5200))
+      ]);
+      if(!firstFrameReady){
+        throw new Error('Виртуальный фон не успел запустить первый кадр');
+      }
       return outTrack;
     }
 
