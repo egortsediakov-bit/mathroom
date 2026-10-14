@@ -3,15 +3,60 @@ const {app,configured,sb,S,esc,nl,token,dateLong,dateShort,diffLabel,statusLabel
 const {mountBoard,mountSnapshot}=window.MathroomBoard;
 
 function activeLessonStorageKey(){return S.user?.id?`mathroom.activeLesson.${S.user.id}`:'mathroom.activeLesson'}
-function rememberActiveLesson(id){try{if(id)localStorage.setItem(activeLessonStorageKey(),id)}catch{}}
-function forgetActiveLesson(){try{localStorage.removeItem(activeLessonStorageKey())}catch{}}
+function activeLessonSessionKey(){return S.user?.id?`mathroom.activeLesson.session.${S.user.id}`:'mathroom.activeLesson.session'}
+function lessonIdFromHash(){
+  try{
+    const m=String(location.hash||'').match(/^#lesson=(.+)$/);
+    return m?decodeURIComponent(m[1]):'';
+  }catch{return ''}
+}
+function rememberActiveLesson(id){
+  if(!id)return;
+  const value=String(id);
+  try{localStorage.setItem(activeLessonStorageKey(),value)}catch{}
+  try{sessionStorage.setItem(activeLessonSessionKey(),value)}catch{}
+  /* Keep the active lesson in the URL as well. This makes a browser refresh
+     deterministic even if storage is cleared or delayed by the browser. */
+  if(!S.access){
+    try{
+      const next=`${location.pathname}${location.search}#lesson=${encodeURIComponent(value)}`;
+      if(location.hash!==`#lesson=${encodeURIComponent(value)}`)history.replaceState(history.state,'',next);
+    }catch{}
+  }
+}
+function forgetActiveLesson(){
+  try{localStorage.removeItem(activeLessonStorageKey())}catch{}
+  try{sessionStorage.removeItem(activeLessonSessionKey())}catch{}
+  if(!S.access&&lessonIdFromHash()){
+    try{history.replaceState(history.state,'',`${location.pathname}${location.search}`)}catch{}
+  }
+}
 function restoreActiveLesson(){
   try{
-    const id=localStorage.getItem(activeLessonStorageKey());
-    if(!id)return false;
-    const l=S.lessons.find(x=>x.id===id&&x.status==='in_progress');
-    if(!l){localStorage.removeItem(activeLessonStorageKey());return false}
-    S.activeLesson=l;S.selectedStudent=l.student_id;S.topic=S.topics.find(x=>x.id===l.topic_id)||null;S.view='lesson';return true;
+    const candidates=[
+      lessonIdFromHash(),
+      sessionStorage.getItem(activeLessonSessionKey())||'',
+      localStorage.getItem(activeLessonStorageKey())||''
+    ].filter(Boolean);
+    const id=[...new Set(candidates.map(String))].find(v=>(S.lessons||[]).some(x=>String(x.id)===v&&x.status==='in_progress'));
+    if(!id){
+      /* Only clear stale storage. Do not erase a valid #lesson route before
+         loadTeacher has had a chance to populate S.lessons. */
+      if((S.lessons||[]).length){
+        try{localStorage.removeItem(activeLessonStorageKey())}catch{}
+        try{sessionStorage.removeItem(activeLessonSessionKey())}catch{}
+        if(lessonIdFromHash())try{history.replaceState(history.state,'',`${location.pathname}${location.search}`)}catch{}
+      }
+      return false;
+    }
+    const l=S.lessons.find(x=>String(x.id)===String(id)&&x.status==='in_progress');
+    if(!l)return false;
+    S.activeLesson=l;
+    S.selectedStudent=l.student_id;
+    S.topic=S.topics.find(x=>x.id===l.topic_id)||null;
+    S.view='lesson';
+    rememberActiveLesson(l.id);
+    return true;
   }catch{return false}
 }
 
@@ -590,8 +635,9 @@ async function ensureLiveState(lesson){
 function elapsedSeconds(live){let n=live?.timer_elapsed_seconds||0;if(live?.timer_running&&live.timer_started_at)n+=Math.max(0,Math.floor((Date.now()-new Date(live.timer_started_at).getTime())/1000));return n}
 function fmtTime(s){s=Math.max(0,Math.floor(s));return `${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`}
 async function renderLesson(){
-  const lesson=S.activeLesson||S.lessons.find(x=>x.status==='in_progress'&&x.student_id===S.selectedStudent&&(S.topic?.id?x.topic_id===S.topic.id:true));if(!lesson){S.view='dashboard';return renderTeacher()}
+  const lesson=S.activeLesson||S.lessons.find(x=>x.status==='in_progress'&&x.student_id===S.selectedStudent&&(S.topic?.id?x.topic_id===S.topic.id:true));if(!lesson){forgetActiveLesson();S.view='dashboard';return renderTeacher()}
   S.activeLesson=lesson;
+  rememberActiveLesson(lesson.id);
   const st=S.students.find(x=>x.id===lesson.student_id);
   if(!st){S.view='dashboard';return renderTeacher()}
   const realTopic=S.topics.find(x=>x.id===lesson.topic_id)||null;
