@@ -137,6 +137,7 @@
       this.virtualBgBusy = false;
       this.virtualBgStartPromise = null;
       this.virtualBgWarmupPromise = null;
+      this.virtualBgApplyPromise = null;
       this.virtualBgLastFrame = 0;
       this.virtualBgFrameInterval = 50;
       this.virtualBgAvgProcessMs = 0;
@@ -1863,30 +1864,15 @@
     async prewarmVirtualBgEngine() {
       if(this.virtualBgWarmupPromise)return this.virtualBgWarmupPromise;
       this.virtualBgWarmupPromise=(async()=>{
-        let processor=null;
         try{
-          const Seg=await this.ensureVirtualBgLibrary();
-          processor=new Seg({
-            locateFile:file=>`https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/${file}`
-          });
-          processor.setOptions({modelSelection:0});
-          processor.onResults(()=>{});
-          const warm=document.createElement('canvas');
-          warm.width=128;warm.height=96;
-          const wctx=warm.getContext('2d',{alpha:false});
-          if(wctx){
-            wctx.fillStyle='#777';
-            wctx.fillRect(0,0,warm.width,warm.height);
-          }
-          /* Compile/load the MediaPipe graph on a tiny frame while the user is
-             still in the prejoin screen. The real camera remains untouched. */
-          await processor.send({image:warm});
+          await Promise.allSettled([
+            this.ensureVirtualBgLibrary(),
+            this.ensureVirtualBgFaceLibrary()
+          ]);
           return true;
         }catch(e){
-          console.warn('[Mathroom virtual background] warmup',e);
+          console.warn('[Mathroom virtual background] library prewarm',e);
           return false;
-        }finally{
-          try{processor?.close?.()}catch{}
         }
       })();
       try{return await this.virtualBgWarmupPromise}
@@ -2038,6 +2024,7 @@
       let primaryFaceAnchor=null; // normalized {cx,cy,w,h,area}
       let primaryFaceSeenAt=0;
       let secondaryFaceAnchors=[];
+      let secondaryFaceLastSeenAt=0;
 
       /* Object detector state. Unlike SelfieSegmentation, COCO-SSD returns
          separate boxes for separate people, which gives us the missing instance
@@ -2772,8 +2759,8 @@
           locateFile:file=>`https://cdn.jsdelivr.net/npm/@mediapipe/face_detection/${file}`
         });
         detector.setOptions({
-          model:'full',
-          minDetectionConfidence:.34
+          modelSelection:1,
+          minDetectionConfidence:.28
         });
 
         detector.onResults(faceResults=>{
@@ -2789,7 +2776,7 @@
 
           for(const d of detections){
             const score=Number(d?.score?.[0]??d?.score??1);
-            if(Number.isFinite(score)&&score<.36)continue;
+            if(Number.isFinite(score)&&score<.30)continue;
 
             const b=d?.boundingBox
               ||d?.locationData?.relativeBoundingBox
@@ -2851,7 +2838,7 @@
           const valid=!!primary&&primary.area>=.0018;
 
           if(valid){
-            secondaryFaceAnchors=faces
+            const nextSecondaryFaces=faces
               .slice(1)
               .filter(face=>{
                 const dx=Math.abs(face.cx-primary.cx);
@@ -2861,6 +2848,12 @@
                   dy<Math.max(primary.h,face.h)*.40;
                 return !duplicate;
               });
+            if(nextSecondaryFaces.length){
+              secondaryFaceAnchors=nextSecondaryFaces;
+              secondaryFaceLastSeenAt=now;
+            }else if(!secondaryFaceLastSeenAt||now-secondaryFaceLastSeenAt>1600){
+              secondaryFaceAnchors=[];
+            }
             if(primaryFaceAnchor&&now-primaryFaceSeenAt<800){
               const k=.45;
               primaryFaceAnchor={
@@ -3161,34 +3154,79 @@
 
     async activateSelectedVirtualBackground(rawTrack=null) {
       if(this.virtualBgMode==='none'||!this.cameraEnabled||this.destroyed)return null;
-      const raw=rawTrack||this.localStream?.getVideoTracks?.().find(t=>t.readyState==='live')||null;
-      if(!raw||raw.readyState!=='live'||raw.enabled===false)return null;
-      const rawId=raw.id||'';
-      try{
-        const processed=await this.startVirtualBackground();
-        if(
-          !processed ||
-          !this.cameraEnabled ||
-          this.destroyed ||
-          this.virtualBgMode==='none' ||
-          this.localStream?.getVideoTracks?.()[0]?.id!==rawId
-        )return null;
-        await this.syncOutgoingCameraTrack();
-        this.bindPrejoinPreview();
-        this.paintPrejoin();
-        this.paint();
-        return processed;
-      }catch(e){
-        console.warn('[Mathroom virtual background activation]',e);
+      if(this.virtualBgApplyPromise)return this.virtualBgApplyPromise;
+
+      const task=(async()=>{
+        const raw=rawTrack||this.localStream?.getVideoTracks?.().find(t=>t.readyState==='live')||null;
+        if(!raw||raw.readyState!=='live'||raw.enabled===false)return null;
+        const rawId=raw.id||'';
+        let lastError=null;
+
+        /* A cold MediaPipe start can occasionally produce no usable processed
+           frame in Chromium/Yandex. The manual workaround was turning camera
+           off/on. Do that restart internally once, without touching the camera
+           permission, selected preset or camera button state. */
+        for(let attempt=0;attempt<2;attempt++){
+          if(
+            !this.cameraEnabled ||
+            this.destroyed ||
+            this.virtualBgMode==='none' ||
+            this.localStream?.getVideoTracks?.()[0]?.id!==rawId
+          )return null;
+
+          try{
+            if(attempt>0){
+              this.stopVirtualBackground();
+              await wait(320);
+            }
+
+            const processed=await this.startVirtualBackground();
+            if(
+              !processed ||
+              processed.readyState!=='live' ||
+              !this.cameraEnabled ||
+              this.destroyed ||
+              this.virtualBgMode==='none' ||
+              this.localStream?.getVideoTracks?.()[0]?.id!==rawId
+            ){
+              throw new Error('Обработанный видеопоток не готов');
+            }
+
+            await this.syncOutgoingCameraTrack();
+            this.bindPrejoinPreview();
+            this.paintPrejoin();
+            this.paint();
+
+            /* Rebind once more after the browser has had a chance to present
+               the captureStream track. This closes a Yandex/Chromium race where
+               the raw webcam remained visible until the camera was toggled. */
+            await wait(180);
+            if(
+              this.virtualBgTrack===processed &&
+              processed.readyState==='live' &&
+              this.virtualBgMode!=='none'
+            ){
+              this.bindPrejoinPreview();
+              this.bindMedia();
+              this.paintPrejoin();
+              this.paint();
+              return processed;
+            }
+          }catch(e){
+            lastError=e;
+            console.warn('[Mathroom virtual background activation attempt]',attempt+1,e);
+          }
+        }
+
         this.stopVirtualBackground();
-        this.virtualBgMode='none';
-        localStorage.setItem(`mathroom.media.bg.${this.role}`,'none');
-        this.paintPrejoin();
-        this.paintAllVirtualBgControls();
-        this.paint();
-        toast('Виртуальный фон не запустился — оставили обычную камеру');
+        console.warn('[Mathroom virtual background activation failed]',lastError);
+        toast('Не удалось применить виртуальный фон. Попробуй выбрать его ещё раз.');
         return null;
-      }
+      })();
+
+      this.virtualBgApplyPromise=task;
+      try{return await task}
+      finally{if(this.virtualBgApplyPromise===task)this.virtualBgApplyPromise=null}
     }
 
     async setVirtualBackground(mode) {
@@ -3716,7 +3754,7 @@
           this.bindPrejoinPreview();
           this.paintPrejoin();
           if(next&&this.virtualBgMode!=='none'){
-            this.activateSelectedVirtualBackground(existing).catch(e=>console.warn('[Mathroom prejoin background]',e));
+            await this.activateSelectedVirtualBackground(existing);
           }
           return;
         }
@@ -3744,7 +3782,7 @@
           this.paintPrejoin();
 
           if(this.virtualBgMode!=='none'){
-            this.activateSelectedVirtualBackground(rawTrack).catch(e=>console.warn('[Mathroom prejoin background]',e));
+            await this.activateSelectedVirtualBackground(rawTrack);
           }
         }catch(e){
           this.cameraEnabled=false;
@@ -4056,7 +4094,7 @@
           toast('Камера включена');
 
           if(this.virtualBgMode!=='none'){
-            this.activateSelectedVirtualBackground(t).catch(e=>console.warn('[Mathroom camera background]',e));
+            await this.activateSelectedVirtualBackground(t);
           }
         }catch(e){
           this.cameraEnabled=false;
@@ -4086,7 +4124,7 @@
         this.paint();
         this.paintPrejoin();
         if(next&&this.virtualBgMode!=='none'&&(!this.virtualBgTrack||this.virtualBgTrack.readyState!=='live')){
-          this.activateSelectedVirtualBackground(t).catch(e=>console.warn('[Mathroom camera background]',e));
+          await this.activateSelectedVirtualBackground(t);
         }
       }finally{
         clearTimeout(cameraLockFailsafe);
