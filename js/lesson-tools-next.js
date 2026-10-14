@@ -1892,7 +1892,7 @@
       const srcW=Math.max(1,Number(source.videoWidth)||Number(settings.width)||960);
       const srcH=Math.max(1,Number(source.videoHeight)||Number(settings.height)||540);
       const isMobile=(window.matchMedia?.('(pointer: coarse)')?.matches||window.innerWidth<=760);
-      const maxLong=isMobile?640:960;
+      const maxLong=isMobile?540:720;
       const scale=Math.min(1,maxLong/Math.max(srcW,srcH));
       const w=Math.max(240,Math.round(srcW*scale));
       const h=Math.max(240,Math.round(srcH*scale));
@@ -1918,18 +1918,43 @@
          this is cheap enough for realtime and removes those false positives
          before the final soft edge is rendered at camera resolution. */
       const maskCanvas=document.createElement('canvas');
-      const maskLong=isMobile?220:320;
+      const maskLong=isMobile?176:208;
       const maskScale=Math.min(1,maskLong/Math.max(w,h));
       maskCanvas.width=Math.max(96,Math.round(w*maskScale));
       maskCanvas.height=Math.max(96,Math.round(h*maskScale));
       const maskCtx=maskCanvas.getContext('2d',{alpha:true,willReadFrequently:true});
       if(maskCtx)maskCtx.imageSmoothingEnabled=true;
 
-      const output=canvas.captureStream(isMobile?20:24);
+      /* Run MediaPipe on a small frame, not the original 1080p webcam.
+         The old code sent the full camera frame into WASM every ~50 ms, which
+         could lock the browser when blur was enabled. We keep the final output
+         sharp by compositing the original source with the low-res mask. */
+      const segCanvas=document.createElement('canvas');
+      const segLong=isMobile?288:384;
+      const segScale=Math.min(1,segLong/Math.max(srcW,srcH));
+      segCanvas.width=Math.max(160,Math.round(srcW*segScale));
+      segCanvas.height=Math.max(120,Math.round(srcH*segScale));
+      const segCtx=segCanvas.getContext('2d',{alpha:false,desynchronized:true});
+      if(segCtx)segCtx.imageSmoothingEnabled=true;
+
+      /* Face detection also uses a small independent frame. This avoids a
+         second ML pass over the full webcam image while the segmentation model
+         is running. */
+      const faceCanvas=document.createElement('canvas');
+      const faceLong=isMobile?224:288;
+      const faceScale=Math.min(1,faceLong/Math.max(srcW,srcH));
+      faceCanvas.width=Math.max(128,Math.round(srcW*faceScale));
+      faceCanvas.height=Math.max(96,Math.round(srcH*faceScale));
+      const faceCtx=faceCanvas.getContext('2d',{alpha:false,desynchronized:true});
+      if(faceCtx)faceCtx.imageSmoothingEnabled=true;
+
+      const output=canvas.captureStream(isMobile?15:18);
       const outTrack=output.getVideoTracks()[0];
       if(!outTrack) throw new Error('Не удалось создать обработанный видеопоток');
       outTrack.enabled=this.cameraEnabled;
       try{outTrack.contentHint='motion'}catch{}
+      this.virtualBgFrameInterval=isMobile?90:72;
+      this.virtualBgAvgProcessMs=0;
 
       const processor=new Seg({
         locateFile:file=>`https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/${file}`
@@ -1964,7 +1989,7 @@
       let personDetector=null;
       let personBusy=false;
       let personLastCheck=0;
-      let personEnabled=true;
+      let personEnabled=false;
       let personSlowStrikes=0;
       let personNextAllowedAt=performance.now()+2200;
       let primaryPersonBox=null;   // normalized x,y,w,h
@@ -1988,7 +2013,7 @@
       let temporalMaskAlpha=null;
 
       processor.onResults(results=>{
-        if(!this.virtualBgCanvas||!results?.image)return;
+        if(!this.virtualBgCanvas||!results?.segmentationMask)return;
         const cw=canvas.width,ch=canvas.height;
         ctx.save();
         ctx.clearRect(0,0,cw,ch);
@@ -2570,7 +2595,7 @@
         }
 
         ctx.globalCompositeOperation='source-in';
-        ctx.drawImage(results.image,0,0,cw,ch);
+        ctx.drawImage(source,0,0,cw,ch);
 
         ctx.globalCompositeOperation='destination-over';
         if(this.virtualBgMode==='blur'){
@@ -2579,7 +2604,7 @@
             // Two passes make the result visibly softer while avoiding
             // Canvas2D filter, which is broken/ignored on some phones.
             blurCtx.clearRect(0,0,blurCanvas.width,blurCanvas.height);
-            blurCtx.drawImage(results.image,0,0,blurCanvas.width,blurCanvas.height);
+            blurCtx.drawImage(source,0,0,blurCanvas.width,blurCanvas.height);
             ctx.save();
             ctx.imageSmoothingEnabled=true;
             ctx.imageSmoothingQuality='high';
@@ -2590,7 +2615,7 @@
           }else{
             ctx.save();
             ctx.filter='blur(22px)';
-            ctx.drawImage(results.image,0,0,cw,ch);
+            ctx.drawImage(source,0,0,cw,ch);
             ctx.restore();
           }
         }else if(this.virtualBgMode==='custom'&&this.virtualBgCustomImage){
@@ -2607,9 +2632,12 @@
       this.virtualBgTrack=outTrack;
       this.virtualBgProcessor=processor;
 
-      /* Load person-instance detection independently. It never owns the camera
-         and cannot prevent camera/background startup if CDN/model loading fails. */
-      this.ensureVirtualBgPersonLibrary().then(({model})=>{
+      /* The previous build loaded TensorFlow.js + COCO-SSD as soon as a virtual
+         background started. Compiling two additional ML stacks next to MediaPipe
+         could make Chromium mark the page as unresponsive. Secondary faces are
+         already handled by Face Detection, so the heavyweight object detector
+         stays off in the realtime camera path. */
+      if(personEnabled)this.ensureVirtualBgPersonLibrary().then(({model})=>{
         if(this.destroyed||this.virtualBgProcessor!==processor){
           try{model?.dispose?.()}catch{}
           return;
@@ -2960,13 +2988,14 @@
            - face present/recent: scan ~3 times/sec to keep CPU use low.
            Face detection is still independent from the camera/segmentation loop. */
         const faceCheckInterval=(
-          !facePresent && (!faceLastSeen||performance.now()-faceLastSeen>750)
-        ) ? 110 : (secondaryFaceAnchors.length?170:240);
+          !facePresent && (!faceLastSeen||performance.now()-faceLastSeen>900)
+        ) ? 320 : (secondaryFaceAnchors.length?420:620);
 
         if(faceDetector&&!faceBusy&&!this.screenTrack&&source.readyState>=2&&ts-faceLastCheck>=faceCheckInterval){
           faceLastCheck=ts;
           faceBusy=true;
-          Promise.resolve(faceDetector.send({image:source}))
+          if(faceCtx)faceCtx.drawImage(source,0,0,faceCanvas.width,faceCanvas.height);
+          Promise.resolve(faceDetector.send({image:faceCtx?faceCanvas:source}))
             .catch(e=>{
               faceBusy=false;
               console.warn('[Mathroom virtual background] face check',e);
@@ -2978,16 +3007,19 @@
         this.virtualBgLastFrame=ts;
         this.virtualBgBusy=true;
         const t0=performance.now();
-        try{await processor.send({image:source})}
+        try{
+          if(segCtx)segCtx.drawImage(source,0,0,segCanvas.width,segCanvas.height);
+          await processor.send({image:segCtx?segCanvas:source});
+        }
         catch(e){console.warn('[Mathroom virtual background]',e)}
         finally{
           const elapsed=performance.now()-t0;
           this.virtualBgAvgProcessMs=this.virtualBgAvgProcessMs
             ? this.virtualBgAvgProcessMs*.82+elapsed*.18
             : elapsed;
-          this.virtualBgFrameInterval=this.virtualBgAvgProcessMs>85 ? (isMobile?100:84)
-            : this.virtualBgAvgProcessMs>62 ? (isMobile?80:66)
-            : (isMobile?58:50);
+          this.virtualBgFrameInterval=this.virtualBgAvgProcessMs>95 ? (isMobile?125:110)
+            : this.virtualBgAvgProcessMs>70 ? (isMobile?105:90)
+            : (isMobile?90:72);
           this.virtualBgBusy=false;
         }
       };
