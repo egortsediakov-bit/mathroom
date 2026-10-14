@@ -507,20 +507,13 @@ function renderBank(){
 }
 
 function renderSchedule(){
-  const pre=S.schedulePrefill||{};S.schedulePrefill=null;
-  const optsStudents=S.students.map(s=>`<option value="${s.id}" ${String(s.id)===String(pre.studentId||'')?'selected':''}>${esc(s.name)} · ${s.grade} кл.</option>`).join('');
-  const sortedTopics=(S.topics||[]).slice().sort(curriculumBank()?.compareTopics||(()=>0));
-  const groups=new Map();for(const t of sortedTopics){const key=`${t.grade} класс · ${topicTrack(t)}`;if(!groups.has(key))groups.set(key,[]);groups.get(key).push(t)}
-  const optsTopics=[...groups.entries()].map(([label,rows])=>`<optgroup label="${esc(label)}">${rows.map(t=>`<option value="${t.id}" ${String(t.id)===String(pre.topicId||'')?'selected':''}>${esc(t.title)}</option>`).join('')}</optgroup>`).join('');
-  const suggested=pre.studentId?suggestedTopicForStudent(pre.studentId):null;
-  app.innerHTML=shell(`${suggested&&!pre.topicId?`<div class="card mr-schedule-suggestion"><span class="pill">Следующая по программе</span><h3>${esc(suggested.topic.title)}</h3><p class="muted">${suggested.topic.grade} класс · ${esc(topicTrack(suggested.topic))}${suggested.after?` · после «${esc(suggested.after.title)}»`:''}</p><button class="btn sm primary" id="useSuggestedTopic">Выбрать эту тему</button></div>`:''}<div class="form-card"><h2>Добавить урок</h2><form id="lessonForm" class="schedule-form"><div class="field"><label>Ученик</label><select id="lsStudent">${optsStudents}</select></div><div class="field"><label>Тема</label><select id="lsTopic">${optsTopics}</select></div><div class="field"><label>Дата и время</label><input id="lsWhen" type="datetime-local" required></div><div class="field"><label>Минут</label><input id="lsDuration" type="number" value="60" min="15" step="5"></div><button class="btn primary">Добавить</button></form></div><div class="list">${S.lessons.length?S.lessons.map(l=>`<div class="row"><div><h3>${esc(l.students?.name||'')} · ${esc(l.topics?.title||'Без темы')}</h3><p>${dateLong(l.scheduled_at)} · ${l.duration_minutes} мин · <span class="pill ${statusClass(l.status)}">${statusLabel(l.status)}</span></p></div><div class="actions">${l.status!=='completed'?`<button class="btn sm primary" data-open-lesson="${l.id}">${l.status==='in_progress'?'Продолжить':'Начать'}</button>`:''}<button class="btn sm danger" data-del-lesson="${l.id}">Удалить</button></div></div>`).join(''):'<div class="empty">Уроков пока нет.</div>'}</div>`,'Расписание','Темы отсортированы по школьной последовательности');bindShell();
-  document.getElementById('useSuggestedTopic')?.addEventListener('click',()=>{document.getElementById('lsTopic').value=suggested.topic.id});
-  document.getElementById('lsStudent')?.addEventListener('change',e=>{const sug=suggestedTopicForStudent(e.target.value);if(sug)document.getElementById('lsTopic').value=sug.topic.id});
-  document.getElementById('lessonForm').onsubmit=async e=>{e.preventDefault();if(!document.getElementById('lsStudent').value||!document.getElementById('lsTopic').value)return toast('Добавь ученика и тему');const {error}=await sb.from('lessons').insert({teacher_id:S.user.id,student_id:document.getElementById('lsStudent').value,topic_id:document.getElementById('lsTopic').value,scheduled_at:new Date(document.getElementById('lsWhen').value).toISOString(),duration_minutes:Number(document.getElementById('lsDuration').value)});if(error)return fail(error);await loadTeacher();renderSchedule()};
-  document.querySelectorAll('[data-open-lesson]').forEach(b=>b.onclick=async()=>startLesson(S.lessons.find(x=>x.id===b.dataset.openLesson)));
-  document.querySelectorAll('[data-del-lesson]').forEach(b=>b.onclick=async()=>{if(!confirm('Удалить урок?'))return;await sb.from('lessons').delete().eq('id',b.dataset.delLesson);await loadTeacher();renderSchedule()});
+  const pre=S.schedulePrefill||{};
+  app.innerHTML=shell(`<section id="mrScheduleEnhanced" class="mr-schedule-enhanced" data-schedule-prefill-student="${esc(pre.studentId||'')}" data-schedule-prefill-topic="${esc(pre.topicId||'')}"><div class="card mr-schedule-loading"><h2>Расписание</h2><p class="muted">Загружаем недельный календарь…</p></div></section>`,'Расписание','Темы отсортированы по школьной последовательности');
+  bindShell();
+  if(typeof window.MathroomEnhanceScheduleWorkspace==='function'){
+    Promise.resolve(window.MathroomEnhanceScheduleWorkspace()).catch(e=>console.warn('[Mathroom schedule render]',e));
+  }
 }
-
 
 async function openTeacherAssignment(kind,id){
   const table=kind==='homework'?'homeworks':'tests',itemsTable=kind==='homework'?'homework_items':'test_items',fk=kind==='homework'?'homework_id':'test_id';
