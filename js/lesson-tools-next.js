@@ -136,6 +136,7 @@
       this.virtualBgRaf = 0;
       this.virtualBgBusy = false;
       this.virtualBgStartPromise = null;
+      this.virtualBgWarmupPromise = null;
       this.virtualBgLastFrame = 0;
       this.virtualBgFrameInterval = 50;
       this.virtualBgAvgProcessMs = 0;
@@ -1859,6 +1860,39 @@
       this.virtualBgCanvas=null;
     }
 
+    async prewarmVirtualBgEngine() {
+      if(this.virtualBgWarmupPromise)return this.virtualBgWarmupPromise;
+      this.virtualBgWarmupPromise=(async()=>{
+        let processor=null;
+        try{
+          const Seg=await this.ensureVirtualBgLibrary();
+          processor=new Seg({
+            locateFile:file=>`https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/${file}`
+          });
+          processor.setOptions({modelSelection:0});
+          processor.onResults(()=>{});
+          const warm=document.createElement('canvas');
+          warm.width=128;warm.height=96;
+          const wctx=warm.getContext('2d',{alpha:false});
+          if(wctx){
+            wctx.fillStyle='#777';
+            wctx.fillRect(0,0,warm.width,warm.height);
+          }
+          /* Compile/load the MediaPipe graph on a tiny frame while the user is
+             still in the prejoin screen. The real camera remains untouched. */
+          await processor.send({image:warm});
+          return true;
+        }catch(e){
+          console.warn('[Mathroom virtual background] warmup',e);
+          return false;
+        }finally{
+          try{processor?.close?.()}catch{}
+        }
+      })();
+      try{return await this.virtualBgWarmupPromise}
+      finally{this.virtualBgWarmupPromise=null}
+    }
+
     async startVirtualBackground() {
       if(this.virtualBgMode==='none')return null;
       if(this.virtualBgStartPromise)return this.virtualBgStartPromise;
@@ -2068,9 +2102,12 @@
             const keep=new Uint8Array(total);
             const queue=new Int32Array(total);
 
-            const strongThreshold=isMobile?132:140;
-            const growThreshold=isMobile?38:44;
-            const fullThreshold=isMobile?154:164;
+            /* Prefer keeping a little extra foreground over cutting shoulders,
+               arms or torso. The old thresholds were tuned too aggressively for
+               seated/reclined users and could blur real body parts. */
+            const strongThreshold=isMobile?120:126;
+            const growThreshold=isMobile?26:30;
+            const fullThreshold=isMobile?142:148;
 
             for(let i=0,p=0;i<d.length;i+=4,p++){
               const lum=(d[i]+d[i+1]+d[i+2])/3;
@@ -2207,7 +2244,7 @@
               /* Geodesic growth: recover hair, ears, clothes and hands only near
                  the selected person. It cannot flood across the entire room just
                  because MediaPipe assigns a weak foreground probability there. */
-              const maxGrow=isMobile?12:10;
+              const maxGrow=isMobile?16:14;
               let layerEnd=qt;
               for(let step=0;step<maxGrow&&qh<qt;step++){
                 const nextEnd=qt;
@@ -2229,7 +2266,7 @@
 
               /* Restore extremely confident nearby detail (fine hair/hand tips)
                  without allowing detached high-confidence room islands. */
-              const halo=isMobile?5:4;
+              const halo=isMobile?7:6;
               const haloKeep=new Uint8Array(keep);
               for(let step=0;step<halo;step++){
                 const prev=new Uint8Array(haloKeep);
@@ -2243,67 +2280,26 @@
                 }
               }
 
-              /* v40.39: trim connected false positives (bed linen, chair,
-                 bags, wall fragments) even when SelfieSegmentation connected
-                 them to the participant. The envelope follows the primary face
-                 and may lean slightly toward the primary person box lower down. */
+              /* Body-safe mask cleanup.
+                 The old face-derived hourglass envelope removed legitimate
+                 shoulders, arms and torso when the user sat sideways, leaned
+                 back or was close to the camera. Keep MediaPipe's connected
+                 person silhouette intact and only trim pixels clearly above
+                 the detected head. This trades a little extra background
+                 tolerance for a much more natural human cutout. */
               const envelopeNow=performance.now();
               const envelopeFaceFresh=!!primaryFaceAnchor
                 &&primaryFaceSeenAt>0
-                &&envelopeNow-primaryFaceSeenAt<1250;
-              const envelopePersonFresh=!!primaryPersonBox
-                &&primaryPersonSeenAt>0
-                &&envelopeNow-primaryPersonSeenAt<1450;
+                &&envelopeNow-primaryFaceSeenAt<1400;
 
               if(envelopeFaceFresh){
-                const fx=primaryFaceAnchor.cx;
                 const fy=primaryFaceAnchor.cy;
-                const fw=Math.max(.035,primaryFaceAnchor.w);
                 const fh=Math.max(.045,primaryFaceAnchor.h);
-
-                let lowerCenterX=fx;
-                if(envelopePersonFresh){
-                  const candidate=primaryPersonBox.x+primaryPersonBox.w/2;
-                  lowerCenterX=Math.max(fx-.11,Math.min(fx+.11,candidate));
-                }
-
-                const top=fy-fh*1.65;
-                const headEnd=fy+fh*1.10;
-                const shoulderEnd=fy+fh*2.65;
-
+                const top=Math.max(0,fy-fh*2.15);
                 for(let p=0;p<total;p++){
                   if(!haloKeep[p])continue;
-
-                  const x=((p%mw)+.5)/mw;
                   const y=(((p/mw)|0)+.5)/mh;
-                  if(y<top){
-                    haloKeep[p]=0;
-                    continue;
-                  }
-
-                  const lowerT=Math.max(0,Math.min(1,(y-headEnd)/Math.max(.001,1-headEnd)));
-                  const axisX=fx+(lowerCenterX-fx)*lowerT;
-                  let radius;
-
-                  if(y<=headEnd){
-                    radius=Math.max(.075,fw*1.28);
-                  }else if(y<=shoulderEnd){
-                    const t=(y-headEnd)/Math.max(.001,shoulderEnd-headEnd);
-                    radius=Math.max(.075,fw*1.28)
-                      +(Math.max(.185,fw*2.20)-Math.max(.075,fw*1.28))*t;
-                  }else{
-                    const t=Math.max(0,Math.min(1,(y-shoulderEnd)/Math.max(.001,1-shoulderEnd)));
-                    radius=Math.max(.185,fw*2.20)
-                      +(Math.max(.285,fw*3.25)-Math.max(.185,fw*2.20))*t;
-                  }
-
-                  /* At the very bottom allow a little extra width for hands /
-                     forearms without reopening the whole room. */
-                  if(y>.82)radius+=.025;
-
-                  if(Math.abs(x-axisX)>Math.min(.33,radius)){
-                    haloKeep[p]=0;
-                  }
+                  if(y<top)haloKeep[p]=0;
                 }
               }
 
@@ -2634,6 +2630,22 @@
           this.drawBuiltInBackground(ctx,cw,ch,this.virtualBgMode);
         }
         ctx.restore();
+
+        /* captureStream can exist before its first painted frame. Some Chromium
+           builds keep showing the previously attached raw camera until the
+           processed canvas produces a real frame. Rebind once on that first
+           composite so the selected background appears automatically without
+           clicking another preset and back. */
+        if(!outTrack._mrFirstCompositePainted){
+          outTrack._mrFirstCompositePainted=true;
+          requestAnimationFrame(()=>{
+            if(this.destroyed||this.virtualBgTrack!==outTrack)return;
+            this.bindPrejoinPreview();
+            this.bindMedia();
+            this.paintPrejoin();
+            this.paint();
+          });
+        }
       });
 
       this.virtualBgSourceVideo=source;
@@ -3111,6 +3123,8 @@
             if(!this.virtualBgProcessor||!this.virtualBgTrack||this.virtualBgTrack.readyState!=='live'){
               await this.activateSelectedVirtualBackground(raw);
             }
+          }else{
+            this.prewarmVirtualBgEngine().catch(()=>{});
           }
         }
         this.paintPrejoin();
@@ -3657,12 +3671,11 @@
       };
       this.bindVirtualBgControls(backdrop);
 
-      /* Preload only the lightweight virtual-background runtimes while the
-         user is reading the prejoin screen. This removes CDN startup latency
-         from the Camera button without asking for camera permission. COCO/TFJS
-         stays lazy because it is much heavier. */
+      /* Warm the segmentation graph before camera activation. This is more
+         useful than loading the script alone: the expensive WASM/model setup
+         happens while the user is still choosing devices/backgrounds. */
       if(this.virtualBgMode!=='none'){
-        this.ensureVirtualBgLibrary().catch(e=>console.warn('[Mathroom virtual background] segmentation prewarm',e));
+        this.prewarmVirtualBgEngine().catch(()=>{});
         this.ensureVirtualBgFaceLibrary().catch(e=>console.warn('[Mathroom virtual background] face prewarm',e));
       }
 
