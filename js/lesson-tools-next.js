@@ -7587,9 +7587,10 @@
         await rerenderScheduleFromServer(count>1?`Создано ${count} занятий`:'Урок добавлен');
       }catch(err){fail(err)}
     };
-    root.querySelectorAll('[data-cal-start]').forEach(b=>b.onclick=()=>{
-      const legacy=document.querySelector(`.mr-schedule-legacy [data-open-lesson="${CSS.escape(b.dataset.calStart)}"]`);
-      if(legacy)legacy.click();else toast('Обнови расписание и попробуй ещё раз');
+    root.querySelectorAll('[data-cal-start]').forEach(b=>b.onclick=async()=>{
+      const lesson=S.lessons.find(x=>String(x.id)===String(b.dataset.calStart));
+      if(!lesson)return toast('Урок не найден. Обнови расписание и попробуй ещё раз');
+      await startLesson(lesson);
     });
     root.querySelectorAll('[data-cal-move]').forEach(b=>b.onclick=()=>openRescheduleLesson(b.dataset.calMove));
     root.querySelectorAll('[data-cal-delete]').forEach(b=>b.onclick=()=>openDeleteLesson(b.dataset.calDelete));
@@ -7608,16 +7609,21 @@
     const moved=weekAll.filter(x=>x.rescheduled_from&&Math.abs(new Date(x.rescheduled_from)-new Date(x.scheduled_at))>60000).length;
     const totalMins=weekAll.reduce((s,x)=>s+Number(x.duration_minutes||0),0);
     const activeRules=[...scheduleRuleMap.values()].filter(x=>x.active!==false).length;
-    const studentOpts=S.students.map(x=>`<option value="${x.id}" ${scheduleStudentFilter===x.id?'selected':''}>${esc(x.name)} · ${x.grade} кл.</option>`).join('');
-    const topicOpts=S.topics.map(x=>`<option value="${x.id}">${x.grade} кл. · ${esc(x.title)}</option>`).join('');
+    const pre=S.schedulePrefill||{};
+    const preStudent=String(pre.studentId||'');
+    const preTopic=String(pre.topicId||'');
+    const studentFilterOpts=S.students.map(x=>`<option value="${x.id}" ${scheduleStudentFilter===x.id?'selected':''}>${esc(x.name)} · ${x.grade} кл.</option>`).join('');
+    const createStudentOpts=S.students.map(x=>`<option value="${x.id}" ${String(x.id)===preStudent?'selected':''}>${esc(x.name)} · ${x.grade} кл.</option>`).join('');
+    const topicOpts=S.topics.map(x=>`<option value="${x.id}" ${String(x.id)===preTopic?'selected':''}>${x.grade} кл. · ${esc(x.title)}</option>`).join('');
     root.innerHTML=`<div class="mr-schedule-toolbar card"><div><h2>Неделя</h2><p class="muted">${esc(scheduleWeekTitle(start))}</p></div><div class="actions"><button class="btn sm" id="mrWeekPrev">←</button><button class="btn sm" id="mrWeekToday">Сегодня</button><button class="btn sm" id="mrWeekNext">→</button><button class="btn sm" id="mrWeekTemplates">▦ Шаблоны недели</button></div></div>
       <div class="grid cols4 mr-schedule-metrics"><div class="card"><div class="muted">Занятий</div><div class="metric">${weekAll.length}</div></div><div class="card"><div class="muted">Нагрузка</div><div class="metric">${(totalMins/60).toFixed(totalMins%60?1:0)} ч</div></div><div class="card"><div class="muted">Переносов</div><div class="metric">${moved}</div></div><div class="card"><div class="muted">Бессрочных серий</div><div class="metric">${activeRules}</div></div></div>
-      <div class="card mr-week-load-card"><div class="mr-card-head"><div><h2>Загрузка недели</h2><p class="small muted">Удалённые занятия исчезают полностью из расписания.</p></div><div class="actions"><select id="mrScheduleStudentFilter"><option value="all">Все ученики</option>${studentOpts}</select></div></div>${scheduleLoadHtml(weekAll,days)}</div>
-      <div class="card mr-schedule-create"><div class="mr-card-head"><div><h2>Добавить занятие</h2><p class="small muted">Можно создать одно занятие, конечную серию или расписание «каждую неделю, пока не остановлю».</p></div></div><form id="mrScheduleCreate" class="mr-schedule-form"><div class="field"><label>Ученик</label><select id="mrScStudent">${studentOpts.replaceAll(' selected','')}</select></div><div class="field"><label>Тема</label><select id="mrScTopic">${topicOpts}</select></div><div class="field"><label>Дата и время</label><input id="mrScWhen" type="datetime-local" required></div><div class="field"><label>Минут</label><input id="mrScDuration" type="number" min="15" step="5" value="60"></div><div class="field"><label>Повтор</label><select id="mrScRepeat"><option value="1">Один урок</option><option value="4">4 занятия</option><option value="8">8 занятий</option><option value="12">12 занятий</option><option value="16">16 занятий</option><option value="forever">Каждую неделю, пока не остановлю</option></select></div><div class="field"><label>Каждые</label><select id="mrScInterval"><option value="1">1 неделю</option><option value="2">2 недели</option></select></div><button class="btn primary">Добавить</button></form></div>
+      <div class="card mr-week-load-card"><div class="mr-card-head"><div><h2>Загрузка недели</h2><p class="small muted">Удалённые занятия исчезают полностью из расписания.</p></div><div class="actions"><select id="mrScheduleStudentFilter"><option value="all">Все ученики</option>${studentFilterOpts}</select></div></div>${scheduleLoadHtml(weekAll,days)}</div>
+      <div class="card mr-schedule-create"><div class="mr-card-head"><div><h2>Добавить занятие</h2><p class="small muted">Можно создать одно занятие, конечную серию или расписание «каждую неделю, пока не остановлю».</p></div></div><form id="mrScheduleCreate" class="mr-schedule-form"><div class="field"><label>Ученик</label><select id="mrScStudent">${createStudentOpts}</select></div><div class="field"><label>Тема</label><select id="mrScTopic">${topicOpts}</select></div><div class="field"><label>Дата и время</label><input id="mrScWhen" type="datetime-local" required></div><div class="field"><label>Минут</label><input id="mrScDuration" type="number" min="15" step="5" value="60"></div><div class="field"><label>Повтор</label><select id="mrScRepeat"><option value="1">Один урок</option><option value="4">4 занятия</option><option value="8">8 занятий</option><option value="12">12 занятий</option><option value="16">16 занятий</option><option value="forever">Каждую неделю, пока не остановлю</option></select></div><div class="field"><label>Каждые</label><select id="mrScInterval"><option value="1">1 неделю</option><option value="2">2 недели</option></select></div><button class="btn primary">Добавить</button></form></div>
       <div class="mr-calendar-week">${days.map(day=>{const dayItems=filtered.filter(l=>sameLocalDay(new Date(l.scheduled_at),day));const today=sameLocalDay(day,new Date());return `<section class="mr-calendar-day ${today?'today':''}" data-cal-day="${day.getFullYear()}-${String(day.getMonth()+1).padStart(2,'0')}-${String(day.getDate()).padStart(2,'0')}"><header><span>${day.toLocaleDateString('ru-RU',{weekday:'short'})}</span><b>${day.getDate()}</b><small>${day.toLocaleDateString('ru-RU',{month:'short'})}</small></header><div class="mr-calendar-day-body">${dayItems.length?dayItems.map(scheduleCardHtml).join(''):'<div class="mr-calendar-empty">Нет уроков</div>'}</div></section>`}).join('')}</div>
       <div class="small muted mr-schedule-tip">На компьютере запланированный урок можно перетащить на другой день. Бессрочная серия хранится как правило и автоматически создаёт будущие уроки; остановить её можно через «Удалить».</div>`;
     bindEnhancedSchedule(root);
     decorateScheduleAttendance(root);
+    S.schedulePrefill=null;
   }
 
   async function openRescheduleLesson(id) {
@@ -7679,12 +7685,17 @@
   }
 
   async function enhanceScheduleWorkspace() {
-    if(S.access||S.view!=='schedule'||document.querySelector('#mrScheduleEnhanced'))return;
+    if(S.access||S.view!=='schedule')return;
     const content=document.querySelector('.content');if(!content)return;
     const top=content.querySelector('.topbar');
-    [...content.children].forEach(el=>{if(el!==top)el.classList.add('mr-schedule-legacy')});
-    const root=document.createElement('section');root.id='mrScheduleEnhanced';root.className='mr-schedule-enhanced';
-    if(top)top.insertAdjacentElement('afterend',root);else content.prepend(root);
+    let root=document.querySelector('#mrScheduleEnhanced');
+    if(root?.dataset.scheduleReady==='1'||root?.dataset.scheduleLoading==='1')return;
+    if(!root){
+      [...content.children].forEach(el=>{if(el!==top)el.classList.add('mr-schedule-legacy')});
+      root=document.createElement('section');root.id='mrScheduleEnhanced';root.className='mr-schedule-enhanced';
+      if(top)top.insertAdjacentElement('afterend',root);else content.prepend(root);
+    }
+    root.dataset.scheduleLoading='1';
     try{
       await materializeRecurringLessons();
       await loadScheduleRules();
@@ -7693,7 +7704,10 @@
       S.lessons=data||S.lessons;
     }catch(e){console.warn('[Mathroom schedule prepare]',e)}
     renderEnhancedSchedule(root);
+    root.dataset.scheduleReady='1';
+    delete root.dataset.scheduleLoading;
   }
+  window.MathroomEnhanceScheduleWorkspace=enhanceScheduleWorkspace;
 
 
 
