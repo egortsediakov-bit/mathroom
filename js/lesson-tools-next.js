@@ -148,6 +148,19 @@
       this.virtualBgPersonDetector = null;
       this.virtualBgPersonModel = null;
 
+      /* Virtual background v2.
+         The old pipeline used SelfieSegmentation + FaceDetection + a large
+         amount of geometric post-processing. SelfieSegmentation returns one
+         mask for every person in frame, so a second person could never be
+         removed reliably. The canonical engine now uses MediaPipe Pose with
+         segmentation enabled: it tracks the most prominent participant and
+         returns a mask tied to that tracked pose. */
+      this.virtualBgPoseLibPromise = null;
+      this.virtualBgPoseProcessor = null;
+      this.virtualBgPoseReadyPromise = null;
+      this.virtualBgPoseResultHandler = null;
+      this.virtualBgInitializing = false;
+
       this.devices = { audioinput:[], videoinput:[], audiooutput:[] };
       this.deviceModal = null;
       this.deviceRefreshTimer = null;
@@ -1615,7 +1628,7 @@
       root.querySelectorAll('.mr-bg-upload').forEach(b=>b.classList.remove('active'));
       root.querySelectorAll('.mr-bg-saved-item').forEach(b=>b.classList.toggle('active',this.virtualBgMode==='custom'&&b.dataset.bgSavedId===this.virtualBgCustomId));
       root.querySelectorAll('[data-bg-status]').forEach(status=>{
-        status.textContent=this.virtualBgBusy ? 'Обработка…'
+        status.textContent=this.virtualBgInitializing ? 'Подготавливаем фон…'
           : this.virtualBgMode==='none' ? 'Без обработки'
           : this.virtualBgMode==='blur' ? 'Размытие включено'
           : this.virtualBgMode==='studio' ? 'Студия'
@@ -1651,6 +1664,80 @@
       const stream=track ? (current===track ? video.srcObject : new MediaStream([track])) : null;
       if (video.srcObject !== stream) video.srcObject = stream;
       if (stream) video.play().catch(()=>{});
+    }
+
+    async ensureVirtualBgPoseLibrary() {
+      if(window.Pose)return window.Pose;
+      if(this.virtualBgPoseLibPromise)return this.virtualBgPoseLibPromise;
+
+      this.virtualBgPoseLibPromise=new Promise((resolve,reject)=>{
+        const existing=document.querySelector('script[data-mr-pose-segmentation]');
+        const ready=()=>window.Pose
+          ?resolve(window.Pose)
+          :reject(new Error('Модуль сегментации человека не загрузился'));
+
+        if(existing){
+          if(window.Pose)return ready();
+          existing.addEventListener('load',ready,{once:true});
+          existing.addEventListener('error',()=>reject(new Error('Не удалось загрузить модуль сегментации человека')),{once:true});
+          return;
+        }
+
+        const script=document.createElement('script');
+        script.src='https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5.1675469404/pose.js';
+        script.async=true;
+        script.crossOrigin='anonymous';
+        script.dataset.mrPoseSegmentation='1';
+        script.onload=ready;
+        script.onerror=()=>reject(new Error('Не удалось загрузить модуль сегментации человека'));
+        document.head.appendChild(script);
+      });
+
+      try{return await this.virtualBgPoseLibPromise}
+      catch(e){
+        this.virtualBgPoseLibPromise=null;
+        throw e;
+      }
+    }
+
+    async ensureVirtualBgPoseProcessor() {
+      if(this.virtualBgPoseProcessor)return this.virtualBgPoseProcessor;
+      if(this.virtualBgPoseReadyPromise)return this.virtualBgPoseReadyPromise;
+
+      this.virtualBgPoseReadyPromise=(async()=>{
+        const Pose=await this.ensureVirtualBgPoseLibrary();
+        const pose=new Pose({
+          locateFile:file=>`https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5.1675469404/${file}`
+        });
+
+        /* modelComplexity=0 is intentional: one lightweight model replaces
+           SelfieSegmentation + FaceDetection + COCO/TFJS. The tracker follows
+           one prominent participant across frames, which is exactly what a
+           video-call background needs. */
+        pose.setOptions({
+          modelComplexity:0,
+          smoothLandmarks:true,
+          enableSegmentation:true,
+          smoothSegmentation:true,
+          minDetectionConfidence:.38,
+          minTrackingConfidence:.38
+        });
+
+        pose.onResults(results=>{
+          const handler=this.virtualBgPoseResultHandler;
+          if(handler)handler(results);
+        });
+
+        this.virtualBgPoseProcessor=pose;
+        return pose;
+      })();
+
+      try{return await this.virtualBgPoseReadyPromise}
+      catch(e){
+        this.virtualBgPoseReadyPromise=null;
+        this.virtualBgPoseProcessor=null;
+        throw e;
+      }
     }
 
     async ensureVirtualBgLibrary() {
@@ -1842,50 +1929,40 @@
       cancelAnimationFrame(this.virtualBgRaf);
       this.virtualBgRaf=0;
       this.virtualBgBusy=false;
+      this.virtualBgInitializing=false;
       this.virtualBgAvgProcessMs=0;
-      this.virtualBgFrameInterval=50;
+      this.virtualBgFrameInterval=90;
+      this.virtualBgPoseResultHandler=null;
+
+      /* Close any legacy processors left by a hot reload, but keep the new
+         Pose processor cached for the lifetime of this VideoSession. */
       try{this.virtualBgProcessor?.close?.()}catch{}
       this.virtualBgProcessor=null;
       try{this.virtualBgFaceDetector?.close?.()}catch{}
       this.virtualBgFaceDetector=null;
-      /* COCO model is cached for the page lifetime. Disposing it here made
-         subsequent background/camera restarts reuse a dead model. */
       this.virtualBgPersonDetector=null;
+
       try{this.virtualBgSourceVideo?.pause?.()}catch{}
       if(this.virtualBgSourceVideo)this.virtualBgSourceVideo.srcObject=null;
       this.virtualBgSourceVideo=null;
-      this.virtualBgTrack?.stop?.();
+
+      try{this.virtualBgTrack?.stop?.()}catch{}
       this.virtualBgTrack=null;
-      this.virtualBgStream?.getTracks?.().forEach(t=>t.stop?.());
+      try{this.virtualBgStream?.getTracks?.().forEach(t=>t.stop?.())}catch{}
       this.virtualBgStream=null;
       this.virtualBgCanvas=null;
+      this.paintAllVirtualBgControls();
     }
 
     async prewarmVirtualBgEngine() {
       if(this.virtualBgWarmupPromise)return this.virtualBgWarmupPromise;
       this.virtualBgWarmupPromise=(async()=>{
-        let processor=null;
         try{
-          const Seg=await this.ensureVirtualBgLibrary();
-          processor=new Seg({
-            locateFile:file=>`https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/${file}`
-          });
-          processor.setOptions({modelSelection:0});
-          processor.onResults(()=>{});
-          const warm=document.createElement('canvas');
-          warm.width=128;warm.height=96;
-          const wctx=warm.getContext('2d',{alpha:false});
-          if(wctx){
-            wctx.fillStyle='#777';
-            wctx.fillRect(0,0,warm.width,warm.height);
-          }
-          await processor.send({image:warm});
+          await this.ensureVirtualBgPoseProcessor();
           return true;
         }catch(e){
-          console.warn('[Mathroom virtual background] warmup',e);
+          console.warn('[Mathroom virtual background] pose preload',e);
           return false;
-        }finally{
-          try{processor?.close?.()}catch{}
         }
       })();
       try{return await this.virtualBgWarmupPromise}
@@ -1902,893 +1979,165 @@
     }
 
     async startVirtualBackgroundInternal() {
-      if(this.virtualBgMode==='none') return null;
-      if(this.virtualBgWarmupPromise){
-        try{await this.virtualBgWarmupPromise}catch{}
-      }
-      const raw=this.localStream?.getVideoTracks?.()[0];
-      if(!raw) throw new Error('Камера недоступна');
-      if(!HTMLCanvasElement.prototype.captureStream) throw new Error('Этот браузер не поддерживает виртуальный фон');
+      if(this.virtualBgMode==='none')return null;
+
+      const raw=this.localStream?.getVideoTracks?.()[0]||null;
+      if(!raw||raw.readyState!=='live')throw new Error('Камера недоступна');
+      if(!HTMLCanvasElement.prototype.captureStream)throw new Error('Этот браузер не поддерживает виртуальный фон');
 
       if(['studio','mathroom','classroom'].includes(this.virtualBgMode)){
         await this.ensureBuiltInBackgroundImage(this.virtualBgMode);
       }
 
+      this.virtualBgInitializing=true;
+      this.paintAllVirtualBgControls();
+
+      /* Tear down only the previous render loop/processed track. The ML model
+         itself stays alive in virtualBgPoseProcessor. */
       this.stopVirtualBackground();
-      const Seg=await this.ensureVirtualBgLibrary();
+      this.virtualBgInitializing=true;
+      this.paintAllVirtualBgControls();
+
+      const pose=await this.ensureVirtualBgPoseProcessor();
 
       const source=document.createElement('video');
-      source.autoplay=true;source.muted=true;source.playsInline=true;
+      source.autoplay=true;
+      source.muted=true;
+      source.playsInline=true;
       source.srcObject=new MediaStream([raw]);
       await source.play().catch(()=>{});
-      if(source.readyState<2){
+
+      if(source.readyState<2||!source.videoWidth||!source.videoHeight){
         await new Promise(resolve=>{
-          let done=false;
-          const finish=()=>{if(done)return;done=true;resolve()};
-          source.addEventListener('loadeddata',finish,{once:true});
-          source.addEventListener('canplay',finish,{once:true});
-          setTimeout(finish,1600);
+          let settled=false;
+          const done=()=>{if(settled)return;settled=true;resolve()};
+          source.addEventListener('loadeddata',done,{once:true});
+          source.addEventListener('canplay',done,{once:true});
+          source.addEventListener('loadedmetadata',done,{once:true});
+          setTimeout(done,1800);
         });
       }
 
       const settings=raw.getSettings?.()||{};
-      /* Mobile front cameras often expose settings.width/settings.height in a
-         sensor orientation that does not match the actual <video> frame.
-         Wait for real video dimensions and preserve that exact aspect ratio;
-         otherwise the segmentation mask and camera image are transformed
-         differently and the mask cuts through the face/body. */
-      if(!source.videoWidth||!source.videoHeight){
-        await new Promise(resolve=>{
-          const done=()=>resolve();
-          source.addEventListener('loadedmetadata',done,{once:true});
-          setTimeout(done,700);
-        });
-      }
       const srcW=Math.max(1,Number(source.videoWidth)||Number(settings.width)||960);
       const srcH=Math.max(1,Number(source.videoHeight)||Number(settings.height)||540);
       const isMobile=(window.matchMedia?.('(pointer: coarse)')?.matches||window.innerWidth<=760);
+
       const maxLong=isMobile?540:720;
-      const scale=Math.min(1,maxLong/Math.max(srcW,srcH));
-      const w=Math.max(240,Math.round(srcW*scale));
-      const h=Math.max(240,Math.round(srcH*scale));
+      const outScale=Math.min(1,maxLong/Math.max(srcW,srcH));
+      const w=Math.max(240,Math.round(srcW*outScale));
+      const h=Math.max(180,Math.round(srcH*outScale));
+
       const canvas=document.createElement('canvas');
-      canvas.width=w;canvas.height=h;
-      // Segmentation compositing needs a real alpha channel.
-      // With alpha:false the mask became fully opaque, so the original room
-      // always won and blur/replacement backgrounds looked like they did nothing.
+      canvas.width=w;
+      canvas.height=h;
       const ctx=canvas.getContext('2d',{alpha:true,desynchronized:true});
-      /* Mobile browsers may ignore or poorly implement Canvas2D filter: blur().
-         Keep a tiny offscreen buffer as a reliable blur fallback: heavy
-         downscale + bilinear upscale produces a soft background without filter. */
+      if(!ctx)throw new Error('Canvas виртуального фона недоступен');
+
+      /* Pose inference works on a smaller frame, while the final composite uses
+         the original camera frame. This keeps edges respectable without asking
+         the ML graph to process a 720p/1080p frame. */
+      const inferCanvas=document.createElement('canvas');
+      const inferLong=isMobile?320:448;
+      const inferScale=Math.min(1,inferLong/Math.max(srcW,srcH));
+      inferCanvas.width=Math.max(192,Math.round(srcW*inferScale));
+      inferCanvas.height=Math.max(144,Math.round(srcH*inferScale));
+      const inferCtx=inferCanvas.getContext('2d',{alpha:false,desynchronized:true});
+      if(!inferCtx)throw new Error('Canvas распознавания недоступен');
+      inferCtx.imageSmoothingEnabled=true;
+
+      /* Reliable, cheap background blur: downsample aggressively and upscale.
+         It avoids large-radius Canvas2D filters on the whole frame. */
       const blurCanvas=document.createElement('canvas');
-      const blurScale=isMobile?0.055:0.085;
-      blurCanvas.width=Math.max(20,Math.round(w*blurScale));
-      blurCanvas.height=Math.max(20,Math.round(h*blurScale));
-      const blurCtx=blurCanvas.getContext('2d',{alpha:false});
+      const blurScale=isMobile?.055:.075;
+      blurCanvas.width=Math.max(24,Math.round(w*blurScale));
+      blurCanvas.height=Math.max(24,Math.round(h*blurScale));
+      const blurCtx=blurCanvas.getContext('2d',{alpha:false,desynchronized:true});
       if(blurCtx)blurCtx.imageSmoothingEnabled=true;
 
-      /* Clean MediaPipe's probability mask before compositing. The raw mask can
-         classify bright bedding, walls and furniture as foreground, especially
-         when they touch the body. Process a small confidence map every frame:
-         this is cheap enough for realtime and removes those false positives
-         before the final soft edge is rendered at camera resolution. */
-      const maskCanvas=document.createElement('canvas');
-      const maskLong=isMobile?176:208;
-      const maskScale=Math.min(1,maskLong/Math.max(w,h));
-      maskCanvas.width=Math.max(96,Math.round(w*maskScale));
-      maskCanvas.height=Math.max(96,Math.round(h*maskScale));
-      const maskCtx=maskCanvas.getContext('2d',{alpha:true,willReadFrequently:true});
-      if(maskCtx)maskCtx.imageSmoothingEnabled=true;
-
-      /* Run MediaPipe on a small frame, not the original 1080p webcam.
-         The old code sent the full camera frame into WASM every ~50 ms, which
-         could lock the browser when blur was enabled. We keep the final output
-         sharp by compositing the original source with the low-res mask. */
-      const segCanvas=document.createElement('canvas');
-      const segLong=isMobile?288:384;
-      const segScale=Math.min(1,segLong/Math.max(srcW,srcH));
-      segCanvas.width=Math.max(160,Math.round(srcW*segScale));
-      segCanvas.height=Math.max(120,Math.round(srcH*segScale));
-      const segCtx=segCanvas.getContext('2d',{alpha:false,desynchronized:true});
-      if(segCtx)segCtx.imageSmoothingEnabled=true;
-
-      /* Face detection also uses a small independent frame. This avoids a
-         second ML pass over the full webcam image while the segmentation model
-         is running. */
-      const faceCanvas=document.createElement('canvas');
-      const faceLong=isMobile?320:448;
-      const faceScale=Math.min(1,faceLong/Math.max(srcW,srcH));
-      faceCanvas.width=Math.max(128,Math.round(srcW*faceScale));
-      faceCanvas.height=Math.max(96,Math.round(srcH*faceScale));
-      const faceCtx=faceCanvas.getContext('2d',{alpha:false,desynchronized:true});
-      if(faceCtx)faceCtx.imageSmoothingEnabled=true;
-
-      /* Seed the processed canvas before captureStream starts. The preview
-         can switch to the processed track immediately; the first segmentation
-         result then replaces this placeholder automatically. */
-      ctx.save();
-      ctx.clearRect(0,0,w,h);
-      if(this.virtualBgMode==='blur'){
-        ctx.filter='blur(20px)';
-        ctx.drawImage(source,0,0,w,h);
-        ctx.filter='none';
-      }else if(this.virtualBgMode==='custom'&&this.virtualBgCustomImage){
-        this.drawCover(ctx,this.virtualBgCustomImage,w,h);
-      }else{
-        this.drawBuiltInBackground(ctx,w,h,this.virtualBgMode);
-      }
-      ctx.restore();
-
-      const output=canvas.captureStream(isMobile?15:18);
-      const outTrack=output.getVideoTracks()[0];
-      if(!outTrack) throw new Error('Не удалось создать обработанный видеопоток');
-      outTrack.enabled=this.cameraEnabled;
-      try{outTrack.contentHint='motion'}catch{}
-      this.virtualBgFrameInterval=isMobile?90:72;
-      this.virtualBgAvgProcessMs=0;
-
-      const processor=new Seg({
-        locateFile:file=>`https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/${file}`
-      });
-      /* Accuracy matters more than a small speed gain here. The landscape
-         model tends to absorb nearby furniture/background around hair and
-         shoulders, so use the higher-quality general model on every layout. */
-      processor.setOptions({modelSelection:0});
-
-      /* Face presence is only a gate for accepting the person mask. It never
-         owns or reopens the camera, so a face-detector failure cannot break
-         video. A short hold after the last detection avoids flicker when the
-         user turns their head or briefly covers part of the face. */
-      let faceDetector=null;
-      let firstCompositeDone=false;
-      let resolveFirstComposite=null;
-      const firstCompositePromise=new Promise(resolve=>{resolveFirstComposite=resolve});
-      /* Presence gate starts closed. A sharp foreground is allowed only after
-         either Face Detection or person-instance detection confirms that a real
-         person is currently in frame. This prevents clothing/furniture from
-         surviving in an otherwise empty room. */
-      let faceGateEnabled=true;
-      let facePresent=false;
-      let faceLastSeen=0;
-      let faceMisses=0;
-      let faceBusy=false;
-      let faceLastCheck=0;
-      let primaryFaceAnchor=null; // normalized {cx,cy,w,h,area}
-      let primaryFaceSeenAt=0;
-      let secondaryFaceAnchors=[];
-      let secondaryFaceLastSeenAt=0;
-
-      /* Object detector state. Unlike SelfieSegmentation, COCO-SSD returns
-         separate boxes for separate people, which gives us the missing instance
-         information needed to blur background people. */
-      let personDetector=null;
-      let personBusy=false;
-      let personLastCheck=0;
-      let personEnabled=false;
-      let personSlowStrikes=0;
-      let personNextAllowedAt=performance.now()+2200;
-      let primaryPersonBox=null;   // normalized x,y,w,h
-      let secondaryPersonBoxes=[];
-      let primaryPersonSeenAt=0;
-
-      /* COCO never sees the full webcam frame. Running object detection on a
-         small copy cuts both GPU compilation/inference pressure and readback
-         cost, while normalized boxes remain accurate enough for our purpose. */
-      const personDetectCanvas=document.createElement('canvas');
-      const personDetectLong=isMobile?192:256;
-      const personDetectScale=Math.min(1,personDetectLong/Math.max(srcW,srcH));
-      personDetectCanvas.width=Math.max(112,Math.round(srcW*personDetectScale));
-      personDetectCanvas.height=Math.max(80,Math.round(srcH*personDetectScale));
-      const personDetectCtx=personDetectCanvas.getContext('2d',{alpha:false});
-      if(personDetectCtx)personDetectCtx.imageSmoothingEnabled=true;
-
-      /* v40.37: keep the final alpha mask temporally stable. This removes
-         one-frame holes around hair/shoulders without letting old foreground
-         linger for long when somebody leaves the frame. */
-      let temporalMaskAlpha=null;
-
-      processor.onResults(results=>{
-        if(!this.virtualBgCanvas||!results?.segmentationMask)return;
-        const cw=canvas.width,ch=canvas.height;
-        ctx.save();
-        ctx.clearRect(0,0,cw,ch);
-
-        /* The segmentation texture contains foreground probability rather
-           than a perfect cutout. A direct draw made moderately confident white
-           objects (bed linen is a common example) stay completely sharp.
-           Convert confidence to a cleaner alpha mask first. */
-        if(maskCtx){
-          const mw=maskCanvas.width,mh=maskCanvas.height;
-          maskCtx.globalCompositeOperation='source-over';
-          maskCtx.filter='none';
-          maskCtx.clearRect(0,0,mw,mh);
-          maskCtx.drawImage(results.segmentationMask,0,0,mw,mh);
-
-          try{
-            const imageData=maskCtx.getImageData(0,0,mw,mh);
-            const d=imageData.data;
-            const total=mw*mh;
-            const confidence=new Uint8Array(total);
-
-            /* MediaPipe mask channel differs between browser builds. Detect
-               the varying channel first, then build a person-only silhouette
-               with hysteresis segmentation:
-               1) find confident foreground,
-               2) break thin bridges to furniture/background,
-               3) keep the best central connected component,
-               4) grow only a short distance into softer hair/edge pixels. */
-            let alphaMin=255,alphaMax=0,lumMin=255,lumMax=0;
-            for(let i=0;i<d.length;i+=4){
-              const a=d[i+3];
-              const lum=(d[i]+d[i+1]+d[i+2])/3;
-              if(a<alphaMin)alphaMin=a;if(a>alphaMax)alphaMax=a;
-              if(lum<lumMin)lumMin=lum;if(lum>lumMax)lumMax=lum;
-            }
-            const useAlpha=(alphaMax-alphaMin)>(lumMax-lumMin)*.55 && (alphaMax-alphaMin)>18;
-
-            const strong=new Uint8Array(total);
-            const eroded=new Uint8Array(total);
-            const opened=new Uint8Array(total);
-            const labels=new Int32Array(total);
-            const keep=new Uint8Array(total);
-            const queue=new Int32Array(total);
-
-            /* Prefer keeping a little extra foreground over cutting shoulders,
-               arms or torso. The old thresholds were tuned too aggressively for
-               seated/reclined users and could blur real body parts. */
-            const strongThreshold=isMobile?120:126;
-            const growThreshold=isMobile?26:30;
-            const fullThreshold=isMobile?142:148;
-
-            for(let i=0,p=0;i<d.length;i+=4,p++){
-              const lum=(d[i]+d[i+1]+d[i+2])/3;
-              const c=Math.max(0,Math.min(255,useAlpha?d[i+3]:lum));
-              confidence[p]=c;
-              if(c>=strongThreshold)strong[p]=1;
-            }
-
-            /* One-pixel cross erosion removes narrow bridges from hair/shoulders
-               to chairs, bedding and wall fragments without shrinking the real
-               silhouette much at this low-resolution working mask. */
-            for(let y=1;y<mh-1;y++){
-              const row=y*mw;
-              for(let x=1;x<mw-1;x++){
-                const p=row+x;
-                if(strong[p]&&strong[p-1]&&strong[p+1]&&strong[p-mw]&&strong[p+mw]){
-                  eroded[p]=1;
-                }
-              }
-            }
-
-            /* Restore the eroded subject with a small dilation. */
-            for(let y=1;y<mh-1;y++){
-              const row=y*mw;
-              for(let x=1;x<mw-1;x++){
-                const p=row+x;
-                if(!eroded[p])continue;
-                opened[p]=1;
-                opened[p-1]=1;opened[p+1]=1;opened[p-mw]=1;opened[p+mw]=1;
-              }
-            }
-
-            /* Connected components on the opened confident mask. The main
-               subject must be the component associated with the primary face
-               (or, while face detection is briefly unavailable, the primary
-               person box). This is the key difference between "person
-               segmentation" and "keep the participant nearest the camera". */
-            let label=0,bestLabel=0,bestScore=-1,bestArea=0;
-            let bestFaceHits=0,bestPersonHits=0;
-            const centerX=mw*.5,centerY=mh*.48;
-            const centerL=mw*.27,centerR=mw*.73;
-            const centerT=mh*.08,centerB=mh*.94;
-            const componentNow=performance.now();
-            const componentFaceFresh=!!primaryFaceAnchor
-              &&primaryFaceSeenAt>0
-              &&componentNow-primaryFaceSeenAt<1250;
-            const componentPersonFresh=!!primaryPersonBox
-              &&primaryPersonSeenAt>0
-              &&componentNow-primaryPersonSeenAt<1450;
-
-            for(let seed=0;seed<total;seed++){
-              if(!opened[seed]||labels[seed])continue;
-              label++;
-              let qh=0,qt=0,area=0,central=0,sumX=0,sumY=0;
-              let faceHits=0,personHits=0;
-              queue[qt++]=seed;labels[seed]=label;
-
-              while(qh<qt){
-                const p=queue[qh++];
-                const x=p%mw,y=(p/mw)|0;
-                const nx=(x+.5)/mw,ny=(y+.5)/mh;
-                area++;sumX+=x;sumY+=y;
-                if(x>=centerL&&x<=centerR&&y>=centerT&&y<=centerB)central++;
-
-                if(componentFaceFresh){
-                  const fx=primaryFaceAnchor.cx,fy=primaryFaceAnchor.cy;
-                  const rx=Math.max(.045,primaryFaceAnchor.w*.95);
-                  const ry=Math.max(.055,primaryFaceAnchor.h*1.10);
-                  if(Math.abs(nx-fx)<=rx&&Math.abs(ny-fy)<=ry)faceHits++;
-                }
-
-                if(componentPersonFresh){
-                  const b=primaryPersonBox;
-                  const padX=Math.max(.018,b.w*.04);
-                  const padY=Math.max(.018,b.h*.035);
-                  if(
-                    nx>=b.x-padX&&nx<=b.x+b.w+padX&&
-                    ny>=b.y-padY&&ny<=b.y+b.h+padY
-                  )personHits++;
-                }
-
-                if(x>0){const n=p-1;if(opened[n]&&!labels[n]){labels[n]=label;queue[qt++]=n}}
-                if(x<mw-1){const n=p+1;if(opened[n]&&!labels[n]){labels[n]=label;queue[qt++]=n}}
-                if(y>0){const n=p-mw;if(opened[n]&&!labels[n]){labels[n]=label;queue[qt++]=n}}
-                if(y<mh-1){const n=p+mw;if(opened[n]&&!labels[n]){labels[n]=label;queue[qt++]=n}}
-              }
-
-              const cx=sumX/Math.max(1,area),cy=sumY/Math.max(1,area);
-              const dx=Math.abs(cx-centerX)/(mw*.5);
-              const dy=Math.abs(cy-centerY)/(mh*.55);
-              const centralRatio=central/Math.max(1,area);
-              const centerBonus=Math.max(0,1-(dx*.70+dy*.30));
-
-              let score=area*(1+centralRatio*1.8)*(0.52+centerBonus*.48);
-              if(componentFaceFresh){
-                score*=faceHits>0
-                  ? 5.5+Math.min(3.5,faceHits/Math.max(1,area*.012))
-                  : .12;
-              }else if(componentPersonFresh){
-                score*=personHits>0
-                  ? 2.6+Math.min(1.8,personHits/Math.max(1,area*.08))
-                  : .30;
-              }
-
-              if(score>bestScore){
-                bestScore=score;
-                bestLabel=label;
-                bestArea=area;
-                bestFaceHits=faceHits;
-                bestPersonHits=personHits;
-              }
-            }
-
-            const componentAnchored=componentFaceFresh
-              ? bestFaceHits>0
-              : componentPersonFresh
-                ? bestPersonHits>0
-                : true;
-            const validComponent=
-              bestLabel>0 &&
-              bestArea>Math.max(18,total*.0012) &&
-              componentAnchored;
-
-            if(validComponent){
-              /* Seed the retained mask from the selected subject component. */
-              let qh=0,qt=0;
-              for(let p=0;p<total;p++){
-                if(labels[p]===bestLabel){
-                  keep[p]=1;
-                  queue[qt++]=p;
-                }
-              }
-
-              /* Geodesic growth: recover hair, ears, clothes and hands only near
-                 the selected person. It cannot flood across the entire room just
-                 because MediaPipe assigns a weak foreground probability there. */
-              const maxGrow=isMobile?16:14;
-              let layerEnd=qt;
-              for(let step=0;step<maxGrow&&qh<qt;step++){
-                const nextEnd=qt;
-                while(qh<layerEnd){
-                  const p=queue[qh++];
-                  const x=p%mw,y=(p/mw)|0;
-                  const visit=n=>{
-                    if(keep[n]||confidence[n]<growThreshold)return;
-                    keep[n]=1;queue[qt++]=n;
-                  };
-                  if(x>0)visit(p-1);
-                  if(x<mw-1)visit(p+1);
-                  if(y>0)visit(p-mw);
-                  if(y<mh-1)visit(p+mw);
-                }
-                layerEnd=qt;
-                if(layerEnd===nextEnd)break;
-              }
-
-              /* Restore extremely confident nearby detail (fine hair/hand tips)
-                 without allowing detached high-confidence room islands. */
-              const halo=isMobile?7:6;
-              const haloKeep=new Uint8Array(keep);
-              for(let step=0;step<halo;step++){
-                const prev=new Uint8Array(haloKeep);
-                for(let y=1;y<mh-1;y++){
-                  const row=y*mw;
-                  for(let x=1;x<mw-1;x++){
-                    const p=row+x;
-                    if(haloKeep[p]||confidence[p]<fullThreshold)continue;
-                    if(prev[p-1]||prev[p+1]||prev[p-mw]||prev[p+mw])haloKeep[p]=1;
-                  }
-                }
-              }
-
-              /* Body-safe mask cleanup.
-                 The old face-derived hourglass envelope removed legitimate
-                 shoulders, arms and torso when the user sat sideways, leaned
-                 back or was close to the camera. Keep MediaPipe's connected
-                 person silhouette intact and only trim pixels clearly above
-                 the detected head. This trades a little extra background
-                 tolerance for a much more natural human cutout. */
-              const envelopeNow=performance.now();
-              const envelopeFaceFresh=!!primaryFaceAnchor
-                &&primaryFaceSeenAt>0
-                &&envelopeNow-primaryFaceSeenAt<1400;
-
-              if(envelopeFaceFresh){
-                const fy=primaryFaceAnchor.cy;
-                const fh=Math.max(.045,primaryFaceAnchor.h);
-                const top=Math.max(0,fy-fh*2.15);
-                for(let p=0;p<total;p++){
-                  if(!haloKeep[p])continue;
-                  const y=(((p/mw)|0)+.5)/mh;
-                  if(y<top)haloKeep[p]=0;
-                }
-              }
-
-              /* Keep one participant only. Secondary faces are stronger
-                 evidence than the shared selfie mask, so use them as erase
-                 seeds. A flood through the current foreground removes the
-                 second person's whole silhouette even when they are reclining
-                 or touching bedding; the primary subject region is a barrier. */
-              const faceFresh=!!primaryFaceAnchor
-                &&primaryFaceSeenAt>0
-                &&performance.now()-primaryFaceSeenAt<1250;
-              const personFresh=!!primaryPersonBox
-                &&primaryPersonSeenAt>0
-                &&performance.now()-primaryPersonSeenAt<1450;
-
-              const primaryProtected=(x,y)=>{
-                if(faceFresh){
-                  const fx=primaryFaceAnchor.cx;
-                  const fy=primaryFaceAnchor.cy;
-                  const fw=Math.max(.035,primaryFaceAnchor.w);
-                  const fh=Math.max(.045,primaryFaceAnchor.h);
-                  const top=fy-fh*1.55;
-                  const headEnd=fy+fh*1.10;
-                  const shoulderEnd=fy+fh*2.65;
-
-                  if(y>=top){
-                    /* Protect only the visible participant corridor. A wide
-                       cone here makes somebody standing directly behind the
-                       tutor impossible to remove. */
-                    let radius=Math.max(.085,fw*1.30);
-                    if(y>headEnd&&y<=shoulderEnd){
-                      const t=(y-headEnd)/Math.max(.001,shoulderEnd-headEnd);
-                      radius=Math.max(.085,fw*1.30)
-                        +(Math.max(.165,fw*2.00)-Math.max(.085,fw*1.30))*t;
-                    }else if(y>shoulderEnd){
-                      const t=Math.max(0,Math.min(1,(y-shoulderEnd)/Math.max(.001,1-shoulderEnd)));
-                      radius=Math.max(.165,fw*2.00)
-                        +(Math.max(.245,fw*2.95)-Math.max(.165,fw*2.00))*t;
-                    }
-                    if(Math.abs(x-fx)<=Math.min(.30,radius))return true;
-                  }
-                }
-
-                if(personFresh){
-                  const b=primaryPersonBox;
-                  const padX=Math.max(.012,b.w*.03);
-                  const padY=Math.max(.014,b.h*.03);
-                  const inBox=
-                    x>=b.x-padX&&x<=b.x+b.w+padX&&
-                    y>=b.y-padY&&y<=b.y+b.h+padY;
-                  if(inBox){
-                    if(!faceFresh)return true;
-                    const maxSide=Math.max(.22,primaryFaceAnchor.w*2.85);
-                    if(Math.abs(x-primaryFaceAnchor.cx)<=Math.min(.30,maxSide))return true;
-                  }
-                }
-                return false;
-              };
-
-              const overlapsPrimaryFace=(x,y)=>{
-                if(!faceFresh)return false;
-                const fx=primaryFaceAnchor.cx;
-                const fy=primaryFaceAnchor.cy;
-                const rx=Math.max(.055,primaryFaceAnchor.w*.88);
-                const ry=Math.max(.065,primaryFaceAnchor.h*.95);
-                const dx=(x-fx)/rx;
-                const dy=(y-fy)/ry;
-                return dx*dx+dy*dy<=1;
-              };
-
-              const removalBoxes=[...secondaryPersonBoxes];
-
-              if(secondaryFaceAnchors.length){
-                for(const face of secondaryFaceAnchors){
-                  const halfW=Math.min(.40,Math.max(.14,face.w*4.6));
-                  const top=Math.max(0,face.cy-Math.max(.08,face.h*1.8));
-                  const bottom=Math.min(1,face.cy+Math.max(.30,face.h*7.0));
-                  removalBoxes.push({
-                    x:Math.max(0,face.cx-halfW),
-                    y:top,
-                    w:Math.min(1,face.cx+halfW)-Math.max(0,face.cx-halfW),
-                    h:bottom-top,
-                    _fromFace:true
-                  });
-
-                  /* Secondary face core has priority over torso protection.
-                     Only preserve pixels that genuinely overlap the primary
-                     face itself, which also protects against duplicate face
-                     detections of the same participant. */
-                  const rx=Math.max(.05,face.w*1.18);
-                  const ry=Math.max(.06,face.h*1.28);
-                  const x0=Math.max(0,Math.floor((face.cx-rx)*mw));
-                  const x1=Math.min(mw-1,Math.ceil((face.cx+rx)*mw));
-                  const y0=Math.max(0,Math.floor((face.cy-ry)*mh));
-                  const y1=Math.min(mh-1,Math.ceil((face.cy+ry)*mh));
-
-                  for(let yy=y0;yy<=y1;yy++){
-                    for(let xx=x0;xx<=x1;xx++){
-                      const nx=(xx+.5)/mw,ny=(yy+.5)/mh;
-                      const dx=(nx-face.cx)/rx;
-                      const dy=(ny-face.cy)/ry;
-                      if(dx*dx+dy*dy>1)continue;
-                      if(overlapsPrimaryFace(nx,ny))continue;
-                      haloKeep[yy*mw+xx]=0;
-                    }
-                  }
-                }
-
-                const sourceKeep=new Uint8Array(haloKeep);
-                const erased=new Uint8Array(total);
-                const eraseQueue=new Int32Array(total);
-
-                for(const face of secondaryFaceAnchors){
-                  let seed=-1;
-                  let bestSeedDist=Infinity;
-                  const sx=Math.round(face.cx*(mw-1));
-                  const sy=Math.round(face.cy*(mh-1));
-                  const rx=Math.max(3,Math.ceil(face.w*mw*1.25));
-                  const ry=Math.max(3,Math.ceil(face.h*mh*1.35));
-                  const x0=Math.max(0,sx-rx),x1=Math.min(mw-1,sx+rx);
-                  const y0=Math.max(0,sy-ry),y1=Math.min(mh-1,sy+ry);
-
-                  for(let yy=y0;yy<=y1;yy++){
-                    for(let xx=x0;xx<=x1;xx++){
-                      const p=yy*mw+xx;
-                      if(!sourceKeep[p])continue;
-                      const nx=(xx+.5)/mw,ny=(yy+.5)/mh;
-                      if(overlapsPrimaryFace(nx,ny))continue;
-                      const dd=((xx-sx)/Math.max(1,rx))**2+((yy-sy)/Math.max(1,ry))**2;
-                      if(dd<bestSeedDist){bestSeedDist=dd;seed=p}
-                    }
-                  }
-
-                  if(seed<0)continue;
-
-                  let qh=0,qt=0;
-                  eraseQueue[qt++]=seed;
-                  erased[seed]=1;
-                  const maxDx=Math.min(.50,Math.max(.20,face.w*5.8));
-                  const maxUp=Math.min(.30,Math.max(.10,face.h*2.7));
-                  const maxDown=Math.min(.72,Math.max(.34,face.h*8.0));
-
-                  while(qh<qt){
-                    const p=eraseQueue[qh++];
-                    const x=p%mw,y=(p/mw)|0;
-                    const nx=(x+.5)/mw,ny=(y+.5)/mh;
-
-                    const faceRx=Math.max(.05,face.w*1.18);
-                    const faceRy=Math.max(.06,face.h*1.28);
-                    const fdx=(nx-face.cx)/faceRx;
-                    const fdy=(ny-face.cy)/faceRy;
-                    const insideSecondaryFace=fdx*fdx+fdy*fdy<=1;
-
-                    if(
-                      Math.abs(nx-face.cx)>maxDx ||
-                      ny<face.cy-maxUp ||
-                      ny>face.cy+maxDown ||
-                      (primaryProtected(nx,ny)&&!insideSecondaryFace)
-                    )continue;
-
-                    haloKeep[p]=0;
-
-                    const visit=n=>{
-                      if(erased[n]||!sourceKeep[n])return;
-                      const xx=n%mw,yy=(n/mw)|0;
-                      const vx=(xx+.5)/mw,vy=(yy+.5)/mh;
-                      if(primaryProtected(vx,vy))return;
-                      erased[n]=1;
-                      eraseQueue[qt++]=n;
-                    };
-                    if(x>0)visit(p-1);
-                    if(x<mw-1)visit(p+1);
-                    if(y>0)visit(p-mw);
-                    if(y<mh-1)visit(p+mw);
-                  }
-                }
-              }
-
-              if(removalBoxes.length){
-                for(const box of removalBoxes){
-                  const px=Math.max(0,box.x-Math.max(.014,box.w*.06));
-                  const py=Math.max(0,box.y-Math.max(.020,box.h*.05));
-                  const pr=Math.min(1,box.x+box.w+Math.max(.014,box.w*.06));
-                  const pb=Math.min(1,box.y+box.h+Math.max(.025,box.h*.08));
-
-                  for(let p=0;p<total;p++){
-                    if(!haloKeep[p])continue;
-                    const x=((p%mw)+.5)/mw;
-                    const y=(((p/mw)|0)+.5)/mh;
-                    if(x<px||x>pr||y<py||y>pb)continue;
-                    if(!primaryProtected(x,y))haloKeep[p]=0;
-                  }
-                }
-              }
-
-              /* Final primary-subject guard.
-                 SelfieSegmentation can merge two touching people into one
-                 connected silhouette. Face Detection then cannot always split
-                 the bodies, especially when the second person is partly outside
-                 the frame. Keep a deliberately generous corridor around the
-                 primary face/body and drop foreground that lives far outside it.
-                 The corridor widens strongly toward the bottom so the tutor's
-                 shoulders, torso and normal arm movement stay intact. */
-              if(faceFresh){
-                const fx=primaryFaceAnchor.cx;
-                const fy=primaryFaceAnchor.cy;
-                const fw=Math.max(.035,primaryFaceAnchor.w);
-                const fh=Math.max(.045,primaryFaceAnchor.h);
-                const top=fy-fh*1.85;
-                const headEnd=fy+fh*1.25;
-                const shoulderEnd=fy+fh*3.0;
-
-                for(let p=0;p<total;p++){
-                  if(!haloKeep[p])continue;
-                  const x=((p%mw)+.5)/mw;
-                  const y=(((p/mw)|0)+.5)/mh;
-                  if(y<top){
-                    haloKeep[p]=0;
-                    continue;
-                  }
-
-                  let halfWidth;
-                  if(y<=headEnd){
-                    halfWidth=Math.max(.12,fw*1.55);
-                  }else if(y<=shoulderEnd){
-                    const t=Math.max(0,Math.min(1,(y-headEnd)/Math.max(.001,shoulderEnd-headEnd)));
-                    halfWidth=Math.max(.12,fw*1.55)
-                      +(Math.max(.31,fw*3.10)-Math.max(.12,fw*1.55))*t;
-                  }else{
-                    const t=Math.max(0,Math.min(1,(y-shoulderEnd)/Math.max(.001,1-shoulderEnd)));
-                    halfWidth=Math.max(.31,fw*3.10)
-                      +(Math.max(.40,fw*4.05)-Math.max(.31,fw*3.10))*t;
-                  }
-
-                  /* Slightly favor the side the primary torso already occupies,
-                     but never let a secondary person drag the corridor far away
-                     from the primary face. */
-                  let axisX=fx;
-                  if(y>headEnd){
-                    const bandY=Math.max(0,Math.min(mh-1,Math.round(y*mh)));
-                    const searchPx=Math.ceil(Math.min(.34,halfWidth)*mw);
-                    const centerPx=Math.round(fx*mw);
-                    let sum=0,count=0;
-                    for(let xx=Math.max(0,centerPx-searchPx);xx<=Math.min(mw-1,centerPx+searchPx);xx++){
-                      const q=bandY*mw+xx;
-                      if(haloKeep[q]){sum+=xx;count++}
-                    }
-                    if(count){
-                      const candidate=(sum/count+.5)/mw;
-                      axisX=Math.max(fx-.10,Math.min(fx+.10,candidate));
-                    }
-                  }
-
-                  if(Math.abs(x-axisX)>Math.min(.43,halfWidth)){
-                    haloKeep[p]=0;
-                  }
-                }
-              }
-
-              for(let p=0,i=0;p<total;p++,i+=4){
-                const c=confidence[p];
-                let a=0;
-                if(haloKeep[p]){
-                  const lo=isMobile?26:32;
-                  const hi=isMobile?112:122;
-                  if(c>=hi)a=255;
-                  else if(c>lo){
-                    const t=(c-lo)/(hi-lo);
-                    const smooth=t*t*(3-2*t);
-                    a=Math.round(255*smooth);
-                  }
-                }
-                d[i]=255;d[i+1]=255;d[i+2]=255;d[i+3]=a;
-              }
-            }else{
-              /* If a primary detector says somebody is present but the selected
-                 mask component does not reach that primary anchor, do not keep
-                 an unrelated object sharp for this frame. */
-              const anchorExpected=componentFaceFresh||componentPersonFresh;
-              for(let p=0,i=0;p<total;p++,i+=4){
-                const c=confidence[p];
-                let a=0;
-                if(!anchorExpected){
-                  const lo=isMobile?24:30;
-                  const hi=isMobile?108:118;
-                  if(c>=hi)a=255;
-                  else if(c>lo){
-                    const t=(c-lo)/(hi-lo);
-                    const smooth=t*t*(3-2*t);
-                    a=Math.round(255*smooth);
-                  }
-                }
-                d[i]=255;d[i+1]=255;d[i+2]=255;d[i+3]=a;
-              }
-            }
-
-            /* Stabilize the edge over time, but release quickly so a removed
-               background person does not leave a visible ghost. */
-            if(!temporalMaskAlpha||temporalMaskAlpha.length!==total){
-              temporalMaskAlpha=new Uint8Array(total);
-            }
-            for(let p=0,i=3;p<total;p++,i+=4){
-              const target=d[i];
-              const prev=temporalMaskAlpha[p];
-              const gain=target>=prev?.58:.86;
-              const next=Math.round(prev+(target-prev)*gain);
-              temporalMaskAlpha[p]=next<4?0:next;
-              d[i]=temporalMaskAlpha[p];
-            }
-
-            maskCtx.putImageData(imageData,0,0);
-          }catch(e){
-            /* Security/driver edge case: fall back to the raw mask rather than
-               losing the camera. */
-            console.warn('[Mathroom virtual background] mask cleanup fallback',e);
-            maskCtx.clearRect(0,0,mw,mh);
-            maskCtx.drawImage(results.segmentationMask,0,0,mw,mh);
-          }
-
-          ctx.filter=isMobile?'blur(1.45px)':'blur(1.05px)';
-          ctx.drawImage(maskCanvas,0,0,maskCanvas.width,maskCanvas.height,0,0,cw,ch);
-          ctx.filter='none';
-        }else{
-          ctx.filter=isMobile?'blur(1.45px)':'blur(1.05px)';
-          ctx.drawImage(results.segmentationMask,0,0,cw,ch);
-          ctx.filter='none';
-        }
-
-        /* Keep the main participant from the segmentation mask even when
-           Face Detection briefly misses their face. Previously a missed face
-           cleared the entire foreground mask, which made the whole person blur.
-           Face Detection is now only an auxiliary signal for removing people
-           behind the participant. */
-        const nowForPresence=performance.now();
-        const facePresenceFresh=
-          facePresent ||
-          (
-            faceLastSeen>0 &&
-            primaryFaceSeenAt>0 &&
-            nowForPresence-faceLastSeen<1200 &&
-            nowForPresence-primaryFaceSeenAt<1400
-          );
-
-        ctx.globalCompositeOperation='source-in';
-        ctx.drawImage(source,0,0,cw,ch);
-
-        ctx.globalCompositeOperation='destination-over';
+      const drawBackground=()=>{
         if(this.virtualBgMode==='blur'){
-          if(isMobile&&blurCtx){
-            // Reliable mobile blur: aggressively downsample then upscale.
-            // Two passes make the result visibly softer while avoiding
-            // Canvas2D filter, which is broken/ignored on some phones.
+          if(blurCtx){
             blurCtx.clearRect(0,0,blurCanvas.width,blurCanvas.height);
             blurCtx.drawImage(source,0,0,blurCanvas.width,blurCanvas.height);
             ctx.save();
             ctx.imageSmoothingEnabled=true;
             ctx.imageSmoothingQuality='high';
-            ctx.drawImage(blurCanvas,0,0,blurCanvas.width,blurCanvas.height,0,0,cw,ch);
-            ctx.globalAlpha=.96;
-            ctx.drawImage(blurCanvas,0,0,blurCanvas.width,blurCanvas.height,0,0,cw,ch);
+            ctx.drawImage(blurCanvas,0,0,blurCanvas.width,blurCanvas.height,0,0,w,h);
+            ctx.globalAlpha=.94;
+            ctx.drawImage(blurCanvas,0,0,blurCanvas.width,blurCanvas.height,0,0,w,h);
             ctx.restore();
           }else{
             ctx.save();
             ctx.filter='blur(22px)';
-            ctx.drawImage(source,0,0,cw,ch);
+            ctx.drawImage(source,0,0,w,h);
             ctx.restore();
           }
         }else if(this.virtualBgMode==='custom'&&this.virtualBgCustomImage){
-          this.drawCover(ctx,this.virtualBgCustomImage,cw,ch);
+          this.drawCover(ctx,this.virtualBgCustomImage,w,h);
         }else{
-          this.drawBuiltInBackground(ctx,cw,ch,this.virtualBgMode);
+          this.drawBuiltInBackground(ctx,w,h,this.virtualBgMode);
         }
+      };
+
+      /* Seed captureStream with the selected background. The preview remains on
+         the raw camera until the first real person mask is ready. */
+      ctx.clearRect(0,0,w,h);
+      drawBackground();
+
+      const output=canvas.captureStream(isMobile?15:18);
+      const outTrack=output.getVideoTracks()[0];
+      if(!outTrack)throw new Error('Не удалось создать обработанный видеопоток');
+      outTrack.enabled=this.cameraEnabled;
+      try{outTrack.contentHint='motion'}catch{}
+
+      this.virtualBgSourceVideo=source;
+      this.virtualBgCanvas=canvas;
+      this.virtualBgStream=output;
+      this.virtualBgTrack=outTrack;
+      this.virtualBgFrameInterval=isMobile?115:90;
+      this.virtualBgAvgProcessMs=0;
+
+      let firstCompositeResolve=null;
+      let firstCompositeDone=false;
+      const firstCompositePromise=new Promise(resolve=>{firstCompositeResolve=resolve});
+
+      this.virtualBgPoseResultHandler=results=>{
+        if(
+          this.destroyed ||
+          this.virtualBgTrack!==outTrack ||
+          !this.virtualBgCanvas
+        )return;
+
+        ctx.save();
+        ctx.clearRect(0,0,w,h);
+
+        const mask=results?.segmentationMask||null;
+        if(mask){
+          /* Pose segmentation belongs to the one tracked prominent participant.
+             There is no "all people" mask and therefore no geometric guessing
+             about who should stay sharp. */
+          ctx.filter=isMobile?'blur(1.7px)':'blur(1.25px)';
+          ctx.drawImage(mask,0,0,w,h);
+          ctx.filter='none';
+
+          ctx.globalCompositeOperation='source-in';
+          ctx.drawImage(source,0,0,w,h);
+        }
+
+        ctx.globalCompositeOperation='destination-over';
+        drawBackground();
         ctx.restore();
 
-        /* Secondary/background people can be merged into the same MediaPipe
-           person mask as the participant. Face Detection gives us separate
-           faces, so explicitly cover every secondary face + upper body with the
-           selected background (or blur). A protected zone around the primary
-           face/torso prevents this safety pass from erasing the participant. */
-        if(secondaryFaceAnchors.length){
-          const primary=primaryFaceAnchor;
-          const pFresh=!!primary&&primaryFaceSeenAt>0&&performance.now()-primaryFaceSeenAt<1500;
-          for(const face of secondaryFaceAnchors){
-            const sx=face.cx*cw,sy=face.cy*ch;
-            const fw=Math.max(28,face.w*cw),fh=Math.max(34,face.h*ch);
-            const faceRx=Math.max(fw*1.55,38);
-            const faceRy=Math.max(fh*1.75,44);
-            const torsoTop=sy+fh*.35;
-            const torsoW=Math.max(faceRx*2.8,fw*4.8);
-            const torsoH=Math.max(ch*.34,fh*6.0);
-
-            const path=new Path2D();
-            path.ellipse(sx,sy,faceRx,faceRy,0,0,Math.PI*2);
-            if(typeof path.roundRect==='function'){
-              path.roundRect(
-                sx-torsoW/2,
-                torsoTop,
-                torsoW,
-                torsoH,
-                Math.min(34,torsoW*.16)
-              );
-            }else{
-              path.rect(sx-torsoW/2,torsoTop,torsoW,torsoH);
-            }
-
-            /* Subtract a generous protected participant corridor. */
-            if(pFresh){
-              const px=primary.cx*cw,py=primary.cy*ch;
-              const pfw=Math.max(32,primary.w*cw),pfh=Math.max(38,primary.h*ch);
-              path.ellipse(px,py,Math.max(54,pfw*1.45),Math.max(64,pfh*1.70),0,0,Math.PI*2);
-              const protectX=px-Math.max(cw*.18,pfw*2.2);
-              const protectY=py+pfh*.35;
-              const protectW=Math.max(cw*.36,pfw*4.4);
-              const protectH=Math.max(ch*.68,pfh*7.0);
-              if(typeof path.roundRect==='function'){
-                path.roundRect(protectX,protectY,protectW,protectH,42);
-              }else{
-                path.rect(protectX,protectY,protectW,protectH);
-              }
-            }
-
-            ctx.save();
-            try{ctx.clip(path,'evenodd')}catch{ctx.clip(path)}
-            if(this.virtualBgMode==='blur'){
-              if(blurCtx){
-                blurCtx.clearRect(0,0,blurCanvas.width,blurCanvas.height);
-                blurCtx.drawImage(source,0,0,blurCanvas.width,blurCanvas.height);
-                ctx.imageSmoothingEnabled=true;
-                ctx.imageSmoothingQuality='high';
-                ctx.drawImage(blurCanvas,0,0,blurCanvas.width,blurCanvas.height,0,0,cw,ch);
-                ctx.globalAlpha=.94;
-                ctx.drawImage(blurCanvas,0,0,blurCanvas.width,blurCanvas.height,0,0,cw,ch);
-              }else{
-                ctx.filter='blur(24px)';
-                ctx.drawImage(source,0,0,cw,ch);
-                ctx.filter='none';
-              }
-            }else if(this.virtualBgMode==='custom'&&this.virtualBgCustomImage){
-              this.drawCover(ctx,this.virtualBgCustomImage,cw,ch);
-            }else if(this.virtualBgMode!=='none'){
-              this.drawBuiltInBackground(ctx,cw,ch,this.virtualBgMode);
-            }
-            ctx.restore();
-          }
-        }
-
-        if(!firstCompositeDone){
+        if(!firstCompositeDone&&mask){
           firstCompositeDone=true;
-          try{resolveFirstComposite?.(true)}catch{}
-        }
+          this.virtualBgInitializing=false;
+          this.paintAllVirtualBgControls();
+          try{firstCompositeResolve?.(true)}catch{}
 
-        /* captureStream can exist before its first painted frame. Some Chromium
-           builds keep showing the previously attached raw camera until the
-           processed canvas produces a real frame. Rebind once on that first
-           composite so the selected background appears automatically without
-           clicking another preset and back. */
-        if(!outTrack._mrFirstCompositePainted){
-          outTrack._mrFirstCompositePainted=true;
+          /* Switch preview/sender only after an actual segmented frame exists.
+             This removes the cold-start race that previously required
+             camera-off/camera-on. */
           requestAnimationFrame(()=>{
             if(this.destroyed||this.virtualBgTrack!==outTrack)return;
             this.bindPrejoinPreview();
@@ -2797,420 +2146,69 @@
             this.paint();
           });
         }
-      });
-
-      this.virtualBgSourceVideo=source;
-      this.virtualBgCanvas=canvas;
-      this.virtualBgStream=output;
-      this.virtualBgTrack=outTrack;
-      this.virtualBgProcessor=processor;
-
-      /* The previous build loaded TensorFlow.js + COCO-SSD as soon as a virtual
-         background started. Compiling two additional ML stacks next to MediaPipe
-         could make Chromium mark the page as unresponsive. Secondary faces are
-         already handled by Face Detection, so the heavyweight object detector
-         stays off in the realtime camera path. */
-      if(personEnabled)this.ensureVirtualBgPersonLibrary().then(({model})=>{
-        if(this.destroyed||this.virtualBgProcessor!==processor){
-          try{model?.dispose?.()}catch{}
-          return;
-        }
-        personDetector=model;
-        this.virtualBgPersonDetector=model;
-        /* Let the camera + SelfieSegmentation settle before the first TFJS
-           inference. The model can load in parallel but never competes with the
-           initial video startup. */
-        personNextAllowedAt=performance.now()+1800;
-      }).catch(e=>{
-        console.warn('[Mathroom virtual background] person detector unavailable',e);
-      });
-
-      /* Load the presence detector in parallel after video is already working.
-         This deliberately does not delay camera/background startup. */
-      this.ensureVirtualBgFaceLibrary().then(FaceDetection=>{
-        if(this.destroyed||this.virtualBgProcessor!==processor)return;
-
-        const detector=new FaceDetection({
-          locateFile:file=>`https://cdn.jsdelivr.net/npm/@mediapipe/face_detection/${file}`
-        });
-        detector.setOptions({
-          modelSelection:1,
-          minDetectionConfidence:.28
-        });
-
-        detector.onResults(faceResults=>{
-          if(this.virtualBgProcessor!==processor)return;
-
-          const detections=Array.isArray(faceResults?.detections)
-            ?faceResults.detections
-            :[];
-
-          const sw=Math.max(1,Number(source.videoWidth)||srcW);
-          const sh=Math.max(1,Number(source.videoHeight)||srcH);
-          const faces=[];
-
-          for(const d of detections){
-            const score=Number(d?.score?.[0]??d?.score??1);
-            if(Number.isFinite(score)&&score<.30)continue;
-
-            const b=d?.boundingBox
-              ||d?.locationData?.relativeBoundingBox
-              ||d?.locationData?.boundingBox
-              ||{};
-
-            let bw=Number(b.width??b.w??0);
-            let bh=Number(b.height??b.h??0);
-            let x=Number(b.xMin??b.xmin??b.originX??b.origin_x??b.left??NaN);
-            let y=Number(b.yMin??b.ymin??b.originY??b.origin_y??b.top??NaN);
-
-            if(bw>1.5)bw/=sw;
-            if(bh>1.5)bh/=sh;
-            if(Number.isFinite(x)&&Math.abs(x)>1.5)x/=sw;
-            if(Number.isFinite(y)&&Math.abs(y)>1.5)y/=sh;
-
-            let cx=Number(b.xCenter??b.centerX??b.x_center??NaN);
-            let cy=Number(b.yCenter??b.centerY??b.y_center??NaN);
-            if(Number.isFinite(cx)&&Math.abs(cx)>1.5)cx/=sw;
-            if(Number.isFinite(cy)&&Math.abs(cy)>1.5)cy/=sh;
-            if(!Number.isFinite(cx)&&Number.isFinite(x))cx=x+bw/2;
-            if(!Number.isFinite(cy)&&Number.isFinite(y))cy=y+bh/2;
-
-            if(!Number.isFinite(cx)||!Number.isFinite(cy)||bw<=0||bh<=0){
-              const lm=Array.isArray(d?.landmarks)?d.landmarks:[];
-              if(lm.length){
-                let minX=1,minY=1,maxX=0,maxY=0,count=0;
-                for(const p of lm){
-                  const lx=Number(p?.x),ly=Number(p?.y);
-                  if(!Number.isFinite(lx)||!Number.isFinite(ly))continue;
-                  minX=Math.min(minX,lx);minY=Math.min(minY,ly);
-                  maxX=Math.max(maxX,lx);maxY=Math.max(maxY,ly);
-                  count++;
-                }
-                if(count>=3){
-                  const lw=Math.max(.02,maxX-minX);
-                  const lh=Math.max(.02,maxY-minY);
-                  cx=(minX+maxX)/2;
-                  cy=(minY+maxY)/2;
-                  bw=Math.max(.04,lw*1.8);
-                  bh=Math.max(.05,lh*2.1);
-                }
-              }
-            }
-
-            if(!Number.isFinite(cx)||!Number.isFinite(cy)||bw<=0||bh<=0)continue;
-
-            cx=Math.max(0,Math.min(1,cx));
-            cy=Math.max(0,Math.min(1,cy));
-            bw=Math.max(.02,Math.min(1,bw));
-            bh=Math.max(.025,Math.min(1,bh));
-            const area=bw*bh;
-            if(area>=.0015)faces.push({cx,cy,w:bw,h:bh,area,score:Number.isFinite(score)?score:1});
-          }
-
-          faces.sort((a,b)=>b.area-a.area);
-          const primary=faces[0]||null;
-          const now=performance.now();
-          const valid=!!primary&&primary.area>=.0018;
-
-          if(valid){
-            const nextSecondaryFaces=faces
-              .slice(1)
-              .filter(face=>{
-                const dx=Math.abs(face.cx-primary.cx);
-                const dy=Math.abs(face.cy-primary.cy);
-                const duplicate=
-                  dx<Math.max(primary.w,face.w)*.40 &&
-                  dy<Math.max(primary.h,face.h)*.40;
-                return !duplicate;
-              });
-            if(nextSecondaryFaces.length){
-              secondaryFaceAnchors=nextSecondaryFaces;
-              secondaryFaceLastSeenAt=now;
-            }else if(!secondaryFaceLastSeenAt||now-secondaryFaceLastSeenAt>1600){
-              secondaryFaceAnchors=[];
-            }
-            if(primaryFaceAnchor&&now-primaryFaceSeenAt<800){
-              const k=.45;
-              primaryFaceAnchor={
-                cx:primaryFaceAnchor.cx*(1-k)+primary.cx*k,
-                cy:primaryFaceAnchor.cy*(1-k)+primary.cy*k,
-                w:primaryFaceAnchor.w*(1-k)+primary.w*k,
-                h:primaryFaceAnchor.h*(1-k)+primary.h*k,
-                area:primaryFaceAnchor.area*(1-k)+primary.area*k
-              };
-            }else{
-              primaryFaceAnchor=primary;
-            }
-            primaryFaceSeenAt=now;
-            facePresent=true;
-            faceLastSeen=now;
-            faceMisses=0;
-          }else{
-            faceMisses++;
-            if(faceMisses>=2 && (!faceLastSeen||now-faceLastSeen>650)){
-              facePresent=false;
-
-              primaryPersonBox=null;
-              primaryPersonSeenAt=0;
-              secondaryPersonBoxes=[];
-
-              if(now-primaryFaceSeenAt>850){
-                primaryFaceAnchor=null;
-                primaryFaceSeenAt=0;
-                secondaryFaceAnchors=[];
-              }
-            }
-          }
-
-          faceBusy=false;
-          faceGateEnabled=true;
-        });
-
-        if(this.virtualBgProcessor!==processor){
-          try{detector.close?.()}catch{}
-          return;
-        }
-
-        faceDetector=detector;
-        this.virtualBgFaceDetector=detector;
-        /* Gate becomes active immediately. Until the first positive detection,
-           an empty room is treated as background, which is the safe default. */
-        faceGateEnabled=true;
-      }).catch(e=>{
-        /* Do not fail open to SelfieSegmentation. Person-instance detection can
-           still confirm presence; otherwise the safe result is a fully blurred
-           frame instead of a random sharp object. */
-        faceGateEnabled=true;
-        facePresent=false;
-        faceLastSeen=0;
-        primaryFaceAnchor=null;
-        primaryFaceSeenAt=0;
-        secondaryFaceAnchors=[];
-        primaryPersonBox=null;
-        primaryPersonSeenAt=0;
-        secondaryPersonBoxes=[];
-        console.warn('[Mathroom virtual background] face gate unavailable',e);
-      });
+      };
 
       const loop=async ts=>{
-        if(!this.virtualBgProcessor||this.destroyed)return;
+        if(
+          this.destroyed ||
+          this.virtualBgTrack!==outTrack ||
+          this.virtualBgMode==='none'
+        )return;
+
         this.virtualBgRaf=requestAnimationFrame(loop);
 
         const hidden=document.visibilityState==='hidden';
-        const interval=hidden ? Math.max(140,this.virtualBgFrameInterval) : this.virtualBgFrameInterval;
-
+        const interval=hidden?Math.max(180,this.virtualBgFrameInterval):this.virtualBgFrameInterval;
         if(
-          personEnabled &&
-          personDetector &&
-          personDetectCtx &&
-          !personBusy &&
-          !this.screenTrack &&
-          source.readyState>=2 &&
-          performance.now()>=personNextAllowedAt &&
-          ts-personLastCheck>=900
-        ){
-          personLastCheck=ts;
-          personBusy=true;
-
-          /* Copy only a small frame for object detection. This keeps the camera
-             render path responsive even on weaker integrated GPUs. */
-          personDetectCtx.drawImage(
-            source,
-            0,0,personDetectCanvas.width,personDetectCanvas.height
-          );
-
-          const detectStarted=performance.now();
-
-          Promise.resolve(personDetector.detect(personDetectCanvas,6,.34)).then(predictions=>{
-            if(this.virtualBgProcessor!==processor)return;
-
-            const elapsed=performance.now()-detectStarted;
-            if(elapsed>420)personSlowStrikes++;
-            else personSlowStrikes=Math.max(0,personSlowStrikes-1);
-
-            /* If object detection is too expensive on this machine, back off
-               aggressively. After repeated slow passes, disable COCO for this
-               background session; face anchors + segmentation keep working. */
-            if(personSlowStrikes>=2){
-              personEnabled=false;
-              primaryPersonBox=null;
-              secondaryPersonBoxes=[];
-              primaryPersonSeenAt=0;
-              console.warn('[Mathroom virtual background] person detector disabled for performance',elapsed);
-              return;
-            }
-
-            personNextAllowedAt=performance.now()+(elapsed>240?1800:1100);
-
-            const sw=personDetectCanvas.width;
-            const sh=personDetectCanvas.height;
-
-            const people=(Array.isArray(predictions)?predictions:[])
-              .filter(p=>p?.class==='person'&&Number(p?.score||0)>=.34&&Array.isArray(p?.bbox))
-              .map(p=>{
-                const [x,y,bw,bh]=p.bbox.map(Number);
-                return {
-                  x:Math.max(0,Math.min(1,x/sw)),
-                  y:Math.max(0,Math.min(1,y/sh)),
-                  w:Math.max(.01,Math.min(1,bw/sw)),
-                  h:Math.max(.01,Math.min(1,bh/sh)),
-                  score:Number(p.score||0)
-                };
-              })
-              .filter(b=>b.w*b.h>=.006);
-
-            if(people.length){
-              let primaryIndex=-1;
-              const faceFresh=!!primaryFaceAnchor
-                &&primaryFaceSeenAt>0
-                &&performance.now()-primaryFaceSeenAt<1100;
-
-              if(faceFresh){
-                const fx=primaryFaceAnchor.cx;
-                const fy=primaryFaceAnchor.cy;
-                let best=-Infinity;
-
-                for(let i=0;i<people.length;i++){
-                  const b=people[i];
-                  const padX=Math.max(.025,b.w*.06);
-                  const padY=Math.max(.025,b.h*.05);
-                  const containsFace=
-                    fx>=b.x-padX &&
-                    fx<=b.x+b.w+padX &&
-                    fy>=b.y-padY &&
-                    fy<=b.y+b.h*.58;
-
-                  if(!containsFace)continue;
-
-                  const boxCenterX=b.x+b.w/2;
-                  const faceDistance=Math.abs(boxCenterX-fx);
-                  const area=b.w*b.h;
-                  const score=area*1.6+b.score*.35-faceDistance*.45;
-                  if(score>best){best=score;primaryIndex=i}
-                }
-              }
-
-              if(primaryIndex<0&&faceFresh){
-                let best=Infinity;
-                for(let i=0;i<people.length;i++){
-                  const b=people[i];
-                  const bx=b.x+b.w/2;
-                  const by=b.y+b.h*.22;
-                  const dx=bx-primaryFaceAnchor.cx;
-                  const dy=by-primaryFaceAnchor.cy;
-                  const dist=dx*dx+dy*dy;
-                  if(dist<best){best=dist;primaryIndex=i}
-                }
-              }
-
-              if(primaryIndex<0){
-                let best=-Infinity;
-                for(let i=0;i<people.length;i++){
-                  const b=people[i];
-                  const area=b.w*b.h;
-                  const centerBias=1-Math.min(1,Math.abs((b.x+b.w/2)-.5));
-                  const score=area*1.5+centerBias*.10+b.h*.12;
-                  if(score>best){best=score;primaryIndex=i}
-                }
-              }
-
-              const selected=people[Math.max(0,primaryIndex)];
-              if(primaryPersonBox&&performance.now()-primaryPersonSeenAt<1400){
-                const k=.38;
-                primaryPersonBox={
-                  x:primaryPersonBox.x*(1-k)+selected.x*k,
-                  y:primaryPersonBox.y*(1-k)+selected.y*k,
-                  w:primaryPersonBox.w*(1-k)+selected.w*k,
-                  h:primaryPersonBox.h*(1-k)+selected.h*k
-                };
-              }else{
-                primaryPersonBox=selected;
-              }
-
-              primaryPersonSeenAt=performance.now();
-
-              const pL=selected.x,pT=selected.y,pR=selected.x+selected.w,pB=selected.y+selected.h;
-              const pArea=selected.w*selected.h;
-              secondaryPersonBoxes=people.filter((b,i)=>{
-                if(i===primaryIndex)return false;
-                const l=Math.max(pL,b.x);
-                const t=Math.max(pT,b.y);
-                const r=Math.min(pR,b.x+b.w);
-                const bt=Math.min(pB,b.y+b.h);
-                const inter=Math.max(0,r-l)*Math.max(0,bt-t);
-                const union=pArea+b.w*b.h-inter;
-                const iou=union>0?inter/union:0;
-                return iou<.58;
-              });
-            }else if(performance.now()-primaryPersonSeenAt>650){
-              primaryPersonBox=null;
-              secondaryPersonBoxes=[];
-              primaryPersonSeenAt=0;
-            }
-          }).catch(e=>{
-            console.warn('[Mathroom virtual background] person detect',e);
-            personSlowStrikes++;
-            personNextAllowedAt=performance.now()+1800;
-            if(personSlowStrikes>=2){
-              personEnabled=false;
-              primaryPersonBox=null;
-              secondaryPersonBoxes=[];
-              primaryPersonSeenAt=0;
-            }
-          }).finally(()=>{
-            personBusy=false;
-          });
-        }
-
-        /* Fast reacquisition, cheap steady-state:
-           - no face: scan ~8 times/sec so a returning person appears almost at once;
-           - face present/recent: scan ~3 times/sec to keep CPU use low.
-           Face detection is still independent from the camera/segmentation loop. */
-        const faceCheckInterval=(
-          !facePresent && (!faceLastSeen||performance.now()-faceLastSeen>900)
-        ) ? 220 : (secondaryFaceAnchors.length?280:500);
-
-        if(faceDetector&&!faceBusy&&!this.screenTrack&&source.readyState>=2&&ts-faceLastCheck>=faceCheckInterval){
-          faceLastCheck=ts;
-          faceBusy=true;
-          if(faceCtx)faceCtx.drawImage(source,0,0,faceCanvas.width,faceCanvas.height);
-          Promise.resolve(faceDetector.send({image:faceCtx?faceCanvas:source}))
-            .catch(e=>{
-              faceBusy=false;
-              console.warn('[Mathroom virtual background] face check',e);
-            });
-        }
-
-        if(this.screenTrack||ts-this.virtualBgLastFrame<interval||this.virtualBgBusy||source.readyState<2)return;
+          this.screenTrack ||
+          source.readyState<2 ||
+          this.virtualBgBusy ||
+          ts-this.virtualBgLastFrame<interval
+        )return;
 
         this.virtualBgLastFrame=ts;
         this.virtualBgBusy=true;
         const t0=performance.now();
+
         try{
-          if(segCtx)segCtx.drawImage(source,0,0,segCanvas.width,segCanvas.height);
-          await processor.send({image:segCtx?segCanvas:source});
-        }
-        catch(e){console.warn('[Mathroom virtual background]',e)}
-        finally{
+          inferCtx.drawImage(source,0,0,inferCanvas.width,inferCanvas.height);
+          await pose.send({image:inferCanvas});
+        }catch(e){
+          console.warn('[Mathroom virtual background pose]',e);
+        }finally{
           const elapsed=performance.now()-t0;
           this.virtualBgAvgProcessMs=this.virtualBgAvgProcessMs
-            ? this.virtualBgAvgProcessMs*.82+elapsed*.18
-            : elapsed;
-          this.virtualBgFrameInterval=this.virtualBgAvgProcessMs>95 ? (isMobile?125:110)
-            : this.virtualBgAvgProcessMs>70 ? (isMobile?105:90)
-            : (isMobile?90:72);
+            ?this.virtualBgAvgProcessMs*.8+elapsed*.2
+            :elapsed;
+
+          /* Keep enough headroom for WebRTC/whiteboard/UI. ML frame rate may
+             drop on a weak machine, but the output video track remains fluid. */
+          if(this.virtualBgAvgProcessMs>145)this.virtualBgFrameInterval=isMobile?210:180;
+          else if(this.virtualBgAvgProcessMs>105)this.virtualBgFrameInterval=isMobile?165:140;
+          else if(this.virtualBgAvgProcessMs>75)this.virtualBgFrameInterval=isMobile?135:110;
+          else this.virtualBgFrameInterval=isMobile?115:90;
+
           this.virtualBgBusy=false;
         }
       };
+
       this.virtualBgRaf=requestAnimationFrame(loop);
 
-      const firstFrameReady=await Promise.race([
+      const ready=await Promise.race([
         firstCompositePromise,
-        new Promise(resolve=>setTimeout(()=>resolve(false),8000))
+        new Promise(resolve=>setTimeout(()=>resolve(false),7000))
       ]);
-      if(!firstFrameReady){
-        console.warn('[Mathroom virtual background] first composite is slow; keeping processor alive');
+
+      if(!ready){
+        /* Do not lie in the UI: if the single-person segmenter cannot find a
+           participant, stay on the raw camera rather than showing a selected
+           preset that is not actually applied. */
+        this.virtualBgInitializing=false;
+        this.paintAllVirtualBgControls();
+        this.stopVirtualBackground();
+        throw new Error('Не удалось распознать человека для виртуального фона');
       }
+
       return outTrack;
     }
 
@@ -3235,68 +2233,34 @@
         const raw=rawTrack||this.localStream?.getVideoTracks?.().find(t=>t.readyState==='live')||null;
         if(!raw||raw.readyState!=='live'||raw.enabled===false)return null;
         const rawId=raw.id||'';
-        let lastError=null;
 
-        /* A cold MediaPipe start can occasionally produce no usable processed
-           frame in Chromium/Yandex. The manual workaround was turning camera
-           off/on. Do that restart internally once, without touching the camera
-           permission, selected preset or camera button state. */
-        for(let attempt=0;attempt<1;attempt++){
+        try{
+          const processed=await this.startVirtualBackground();
+
           if(
+            !processed ||
+            processed.readyState!=='live' ||
             !this.cameraEnabled ||
             this.destroyed ||
             this.virtualBgMode==='none' ||
             this.localStream?.getVideoTracks?.()[0]?.id!==rawId
           )return null;
 
-          try{
-            if(attempt>0){
-              this.stopVirtualBackground();
-              await wait(320);
-            }
-
-            const processed=await this.startVirtualBackground();
-            if(
-              !processed ||
-              processed.readyState!=='live' ||
-              !this.cameraEnabled ||
-              this.destroyed ||
-              this.virtualBgMode==='none' ||
-              this.localStream?.getVideoTracks?.()[0]?.id!==rawId
-            ){
-              throw new Error('Обработанный видеопоток не готов');
-            }
-
-            await this.syncOutgoingCameraTrack();
-            this.bindPrejoinPreview();
-            this.paintPrejoin();
-            this.paint();
-
-            /* Rebind once more after the browser has had a chance to present
-               the captureStream track. This closes a Yandex/Chromium race where
-               the raw webcam remained visible until the camera was toggled. */
-            await wait(180);
-            if(
-              this.virtualBgTrack===processed &&
-              processed.readyState==='live' &&
-              this.virtualBgMode!=='none'
-            ){
-              this.bindPrejoinPreview();
-              this.bindMedia();
-              this.paintPrejoin();
-              this.paint();
-              return processed;
-            }
-          }catch(e){
-            lastError=e;
-            console.warn('[Mathroom virtual background activation attempt]',attempt+1,e);
-          }
+          await this.syncOutgoingCameraTrack();
+          this.bindPrejoinPreview();
+          this.paintPrejoin();
+          this.paint();
+          return processed;
+        }catch(e){
+          console.warn('[Mathroom virtual background activation]',e);
+          this.virtualBgInitializing=false;
+          this.stopVirtualBackground();
+          this.paintPrejoin();
+          this.paintAllVirtualBgControls();
+          this.paint();
+          toast(e?.message||'Не удалось включить виртуальный фон');
+          return null;
         }
-
-        this.stopVirtualBackground();
-        console.warn('[Mathroom virtual background activation failed]',lastError);
-        toast('Не удалось применить виртуальный фон. Попробуй выбрать его ещё раз.');
-        return null;
       })();
 
       this.virtualBgApplyPromise=task;
@@ -3327,10 +2291,10 @@
           await this.syncOutgoingCameraTrack();
         }else{
           const raw=this.localStream?.getVideoTracks?.().find(t=>t.readyState==='live')||null;
-          /* Background choice is allowed before camera start. In that case we
-             remember it and apply it automatically when the camera is enabled. */
+          /* Once the Pose engine is running, changing Studio/Mathroom/Classroom
+             only changes what is painted behind the existing participant mask. */
           if(raw&&raw.enabled!==false&&this.cameraEnabled){
-            if(!this.virtualBgProcessor||!this.virtualBgTrack||this.virtualBgTrack.readyState!=='live'){
+            if(!this.virtualBgTrack||this.virtualBgTrack.readyState!=='live'){
               await this.activateSelectedVirtualBackground(raw);
             }
           }else{
@@ -5352,6 +4316,10 @@
       this.localStream?.getTracks?.().forEach(t => t.stop());
       this.localStream = null;
       this.stopVirtualBackground();
+      try{this.virtualBgPoseProcessor?.close?.()}catch{}
+      this.virtualBgPoseProcessor=null;
+      this.virtualBgPoseReadyPromise=null;
+      this.virtualBgPoseResultHandler=null;
       this.screenTrack?.stop?.();
       this.screenTrack = null;
       this.screenPreviewStream = null;
