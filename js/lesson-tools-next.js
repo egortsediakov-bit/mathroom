@@ -2526,6 +2526,70 @@
                 }
               }
 
+              /* Final primary-subject guard.
+                 SelfieSegmentation can merge two touching people into one
+                 connected silhouette. Face Detection then cannot always split
+                 the bodies, especially when the second person is partly outside
+                 the frame. Keep a deliberately generous corridor around the
+                 primary face/body and drop foreground that lives far outside it.
+                 The corridor widens strongly toward the bottom so the tutor's
+                 shoulders, torso and normal arm movement stay intact. */
+              if(faceFresh){
+                const fx=primaryFaceAnchor.cx;
+                const fy=primaryFaceAnchor.cy;
+                const fw=Math.max(.035,primaryFaceAnchor.w);
+                const fh=Math.max(.045,primaryFaceAnchor.h);
+                const top=fy-fh*1.85;
+                const headEnd=fy+fh*1.25;
+                const shoulderEnd=fy+fh*3.0;
+
+                for(let p=0;p<total;p++){
+                  if(!haloKeep[p])continue;
+                  const x=((p%mw)+.5)/mw;
+                  const y=(((p/mw)|0)+.5)/mh;
+                  if(y<top){
+                    haloKeep[p]=0;
+                    continue;
+                  }
+
+                  let halfWidth;
+                  if(y<=headEnd){
+                    halfWidth=Math.max(.12,fw*1.55);
+                  }else if(y<=shoulderEnd){
+                    const t=Math.max(0,Math.min(1,(y-headEnd)/Math.max(.001,shoulderEnd-headEnd)));
+                    halfWidth=Math.max(.12,fw*1.55)
+                      +(Math.max(.31,fw*3.10)-Math.max(.12,fw*1.55))*t;
+                  }else{
+                    const t=Math.max(0,Math.min(1,(y-shoulderEnd)/Math.max(.001,1-shoulderEnd)));
+                    halfWidth=Math.max(.31,fw*3.10)
+                      +(Math.max(.40,fw*4.05)-Math.max(.31,fw*3.10))*t;
+                  }
+
+                  /* Slightly favor the side the primary torso already occupies,
+                     but never let a secondary person drag the corridor far away
+                     from the primary face. */
+                  let axisX=fx;
+                  if(y>headEnd){
+                    const bandY=Math.max(0,Math.min(mh-1,Math.round(y*mh)));
+                    const searchPx=Math.ceil(Math.min(.34,halfWidth)*mw);
+                    const centerPx=Math.round(fx*mw);
+                    let sum=0,count=0;
+                    for(let xx=Math.max(0,centerPx-searchPx);xx<=Math.min(mw-1,centerPx+searchPx);xx++){
+                      const q=bandY*mw+xx;
+                      if(haloKeep[q]){sum+=xx;count++}
+                    }
+                    if(count){
+                      const candidate=(sum/count+.5)/mw;
+                      axisX=Math.max(fx-.10,Math.min(fx+.10,candidate));
+                    }
+                  }
+
+                  if(Math.abs(x-axisX)>Math.min(.43,halfWidth)){
+                    haloKeep[p]=0;
+                  }
+                }
+              }
+
               for(let p=0,i=0;p<total;p++,i+=4){
                 const c=confidence[p];
                 let a=0;
