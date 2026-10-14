@@ -2541,21 +2541,30 @@
         const nowForPresence=performance.now();
         const facePresenceFresh=
           facePresent ||
-          (faceLastSeen>0&&nowForPresence-faceLastSeen<700);
+          (
+            faceLastSeen>0 &&
+            primaryFaceSeenAt>0 &&
+            nowForPresence-faceLastSeen<850 &&
+            nowForPresence-primaryFaceSeenAt<1000
+          );
 
-        const personPresenceFresh=
-          !!primaryPersonBox &&
-          primaryPersonSeenAt>0 &&
-          nowForPresence-primaryPersonSeenAt<1250;
-
-        /* Never fail open. A real person must be confirmed by at least one
-           independent detector. SelfieSegmentation alone is not allowed to keep
-           foreground sharp because it confuses clothing, beds and chairs with
-           people in an empty frame. */
-        const presenceConfirmed=facePresenceFresh||personPresenceFresh;
+        /* Face detection is the sole authority for showing sharp foreground.
+           COCO-SSD is intentionally NOT allowed to open this gate: object
+           detectors can occasionally label clothing, chairs or bedding as a
+           person in an empty room. COCO is used only to identify/remove other
+           people once the primary face has already been confirmed. */
+        const presenceConfirmed=facePresenceFresh;
 
         if(!presenceConfirmed){
           temporalMaskAlpha?.fill(0);
+
+          /* Also invalidate object-detector primary state while the face gate is
+             closed. This prevents a stale/false COCO box from influencing
+             component selection on later segmentation frames. */
+          primaryPersonBox=null;
+          primaryPersonSeenAt=0;
+          secondaryPersonBoxes=[];
+
           ctx.globalCompositeOperation='source-over';
           ctx.clearRect(0,0,cw,ch);
         }
@@ -2733,6 +2742,11 @@
             faceMisses++;
             if(faceMisses>=2 && (!faceLastSeen||now-faceLastSeen>650)){
               facePresent=false;
+
+              primaryPersonBox=null;
+              primaryPersonSeenAt=0;
+              secondaryPersonBoxes=[];
+
               if(now-primaryFaceSeenAt>850){
                 primaryFaceAnchor=null;
                 primaryFaceSeenAt=0;
@@ -2765,6 +2779,9 @@
         primaryFaceAnchor=null;
         primaryFaceSeenAt=0;
         secondaryFaceAnchors=[];
+        primaryPersonBox=null;
+        primaryPersonSeenAt=0;
+        secondaryPersonBoxes=[];
         console.warn('[Mathroom virtual background] face gate unavailable',e);
       });
 
