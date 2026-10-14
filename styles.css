@@ -662,7 +662,7 @@ body{background:
 /* Small Kotomatika-style signature details without clutter. */
 .auth-card{position:relative;overflow:hidden;border-color:#d9d9d4}
 .auth-card::before{content:"";position:absolute;width:150px;height:65px;border:5px solid var(--koto-orange);border-left-color:transparent;border-bottom-color:transparent;border-radius:50%;right:-58px;top:-31px;transform:rotate(-8deg);opacity:.95}
-.auth-card::after{content:"";position:absolute;width:86px;height:35px;border-top:4px solid #111;border-radius:50%;left:24px;bottom:11px;transform:rotate(6deg);pointer-events:none}
+
 .student-lesson{border-left-color:var(--koto-orange)!important}
 .progress-fill,.mr-phase-bar i,.mr-first-progress>i{background:var(--koto-orange)!important}
 .mr-help-button{background:#111;border-color:#111}.mr-help-button>b{color:var(--koto-orange)}
