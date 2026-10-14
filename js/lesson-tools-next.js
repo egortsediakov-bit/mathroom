@@ -7590,7 +7590,8 @@
     root.querySelectorAll('[data-cal-start]').forEach(b=>b.onclick=async()=>{
       const lesson=S.lessons.find(x=>String(x.id)===String(b.dataset.calStart));
       if(!lesson)return toast('Урок не найден. Обнови расписание и попробуй ещё раз');
-      await startLesson(lesson);
+      if(typeof window.MathroomStartLesson!=='function')return toast('Модуль урока ещё загружается. Обнови страницу и попробуй снова');
+      await window.MathroomStartLesson(lesson);
     });
     root.querySelectorAll('[data-cal-move]').forEach(b=>b.onclick=()=>openRescheduleLesson(b.dataset.calMove));
     root.querySelectorAll('[data-cal-delete]').forEach(b=>b.onclick=()=>openDeleteLesson(b.dataset.calDelete));
