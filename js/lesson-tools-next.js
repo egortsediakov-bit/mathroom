@@ -1864,15 +1864,28 @@
     async prewarmVirtualBgEngine() {
       if(this.virtualBgWarmupPromise)return this.virtualBgWarmupPromise;
       this.virtualBgWarmupPromise=(async()=>{
+        let processor=null;
         try{
-          await Promise.allSettled([
-            this.ensureVirtualBgLibrary(),
-            this.ensureVirtualBgFaceLibrary()
-          ]);
+          const Seg=await this.ensureVirtualBgLibrary();
+          processor=new Seg({
+            locateFile:file=>`https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/${file}`
+          });
+          processor.setOptions({modelSelection:0});
+          processor.onResults(()=>{});
+          const warm=document.createElement('canvas');
+          warm.width=128;warm.height=96;
+          const wctx=warm.getContext('2d',{alpha:false});
+          if(wctx){
+            wctx.fillStyle='#777';
+            wctx.fillRect(0,0,warm.width,warm.height);
+          }
+          await processor.send({image:warm});
           return true;
         }catch(e){
-          console.warn('[Mathroom virtual background] library prewarm',e);
+          console.warn('[Mathroom virtual background] warmup',e);
           return false;
+        }finally{
+          try{processor?.close?.()}catch{}
         }
       })();
       try{return await this.virtualBgWarmupPromise}
@@ -1890,6 +1903,9 @@
 
     async startVirtualBackgroundInternal() {
       if(this.virtualBgMode==='none') return null;
+      if(this.virtualBgWarmupPromise){
+        try{await this.virtualBgWarmupPromise}catch{}
+      }
       const raw=this.localStream?.getVideoTracks?.()[0];
       if(!raw) throw new Error('Камера недоступна');
       if(!HTMLCanvasElement.prototype.captureStream) throw new Error('Этот браузер не поддерживает виртуальный фон');
@@ -1980,12 +1996,28 @@
          second ML pass over the full webcam image while the segmentation model
          is running. */
       const faceCanvas=document.createElement('canvas');
-      const faceLong=isMobile?256:320;
+      const faceLong=isMobile?320:448;
       const faceScale=Math.min(1,faceLong/Math.max(srcW,srcH));
       faceCanvas.width=Math.max(128,Math.round(srcW*faceScale));
       faceCanvas.height=Math.max(96,Math.round(srcH*faceScale));
       const faceCtx=faceCanvas.getContext('2d',{alpha:false,desynchronized:true});
       if(faceCtx)faceCtx.imageSmoothingEnabled=true;
+
+      /* Seed the processed canvas before captureStream starts. The preview
+         can switch to the processed track immediately; the first segmentation
+         result then replaces this placeholder automatically. */
+      ctx.save();
+      ctx.clearRect(0,0,w,h);
+      if(this.virtualBgMode==='blur'){
+        ctx.filter='blur(20px)';
+        ctx.drawImage(source,0,0,w,h);
+        ctx.filter='none';
+      }else if(this.virtualBgMode==='custom'&&this.virtualBgCustomImage){
+        this.drawCover(ctx,this.virtualBgCustomImage,w,h);
+      }else{
+        this.drawBuiltInBackground(ctx,w,h,this.virtualBgMode);
+      }
+      ctx.restore();
 
       const output=canvas.captureStream(isMobile?15:18);
       const outTrack=output.getVideoTracks()[0];
@@ -2563,41 +2595,20 @@
           ctx.filter='none';
         }
 
-        /* SelfieSegmentation sometimes classifies a bed, chair or blanket as
-           a person even when the frame is empty. Once face detection is ready,
-           accept foreground only while a real face is present (with a short
-           hysteresis window). Clearing here makes source-in draw no sharp
-           foreground at all, so blur/replacement covers the entire frame. */
+        /* Keep the main participant from the segmentation mask even when
+           Face Detection briefly misses their face. Previously a missed face
+           cleared the entire foreground mask, which made the whole person blur.
+           Face Detection is now only an auxiliary signal for removing people
+           behind the participant. */
         const nowForPresence=performance.now();
         const facePresenceFresh=
           facePresent ||
           (
             faceLastSeen>0 &&
             primaryFaceSeenAt>0 &&
-            nowForPresence-faceLastSeen<850 &&
-            nowForPresence-primaryFaceSeenAt<1000
+            nowForPresence-faceLastSeen<1200 &&
+            nowForPresence-primaryFaceSeenAt<1400
           );
-
-        /* Face detection is the sole authority for showing sharp foreground.
-           COCO-SSD is intentionally NOT allowed to open this gate: object
-           detectors can occasionally label clothing, chairs or bedding as a
-           person in an empty room. COCO is used only to identify/remove other
-           people once the primary face has already been confirmed. */
-        const presenceConfirmed=facePresenceFresh;
-
-        if(!presenceConfirmed){
-          temporalMaskAlpha?.fill(0);
-
-          /* Also invalidate object-detector primary state while the face gate is
-             closed. This prevents a stale/false COCO box from influencing
-             component selection on later segmentation frames. */
-          primaryPersonBox=null;
-          primaryPersonSeenAt=0;
-          secondaryPersonBoxes=[];
-
-          ctx.globalCompositeOperation='source-over';
-          ctx.clearRect(0,0,cw,ch);
-        }
 
         ctx.globalCompositeOperation='source-in';
         ctx.drawImage(source,0,0,cw,ch);
@@ -3131,10 +3142,10 @@
 
       const firstFrameReady=await Promise.race([
         firstCompositePromise,
-        new Promise(resolve=>setTimeout(()=>resolve(false),5200))
+        new Promise(resolve=>setTimeout(()=>resolve(false),8000))
       ]);
       if(!firstFrameReady){
-        throw new Error('Виртуальный фон не успел запустить первый кадр');
+        console.warn('[Mathroom virtual background] first composite is slow; keeping processor alive');
       }
       return outTrack;
     }
@@ -3166,7 +3177,7 @@
            frame in Chromium/Yandex. The manual workaround was turning camera
            off/on. Do that restart internally once, without touching the camera
            permission, selected preset or camera button state. */
-        for(let attempt=0;attempt<2;attempt++){
+        for(let attempt=0;attempt<1;attempt++){
           if(
             !this.cameraEnabled ||
             this.destroyed ||
