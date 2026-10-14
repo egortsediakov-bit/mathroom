@@ -582,6 +582,8 @@ async function startLesson(existing=null,topicId=null,studentId=null){
   else if(l.status!=='in_progress'){const {data,error}=await sb.from('lessons').update({status:'in_progress',started_at:l.started_at||new Date().toISOString()}).eq('id',l.id).select('*,students(name,grade),topics(title)').single();if(error)return fail(error);l=data;await loadTeacher()}
   S.activeLesson=l;S.selectedStudent=l.student_id;S.topic=S.topics.find(x=>x.id===l.topic_id)||S.topic;S.view='lesson';rememberActiveLesson(l.id);renderTeacher();
 }
+window.MathroomStartLesson=startLesson;
+
 async function ensureLiveState(lesson){
   const {data,error}=await sb.from('lesson_live_state').upsert({lesson_id:lesson.id,teacher_id:S.user.id,student_id:lesson.student_id},{onConflict:'lesson_id'}).select().single();if(error)throw error;return data;
 }
