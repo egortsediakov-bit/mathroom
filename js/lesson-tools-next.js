@@ -161,12 +161,13 @@
       this.virtualBgPoseResultHandler = null;
 
       /* Canonical virtual-background engine.
-         BodyPix multi-person body-part segmentation returns one anatomical mask per detected person,
-         which lets Mathroom keep one participant and treat everybody else as
-         background. This replaces the previous single-person Pose pipeline. */
+         SelfieSegmentation supplies the visible edge quality; BodyPix
+         multi-person segmentation supplies only the coarse identity envelope
+         for the primary participant. This separates "who" from "edge quality". */
       this.virtualBgBodyPixModel = null;
       this.virtualBgBodyPixModelPromise = null;
       this.virtualBgBodyPixWarm = false;
+      this.virtualBgSelfieWarm = false;
       this.virtualBgPrimaryTrack = null;
       this.virtualBgMaskReady = false;
       this.virtualBgInitializing = false;
@@ -1648,8 +1649,9 @@
       root.querySelectorAll('[data-bg-mode]').forEach(b=>b.classList.toggle('active',b.dataset.bgMode===this.virtualBgMode));
       root.querySelectorAll('.mr-bg-upload').forEach(b=>b.classList.remove('active'));
       root.querySelectorAll('.mr-bg-saved-item').forEach(b=>b.classList.toggle('active',this.virtualBgMode==='custom'&&b.dataset.bgSavedId===this.virtualBgCustomId));
+      const cameraLive=!!this.localStream?.getVideoTracks?.().find(t=>t.readyState==='live'&&t.enabled!==false);
       root.querySelectorAll('[data-bg-status]').forEach(status=>{
-        status.textContent=(this.virtualBgInitializing || (this.virtualBgMode!=='none'&&!this.virtualBgBodyPixWarm))
+        status.textContent=(this.virtualBgMode!=='none'&&cameraLive&&!this.virtualBgMaskReady)
           ? 'Подготавливаем фон…'
           : this.virtualBgMode==='none' ? 'Без обработки'
           : this.virtualBgMode==='blur' ? 'Размытие включено'
@@ -2074,14 +2076,41 @@
     async prewarmVirtualBgEngine() {
       if(this.virtualBgWarmupPromise)return this.virtualBgWarmupPromise;
       this.virtualBgWarmupPromise=(async()=>{
+        let processor=null;
         try{
-          await this.ensureVirtualBgBodyPixModel();
-          return true;
+          const Seg=await this.ensureVirtualBgLibrary();
+          processor=new Seg({
+            locateFile:file=>`https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/${file}`
+          });
+          /* modelSelection=1 is the landscape/general model. It is materially
+             more stable for seated/reclined full-body camera views than the
+             close-up selfie model used by the first implementation. */
+          processor.setOptions({modelSelection:1});
+          processor.onResults(()=>{});
+          const warm=document.createElement('canvas');
+          warm.width=160;warm.height=96;
+          const wctx=warm.getContext('2d',{alpha:false});
+          if(wctx){
+            wctx.fillStyle='#777';
+            wctx.fillRect(0,0,warm.width,warm.height);
+          }
+          await processor.send({image:warm});
+          this.virtualBgSelfieWarm=true;
         }catch(e){
-          console.warn('[Mathroom virtual background] BodyPix preload',e);
-          return false;
+          console.warn('[Mathroom virtual background] SelfieSegmentation preload',e);
+        }finally{
+          try{processor?.close?.()}catch{}
         }
+
+        /* Identity separation is deliberately secondary. BodyPix loads in the
+           background and later supplies a coarse envelope for the one primary
+           participant. It never owns the visible edge of the person. */
+        this.ensureVirtualBgBodyPixModel().catch(e=>
+          console.warn('[Mathroom virtual background] BodyPix preload',e)
+        );
+        return this.virtualBgSelfieWarm;
       })();
+
       try{return await this.virtualBgWarmupPromise}
       finally{this.virtualBgWarmupPromise=null}
     }
@@ -2114,7 +2143,18 @@
       this.virtualBgMaskReady=false;
       this.paintAllVirtualBgControls();
 
-      const model=await this.ensureVirtualBgBodyPixModel();
+      const Seg=await this.ensureVirtualBgLibrary();
+      const processor=new Seg({
+        locateFile:file=>`https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/${file}`
+      });
+      processor.setOptions({modelSelection:1});
+      this.virtualBgProcessor=processor;
+
+      /* BodyPix is not allowed to delay the first virtual-background frame. */
+      let bodyPixModel=this.virtualBgBodyPixModel||null;
+      this.ensureVirtualBgBodyPixModel()
+        .then(model=>{bodyPixModel=model})
+        .catch(e=>console.warn('[Mathroom virtual background] BodyPix identity model',e));
 
       const source=document.createElement('video');
       source.autoplay=true;
@@ -2130,7 +2170,7 @@
           source.addEventListener('loadeddata',done,{once:true});
           source.addEventListener('canplay',done,{once:true});
           source.addEventListener('loadedmetadata',done,{once:true});
-          setTimeout(done,1800);
+          setTimeout(done,1600);
         });
       }
 
@@ -2149,23 +2189,35 @@
       const ctx=canvas.getContext('2d',{alpha:true,desynchronized:true});
       if(!ctx)throw new Error('Canvas виртуального фона недоступен');
 
-      const inferCanvas=document.createElement('canvas');
-      const inferLong=mobile?320:416;
-      const inferScale=Math.min(1,inferLong/Math.max(srcW,srcH));
-      inferCanvas.width=Math.max(192,Math.round(srcW*inferScale));
-      inferCanvas.height=Math.max(144,Math.round(srcH*inferScale));
-      const inferCtx=inferCanvas.getContext('2d',{alpha:false,desynchronized:true});
-      if(!inferCtx)throw new Error('Canvas распознавания недоступен');
-      inferCtx.imageSmoothingEnabled=true;
+      /* SelfieSegmentation inference: larger than BodyPix identity detection
+         because this mask defines the visible hair/body edge. */
+      const segCanvas=document.createElement('canvas');
+      const segLong=mobile?320:448;
+      const segScale=Math.min(1,segLong/Math.max(srcW,srcH));
+      segCanvas.width=Math.max(192,Math.round(srcW*segScale));
+      segCanvas.height=Math.max(144,Math.round(srcH*segScale));
+      const segCtx=segCanvas.getContext('2d',{alpha:false,desynchronized:true});
+      if(!segCtx)throw new Error('Canvas сегментации недоступен');
+      segCtx.imageSmoothingEnabled=true;
 
+      /* Final alpha mask is deliberately smaller than the output video. */
       const maskCanvas=document.createElement('canvas');
-      maskCanvas.width=inferCanvas.width;
-      maskCanvas.height=inferCanvas.height;
+      const maskLong=mobile?208:288;
+      const maskScale=Math.min(1,maskLong/Math.max(w,h));
+      maskCanvas.width=Math.max(128,Math.round(w*maskScale));
+      maskCanvas.height=Math.max(96,Math.round(h*maskScale));
       const maskCtx=maskCanvas.getContext('2d',{alpha:true,willReadFrequently:true});
       if(!maskCtx)throw new Error('Canvas маски недоступен');
       const maskImage=maskCtx.createImageData(maskCanvas.width,maskCanvas.height);
       const maskPixels=maskImage.data;
       const temporalAlpha=new Uint8Array(maskCanvas.width*maskCanvas.height);
+
+      /* Coarse primary-person identity mask. It is never rendered directly. */
+      const idCanvas=document.createElement('canvas');
+      idCanvas.width=maskCanvas.width;
+      idCanvas.height=maskCanvas.height;
+      const idCtx=idCanvas.getContext('2d',{alpha:false,desynchronized:true});
+      if(!idCtx)throw new Error('Canvas идентификации недоступен');
 
       const blurCanvas=document.createElement('canvas');
       const blurScale=mobile?.055:.075;
@@ -2212,56 +2264,55 @@
       this.virtualBgCanvas=canvas;
       this.virtualBgStream=output;
       this.virtualBgTrack=outTrack;
-      this.virtualBgFrameInterval=mobile?220:170;
+      this.virtualBgFrameInterval=mobile?100:78;
       this.virtualBgAvgProcessMs=0;
       this.virtualBgPrimaryTrack=null;
 
-      let maskReady=false;
-      let inferenceBusy=false;
-      let lastInference=0;
+      let baseMaskReady=false;
+      let identityReady=false;
+      let segBusy=false;
+      let idBusy=false;
+      let lastSeg=0;
+      let lastIdentity=0;
       let lastRender=0;
       let resolveFirstMask=null;
       const firstMaskPromise=new Promise(resolve=>{resolveFirstMask=resolve});
 
+      /* 0..255 envelope. Until BodyPix identifies the primary participant the
+         envelope is fully open, so the fast Selfie mask can switch the
+         background immediately. Once identity is known, this envelope removes
+         other people and false foreground far from the primary body. */
+      let primaryEnvelope=null;
+
       const analysePerson=seg=>{
         const data=seg?.data;
-        const sw=Number(seg?.width)||inferCanvas.width;
-        const sh=Number(seg?.height)||inferCanvas.height;
+        const sw=Number(seg?.width)||idCanvas.width;
+        const sh=Number(seg?.height)||idCanvas.height;
         if(!data||!sw||!sh)return null;
-
         let area=0,sumX=0,sumY=0,minX=sw,minY=sh,maxX=-1,maxY=-1;
-        const partHistogram=new Uint32Array(24);
         for(let p=0;p<data.length;p++){
-          const part=Number(data[p]);
-          if(part<0)continue;
+          if(!data[p])continue;
           const x=p%sw,y=(p/sw)|0;
           area++;sumX+=x;sumY+=y;
-          if(part>=0&&part<24)partHistogram[part]++;
           if(x<minX)minX=x;if(x>maxX)maxX=x;
           if(y<minY)minY=y;if(y>maxY)maxY=y;
         }
-        if(area<Math.max(60,sw*sh*.006))return null;
-
-        const cx=(sumX/area+.5)/sw;
-        const cy=(sumY/area+.5)/sh;
-        const areaRatio=area/(sw*sh);
-        const box={
-          x:minX/sw,y:minY/sh,
-          w:(maxX-minX+1)/sw,h:(maxY-minY+1)/sh
-        };
+        if(area<Math.max(45,sw*sh*.006))return null;
         const pose=seg?.pose||null;
-        const poseScore=Number(pose?.score)||0;
         const keypoints=Array.isArray(pose?.keypoints)?pose.keypoints:[];
-        const nose=keypoints.find(k=>String(k?.part||'').toLowerCase()==='nose');
+        const nose=keypoints.find(k=>String(k?.part||'')==='nose');
         const nx=Number(nose?.position?.x),ny=Number(nose?.position?.y);
-        const nosePoint=Number.isFinite(nx)&&Number.isFinite(ny)
-          ?{x:nx/sw,y:ny/sh,score:Number(nose?.score)||0}
-          :null;
-
-        let distinctParts=0;
-        for(let i=0;i<partHistogram.length;i++)if(partHistogram[i])distinctParts++;
-
-        return {seg,sw,sh,area,areaRatio,cx,cy,box,poseScore,nose:nosePoint,distinctParts};
+        return {
+          seg,sw,sh,area,
+          areaRatio:area/(sw*sh),
+          cx:(sumX/area+.5)/sw,
+          cy:(sumY/area+.5)/sh,
+          box:{x:minX/sw,y:minY/sh,w:(maxX-minX+1)/sw,h:(maxY-minY+1)/sh},
+          poseScore:Number(pose?.score)||0,
+          nose:Number.isFinite(nx)&&Number.isFinite(ny)
+            ?{x:nx/sw,y:ny/sh,score:Number(nose?.score)||0}
+            :null
+        };
       };
 
       const boxIou=(a,b)=>{
@@ -2277,26 +2328,24 @@
       const choosePrimary=people=>{
         const candidates=(people||[]).map(analysePerson).filter(Boolean);
         if(!candidates.length)return null;
-
         const prev=this.virtualBgPrimaryTrack;
         let best=null,bestScore=-Infinity;
 
         for(const cand of candidates){
-          const centerDist=Math.hypot(cand.cx-.5,(cand.cy-.5)*.8);
-          const centerScore=Math.max(0,1-centerDist/.72);
-          const sizeScore=Math.min(1,cand.areaRatio/.32);
-          const anatomyScore=Math.min(1,cand.distinctParts/8);
-          let score=sizeScore*4.2+centerScore*1.4+Math.min(1,cand.poseScore)*.8+anatomyScore*.8;
+          const centerDist=Math.hypot(cand.cx-.5,(cand.cy-.50)*.8);
+          const centerScore=Math.max(0,1-centerDist/.75);
+          const sizeScore=Math.min(1,cand.areaRatio/.34);
+          let score=sizeScore*4.4+centerScore*1.35+Math.min(1,cand.poseScore)*.6;
 
           if(prev){
             const dist=Math.hypot(cand.cx-prev.cx,cand.cy-prev.cy);
-            const continuity=Math.max(0,1-dist/.55);
+            score+=Math.max(0,1-dist/.55)*5.2;
+            score+=boxIou(cand.box,prev.box)*3.2;
             const areaCompat=Math.min(cand.areaRatio,prev.areaRatio)/Math.max(.001,Math.max(cand.areaRatio,prev.areaRatio));
-            score+=continuity*4.8+areaCompat*1.8+boxIou(cand.box,prev.box)*3.0;
-
+            score+=areaCompat*1.5;
             if(cand.nose&&prev.nose){
               const nd=Math.hypot(cand.nose.x-prev.nose.x,cand.nose.y-prev.nose.y);
-              score+=Math.max(0,1-nd/.45)*2.0;
+              score+=Math.max(0,1-nd/.42)*2.2;
             }
           }
 
@@ -2305,7 +2354,7 @@
 
         if(best){
           const prev=this.virtualBgPrimaryTrack;
-          const k=prev?.cx!=null?.35:1;
+          const k=prev?.cx!=null?.38:1;
           this.virtualBgPrimaryTrack={
             cx:prev?prev.cx*(1-k)+best.cx*k:best.cx,
             cy:prev?prev.cy*(1-k)+best.cy*k:best.cy,
@@ -2318,175 +2367,104 @@
         return best;
       };
 
-      const updateMask=primary=>{
-        if(!primary?.seg?.data)return false;
+      const buildPrimaryEnvelope=primary=>{
+        if(!primary?.seg?.data)return null;
         const data=primary.seg.data;
         const sw=primary.sw,sh=primary.sh;
-        if(sw!==maskCanvas.width||sh!==maskCanvas.height){
-          console.warn('[Mathroom virtual background] unexpected BodyPix mask size',sw,sh);
-          return false;
-        }
-
-        const keypoints=Array.isArray(primary.seg?.pose?.keypoints)
-          ?primary.seg.pose.keypoints
-          :[];
-        const kpMap=new Map();
-        for(const k of keypoints){
-          const name=String(k?.part||'');
-          const x=Number(k?.position?.x),y=Number(k?.position?.y);
-          const score=Number(k?.score)||0;
-          if(name&&Number.isFinite(x)&&Number.isFinite(y)&&score>=.12){
-            kpMap.set(name,{x:x/sw,y:y/sh,score});
-          }
-        }
-        const kp=name=>kpMap.get(name)||null;
-        const lShoulder=kp('leftShoulder'),rShoulder=kp('rightShoulder');
-        const lElbow=kp('leftElbow'),rElbow=kp('rightElbow');
-        const lWrist=kp('leftWrist'),rWrist=kp('rightWrist');
-        const lHip=kp('leftHip'),rHip=kp('rightHip');
-        const lKnee=kp('leftKnee'),rKnee=kp('rightKnee');
-        const lAnkle=kp('leftAnkle'),rAnkle=kp('rightAnkle');
-        const nose=kp('nose');
-        const lEye=kp('leftEye'),rEye=kp('rightEye');
-        const lEar=kp('leftEar'),rEar=kp('rightEar');
-
-        const distance=(a,b)=>a&&b?Math.hypot(a.x-b.x,a.y-b.y):0;
-        const shoulderSpan=Math.max(
-          .10,
-          distance(lShoulder,rShoulder),
-          primary.box?.w?primary.box.w*.28:0
-        );
-        const basePad=Math.max(.035,shoulderSpan*.20);
-
-        const capsule=(a,b,r)=>{
-          if(!a||!b)return null;
-          return {type:'capsule',ax:a.x,ay:a.y,bx:b.x,by:b.y,r};
-        };
-        const ellipse=(center,rx,ry)=>{
-          if(!center)return null;
-          return {type:'ellipse',cx:center.x,cy:center.y,rx,ry};
-        };
-        const rectFromPoints=(points,padX,padY)=>{
-          const pts=points.filter(Boolean);
-          if(pts.length<2)return null;
-          let minX=1,minY=1,maxX=0,maxY=0;
-          for(const p of pts){
-            minX=Math.min(minX,p.x);minY=Math.min(minY,p.y);
-            maxX=Math.max(maxX,p.x);maxY=Math.max(maxY,p.y);
-          }
-          return {
-            type:'rect',
-            x:Math.max(0,minX-padX),y:Math.max(0,minY-padY),
-            r:Math.min(1,maxX+padX),b:Math.min(1,maxY+padY)
-          };
-        };
-
-        const facePoints=[nose,lEye,rEye,lEar,rEar].filter(Boolean);
-        let faceCenter=null;
-        if(facePoints.length){
-          faceCenter={
-            x:facePoints.reduce((s,p)=>s+p.x,0)/facePoints.length,
-            y:facePoints.reduce((s,p)=>s+p.y,0)/facePoints.length
-          };
-        }
-        const faceGuard=ellipse(
-          faceCenter||nose,
-          Math.max(.065,shoulderSpan*.42),
-          Math.max(.085,shoulderSpan*.54)
-        );
-
-        const torsoBottomLeft=lHip||{
-          x:(lShoulder?.x??primary.cx)-shoulderSpan*.26,
-          y:Math.min(1,(lShoulder?.y??primary.cy)+Math.max(.30,primary.box?.h*.62||.30))
-        };
-        const torsoBottomRight=rHip||{
-          x:(rShoulder?.x??primary.cx)+shoulderSpan*.26,
-          y:Math.min(1,(rShoulder?.y??primary.cy)+Math.max(.30,primary.box?.h*.62||.30))
-        };
-        const torsoGuard=rectFromPoints(
-          [lShoulder,rShoulder,torsoBottomLeft,torsoBottomRight],
-          Math.max(.055,shoulderSpan*.30),
-          Math.max(.045,shoulderSpan*.22)
-        );
-
-        const guards=new Array(24).fill(null);
-        guards[0]=faceGuard; guards[1]=faceGuard;
-        guards[2]=capsule(lShoulder,lElbow,Math.max(.050,basePad*1.35));
-        guards[3]=guards[2];
-        guards[4]=capsule(rShoulder,rElbow,Math.max(.050,basePad*1.35));
-        guards[5]=guards[4];
-        guards[6]=capsule(lElbow,lWrist,Math.max(.045,basePad*1.15));
-        guards[7]=guards[6];
-        guards[8]=capsule(rElbow,rWrist,Math.max(.045,basePad*1.15));
-        guards[9]=guards[8];
-        guards[10]=ellipse(lWrist,Math.max(.045,basePad*1.25),Math.max(.055,basePad*1.40));
-        guards[11]=ellipse(rWrist,Math.max(.045,basePad*1.25),Math.max(.055,basePad*1.40));
-        guards[12]=torsoGuard; guards[13]=torsoGuard;
-        guards[14]=capsule(lHip,lKnee,Math.max(.060,basePad*1.55));
-        guards[15]=guards[14];
-        guards[16]=capsule(rHip,rKnee,Math.max(.060,basePad*1.55));
-        guards[17]=guards[16];
-        guards[18]=capsule(lKnee,lAnkle,Math.max(.055,basePad*1.40));
-        guards[19]=guards[18];
-        guards[20]=capsule(rKnee,rAnkle,Math.max(.055,basePad*1.40));
-        guards[21]=guards[20];
-        guards[22]=ellipse(lAnkle,Math.max(.055,basePad*1.45),Math.max(.070,basePad*1.65));
-        guards[23]=ellipse(rAnkle,Math.max(.055,basePad*1.45),Math.max(.070,basePad*1.65));
-
-        const enoughPose=kpMap.size>=4&&(!!faceGuard||!!torsoGuard);
-
-        const insideGuard=(g,x,y)=>{
-          if(!g)return true;
-          if(g.type==='rect')return x>=g.x&&x<=g.r&&y>=g.y&&y<=g.b;
-          if(g.type==='ellipse'){
-            const dx=(x-g.cx)/Math.max(.001,g.rx);
-            const dy=(y-g.cy)/Math.max(.001,g.ry);
-            return dx*dx+dy*dy<=1;
-          }
-          if(g.type==='capsule'){
-            const vx=g.bx-g.ax,vy=g.by-g.ay;
-            const wx=x-g.ax,wy=y-g.ay;
-            const len2=vx*vx+vy*vy;
-            const t=len2>0?Math.max(0,Math.min(1,(wx*vx+wy*vy)/len2)):0;
-            const px=g.ax+vx*t,py=g.ay+vy*t;
-            return Math.hypot(x-px,y-py)<=g.r;
-          }
-          return true;
-        };
-
+        if(sw!==maskCanvas.width||sh!==maskCanvas.height)return null;
         const total=sw*sh;
-        for(let p=0,i=0;p<total;p++,i+=4){
+
+        /* Distance-from-primary dilation. The BodyPix mask determines WHO;
+           the dilation makes it deliberately forgiving about hair, hands and
+           motion. The detailed visible edge still comes from SelfieSegmentation. */
+        const dist=new Int16Array(total);
+        dist.fill(-1);
+        const queue=new Int32Array(total);
+        let qh=0,qt=0;
+
+        for(let p=0;p<total;p++){
+          if(data[p]){
+            dist[p]=0;
+            queue[qt++]=p;
+          }
+        }
+        if(!qt)return null;
+
+        const maxGrow=mobile?11:13;
+        while(qh<qt){
+          const p=queue[qh++];
+          const d=dist[p];
+          if(d>=maxGrow)continue;
           const x=p%sw,y=(p/sw)|0;
-          const part=Number(data[p]);
-          let fg=part>=0;
+          const visit=n=>{
+            if(dist[n]>=0)return;
+            dist[n]=d+1;
+            queue[qt++]=n;
+          };
+          if(x>0)visit(p-1);
+          if(x<sw-1)visit(p+1);
+          if(y>0)visit(p-sw);
+          if(y<sh-1)visit(p+sw);
+        }
 
-          if(fg&&enoughPose&&part<24){
-            const nx=(x+.5)/sw,ny=(y+.5)/sh;
-            const guard=guards[part];
-            if(guard&&!insideGuard(guard,nx,ny))fg=false;
+        const env=new Uint8Array(total);
+        for(let p=0;p<total;p++){
+          const d=dist[p];
+          if(d<0)continue;
+          if(d<=maxGrow-4)env[p]=255;
+          else{
+            const t=(maxGrow-d+1)/5;
+            env[p]=Math.max(0,Math.min(255,Math.round(255*t)));
+          }
+        }
+        return env;
+      };
+
+      const updateVisibleMask=results=>{
+        const mask=results?.segmentationMask||null;
+        if(!mask)return false;
+
+        /* Draw MediaPipe probability mask into the final low-res alpha map. */
+        const scratch=document.createElement('canvas');
+        scratch.width=maskCanvas.width;
+        scratch.height=maskCanvas.height;
+        const sctx=scratch.getContext('2d',{alpha:true,willReadFrequently:true});
+        if(!sctx)return false;
+        sctx.clearRect(0,0,scratch.width,scratch.height);
+        sctx.drawImage(mask,0,0,scratch.width,scratch.height);
+
+        let imageData;
+        try{imageData=sctx.getImageData(0,0,scratch.width,scratch.height)}
+        catch{return false}
+        const d=imageData.data;
+        const total=maskCanvas.width*maskCanvas.height;
+
+        let alphaMin=255,alphaMax=0,lumMin=255,lumMax=0;
+        for(let i=0;i<d.length;i+=4){
+          const a=d[i+3];
+          const lum=(d[i]+d[i+1]+d[i+2])/3;
+          if(a<alphaMin)alphaMin=a;if(a>alphaMax)alphaMax=a;
+          if(lum<lumMin)lumMin=lum;if(lum>lumMax)lumMax=lum;
+        }
+        const useAlpha=(alphaMax-alphaMin)>(lumMax-lumMin)*.55&&(alphaMax-alphaMin)>18;
+
+        const lo=mobile?52:58;
+        const hi=mobile?150:158;
+        for(let p=0,i=0;p<total;p++,i+=4){
+          const lum=(d[i]+d[i+1]+d[i+2])/3;
+          const confidence=Math.max(0,Math.min(255,useAlpha?d[i+3]:lum));
+
+          let base=0;
+          if(confidence>=hi)base=255;
+          else if(confidence>lo){
+            const t=(confidence-lo)/(hi-lo);
+            base=Math.round(255*(t*t*(3-2*t)));
           }
 
-          /* One-pixel dilation, but only around anatomically accepted pixels.
-             This restores hair/clothing edges without re-growing a rejected
-             wall shadow. */
-          if(!fg){
-            const neighborAccepted=n=>{
-              if(n<0||n>=total)return false;
-              const np=Number(data[n]);
-              if(np<0)return false;
-              if(!enoughPose||np>=24)return true;
-              const xx=n%sw,yy=(n/sw)|0;
-              return insideGuard(guards[np],(xx+.5)/sw,(yy+.5)/sh);
-            };
-            if(x>0&&neighborAccepted(p-1))fg=true;
-            else if(x<sw-1&&neighborAccepted(p+1))fg=true;
-            else if(y>0&&neighborAccepted(p-sw))fg=true;
-            else if(y<sh-1&&neighborAccepted(p+sw))fg=true;
-          }
-
-          const target=fg?255:0;
+          const env=primaryEnvelope?primaryEnvelope[p]:255;
+          const target=Math.round(base*env/255);
           const prev=temporalAlpha[p];
-          const gain=target>=prev?.90:.82;
+          const gain=target>=prev?.68:.84;
           const next=Math.round(prev+(target-prev)*gain);
           temporalAlpha[p]=next<3?0:next;
 
@@ -2499,33 +2477,80 @@
         return true;
       };
 
-      const inferenceConfig=()=>({
-        flipHorizontal:false,
-        internalResolution:maskReady?(mobile?'low':'medium'):'low',
-        segmentationThreshold:maskReady?(mobile?.60:.64):.58,
-        maxDetections:3,
-        scoreThreshold:.15,
-        nmsRadius:20,
-        minKeypointScore:.15,
-        refineSteps:maskReady?(mobile?5:7):3
+      processor.onResults(results=>{
+        if(this.destroyed||this.virtualBgTrack!==outTrack)return;
+        if(!updateVisibleMask(results))return;
+
+        if(!baseMaskReady){
+          baseMaskReady=true;
+          this.virtualBgMaskReady=true;
+          this.virtualBgInitializing=false;
+          this.paintAllVirtualBgControls();
+          try{resolveFirstMask?.(true)}catch{}
+
+          /* First fast Selfie mask is enough to switch the background. BodyPix
+             will refine WHO is kept sharp a little later. */
+          queueMicrotask(async()=>{
+            if(this.destroyed||this.virtualBgTrack!==outTrack)return;
+            await this.syncOutgoingCameraTrack();
+            this.bindPrejoinPreview();
+            this.bindMedia();
+            this.paintPrejoin();
+            this.paint();
+          });
+        }
       });
 
-      const renderFrame=ts=>{
+      const runIdentity=()=>{
+        if(
+          idBusy ||
+          !bodyPixModel ||
+          source.readyState<2 ||
+          this.destroyed ||
+          this.virtualBgTrack!==outTrack
+        )return;
+
+        idBusy=true;
+        idCtx.drawImage(source,0,0,idCanvas.width,idCanvas.height);
+        Promise.resolve(bodyPixModel.segmentMultiPerson(idCanvas,{
+          flipHorizontal:false,
+          internalResolution:'low',
+          segmentationThreshold:.54,
+          maxDetections:3,
+          scoreThreshold:.14,
+          nmsRadius:20,
+          minKeypointScore:.12,
+          refineSteps:3
+        }))
+          .then(people=>{
+            const primary=choosePrimary(people);
+            if(!primary)return;
+            const env=buildPrimaryEnvelope(primary);
+            if(env){
+              primaryEnvelope=env;
+              identityReady=true;
+            }
+          })
+          .catch(e=>console.warn('[Mathroom virtual background identity]',e))
+          .finally(()=>{idBusy=false});
+      };
+
+      const renderLoop=ts=>{
         if(
           this.destroyed ||
           this.virtualBgTrack!==outTrack ||
           this.virtualBgMode==='none'
         )return;
 
-        this.virtualBgRaf=requestAnimationFrame(renderFrame);
+        this.virtualBgRaf=requestAnimationFrame(renderLoop);
 
-        if(ts-lastRender>=33&&source.readyState>=2){
+        if(source.readyState>=2&&ts-lastRender>=33){
           lastRender=ts;
           ctx.save();
           ctx.clearRect(0,0,w,h);
 
-          if(maskReady){
-            ctx.filter=mobile?'blur(1.7px)':'blur(1.2px)';
+          if(baseMaskReady){
+            ctx.filter=mobile?'blur(1.65px)':'blur(1.15px)';
             ctx.drawImage(maskCanvas,0,0,maskCanvas.width,maskCanvas.height,0,0,w,h);
             ctx.filter='none';
             ctx.globalCompositeOperation='source-in';
@@ -2537,77 +2562,53 @@
           ctx.restore();
         }
 
-        const interval=document.visibilityState==='hidden'
-          ?Math.max(500,this.virtualBgFrameInterval)
+        const segInterval=document.visibilityState==='hidden'
+          ?Math.max(220,this.virtualBgFrameInterval)
           :this.virtualBgFrameInterval;
 
         if(
-          !inferenceBusy &&
+          !segBusy &&
           source.readyState>=2 &&
-          ts-lastInference>=interval
+          ts-lastSeg>=segInterval
         ){
-          lastInference=ts;
-          inferenceBusy=true;
+          lastSeg=ts;
+          segBusy=true;
           const started=performance.now();
-          inferCtx.drawImage(source,0,0,inferCanvas.width,inferCanvas.height);
+          segCtx.drawImage(source,0,0,segCanvas.width,segCanvas.height);
 
-          Promise.resolve(model.segmentMultiPersonParts(inferCanvas,inferenceConfig()))
-            .then(people=>{
-              if(this.destroyed||this.virtualBgTrack!==outTrack)return;
-              const primary=choosePrimary(people);
-              if(!primary)return;
-              if(!updateMask(primary))return;
-
-              if(!maskReady){
-                maskReady=true;
-                this.virtualBgMaskReady=true;
-                this.virtualBgInitializing=false;
-                this.paintAllVirtualBgControls();
-                try{resolveFirstMask?.(true)}catch{}
-
-                /* The preview/WebRTC switch only after the selected participant
-                   has a valid instance mask. No manual camera toggle is needed. */
-                queueMicrotask(async()=>{
-                  if(this.destroyed||this.virtualBgTrack!==outTrack)return;
-                  await this.syncOutgoingCameraTrack();
-                  this.bindPrejoinPreview();
-                  this.bindMedia();
-                  this.paintPrejoin();
-                  this.paint();
-                });
-              }
-            })
-            .catch(e=>console.warn('[Mathroom virtual background BodyPix]',e))
+          Promise.resolve(processor.send({image:segCanvas}))
+            .catch(e=>console.warn('[Mathroom virtual background segmentation]',e))
             .finally(()=>{
               const elapsed=performance.now()-started;
               this.virtualBgAvgProcessMs=this.virtualBgAvgProcessMs
-                ?this.virtualBgAvgProcessMs*.8+elapsed*.2
+                ?this.virtualBgAvgProcessMs*.82+elapsed*.18
                 :elapsed;
 
-              if(this.virtualBgAvgProcessMs>320)this.virtualBgFrameInterval=mobile?500:420;
-              else if(this.virtualBgAvgProcessMs>240)this.virtualBgFrameInterval=mobile?400:330;
-              else if(this.virtualBgAvgProcessMs>170)this.virtualBgFrameInterval=mobile?320:250;
-              else if(this.virtualBgAvgProcessMs>115)this.virtualBgFrameInterval=mobile?260:190;
-              else this.virtualBgFrameInterval=mobile?220:150;
-
-              inferenceBusy=false;
+              if(this.virtualBgAvgProcessMs>115)this.virtualBgFrameInterval=mobile?170:145;
+              else if(this.virtualBgAvgProcessMs>80)this.virtualBgFrameInterval=mobile?135:110;
+              else this.virtualBgFrameInterval=mobile?105:82;
+              segBusy=false;
             });
+        }
+
+        /* Multi-person identity refinement is intentionally low-frequency. */
+        if(ts-lastIdentity>900){
+          lastIdentity=ts;
+          runIdentity();
         }
       };
 
-      this.virtualBgRaf=requestAnimationFrame(renderFrame);
+      this.virtualBgRaf=requestAnimationFrame(renderLoop);
 
       const ready=await Promise.race([
         firstMaskPromise,
-        new Promise(resolve=>setTimeout(()=>resolve(false),8000))
+        new Promise(resolve=>setTimeout(()=>resolve(false),5000))
       ]);
 
-      /* A slow/low-light first detection is not treated as a failure. Raw camera
-         stays visible because effectiveCameraTrack() requires maskReady. The
-         inference loop keeps running and auto-switches as soon as a participant
-         is identified. */
       if(!ready){
-        console.warn('[Mathroom virtual background] waiting for primary-person mask');
+        /* Keep the engine alive; the raw camera remains visible until the first
+           Selfie mask arrives, then the callback auto-switches the preview. */
+        console.warn('[Mathroom virtual background] first Selfie mask is slow');
         return null;
       }
 
@@ -2696,7 +2697,11 @@
           /* Once the Pose engine is running, changing Studio/Mathroom/Classroom
              only changes what is painted behind the existing participant mask. */
           if(raw&&raw.enabled!==false&&this.cameraEnabled){
-            if(!this.virtualBgTrack||this.virtualBgTrack.readyState!=='live'){
+            if(
+              !this.virtualBgTrack ||
+              this.virtualBgTrack.readyState!=='live' ||
+              !this.virtualBgMaskReady
+            ){
               await this.activateSelectedVirtualBackground(raw);
             }
           }else{
