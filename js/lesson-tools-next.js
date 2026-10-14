@@ -161,7 +161,7 @@
       this.virtualBgPoseResultHandler = null;
 
       /* Canonical virtual-background engine.
-         BodyPix multi-person segmentation returns one mask per detected person,
+         BodyPix multi-person body-part segmentation returns one anatomical mask per detected person,
          which lets Mathroom keep one participant and treat everybody else as
          background. This replaces the previous single-person Pose pipeline. */
       this.virtualBgBodyPixModel = null;
@@ -196,6 +196,17 @@
       this.routeLabel = '';
       this.ensureStyles();
       this.startSignaling();
+
+      /* Start preparing the virtual-background model as soon as a lesson video
+         session exists. Previously loading began only after the prejoin panel
+         opened, so a fast Camera click exposed the raw webcam for several
+         seconds. Keep it asynchronous so lesson UI rendering never waits. */
+      if(this.virtualBgMode!=='none'){
+        setTimeout(()=>{
+          if(!this.destroyed)this.prewarmVirtualBgEngine().catch(()=>{});
+        },80);
+      }
+
       this.onOnline = () => {
         if (this.destroyed || !this.joined) return;
         this.status = 'Интернет вернулся · восстанавливаем связь…';
@@ -1638,7 +1649,8 @@
       root.querySelectorAll('.mr-bg-upload').forEach(b=>b.classList.remove('active'));
       root.querySelectorAll('.mr-bg-saved-item').forEach(b=>b.classList.toggle('active',this.virtualBgMode==='custom'&&b.dataset.bgSavedId===this.virtualBgCustomId));
       root.querySelectorAll('[data-bg-status]').forEach(status=>{
-        status.textContent=this.virtualBgInitializing ? 'Подготавливаем фон…'
+        status.textContent=(this.virtualBgInitializing || (this.virtualBgMode!=='none'&&!this.virtualBgBodyPixWarm))
+          ? 'Подготавливаем фон…'
           : this.virtualBgMode==='none' ? 'Без обработки'
           : this.virtualBgMode==='blur' ? 'Размытие включено'
           : this.virtualBgMode==='studio' ? 'Студия'
@@ -1742,17 +1754,18 @@
             wctx.fillStyle='#777';
             wctx.fillRect(0,0,warm.width,warm.height);
           }
-          await model.segmentMultiPerson(warm,{
+          await model.segmentMultiPersonParts(warm,{
             flipHorizontal:false,
             internalResolution:'low',
-            segmentationThreshold:.52,
+            segmentationThreshold:.60,
             maxDetections:3,
-            scoreThreshold:.12,
+            scoreThreshold:.15,
             nmsRadius:20,
-            minKeypointScore:.12,
-            refineSteps:2
+            minKeypointScore:.15,
+            refineSteps:3
           });
           this.virtualBgBodyPixWarm=true;
+          this.paintAllVirtualBgControls();
         }catch(e){
           console.warn('[Mathroom virtual background] BodyPix warmup',e);
         }
@@ -2217,14 +2230,17 @@
         if(!data||!sw||!sh)return null;
 
         let area=0,sumX=0,sumY=0,minX=sw,minY=sh,maxX=-1,maxY=-1;
+        const partHistogram=new Uint32Array(24);
         for(let p=0;p<data.length;p++){
-          if(!data[p])continue;
+          const part=Number(data[p]);
+          if(part<0)continue;
           const x=p%sw,y=(p/sw)|0;
           area++;sumX+=x;sumY+=y;
+          if(part>=0&&part<24)partHistogram[part]++;
           if(x<minX)minX=x;if(x>maxX)maxX=x;
           if(y<minY)minY=y;if(y>maxY)maxY=y;
         }
-        if(area<Math.max(80,sw*sh*.008))return null;
+        if(area<Math.max(60,sw*sh*.006))return null;
 
         const cx=(sumX/area+.5)/sw;
         const cy=(sumY/area+.5)/sh;
@@ -2235,14 +2251,17 @@
         };
         const pose=seg?.pose||null;
         const poseScore=Number(pose?.score)||0;
-        const nose=Array.isArray(pose?.keypoints)
-          ?pose.keypoints.find(k=>String(k?.part||'').toLowerCase()==='nose')
-          :null;
+        const keypoints=Array.isArray(pose?.keypoints)?pose.keypoints:[];
+        const nose=keypoints.find(k=>String(k?.part||'').toLowerCase()==='nose');
         const nx=Number(nose?.position?.x),ny=Number(nose?.position?.y);
         const nosePoint=Number.isFinite(nx)&&Number.isFinite(ny)
           ?{x:nx/sw,y:ny/sh,score:Number(nose?.score)||0}
           :null;
-        return {seg,sw,sh,area,areaRatio,cx,cy,box,poseScore,nose:nosePoint};
+
+        let distinctParts=0;
+        for(let i=0;i<partHistogram.length;i++)if(partHistogram[i])distinctParts++;
+
+        return {seg,sw,sh,area,areaRatio,cx,cy,box,poseScore,nose:nosePoint,distinctParts};
       };
 
       const boxIou=(a,b)=>{
@@ -2266,7 +2285,8 @@
           const centerDist=Math.hypot(cand.cx-.5,(cand.cy-.5)*.8);
           const centerScore=Math.max(0,1-centerDist/.72);
           const sizeScore=Math.min(1,cand.areaRatio/.32);
-          let score=sizeScore*4.4+centerScore*1.5+Math.min(1,cand.poseScore)*.6;
+          const anatomyScore=Math.min(1,cand.distinctParts/8);
+          let score=sizeScore*4.2+centerScore*1.4+Math.min(1,cand.poseScore)*.8+anatomyScore*.8;
 
           if(prev){
             const dist=Math.hypot(cand.cx-prev.cx,cand.cy-prev.cy);
@@ -2303,29 +2323,170 @@
         const data=primary.seg.data;
         const sw=primary.sw,sh=primary.sh;
         if(sw!==maskCanvas.width||sh!==maskCanvas.height){
-          /* BodyPix normally returns input-sized masks. If a browser/model
-             build differs, keep the old mask rather than misaligning it. */
           console.warn('[Mathroom virtual background] unexpected BodyPix mask size',sw,sh);
           return false;
         }
 
+        const keypoints=Array.isArray(primary.seg?.pose?.keypoints)
+          ?primary.seg.pose.keypoints
+          :[];
+        const kpMap=new Map();
+        for(const k of keypoints){
+          const name=String(k?.part||'');
+          const x=Number(k?.position?.x),y=Number(k?.position?.y);
+          const score=Number(k?.score)||0;
+          if(name&&Number.isFinite(x)&&Number.isFinite(y)&&score>=.12){
+            kpMap.set(name,{x:x/sw,y:y/sh,score});
+          }
+        }
+        const kp=name=>kpMap.get(name)||null;
+        const lShoulder=kp('leftShoulder'),rShoulder=kp('rightShoulder');
+        const lElbow=kp('leftElbow'),rElbow=kp('rightElbow');
+        const lWrist=kp('leftWrist'),rWrist=kp('rightWrist');
+        const lHip=kp('leftHip'),rHip=kp('rightHip');
+        const lKnee=kp('leftKnee'),rKnee=kp('rightKnee');
+        const lAnkle=kp('leftAnkle'),rAnkle=kp('rightAnkle');
+        const nose=kp('nose');
+        const lEye=kp('leftEye'),rEye=kp('rightEye');
+        const lEar=kp('leftEar'),rEar=kp('rightEar');
+
+        const distance=(a,b)=>a&&b?Math.hypot(a.x-b.x,a.y-b.y):0;
+        const shoulderSpan=Math.max(
+          .10,
+          distance(lShoulder,rShoulder),
+          primary.box?.w?primary.box.w*.28:0
+        );
+        const basePad=Math.max(.035,shoulderSpan*.20);
+
+        const capsule=(a,b,r)=>{
+          if(!a||!b)return null;
+          return {type:'capsule',ax:a.x,ay:a.y,bx:b.x,by:b.y,r};
+        };
+        const ellipse=(center,rx,ry)=>{
+          if(!center)return null;
+          return {type:'ellipse',cx:center.x,cy:center.y,rx,ry};
+        };
+        const rectFromPoints=(points,padX,padY)=>{
+          const pts=points.filter(Boolean);
+          if(pts.length<2)return null;
+          let minX=1,minY=1,maxX=0,maxY=0;
+          for(const p of pts){
+            minX=Math.min(minX,p.x);minY=Math.min(minY,p.y);
+            maxX=Math.max(maxX,p.x);maxY=Math.max(maxY,p.y);
+          }
+          return {
+            type:'rect',
+            x:Math.max(0,minX-padX),y:Math.max(0,minY-padY),
+            r:Math.min(1,maxX+padX),b:Math.min(1,maxY+padY)
+          };
+        };
+
+        const facePoints=[nose,lEye,rEye,lEar,rEar].filter(Boolean);
+        let faceCenter=null;
+        if(facePoints.length){
+          faceCenter={
+            x:facePoints.reduce((s,p)=>s+p.x,0)/facePoints.length,
+            y:facePoints.reduce((s,p)=>s+p.y,0)/facePoints.length
+          };
+        }
+        const faceGuard=ellipse(
+          faceCenter||nose,
+          Math.max(.065,shoulderSpan*.42),
+          Math.max(.085,shoulderSpan*.54)
+        );
+
+        const torsoBottomLeft=lHip||{
+          x:(lShoulder?.x??primary.cx)-shoulderSpan*.26,
+          y:Math.min(1,(lShoulder?.y??primary.cy)+Math.max(.30,primary.box?.h*.62||.30))
+        };
+        const torsoBottomRight=rHip||{
+          x:(rShoulder?.x??primary.cx)+shoulderSpan*.26,
+          y:Math.min(1,(rShoulder?.y??primary.cy)+Math.max(.30,primary.box?.h*.62||.30))
+        };
+        const torsoGuard=rectFromPoints(
+          [lShoulder,rShoulder,torsoBottomLeft,torsoBottomRight],
+          Math.max(.055,shoulderSpan*.30),
+          Math.max(.045,shoulderSpan*.22)
+        );
+
+        const guards=new Array(24).fill(null);
+        guards[0]=faceGuard; guards[1]=faceGuard;
+        guards[2]=capsule(lShoulder,lElbow,Math.max(.050,basePad*1.35));
+        guards[3]=guards[2];
+        guards[4]=capsule(rShoulder,rElbow,Math.max(.050,basePad*1.35));
+        guards[5]=guards[4];
+        guards[6]=capsule(lElbow,lWrist,Math.max(.045,basePad*1.15));
+        guards[7]=guards[6];
+        guards[8]=capsule(rElbow,rWrist,Math.max(.045,basePad*1.15));
+        guards[9]=guards[8];
+        guards[10]=ellipse(lWrist,Math.max(.045,basePad*1.25),Math.max(.055,basePad*1.40));
+        guards[11]=ellipse(rWrist,Math.max(.045,basePad*1.25),Math.max(.055,basePad*1.40));
+        guards[12]=torsoGuard; guards[13]=torsoGuard;
+        guards[14]=capsule(lHip,lKnee,Math.max(.060,basePad*1.55));
+        guards[15]=guards[14];
+        guards[16]=capsule(rHip,rKnee,Math.max(.060,basePad*1.55));
+        guards[17]=guards[16];
+        guards[18]=capsule(lKnee,lAnkle,Math.max(.055,basePad*1.40));
+        guards[19]=guards[18];
+        guards[20]=capsule(rKnee,rAnkle,Math.max(.055,basePad*1.40));
+        guards[21]=guards[20];
+        guards[22]=ellipse(lAnkle,Math.max(.055,basePad*1.45),Math.max(.070,basePad*1.65));
+        guards[23]=ellipse(rAnkle,Math.max(.055,basePad*1.45),Math.max(.070,basePad*1.65));
+
+        const enoughPose=kpMap.size>=4&&(!!faceGuard||!!torsoGuard);
+
+        const insideGuard=(g,x,y)=>{
+          if(!g)return true;
+          if(g.type==='rect')return x>=g.x&&x<=g.r&&y>=g.y&&y<=g.b;
+          if(g.type==='ellipse'){
+            const dx=(x-g.cx)/Math.max(.001,g.rx);
+            const dy=(y-g.cy)/Math.max(.001,g.ry);
+            return dx*dx+dy*dy<=1;
+          }
+          if(g.type==='capsule'){
+            const vx=g.bx-g.ax,vy=g.by-g.ay;
+            const wx=x-g.ax,wy=y-g.ay;
+            const len2=vx*vx+vy*vy;
+            const t=len2>0?Math.max(0,Math.min(1,(wx*vx+wy*vy)/len2)):0;
+            const px=g.ax+vx*t,py=g.ay+vy*t;
+            return Math.hypot(x-px,y-py)<=g.r;
+          }
+          return true;
+        };
+
         const total=sw*sh;
         for(let p=0,i=0;p<total;p++,i+=4){
           const x=p%sw,y=(p/sw)|0;
-          let fg=!!data[p];
+          const part=Number(data[p]);
+          let fg=part>=0;
 
-          /* One-pixel dilation preserves hair/shoulders and avoids the harsh
-             "eaten body" edge from strict binary instance masks. */
+          if(fg&&enoughPose&&part<24){
+            const nx=(x+.5)/sw,ny=(y+.5)/sh;
+            const guard=guards[part];
+            if(guard&&!insideGuard(guard,nx,ny))fg=false;
+          }
+
+          /* One-pixel dilation, but only around anatomically accepted pixels.
+             This restores hair/clothing edges without re-growing a rejected
+             wall shadow. */
           if(!fg){
-            if(x>0&&data[p-1])fg=true;
-            else if(x<sw-1&&data[p+1])fg=true;
-            else if(y>0&&data[p-sw])fg=true;
-            else if(y<sh-1&&data[p+sw])fg=true;
+            const neighborAccepted=n=>{
+              if(n<0||n>=total)return false;
+              const np=Number(data[n]);
+              if(np<0)return false;
+              if(!enoughPose||np>=24)return true;
+              const xx=n%sw,yy=(n/sw)|0;
+              return insideGuard(guards[np],(xx+.5)/sw,(yy+.5)/sh);
+            };
+            if(x>0&&neighborAccepted(p-1))fg=true;
+            else if(x<sw-1&&neighborAccepted(p+1))fg=true;
+            else if(y>0&&neighborAccepted(p-sw))fg=true;
+            else if(y<sh-1&&neighborAccepted(p+sw))fg=true;
           }
 
           const target=fg?255:0;
           const prev=temporalAlpha[p];
-          const gain=target>=prev?.88:.78;
+          const gain=target>=prev?.90:.82;
           const next=Math.round(prev+(target-prev)*gain);
           temporalAlpha[p]=next<3?0:next;
 
@@ -2338,16 +2499,16 @@
         return true;
       };
 
-      const inferenceConfig={
+      const inferenceConfig=()=>({
         flipHorizontal:false,
-        internalResolution:mobile?'low':'medium',
-        segmentationThreshold:mobile?.48:.50,
+        internalResolution:maskReady?(mobile?'low':'medium'):'low',
+        segmentationThreshold:maskReady?(mobile?.60:.64):.58,
         maxDetections:3,
-        scoreThreshold:.12,
+        scoreThreshold:.15,
         nmsRadius:20,
-        minKeypointScore:.12,
-        refineSteps:mobile?4:6
-      };
+        minKeypointScore:.15,
+        refineSteps:maskReady?(mobile?5:7):3
+      });
 
       const renderFrame=ts=>{
         if(
@@ -2390,7 +2551,7 @@
           const started=performance.now();
           inferCtx.drawImage(source,0,0,inferCanvas.width,inferCanvas.height);
 
-          Promise.resolve(model.segmentMultiPerson(inferCanvas,inferenceConfig))
+          Promise.resolve(model.segmentMultiPersonParts(inferCanvas,inferenceConfig()))
             .then(people=>{
               if(this.destroyed||this.virtualBgTrack!==outTrack)return;
               const primary=choosePrimary(people);
