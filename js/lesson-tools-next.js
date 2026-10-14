@@ -159,6 +159,16 @@
       this.virtualBgPoseProcessor = null;
       this.virtualBgPoseReadyPromise = null;
       this.virtualBgPoseResultHandler = null;
+
+      /* Canonical virtual-background engine.
+         BodyPix multi-person segmentation returns one mask per detected person,
+         which lets Mathroom keep one participant and treat everybody else as
+         background. This replaces the previous single-person Pose pipeline. */
+      this.virtualBgBodyPixModel = null;
+      this.virtualBgBodyPixModelPromise = null;
+      this.virtualBgBodyPixWarm = false;
+      this.virtualBgPrimaryTrack = null;
+      this.virtualBgMaskReady = false;
       this.virtualBgInitializing = false;
 
       this.devices = { audioinput:[], videoinput:[], audiooutput:[] };
@@ -1646,7 +1656,7 @@
     }
 
     effectiveCameraTrack() {
-      return this.virtualBgTrack?.readyState === 'live'
+      return this.virtualBgMaskReady && this.virtualBgTrack?.readyState === 'live'
         ? this.virtualBgTrack
         : (this.localStream?.getVideoTracks?.()[0] || null);
     }
@@ -1664,6 +1674,99 @@
       const stream=track ? (current===track ? video.srcObject : new MediaStream([track])) : null;
       if (video.srcObject !== stream) video.srcObject = stream;
       if (stream) video.play().catch(()=>{});
+    }
+
+    async ensureVirtualBgBodyPixModel() {
+      if(this.virtualBgBodyPixModel)return this.virtualBgBodyPixModel;
+      if(this.virtualBgBodyPixModelPromise)return this.virtualBgBodyPixModelPromise;
+
+      const loadScript=(src,attr)=>new Promise((resolve,reject)=>{
+        const existing=document.querySelector(`script[${attr}]`);
+        if(existing){
+          if(existing.dataset.mrLoaded==='1')return resolve();
+          existing.addEventListener('load',resolve,{once:true});
+          existing.addEventListener('error',()=>reject(new Error('Не удалось загрузить модуль виртуального фона')),{once:true});
+          return;
+        }
+        const el=document.createElement('script');
+        el.src=src;
+        el.async=true;
+        el.crossOrigin='anonymous';
+        el.setAttribute(attr,'1');
+        el.onload=()=>{el.dataset.mrLoaded='1';resolve()};
+        el.onerror=()=>reject(new Error('Не удалось загрузить модуль виртуального фона'));
+        document.head.appendChild(el);
+      });
+
+      this.virtualBgBodyPixModelPromise=(async()=>{
+        if(!window.tf){
+          await loadScript(
+            'https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js',
+            'data-mr-tfjs'
+          );
+        }
+        if(!window.bodyPix?.load){
+          await loadScript(
+            'https://cdn.jsdelivr.net/npm/@tensorflow-models/body-pix@2.2.0/dist/body-pix.min.js',
+            'data-mr-body-pix'
+          );
+        }
+        if(!window.tf||!window.bodyPix?.load)throw new Error('Модель разделения людей не загрузилась');
+
+        try{
+          if(window.tf.getBackend?.()!=='webgl'){
+            await window.tf.setBackend?.('webgl');
+          }
+          await window.tf.ready?.();
+        }catch(e){
+          console.warn('[Mathroom virtual background] WebGL backend fallback',e);
+          try{await window.tf.ready?.()}catch{}
+        }
+
+        const mobile=(window.matchMedia?.('(pointer: coarse)')?.matches||window.innerWidth<=760);
+        const model=await window.bodyPix.load({
+          architecture:'MobileNetV1',
+          outputStride:16,
+          multiplier:mobile?.50:.75,
+          quantBytes:2
+        });
+
+        /* Compile the graph once before camera activation. This warmup is
+           serialized through virtualBgWarmupPromise, so it cannot race the
+           first real camera inference. */
+        try{
+          const warm=document.createElement('canvas');
+          warm.width=128;warm.height=96;
+          const wctx=warm.getContext('2d',{alpha:false});
+          if(wctx){
+            wctx.fillStyle='#777';
+            wctx.fillRect(0,0,warm.width,warm.height);
+          }
+          await model.segmentMultiPerson(warm,{
+            flipHorizontal:false,
+            internalResolution:'low',
+            segmentationThreshold:.52,
+            maxDetections:3,
+            scoreThreshold:.12,
+            nmsRadius:20,
+            minKeypointScore:.12,
+            refineSteps:2
+          });
+          this.virtualBgBodyPixWarm=true;
+        }catch(e){
+          console.warn('[Mathroom virtual background] BodyPix warmup',e);
+        }
+
+        this.virtualBgBodyPixModel=model;
+        return model;
+      })();
+
+      try{return await this.virtualBgBodyPixModelPromise}
+      catch(e){
+        this.virtualBgBodyPixModelPromise=null;
+        this.virtualBgBodyPixModel=null;
+        throw e;
+      }
     }
 
     async ensureVirtualBgPoseLibrary() {
@@ -1930,17 +2033,18 @@
       this.virtualBgRaf=0;
       this.virtualBgBusy=false;
       this.virtualBgInitializing=false;
+      this.virtualBgMaskReady=false;
+      this.virtualBgPrimaryTrack=null;
       this.virtualBgAvgProcessMs=0;
-      this.virtualBgFrameInterval=90;
-      this.virtualBgPoseResultHandler=null;
+      this.virtualBgFrameInterval=140;
 
-      /* Close any legacy processors left by a hot reload, but keep the new
-         Pose processor cached for the lifetime of this VideoSession. */
+      /* Close legacy processors left by an earlier hot-loaded build. */
       try{this.virtualBgProcessor?.close?.()}catch{}
       this.virtualBgProcessor=null;
       try{this.virtualBgFaceDetector?.close?.()}catch{}
       this.virtualBgFaceDetector=null;
       this.virtualBgPersonDetector=null;
+      this.virtualBgPoseResultHandler=null;
 
       try{this.virtualBgSourceVideo?.pause?.()}catch{}
       if(this.virtualBgSourceVideo)this.virtualBgSourceVideo.srcObject=null;
@@ -1958,10 +2062,10 @@
       if(this.virtualBgWarmupPromise)return this.virtualBgWarmupPromise;
       this.virtualBgWarmupPromise=(async()=>{
         try{
-          await this.ensureVirtualBgPoseProcessor();
+          await this.ensureVirtualBgBodyPixModel();
           return true;
         }catch(e){
-          console.warn('[Mathroom virtual background] pose preload',e);
+          console.warn('[Mathroom virtual background] BodyPix preload',e);
           return false;
         }
       })();
@@ -1980,6 +2084,9 @@
 
     async startVirtualBackgroundInternal() {
       if(this.virtualBgMode==='none')return null;
+      if(this.virtualBgWarmupPromise){
+        try{await this.virtualBgWarmupPromise}catch{}
+      }
 
       const raw=this.localStream?.getVideoTracks?.()[0]||null;
       if(!raw||raw.readyState!=='live')throw new Error('Камера недоступна');
@@ -1989,16 +2096,12 @@
         await this.ensureBuiltInBackgroundImage(this.virtualBgMode);
       }
 
-      this.virtualBgInitializing=true;
-      this.paintAllVirtualBgControls();
-
-      /* Tear down only the previous render loop/processed track. The ML model
-         itself stays alive in virtualBgPoseProcessor. */
       this.stopVirtualBackground();
       this.virtualBgInitializing=true;
+      this.virtualBgMaskReady=false;
       this.paintAllVirtualBgControls();
 
-      const pose=await this.ensureVirtualBgPoseProcessor();
+      const model=await this.ensureVirtualBgBodyPixModel();
 
       const source=document.createElement('video');
       source.autoplay=true;
@@ -2021,24 +2124,20 @@
       const settings=raw.getSettings?.()||{};
       const srcW=Math.max(1,Number(source.videoWidth)||Number(settings.width)||960);
       const srcH=Math.max(1,Number(source.videoHeight)||Number(settings.height)||540);
-      const isMobile=(window.matchMedia?.('(pointer: coarse)')?.matches||window.innerWidth<=760);
+      const mobile=(window.matchMedia?.('(pointer: coarse)')?.matches||window.innerWidth<=760);
 
-      const maxLong=isMobile?540:720;
-      const outScale=Math.min(1,maxLong/Math.max(srcW,srcH));
+      const outLong=mobile?540:720;
+      const outScale=Math.min(1,outLong/Math.max(srcW,srcH));
       const w=Math.max(240,Math.round(srcW*outScale));
       const h=Math.max(180,Math.round(srcH*outScale));
 
       const canvas=document.createElement('canvas');
-      canvas.width=w;
-      canvas.height=h;
+      canvas.width=w;canvas.height=h;
       const ctx=canvas.getContext('2d',{alpha:true,desynchronized:true});
       if(!ctx)throw new Error('Canvas виртуального фона недоступен');
 
-      /* Pose inference works on a smaller frame, while the final composite uses
-         the original camera frame. This keeps edges respectable without asking
-         the ML graph to process a 720p/1080p frame. */
       const inferCanvas=document.createElement('canvas');
-      const inferLong=isMobile?320:448;
+      const inferLong=mobile?320:416;
       const inferScale=Math.min(1,inferLong/Math.max(srcW,srcH));
       inferCanvas.width=Math.max(192,Math.round(srcW*inferScale));
       inferCanvas.height=Math.max(144,Math.round(srcH*inferScale));
@@ -2046,10 +2145,17 @@
       if(!inferCtx)throw new Error('Canvas распознавания недоступен');
       inferCtx.imageSmoothingEnabled=true;
 
-      /* Reliable, cheap background blur: downsample aggressively and upscale.
-         It avoids large-radius Canvas2D filters on the whole frame. */
+      const maskCanvas=document.createElement('canvas');
+      maskCanvas.width=inferCanvas.width;
+      maskCanvas.height=inferCanvas.height;
+      const maskCtx=maskCanvas.getContext('2d',{alpha:true,willReadFrequently:true});
+      if(!maskCtx)throw new Error('Canvas маски недоступен');
+      const maskImage=maskCtx.createImageData(maskCanvas.width,maskCanvas.height);
+      const maskPixels=maskImage.data;
+      const temporalAlpha=new Uint8Array(maskCanvas.width*maskCanvas.height);
+
       const blurCanvas=document.createElement('canvas');
-      const blurScale=isMobile?.055:.075;
+      const blurScale=mobile?.055:.075;
       blurCanvas.width=Math.max(24,Math.round(w*blurScale));
       blurCanvas.height=Math.max(24,Math.round(h*blurScale));
       const blurCtx=blurCanvas.getContext('2d',{alpha:false,desynchronized:true});
@@ -2080,12 +2186,10 @@
         }
       };
 
-      /* Seed captureStream with the selected background. The preview remains on
-         the raw camera until the first real person mask is ready. */
       ctx.clearRect(0,0,w,h);
       drawBackground();
 
-      const output=canvas.captureStream(isMobile?15:18);
+      const output=canvas.captureStream(mobile?15:18);
       const outTrack=output.getVideoTracks()[0];
       if(!outTrack)throw new Error('Не удалось создать обработанный видеопоток');
       outTrack.enabled=this.cameraEnabled;
@@ -2095,118 +2199,255 @@
       this.virtualBgCanvas=canvas;
       this.virtualBgStream=output;
       this.virtualBgTrack=outTrack;
-      this.virtualBgFrameInterval=isMobile?115:90;
+      this.virtualBgFrameInterval=mobile?220:170;
       this.virtualBgAvgProcessMs=0;
+      this.virtualBgPrimaryTrack=null;
 
-      let firstCompositeResolve=null;
-      let firstCompositeDone=false;
-      const firstCompositePromise=new Promise(resolve=>{firstCompositeResolve=resolve});
+      let maskReady=false;
+      let inferenceBusy=false;
+      let lastInference=0;
+      let lastRender=0;
+      let resolveFirstMask=null;
+      const firstMaskPromise=new Promise(resolve=>{resolveFirstMask=resolve});
 
-      this.virtualBgPoseResultHandler=results=>{
-        if(
-          this.destroyed ||
-          this.virtualBgTrack!==outTrack ||
-          !this.virtualBgCanvas
-        )return;
+      const analysePerson=seg=>{
+        const data=seg?.data;
+        const sw=Number(seg?.width)||inferCanvas.width;
+        const sh=Number(seg?.height)||inferCanvas.height;
+        if(!data||!sw||!sh)return null;
 
-        ctx.save();
-        ctx.clearRect(0,0,w,h);
-
-        const mask=results?.segmentationMask||null;
-        if(mask){
-          /* Pose segmentation belongs to the one tracked prominent participant.
-             There is no "all people" mask and therefore no geometric guessing
-             about who should stay sharp. */
-          ctx.filter=isMobile?'blur(1.7px)':'blur(1.25px)';
-          ctx.drawImage(mask,0,0,w,h);
-          ctx.filter='none';
-
-          ctx.globalCompositeOperation='source-in';
-          ctx.drawImage(source,0,0,w,h);
+        let area=0,sumX=0,sumY=0,minX=sw,minY=sh,maxX=-1,maxY=-1;
+        for(let p=0;p<data.length;p++){
+          if(!data[p])continue;
+          const x=p%sw,y=(p/sw)|0;
+          area++;sumX+=x;sumY+=y;
+          if(x<minX)minX=x;if(x>maxX)maxX=x;
+          if(y<minY)minY=y;if(y>maxY)maxY=y;
         }
+        if(area<Math.max(80,sw*sh*.008))return null;
 
-        ctx.globalCompositeOperation='destination-over';
-        drawBackground();
-        ctx.restore();
-
-        if(!firstCompositeDone&&mask){
-          firstCompositeDone=true;
-          this.virtualBgInitializing=false;
-          this.paintAllVirtualBgControls();
-          try{firstCompositeResolve?.(true)}catch{}
-
-          /* Switch preview/sender only after an actual segmented frame exists.
-             This removes the cold-start race that previously required
-             camera-off/camera-on. */
-          requestAnimationFrame(()=>{
-            if(this.destroyed||this.virtualBgTrack!==outTrack)return;
-            this.bindPrejoinPreview();
-            this.bindMedia();
-            this.paintPrejoin();
-            this.paint();
-          });
-        }
+        const cx=(sumX/area+.5)/sw;
+        const cy=(sumY/area+.5)/sh;
+        const areaRatio=area/(sw*sh);
+        const box={
+          x:minX/sw,y:minY/sh,
+          w:(maxX-minX+1)/sw,h:(maxY-minY+1)/sh
+        };
+        const pose=seg?.pose||null;
+        const poseScore=Number(pose?.score)||0;
+        const nose=Array.isArray(pose?.keypoints)
+          ?pose.keypoints.find(k=>String(k?.part||'').toLowerCase()==='nose')
+          :null;
+        const nx=Number(nose?.position?.x),ny=Number(nose?.position?.y);
+        const nosePoint=Number.isFinite(nx)&&Number.isFinite(ny)
+          ?{x:nx/sw,y:ny/sh,score:Number(nose?.score)||0}
+          :null;
+        return {seg,sw,sh,area,areaRatio,cx,cy,box,poseScore,nose:nosePoint};
       };
 
-      const loop=async ts=>{
+      const boxIou=(a,b)=>{
+        if(!a||!b)return 0;
+        const x1=Math.max(a.x,b.x),y1=Math.max(a.y,b.y);
+        const x2=Math.min(a.x+a.w,b.x+b.w),y2=Math.min(a.y+a.h,b.y+b.h);
+        const iw=Math.max(0,x2-x1),ih=Math.max(0,y2-y1);
+        const inter=iw*ih;
+        const union=a.w*a.h+b.w*b.h-inter;
+        return union>0?inter/union:0;
+      };
+
+      const choosePrimary=people=>{
+        const candidates=(people||[]).map(analysePerson).filter(Boolean);
+        if(!candidates.length)return null;
+
+        const prev=this.virtualBgPrimaryTrack;
+        let best=null,bestScore=-Infinity;
+
+        for(const cand of candidates){
+          const centerDist=Math.hypot(cand.cx-.5,(cand.cy-.5)*.8);
+          const centerScore=Math.max(0,1-centerDist/.72);
+          const sizeScore=Math.min(1,cand.areaRatio/.32);
+          let score=sizeScore*4.4+centerScore*1.5+Math.min(1,cand.poseScore)*.6;
+
+          if(prev){
+            const dist=Math.hypot(cand.cx-prev.cx,cand.cy-prev.cy);
+            const continuity=Math.max(0,1-dist/.55);
+            const areaCompat=Math.min(cand.areaRatio,prev.areaRatio)/Math.max(.001,Math.max(cand.areaRatio,prev.areaRatio));
+            score+=continuity*4.8+areaCompat*1.8+boxIou(cand.box,prev.box)*3.0;
+
+            if(cand.nose&&prev.nose){
+              const nd=Math.hypot(cand.nose.x-prev.nose.x,cand.nose.y-prev.nose.y);
+              score+=Math.max(0,1-nd/.45)*2.0;
+            }
+          }
+
+          if(score>bestScore){bestScore=score;best=cand}
+        }
+
+        if(best){
+          const prev=this.virtualBgPrimaryTrack;
+          const k=prev?.cx!=null?.35:1;
+          this.virtualBgPrimaryTrack={
+            cx:prev?prev.cx*(1-k)+best.cx*k:best.cx,
+            cy:prev?prev.cy*(1-k)+best.cy*k:best.cy,
+            areaRatio:prev?prev.areaRatio*(1-k)+best.areaRatio*k:best.areaRatio,
+            box:best.box,
+            nose:best.nose||prev?.nose||null,
+            seenAt:performance.now()
+          };
+        }
+        return best;
+      };
+
+      const updateMask=primary=>{
+        if(!primary?.seg?.data)return false;
+        const data=primary.seg.data;
+        const sw=primary.sw,sh=primary.sh;
+        if(sw!==maskCanvas.width||sh!==maskCanvas.height){
+          /* BodyPix normally returns input-sized masks. If a browser/model
+             build differs, keep the old mask rather than misaligning it. */
+          console.warn('[Mathroom virtual background] unexpected BodyPix mask size',sw,sh);
+          return false;
+        }
+
+        const total=sw*sh;
+        for(let p=0,i=0;p<total;p++,i+=4){
+          const x=p%sw,y=(p/sw)|0;
+          let fg=!!data[p];
+
+          /* One-pixel dilation preserves hair/shoulders and avoids the harsh
+             "eaten body" edge from strict binary instance masks. */
+          if(!fg){
+            if(x>0&&data[p-1])fg=true;
+            else if(x<sw-1&&data[p+1])fg=true;
+            else if(y>0&&data[p-sw])fg=true;
+            else if(y<sh-1&&data[p+sw])fg=true;
+          }
+
+          const target=fg?255:0;
+          const prev=temporalAlpha[p];
+          const gain=target>=prev?.88:.78;
+          const next=Math.round(prev+(target-prev)*gain);
+          temporalAlpha[p]=next<3?0:next;
+
+          maskPixels[i]=255;
+          maskPixels[i+1]=255;
+          maskPixels[i+2]=255;
+          maskPixels[i+3]=temporalAlpha[p];
+        }
+        maskCtx.putImageData(maskImage,0,0);
+        return true;
+      };
+
+      const inferenceConfig={
+        flipHorizontal:false,
+        internalResolution:mobile?'low':'medium',
+        segmentationThreshold:mobile?.48:.50,
+        maxDetections:3,
+        scoreThreshold:.12,
+        nmsRadius:20,
+        minKeypointScore:.12,
+        refineSteps:mobile?4:6
+      };
+
+      const renderFrame=ts=>{
         if(
           this.destroyed ||
           this.virtualBgTrack!==outTrack ||
           this.virtualBgMode==='none'
         )return;
 
-        this.virtualBgRaf=requestAnimationFrame(loop);
+        this.virtualBgRaf=requestAnimationFrame(renderFrame);
 
-        const hidden=document.visibilityState==='hidden';
-        const interval=hidden?Math.max(180,this.virtualBgFrameInterval):this.virtualBgFrameInterval;
+        if(ts-lastRender>=33&&source.readyState>=2){
+          lastRender=ts;
+          ctx.save();
+          ctx.clearRect(0,0,w,h);
+
+          if(maskReady){
+            ctx.filter=mobile?'blur(1.7px)':'blur(1.2px)';
+            ctx.drawImage(maskCanvas,0,0,maskCanvas.width,maskCanvas.height,0,0,w,h);
+            ctx.filter='none';
+            ctx.globalCompositeOperation='source-in';
+            ctx.drawImage(source,0,0,w,h);
+          }
+
+          ctx.globalCompositeOperation='destination-over';
+          drawBackground();
+          ctx.restore();
+        }
+
+        const interval=document.visibilityState==='hidden'
+          ?Math.max(500,this.virtualBgFrameInterval)
+          :this.virtualBgFrameInterval;
+
         if(
-          this.screenTrack ||
-          source.readyState<2 ||
-          this.virtualBgBusy ||
-          ts-this.virtualBgLastFrame<interval
-        )return;
-
-        this.virtualBgLastFrame=ts;
-        this.virtualBgBusy=true;
-        const t0=performance.now();
-
-        try{
+          !inferenceBusy &&
+          source.readyState>=2 &&
+          ts-lastInference>=interval
+        ){
+          lastInference=ts;
+          inferenceBusy=true;
+          const started=performance.now();
           inferCtx.drawImage(source,0,0,inferCanvas.width,inferCanvas.height);
-          await pose.send({image:inferCanvas});
-        }catch(e){
-          console.warn('[Mathroom virtual background pose]',e);
-        }finally{
-          const elapsed=performance.now()-t0;
-          this.virtualBgAvgProcessMs=this.virtualBgAvgProcessMs
-            ?this.virtualBgAvgProcessMs*.8+elapsed*.2
-            :elapsed;
 
-          /* Keep enough headroom for WebRTC/whiteboard/UI. ML frame rate may
-             drop on a weak machine, but the output video track remains fluid. */
-          if(this.virtualBgAvgProcessMs>145)this.virtualBgFrameInterval=isMobile?210:180;
-          else if(this.virtualBgAvgProcessMs>105)this.virtualBgFrameInterval=isMobile?165:140;
-          else if(this.virtualBgAvgProcessMs>75)this.virtualBgFrameInterval=isMobile?135:110;
-          else this.virtualBgFrameInterval=isMobile?115:90;
+          Promise.resolve(model.segmentMultiPerson(inferCanvas,inferenceConfig))
+            .then(people=>{
+              if(this.destroyed||this.virtualBgTrack!==outTrack)return;
+              const primary=choosePrimary(people);
+              if(!primary)return;
+              if(!updateMask(primary))return;
 
-          this.virtualBgBusy=false;
+              if(!maskReady){
+                maskReady=true;
+                this.virtualBgMaskReady=true;
+                this.virtualBgInitializing=false;
+                this.paintAllVirtualBgControls();
+                try{resolveFirstMask?.(true)}catch{}
+
+                /* The preview/WebRTC switch only after the selected participant
+                   has a valid instance mask. No manual camera toggle is needed. */
+                queueMicrotask(async()=>{
+                  if(this.destroyed||this.virtualBgTrack!==outTrack)return;
+                  await this.syncOutgoingCameraTrack();
+                  this.bindPrejoinPreview();
+                  this.bindMedia();
+                  this.paintPrejoin();
+                  this.paint();
+                });
+              }
+            })
+            .catch(e=>console.warn('[Mathroom virtual background BodyPix]',e))
+            .finally(()=>{
+              const elapsed=performance.now()-started;
+              this.virtualBgAvgProcessMs=this.virtualBgAvgProcessMs
+                ?this.virtualBgAvgProcessMs*.8+elapsed*.2
+                :elapsed;
+
+              if(this.virtualBgAvgProcessMs>320)this.virtualBgFrameInterval=mobile?500:420;
+              else if(this.virtualBgAvgProcessMs>240)this.virtualBgFrameInterval=mobile?400:330;
+              else if(this.virtualBgAvgProcessMs>170)this.virtualBgFrameInterval=mobile?320:250;
+              else if(this.virtualBgAvgProcessMs>115)this.virtualBgFrameInterval=mobile?260:190;
+              else this.virtualBgFrameInterval=mobile?220:150;
+
+              inferenceBusy=false;
+            });
         }
       };
 
-      this.virtualBgRaf=requestAnimationFrame(loop);
+      this.virtualBgRaf=requestAnimationFrame(renderFrame);
 
       const ready=await Promise.race([
-        firstCompositePromise,
-        new Promise(resolve=>setTimeout(()=>resolve(false),7000))
+        firstMaskPromise,
+        new Promise(resolve=>setTimeout(()=>resolve(false),8000))
       ]);
 
+      /* A slow/low-light first detection is not treated as a failure. Raw camera
+         stays visible because effectiveCameraTrack() requires maskReady. The
+         inference loop keeps running and auto-switches as soon as a participant
+         is identified. */
       if(!ready){
-        /* Do not lie in the UI: if the single-person segmenter cannot find a
-           participant, stay on the raw camera rather than showing a selected
-           preset that is not actually applied. */
-        this.virtualBgInitializing=false;
-        this.paintAllVirtualBgControls();
-        this.stopVirtualBackground();
-        throw new Error('Не удалось распознать человека для виртуального фона');
+        console.warn('[Mathroom virtual background] waiting for primary-person mask');
+        return null;
       }
 
       return outTrack;
@@ -2287,7 +2528,7 @@
         this.paintAllVirtualBgControls();
 
         if(mode==='none'){
-          if(this.virtualBgProcessor||this.virtualBgTrack)this.stopVirtualBackground();
+          if(this.virtualBgTrack)this.stopVirtualBackground();
           await this.syncOutgoingCameraTrack();
         }else{
           const raw=this.localStream?.getVideoTracks?.().find(t=>t.readyState==='live')||null;
@@ -2793,7 +3034,7 @@
           this.bindPrejoinPreview();
           this.paintPrejoin();
           if(next&&this.virtualBgMode!=='none'){
-            await this.activateSelectedVirtualBackground(existing);
+            this.activateSelectedVirtualBackground(existing).catch(e=>console.warn('[Mathroom prejoin background]',e));
           }
           return;
         }
@@ -2821,7 +3062,7 @@
           this.paintPrejoin();
 
           if(this.virtualBgMode!=='none'){
-            await this.activateSelectedVirtualBackground(rawTrack);
+            this.activateSelectedVirtualBackground(rawTrack).catch(e=>console.warn('[Mathroom prejoin background]',e));
           }
         }catch(e){
           this.cameraEnabled=false;
@@ -2845,12 +3086,10 @@
       };
       this.bindVirtualBgControls(backdrop);
 
-      /* Warm the segmentation graph before camera activation. This is more
-         useful than loading the script alone: the expensive WASM/model setup
-         happens while the user is still choosing devices/backgrounds. */
+      /* Load and compile the single canonical multi-person model while the
+         user is still choosing devices/backgrounds. */
       if(this.virtualBgMode!=='none'){
         this.prewarmVirtualBgEngine().catch(()=>{});
-        this.ensureVirtualBgFaceLibrary().catch(e=>console.warn('[Mathroom virtual background] face prewarm',e));
       }
 
       join.onclick = () => this.joinCall();
@@ -3133,7 +3372,7 @@
           toast('Камера включена');
 
           if(this.virtualBgMode!=='none'){
-            await this.activateSelectedVirtualBackground(t);
+            this.activateSelectedVirtualBackground(t).catch(e=>console.warn('[Mathroom camera background]',e));
           }
         }catch(e){
           this.cameraEnabled=false;
@@ -3163,7 +3402,7 @@
         this.paint();
         this.paintPrejoin();
         if(next&&this.virtualBgMode!=='none'&&(!this.virtualBgTrack||this.virtualBgTrack.readyState!=='live')){
-          await this.activateSelectedVirtualBackground(t);
+          this.activateSelectedVirtualBackground(t).catch(e=>console.warn('[Mathroom camera background]',e));
         }
       }finally{
         clearTimeout(cameraLockFailsafe);
@@ -4320,6 +4559,10 @@
       this.virtualBgPoseProcessor=null;
       this.virtualBgPoseReadyPromise=null;
       this.virtualBgPoseResultHandler=null;
+      try{this.virtualBgBodyPixModel?.dispose?.()}catch{}
+      this.virtualBgBodyPixModel=null;
+      this.virtualBgBodyPixModelPromise=null;
+      this.virtualBgPrimaryTrack=null;
       this.screenTrack?.stop?.();
       this.screenTrack = null;
       this.screenPreviewStream = null;
