@@ -2662,26 +2662,32 @@
 
             const path=new Path2D();
             path.ellipse(sx,sy,faceRx,faceRy,0,0,Math.PI*2);
-            path.roundRect(
-              sx-torsoW/2,
-              torsoTop,
-              torsoW,
-              torsoH,
-              Math.min(34,torsoW*.16)
-            );
+            if(typeof path.roundRect==='function'){
+              path.roundRect(
+                sx-torsoW/2,
+                torsoTop,
+                torsoW,
+                torsoH,
+                Math.min(34,torsoW*.16)
+              );
+            }else{
+              path.rect(sx-torsoW/2,torsoTop,torsoW,torsoH);
+            }
 
             /* Subtract a generous protected participant corridor. */
             if(pFresh){
               const px=primary.cx*cw,py=primary.cy*ch;
               const pfw=Math.max(32,primary.w*cw),pfh=Math.max(38,primary.h*ch);
               path.ellipse(px,py,Math.max(54,pfw*1.45),Math.max(64,pfh*1.70),0,0,Math.PI*2);
-              path.roundRect(
-                px-Math.max(cw*.18,pfw*2.2),
-                py+pfh*.35,
-                Math.max(cw*.36,pfw*4.4),
-                Math.max(ch*.68,pfh*7.0),
-                42
-              );
+              const protectX=px-Math.max(cw*.18,pfw*2.2);
+              const protectY=py+pfh*.35;
+              const protectW=Math.max(cw*.36,pfw*4.4);
+              const protectH=Math.max(ch*.68,pfh*7.0);
+              if(typeof path.roundRect==='function'){
+                path.roundRect(protectX,protectY,protectW,protectH,42);
+              }else{
+                path.rect(protectX,protectY,protectW,protectH);
+              }
             }
 
             ctx.save();
