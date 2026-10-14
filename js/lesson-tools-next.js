@@ -135,6 +135,7 @@
       this.virtualBgTrack = null;
       this.virtualBgRaf = 0;
       this.virtualBgBusy = false;
+      this.virtualBgStartPromise = null;
       this.virtualBgLastFrame = 0;
       this.virtualBgFrameInterval = 50;
       this.virtualBgAvgProcessMs = 0;
@@ -1859,6 +1860,15 @@
     }
 
     async startVirtualBackground() {
+      if(this.virtualBgMode==='none')return null;
+      if(this.virtualBgStartPromise)return this.virtualBgStartPromise;
+      const task=this.startVirtualBackgroundInternal();
+      this.virtualBgStartPromise=task;
+      try{return await task}
+      finally{if(this.virtualBgStartPromise===task)this.virtualBgStartPromise=null}
+    }
+
+    async startVirtualBackgroundInternal() {
       if(this.virtualBgMode==='none') return null;
       const raw=this.localStream?.getVideoTracks?.()[0];
       if(!raw) throw new Error('Камера недоступна');
@@ -3040,6 +3050,38 @@
       this.bindPrejoinPreview();
     }
 
+    async activateSelectedVirtualBackground(rawTrack=null) {
+      if(this.virtualBgMode==='none'||!this.cameraEnabled||this.destroyed)return null;
+      const raw=rawTrack||this.localStream?.getVideoTracks?.().find(t=>t.readyState==='live')||null;
+      if(!raw||raw.readyState!=='live'||raw.enabled===false)return null;
+      const rawId=raw.id||'';
+      try{
+        const processed=await this.startVirtualBackground();
+        if(
+          !processed ||
+          !this.cameraEnabled ||
+          this.destroyed ||
+          this.virtualBgMode==='none' ||
+          this.localStream?.getVideoTracks?.()[0]?.id!==rawId
+        )return null;
+        await this.syncOutgoingCameraTrack();
+        this.bindPrejoinPreview();
+        this.paintPrejoin();
+        this.paint();
+        return processed;
+      }catch(e){
+        console.warn('[Mathroom virtual background activation]',e);
+        this.stopVirtualBackground();
+        this.virtualBgMode='none';
+        localStorage.setItem(`mathroom.media.bg.${this.role}`,'none');
+        this.paintPrejoin();
+        this.paintAllVirtualBgControls();
+        this.paint();
+        toast('Виртуальный фон не запустился — оставили обычную камеру');
+        return null;
+      }
+    }
+
     async setVirtualBackground(mode) {
       if(!['none','blur','studio','mathroom','classroom','custom'].includes(mode))return;
       if(mode==='custom'&&!this.virtualBgCustomImage)return;
@@ -3062,11 +3104,13 @@
           if(this.virtualBgProcessor||this.virtualBgTrack)this.stopVirtualBackground();
           await this.syncOutgoingCameraTrack();
         }else{
-          /* Once segmentation is running, changing an asset is only a background
-             swap. Keep the same processed MediaStreamTrack to avoid freezes. */
-          if(!this.virtualBgProcessor||!this.virtualBgTrack||this.virtualBgTrack.readyState!=='live'){
-            await this.startVirtualBackground();
-            await this.syncOutgoingCameraTrack();
+          const raw=this.localStream?.getVideoTracks?.().find(t=>t.readyState==='live')||null;
+          /* Background choice is allowed before camera start. In that case we
+             remember it and apply it automatically when the camera is enabled. */
+          if(raw&&raw.enabled!==false&&this.cameraEnabled){
+            if(!this.virtualBgProcessor||!this.virtualBgTrack||this.virtualBgTrack.readyState!=='live'){
+              await this.activateSelectedVirtualBackground(raw);
+            }
           }
         }
         this.paintPrejoin();
@@ -3553,12 +3597,16 @@
 
         const existing=this.localStream?.getVideoTracks?.()[0];
         if(existing && existing.readyState==='live'){
-          this.cameraEnabled=!this.cameraEnabled;
-          existing.enabled=this.cameraEnabled;
-          if(this.virtualBgTrack)this.virtualBgTrack.enabled=this.cameraEnabled;
-          localStorage.setItem(`mathroom.media.camera.${this.role}`,this.cameraEnabled?'1':'0');
+          const next=!(existing.enabled!==false);
+          this.cameraEnabled=next;
+          existing.enabled=next;
+          if(this.virtualBgTrack)this.virtualBgTrack.enabled=next;
+          localStorage.setItem(`mathroom.media.camera.${this.role}`,next?'1':'0');
           this.bindPrejoinPreview();
           this.paintPrejoin();
+          if(next&&this.virtualBgMode!=='none'){
+            this.activateSelectedVirtualBackground(existing).catch(e=>console.warn('[Mathroom prejoin background]',e));
+          }
           return;
         }
 
@@ -3585,35 +3633,7 @@
           this.paintPrejoin();
 
           if(this.virtualBgMode!=='none'){
-            const rawId=rawTrack?.id||'';
-            Promise.resolve().then(async()=>{
-              try{
-                if(
-                  !this.cameraEnabled ||
-                  this.destroyed ||
-                  this.localStream?.getVideoTracks?.()[0]?.id!==rawId ||
-                  this.virtualBgMode==='none'
-                )return;
-
-                await this.startVirtualBackground();
-
-                if(
-                  !this.cameraEnabled ||
-                  this.destroyed ||
-                  this.localStream?.getVideoTracks?.()[0]?.id!==rawId ||
-                  this.virtualBgMode==='none'
-                ){
-                  if(this.virtualBgMode==='none')this.stopVirtualBackground();
-                  return;
-                }
-
-                await this.syncOutgoingCameraTrack();
-                this.bindPrejoinPreview();
-                this.paintPrejoin();
-              }catch(e){
-                console.warn('[Mathroom prejoin virtual background]',e);
-              }
-            });
+            this.activateSelectedVirtualBackground(rawTrack).catch(e=>console.warn('[Mathroom prejoin background]',e));
           }
         }catch(e){
           this.cameraEnabled=false;
@@ -3650,13 +3670,9 @@
       try {
         await this.acquireMedia();
         if (!this.prejoin) return;
-        if(this.localStream?.getVideoTracks?.().length && this.virtualBgMode!=='none'){
-          try{await this.startVirtualBackground()}catch(e){
-            console.warn('[Mathroom virtual background]',e);
-            this.virtualBgMode='none';
-            localStorage.setItem(`mathroom.media.bg.${this.role}`,'none');
-            this.stopVirtualBackground();
-          }
+        const initialCamera=this.localStream?.getVideoTracks?.().find(t=>t.readyState==='live')||null;
+        if(initialCamera&&initialCamera.enabled!==false&&this.cameraEnabled&&this.virtualBgMode!=='none'){
+          await this.activateSelectedVirtualBackground(initialCamera);
         }
         this.bindPrejoinPreview();
         join.disabled = false;
@@ -3700,11 +3716,20 @@
       }
       if(cam){
         const locked=this.role==='student'&&!this.studentCameraAllowed;
-        const on=!locked&&this.cameraEnabled&&hasCam;
-        cam.innerHTML=this.mediaButton('camera',locked?'Камера заблокирована':hasCam&&on?'Камера включена':'Камера выключена',hasCam&&on);
-        cam.classList.toggle('is-on',hasCam&&on);cam.classList.toggle('is-off',!(hasCam&&on));
+        const liveTrack=this.localStream?.getVideoTracks?.().find(t=>t.readyState==='live')||null;
+        const on=!locked&&!!liveTrack&&liveTrack.enabled!==false;
+        if(!locked&&liveTrack&&this.cameraEnabled!==on){
+          this.cameraEnabled=on;
+          localStorage.setItem(`mathroom.media.camera.${this.role}`,on?'1':'0');
+        }
+        const camState=locked?'locked':on?'on':'off';
+        if(cam.dataset.mrMediaState!==camState){
+          cam.innerHTML=this.mediaButton('camera',locked?'Камера заблокирована':on?'Камера включена':'Камера выключена',on);
+          cam.dataset.mrMediaState=camState;
+        }
+        cam.classList.toggle('is-on',on);cam.classList.toggle('is-off',!on);
         cam.disabled=locked;
-        cam.title=locked?'Камера отключена преподавателем':hasCam?(on?'Выключить камеру':'Включить камеру'):'Включить камеру и показать предпросмотр';
+        cam.title=locked?'Камера отключена преподавателем':liveTrack?(on?'Выключить камеру':'Включить камеру'):'Включить камеру и показать предпросмотр';
       }
       this.paintVirtualBgControls(this.prejoin);
       this.bindPrejoinPreview();
@@ -3921,28 +3946,7 @@
           toast('Камера включена');
 
           if(this.virtualBgMode!=='none'){
-            const rawId=t?.id||'';
-            Promise.resolve().then(async()=>{
-              try{
-                if(
-                  !this.cameraEnabled ||
-                  this.destroyed ||
-                  this.localStream?.getVideoTracks?.()[0]?.id!==rawId ||
-                  this.virtualBgMode==='none'
-                )return;
-                await this.startVirtualBackground();
-                if(
-                  !this.cameraEnabled ||
-                  this.destroyed ||
-                  this.localStream?.getVideoTracks?.()[0]?.id!==rawId ||
-                  this.virtualBgMode==='none'
-                )return;
-                await this.syncOutgoingCameraTrack();
-                this.paint();
-              }catch(e){
-                console.warn('[Mathroom camera virtual background async]',e);
-              }
-            });
+            this.activateSelectedVirtualBackground(t).catch(e=>console.warn('[Mathroom camera background]',e));
           }
         }catch(e){
           this.cameraEnabled=false;
@@ -3955,20 +3959,25 @@
           return;
         }
 
-        this.cameraEnabled=!this.cameraEnabled;
-        t.enabled=this.cameraEnabled;
-        if(this.virtualBgTrack)this.virtualBgTrack.enabled=this.cameraEnabled;
-        localStorage.setItem(`mathroom.media.camera.${this.role}`,this.cameraEnabled?'1':'0');
+        const next=!(t.enabled!==false);
+        this.cameraEnabled=next;
+        t.enabled=next;
+        if(this.virtualBgTrack)this.virtualBgTrack.enabled=next;
+        localStorage.setItem(`mathroom.media.camera.${this.role}`,next?'1':'0');
         const sender=this.pc?.getSenders?.().find(s=>s.track?.kind==='video')
           ||this.pc?.getTransceivers?.().find(tr=>tr.receiver?.track?.kind==='video')?.sender;
         if(sender){
           try{
-            await sender.replaceTrack(this.cameraEnabled?(this.effectiveCameraTrack()||t):null);
-            if(this.cameraEnabled)await this.applyVideoSenderProfile(true);
+            await sender.replaceTrack(next?(this.effectiveCameraTrack()||t):null);
+            if(next)await this.applyVideoSenderProfile(true);
           }catch(e){console.warn('[Mathroom camera toggle]',e)}
         }
         this.bindMedia();
         this.paint();
+        this.paintPrejoin();
+        if(next&&this.virtualBgMode!=='none'&&(!this.virtualBgTrack||this.virtualBgTrack.readyState!=='live')){
+          this.activateSelectedVirtualBackground(t).catch(e=>console.warn('[Mathroom camera background]',e));
+        }
       }finally{
         clearTimeout(cameraLockFailsafe);
         if(this.mediaActionLock)this.mediaActionLock.camera=false;
