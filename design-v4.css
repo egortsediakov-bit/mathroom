@@ -4607,3 +4607,318 @@ html[data-theme="dark"] .mr-student-stat .icon{
 html[data-theme="dark"] .mr-stat-icon-svg .mr-stat-ink{stroke:#fff}
 html[data-theme="dark"] .mr-stat-icon-svg .mr-stat-orange{stroke:#ff6a24}
 html[data-theme="dark"] .mr-stat-icon-svg .mr-stat-orange-fill{fill:#ff6a24}
+
+
+/* v47.5 — Kotomatika student directory detail pass */
+/* One brand palette: orange / black / white. */
+.mr-class-card.tone-brand,
+.tone-brand{
+  --tone:#f35a16;
+  --tone-soft:#fff2ea;
+}
+
+/* Class cards: strong black numeral tile + orange interaction state. */
+.mr-class-card{
+  min-height:96px;
+  border-color:#e5e7ea;
+  box-shadow:0 9px 26px rgba(18,20,24,.035);
+}
+.mr-class-card:hover{
+  border-color:#f3b69c;
+  box-shadow:0 12px 30px rgba(22,22,22,.065);
+}
+.mr-class-card.selected{
+  background:linear-gradient(105deg,#fff8f4 0%,#fff 68%);
+  border-color:#f35a16;
+  box-shadow:0 0 0 2px rgba(243,90,22,.08),0 12px 28px rgba(30,37,49,.05);
+}
+.mr-class-icon{
+  position:relative;
+  overflow:hidden;
+  background:linear-gradient(145deg,#202124 0%,#090a0b 100%)!important;
+  color:#fff!important;
+  border:1px solid #25272a;
+  border-radius:14px;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.10),0 7px 17px rgba(10,10,12,.12);
+  font-size:17px;
+  letter-spacing:-.03em;
+}
+.mr-class-icon::after{
+  content:"";
+  position:absolute;
+  width:22px;height:22px;
+  right:-11px;top:-10px;
+  border:1px solid rgba(243,90,22,.72);
+  border-radius:50%;
+}
+.mr-class-card.selected .mr-class-icon{
+  background:linear-gradient(145deg,#ff6b25 0%,#ef4f0c 100%)!important;
+  border-color:#f35a16;
+}
+.mr-class-copy em i{background:#f35a16!important}
+.mr-class-arrow{
+  width:30px;height:30px;
+  display:grid;place-items:center;
+  border-radius:9px;
+  color:#16181b;
+  background:#f5f5f4;
+  transition:background .16s ease,color .16s ease,transform .16s ease;
+}
+.mr-class-card:hover .mr-class-arrow{
+  color:#fff;
+  background:#17191c;
+  transform:translateX(1px);
+}
+.mr-class-arrow .mr-student-ui-icon{width:15px;height:15px}
+
+/* Grade section headers carry the same visual language as the cards. */
+.mr-student-grade-block{
+  border-color:#e3e5e8;
+  box-shadow:0 10px 30px rgba(16,18,22,.04);
+}
+.mr-student-grade-head{
+  position:relative;
+  overflow:hidden;
+  min-height:62px;
+  padding:10px 15px;
+  background:linear-gradient(100deg,#fff8f3 0%,#fff 44%)!important;
+  border-color:#eceef0;
+}
+.mr-student-grade-head::after{
+  content:"";
+  position:absolute;
+  width:120px;height:120px;
+  right:12%;top:-88px;
+  border:1px solid rgba(243,90,22,.16);
+  border-radius:50%;
+  pointer-events:none;
+}
+.mr-grade-chip{
+  position:relative;
+  z-index:1;
+  width:42px;height:42px;
+  border-radius:12px;
+  background:linear-gradient(145deg,#202124 0%,#090a0b 100%)!important;
+  color:#fff!important;
+  border:1px solid #26282b;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.10);
+  font-size:14px;
+}
+.mr-grade-chevron{
+  position:relative;
+  z-index:1;
+  width:34px;height:34px;
+  display:grid;place-items:center;
+  border-radius:10px;
+  background:#f5f5f4;
+  color:#181a1d;
+}
+.mr-grade-chevron .mr-student-ui-icon{width:16px;height:16px}
+.mr-student-grade-block.collapsed .mr-grade-chevron{transform:rotate(180deg)}
+
+/* Shared custom micro-icons. */
+.mr-student-ui-icon{
+  width:18px;height:18px;
+  display:block;
+  fill:none;
+  stroke:currentColor;
+  stroke-width:1.8;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+  pointer-events:none;
+}
+.mr-student-ui-icon circle{fill:currentColor;stroke:none}
+.mr-student-ui-icon .mr-ui-icon-accent{stroke:#fff}
+
+/* Student table: more deliberate rhythm, black detail and orange state cues. */
+.mr-student-table-head{
+  min-height:39px;
+  background:#f4f5f6;
+  color:#4d535d;
+  text-transform:uppercase;
+  letter-spacing:.055em;
+  font-size:9px;
+  border-top:1px solid #eceef0;
+  border-bottom:1px solid #eceef0;
+}
+.mr-student-directory-row{
+  position:relative;
+  min-height:82px;
+  padding-top:12px;
+  padding-bottom:12px;
+  transition:background .15s ease,box-shadow .15s ease;
+}
+.mr-student-directory-row::before{
+  content:"";
+  position:absolute;
+  left:0;top:14px;bottom:14px;
+  width:3px;
+  border-radius:0 3px 3px 0;
+  background:#f35a16;
+  opacity:0;
+  transform:scaleY(.6);
+  transition:opacity .15s ease,transform .15s ease;
+}
+.mr-student-directory-row:hover{
+  background:linear-gradient(90deg,#fff8f4 0%,#fff 34%);
+  box-shadow:inset 0 0 0 1px rgba(243,90,22,.025);
+}
+.mr-student-directory-row:hover::before{
+  opacity:1;
+  transform:scaleY(1);
+}
+.mr-student-avatar{
+  width:46px;height:46px;flex-basis:46px;
+  border:1px solid #f6ded1;
+  background:linear-gradient(145deg,#fff5ef,#ffe8dc)!important;
+  color:#f35a16!important;
+  box-shadow:inset 0 1px 0 #fff;
+  font-size:13px;
+}
+.mr-student-identity b{
+  color:#17191c;
+  font-size:13.5px;
+  font-weight:850;
+}
+.mr-student-group-cell span{
+  border:1px solid #e6e8eb;
+  background:#f7f7f6;
+  color:#4f5660;
+}
+.mr-student-group-cell .empty-group{
+  background:#f7f7f6;
+  color:#858c96;
+}
+.mr-student-progress-cell>div{
+  height:7px;
+  background:#e7e9ec;
+}
+.mr-student-progress-cell>div i{
+  background:linear-gradient(90deg,#f35a16,#ff7334)!important;
+}
+.mr-student-activity-cell>span{
+  width:8px;height:8px;flex-basis:8px;
+  background:#f35a16;
+  box-shadow:0 0 0 4px rgba(243,90,22,.09);
+}
+.mr-student-activity-cell>span.off{
+  background:#a9afb6;
+  box-shadow:0 0 0 4px rgba(30,33,37,.04);
+}
+.mr-student-link-cell button{
+  width:39px;height:39px;
+  display:grid;place-items:center;
+  border-color:#dfe2e6;
+  border-radius:11px;
+  background:#f8f8f7;
+  color:#17191c;
+}
+.mr-student-link-cell button .mr-student-ui-icon{width:19px;height:19px}
+.mr-student-link-cell button:hover{
+  color:#fff;
+  border-color:#17191c;
+  background:#17191c;
+}
+.mr-student-row-actions{gap:7px}
+.mr-student-row-actions .btn{
+  min-height:39px;
+  gap:7px;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  font-weight:800!important;
+}
+.mr-student-profile-action{
+  min-width:105px;
+  background:linear-gradient(180deg,#ff681f 0%,#f0520d 100%)!important;
+  border-color:#f35a16!important;
+  color:#fff!important;
+  box-shadow:0 6px 16px rgba(243,90,22,.14);
+}
+.mr-student-profile-action:hover{
+  background:#e94d09!important;
+  border-color:#e94d09!important;
+}
+.mr-student-profile-action .mr-student-ui-icon{width:17px;height:17px}
+.mr-student-refresh-action{
+  background:#fff!important;
+  border-color:#dfe2e6!important;
+  color:#24272b!important;
+}
+.mr-student-refresh-action:hover{
+  background:#17191c!important;
+  border-color:#17191c!important;
+  color:#fff!important;
+}
+.mr-student-refresh-action .mr-student-ui-icon{width:16px;height:16px}
+.mr-student-more summary{
+  width:40px;height:39px;
+  display:grid;place-items:center;
+  background:#f8f8f7;
+  color:#17191c;
+}
+.mr-student-more summary:hover{
+  background:#17191c;
+  border-color:#17191c;
+  color:#fff;
+}
+.mr-student-more summary .mr-student-ui-icon{
+  width:20px;height:20px;
+}
+.mr-student-more summary .mr-student-ui-icon circle{r:1.45}
+
+/* Dark mode keeps the same hierarchy without reintroducing extra colours. */
+html[data-theme="dark"] .mr-class-card.tone-brand,
+html[data-theme="dark"] .tone-brand{
+  --tone:#ff6a24;
+  --tone-soft:#2a1a12;
+}
+html[data-theme="dark"] .mr-class-icon,
+html[data-theme="dark"] .mr-grade-chip{
+  background:linear-gradient(145deg,#f4f5f6 0%,#dfe2e5 100%)!important;
+  color:#0c0d0f!important;
+  border-color:#4b5159;
+}
+html[data-theme="dark"] .mr-class-card.selected .mr-class-icon{
+  background:linear-gradient(145deg,#ff7432,#f25813)!important;
+  color:#fff!important;
+  border-color:#ff6a24;
+}
+html[data-theme="dark"] .mr-student-grade-head{
+  background:linear-gradient(100deg,#25170f 0%,#15181d 44%)!important;
+}
+html[data-theme="dark"] .mr-class-arrow,
+html[data-theme="dark"] .mr-grade-chevron{
+  background:#22272f;
+  color:#f4f6f8;
+}
+html[data-theme="dark"] .mr-student-table-head{
+  background:#101318!important;
+  color:#9ea7b2!important;
+}
+html[data-theme="dark"] .mr-student-identity b{color:#f4f6f8}
+html[data-theme="dark"] .mr-student-avatar{
+  background:linear-gradient(145deg,#2b1a11,#21140e)!important;
+  border-color:#4b2a19;
+  color:#ff6a24!important;
+}
+html[data-theme="dark"] .mr-student-group-cell span{
+  background:#1d2228!important;
+  border-color:#30363e!important;
+  color:#c2c8cf!important;
+}
+html[data-theme="dark"] .mr-student-progress-cell>div{background:#2a3037}
+html[data-theme="dark"] .mr-student-link-cell button,
+html[data-theme="dark"] .mr-student-refresh-action,
+html[data-theme="dark"] .mr-student-more summary{
+  background:#171b20!important;
+  border-color:#343b45!important;
+  color:#f4f6f8!important;
+}
+html[data-theme="dark"] .mr-student-link-cell button:hover,
+html[data-theme="dark"] .mr-student-refresh-action:hover,
+html[data-theme="dark"] .mr-student-more summary:hover{
+  background:#f4f6f8!important;
+  border-color:#f4f6f8!important;
+  color:#0d0f12!important;
+}
