@@ -4922,3 +4922,183 @@ html[data-theme="dark"] .mr-student-more summary:hover{
   border-color:#f4f6f8!important;
   color:#0d0f12!important;
 }
+
+
+/* v47.6 — rebalance student directory with stronger Kotomatika orange */
+/* Keep black as structure, use orange as the recurring brand signal. */
+.view-students .mr-students-count{
+  background:#fff0e8!important;
+  color:#f35a16!important;
+  border:1px solid #ffd8c5;
+}
+
+/* Class cards — black number block stays, but orange becomes visible at a glance. */
+.view-students .mr-class-card{
+  overflow:hidden;
+}
+.view-students .mr-class-card::before{
+  content:"";
+  position:absolute;
+  left:0;top:0;bottom:0;
+  width:4px;
+  background:#f35a16;
+  opacity:.9;
+}
+.view-students .mr-class-card::after{
+  content:"";
+  position:absolute;
+  width:74px;height:74px;
+  right:-46px;top:-46px;
+  border:1px solid rgba(243,90,22,.20);
+  border-radius:50%;
+  pointer-events:none;
+}
+.view-students .mr-class-icon{
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.10),
+    inset -4px 0 0 #f35a16,
+    0 7px 17px rgba(10,10,12,.12);
+}
+.view-students .mr-class-icon::before{
+  content:"";
+  position:absolute;
+  left:8px;right:8px;bottom:6px;
+  height:2px;
+  border-radius:999px;
+  background:#f35a16;
+  opacity:.95;
+}
+.view-students .mr-class-arrow{
+  background:#fff1e9;
+  color:#f35a16;
+  border:1px solid #ffd8c5;
+}
+.view-students .mr-class-card:hover .mr-class-arrow{
+  background:#f35a16;
+  border-color:#f35a16;
+  color:#fff;
+}
+.view-students .mr-class-card.selected{
+  background:linear-gradient(105deg,#fff2e9 0%,#fff 72%);
+}
+.view-students .mr-class-card.selected::before{
+  width:6px;
+}
+.view-students .mr-class-card.selected .mr-class-icon{
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.16),
+    0 8px 18px rgba(243,90,22,.18);
+}
+
+/* Student list headers — orange grade tile, black text, soft orange geometry. */
+.view-students .mr-student-grade-head{
+  border-top:2px solid rgba(243,90,22,.74);
+  background:
+    linear-gradient(100deg,#fff3eb 0%,#fff 38%,#fff 100%)!important;
+}
+.view-students .mr-student-grade-head::before{
+  content:"";
+  position:absolute;
+  left:0;top:0;bottom:0;
+  width:4px;
+  background:#f35a16;
+}
+.view-students .mr-grade-chip{
+  background:linear-gradient(145deg,#ff6d27 0%,#ef4f0c 100%)!important;
+  color:#fff!important;
+  border-color:#f35a16;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.24),
+    0 6px 15px rgba(243,90,22,.18);
+}
+.view-students .mr-grade-chevron{
+  background:#fff1e9;
+  border:1px solid #ffd8c5;
+  color:#f35a16;
+}
+.view-students .mr-student-grade-head:hover .mr-grade-chevron{
+  background:#f35a16;
+  border-color:#f35a16;
+  color:#fff;
+}
+
+/* Table and row controls — orange detail instead of extra black blocks. */
+.view-students .mr-student-table-head{
+  box-shadow:inset 0 2px 0 rgba(243,90,22,.12);
+}
+.view-students .mr-student-directory-row::before{
+  opacity:.42;
+  transform:scaleY(.84);
+}
+.view-students .mr-student-directory-row:hover::before{
+  opacity:1;
+  transform:scaleY(1);
+}
+.view-students .mr-student-link-cell button{
+  background:#fff7f2;
+  border-color:#ffd7c4;
+  color:#f35a16;
+}
+.view-students .mr-student-link-cell button:hover{
+  background:#f35a16;
+  border-color:#f35a16;
+  color:#fff;
+}
+.view-students .mr-student-refresh-action{
+  background:#fff7f2!important;
+  border-color:#ffd7c4!important;
+  color:#d84b0b!important;
+}
+.view-students .mr-student-refresh-action:hover{
+  background:#f35a16!important;
+  border-color:#f35a16!important;
+  color:#fff!important;
+}
+.view-students .mr-student-more summary{
+  background:#fff7f2;
+  border-color:#ffd7c4;
+  color:#f35a16;
+}
+.view-students .mr-student-more summary:hover{
+  background:#f35a16;
+  border-color:#f35a16;
+  color:#fff;
+}
+.view-students .mr-student-group-cell span{
+  border-left:3px solid rgba(243,90,22,.45);
+}
+
+/* Dark theme: orange remains the accent, structure stays dark. */
+html[data-theme="dark"] .view-students .mr-students-count{
+  background:#2b190f!important;
+  color:#ff7a39!important;
+  border-color:#5b2d17!important;
+}
+html[data-theme="dark"] .view-students .mr-class-card::before,
+html[data-theme="dark"] .view-students .mr-student-grade-head::before{
+  background:#ff6a24;
+}
+html[data-theme="dark"] .view-students .mr-class-icon{
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.08),
+    inset -4px 0 0 #ff6a24,
+    0 7px 17px rgba(0,0,0,.24);
+}
+html[data-theme="dark"] .view-students .mr-class-arrow,
+html[data-theme="dark"] .view-students .mr-grade-chevron,
+html[data-theme="dark"] .view-students .mr-student-link-cell button,
+html[data-theme="dark"] .view-students .mr-student-refresh-action,
+html[data-theme="dark"] .view-students .mr-student-more summary{
+  background:#28170f!important;
+  border-color:#5b2d17!important;
+  color:#ff7a39!important;
+}
+html[data-theme="dark"] .view-students .mr-class-card:hover .mr-class-arrow,
+html[data-theme="dark"] .view-students .mr-student-grade-head:hover .mr-grade-chevron,
+html[data-theme="dark"] .view-students .mr-student-link-cell button:hover,
+html[data-theme="dark"] .view-students .mr-student-refresh-action:hover,
+html[data-theme="dark"] .view-students .mr-student-more summary:hover{
+  background:#ff6a24!important;
+  border-color:#ff6a24!important;
+  color:#fff!important;
+}
