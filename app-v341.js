@@ -1288,7 +1288,7 @@ async function renderStudent(){
 
   if(active&&live&&compactActiveLessonUI){
     S.studentTab='board';
-    app.innerHTML=`<div class="student-home student-lesson-mode"><div id="studentLessonTaskMount">${studentLessonTaskCard(live)}</div><div id="studentLessonBoard"></div></div>`;
+    app.innerHTML=`<div class="student-home student-lesson-mode ${live.focus_enabled?'student-focus-enabled':''}"><div id="studentLessonTaskMount">${studentLessonTaskCard(live)}</div><div id="studentLessonBoard"></div></div>`;
     await mountBoard(document.getElementById('studentLessonBoard'),S.student.id,false,{lessonId:active.id,studentName:S.student.name,followTeacher:true});
     mountStudentLessonTimer(live,active);
     subscribeStudentLive(active.id);
@@ -1333,7 +1333,7 @@ async function renderStudent(){
   if(active&&live&&!compactActiveLessonUI){
     S.studentTab='lessons';
     const taskLeft=taskTimerRemaining(live);
-    app.innerHTML=`<div class="student-home student-lesson-mode student-desktop-lesson-mode mr-student-teacher-design mr-desktop-lesson-unified mr-lesson-role-student">
+    app.innerHTML=`<div class="student-home student-lesson-mode student-desktop-lesson-mode mr-student-teacher-design mr-desktop-lesson-unified mr-lesson-role-student ${live.focus_enabled?'student-focus-enabled':''}">
       <div id="mrStudentLessonAddon" class="mr-lesson-addon mr-lesson-video-top mr-desktop-video-shell"><div id="mrStudentVideoMount"></div></div>
       <div class="mr-student-desktop-lesson-meta mr-desktop-lesson-meta topbar"><div><span class="mr-mobile-kicker">Урок идёт</span><h1>${esc(active.topics?.title||'Урок')}</h1></div><div class="mr-student-desktop-live-dot"><span></span>Онлайн</div></div>
       <div class="mr-student-desktop-workspace mr-teacher-workspace mr-desktop-workspace-unified">
@@ -1382,7 +1382,38 @@ async function renderStudent(){
 }
 window.renderStudent=renderStudent;
 function subscribeStudentLive(lessonId){
-  cleanupLive();let timerInt=setInterval(()=>{const el=document.getElementById('studentTimer');if(el)el.textContent=fmtTime(elapsedSeconds(S.studentLive));const tt=document.getElementById('studentTaskTimer');if(tt)tt.textContent=S.studentLive?.task_timer_running?fmtTime(taskTimerRemaining(S.studentLive)):'—';const tw=document.getElementById('studentTaskTimerWrap');if(tw)tw.classList.toggle('active',!!S.studentLive?.task_timer_running)},1000);const ch=sb.channel(`student-live:${lessonId}`).on('postgres_changes',{event:'UPDATE',schema:'public',table:'lesson_live_state',filter:`lesson_id=eq.${lessonId}`},payload=>{const prev=S.studentLive||{};const next=payload.new||{};S.studentLive=next;const structural=prev.focus_enabled!==next.focus_enabled||prev.current_queue_item_id!==next.current_queue_item_id||prev.current_title!==next.current_title||prev.current_prompt!==next.current_prompt;if(structural)renderStudent();else{const el=document.getElementById('studentTimer');if(el)el.textContent=fmtTime(elapsedSeconds(next));const tt=document.getElementById('studentTaskTimer');if(tt)tt.textContent=next.task_timer_running?fmtTime(taskTimerRemaining(next)):'—';const tw=document.getElementById('studentTaskTimerWrap');if(tw)tw.classList.toggle('active',!!next.task_timer_running)}}).subscribe();S.liveCleanup=()=>{clearInterval(timerInt);sb.removeChannel(ch)};
+  cleanupLive();
+  const patchLiveUi=live=>{
+    const el=document.getElementById('studentTimer');if(el)el.textContent=fmtTime(elapsedSeconds(live));
+    const tt=document.getElementById('studentTaskTimer');if(tt)tt.textContent=live?.task_timer_running?fmtTime(taskTimerRemaining(live)):'—';
+    const tw=document.getElementById('studentTaskTimerWrap');if(tw)tw.classList.toggle('active',!!live?.task_timer_running);
+  };
+  let timerInt=setInterval(()=>patchLiveUi(S.studentLive),1000);
+  const ch=sb.channel(`student-live:${lessonId}`).on('postgres_changes',{event:'UPDATE',schema:'public',table:'lesson_live_state',filter:`lesson_id=eq.${lessonId}`},payload=>{
+    const prev=S.studentLive||{},next=payload.new||{};
+    S.studentLive=next;
+
+    /* 46.3 audit: changing the current task used to rerender the entire student
+       lesson, destroying/recreating the board and rebinding the video. That is
+       unnecessary and can interrupt a stroke on phones. Patch the task card in
+       place; only Focus mode changes the page geometry. */
+    const focusChanged=prev.focus_enabled!==next.focus_enabled;
+    if(focusChanged){
+      renderStudent();
+      return;
+    }
+
+    const taskChanged=
+      prev.current_queue_item_id!==next.current_queue_item_id||
+      prev.current_title!==next.current_title||
+      prev.current_prompt!==next.current_prompt;
+    if(taskChanged){
+      const mount=document.getElementById('studentLessonTaskMount');
+      if(mount)mount.innerHTML=studentLessonTaskCard(next);
+    }
+    patchLiveUi(next);
+  }).subscribe();
+  S.liveCleanup=()=>{clearInterval(timerInt);sb.removeChannel(ch)};
 }
 async function openStudentAssignment(kind,id){
   const rpc=kind==='homework'?'get_student_homework':'get_student_test',arg=kind==='homework'?{p_homework_id:id}:{p_test_id:id};const {data,error}=await sb.rpc(rpc,arg);if(error)return fail(error);const assigned=data.status==='assigned',revision=kind==='homework'&&assigned&&data.revision_requested_at;
