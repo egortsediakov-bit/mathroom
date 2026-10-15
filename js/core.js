@@ -3,9 +3,36 @@ const toastEl = document.getElementById('toast');
 const CFG = window.MATHROOM_CONFIG || {};
 const configured = /^https:\/\/.+\.supabase\.co$/.test(CFG.SUPABASE_URL || '') && CFG.SUPABASE_ANON_KEY && !/(YOUR_|REPLACE_ME|PROJECT\.supabase\.co)/i.test(`${CFG.SUPABASE_URL||''} ${CFG.SUPABASE_ANON_KEY||''}`);
 const AUTH_STORAGE_KEY='mathroom.supabase.auth.v1';
+const AUTH_STORAGE_PROBE_KEY='mathroom.supabase.storageProbe';
+const authStorage={
+  getItem(key){
+    try{return window.localStorage.getItem(key)}
+    catch(e){console.error('[Mathroom auth storage:get]',e);return null}
+  },
+  setItem(key,value){
+    try{window.localStorage.setItem(key,value)}
+    catch(e){console.error('[Mathroom auth storage:set]',e);throw e}
+  },
+  removeItem(key){
+    try{window.localStorage.removeItem(key)}
+    catch(e){console.error('[Mathroom auth storage:remove]',e)}
+  }
+};
+function authStorageAvailable(){
+  try{
+    window.localStorage.setItem(AUTH_STORAGE_PROBE_KEY,'1');
+    const ok=window.localStorage.getItem(AUTH_STORAGE_PROBE_KEY)==='1';
+    window.localStorage.removeItem(AUTH_STORAGE_PROBE_KEY);
+    return ok;
+  }catch(e){
+    console.error('[Mathroom auth storage probe]',e);
+    return false;
+  }
+}
 const sb = configured ? supabase.createClient(CFG.SUPABASE_URL, CFG.SUPABASE_ANON_KEY, {
   auth: {
     storageKey: AUTH_STORAGE_KEY,
+    storage: authStorage,
     persistSession: true,
     autoRefreshToken: true,
     detectSessionInUrl: true
@@ -93,4 +120,4 @@ function configScreen(){
 function avg(nums){ const a=nums.filter(x=>Number.isFinite(Number(x))).map(Number); return a.length ? Math.round(a.reduce((s,x)=>s+x,0)/a.length) : null; }
 function shuffle(arr){ const a=[...arr]; for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];} return a; }
 
-window.MR = { app, toastEl, CFG, configured, sb, S, esc, nl, uid, token, dateLong, dateShort, diffLabel, statusLabel, statusClass, clamp, toast, fail, copyText, modal, cleanupBoard, cleanupLive, cleanupAll, studentLink, configScreen, avg, shuffle };
+window.MR = { app, toastEl, CFG, configured, sb, S, AUTH_STORAGE_KEY, authStorageAvailable, esc, nl, uid, token, dateLong, dateShort, diffLabel, statusLabel, statusClass, clamp, toast, fail, copyText, modal, cleanupBoard, cleanupLive, cleanupAll, studentLink, configScreen, avg, shuffle };
