@@ -5754,3 +5754,38 @@ button.mr-mobile-lesson-asset{cursor:pointer}
     bottom:70px!important;
   }
 }
+
+
+/* =========================================================
+   Mathroom 46.3 — student Focus mode actually changes the live lesson
+   Keep communication visible, but remove secondary lesson chrome and give the
+   shared board the full working width. The state comes from lesson_live_state
+   and is identical on desktop and phone.
+   ========================================================= */
+.student-home.student-lesson-mode.student-focus-enabled #studentLessonTaskMount{
+  display:none!important;
+}
+
+@media (min-width:761px){
+  .student-desktop-lesson-mode.student-focus-enabled .mr-student-desktop-workspace.mr-teacher-workspace{
+    grid-template-columns:minmax(0,1fr)!important;
+  }
+  .student-desktop-lesson-mode.student-focus-enabled .mr-student-desktop-lesson-rail{
+    display:none!important;
+  }
+  .student-desktop-lesson-mode.student-focus-enabled .mr-student-desktop-board.mr-lesson-board-main{
+    grid-column:1!important;
+    grid-row:1!important;
+    width:100%!important;
+  }
+}
+
+@media (max-width:760px){
+  .student-home.student-lesson-mode.student-focus-enabled{
+    gap:6px!important;
+  }
+  .student-home.student-lesson-mode.student-focus-enabled #studentLessonBoard{
+    width:100%!important;
+    padding:0!important;
+  }
+}
