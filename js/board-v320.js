@@ -865,17 +865,23 @@
       root.querySelector('[data-tool="select"]')?.remove();
       root.querySelector('#quickCommands')?.remove();
     }
+    if(phoneBoardUI){
+      /* Fullscreen support varies heavily on mobile Safari / embedded Chromium.
+         Never leave a dead control visible for either lesson role. */
+      const fs=root.querySelector('#fullscreen');
+      const card=root.querySelector('.board-card');
+      if(fs&&!document.fullscreenEnabled&&!document.webkitFullscreenEnabled&&!card?.requestFullscreen&&!card?.webkitRequestFullscreen){
+        fs.style.setProperty('display','none','important');
+      }
+      if(isTeacher)root.dataset.phoneTeacherBoard='1';
+    }
     if(phoneStudentBoardUI){
-      /* Phone toolbar is intentionally minimal. Geometry is removed entirely;
-         object-selection actions cannot be used without the selection tool and
-         are hidden so they occupy no space. */
+      /* Student phone toolbar stays intentionally minimal. Geometry is removed
+         entirely; object-selection actions cannot be used without selection. */
       root.querySelector('.board-tool-group[data-category="geometry"]')?.remove();
       for(const id of ['copySelected','pasteSelected','duplicateSelected','lockSelected','bringFront','sendBack','deleteSelected']){
         root.querySelector('#'+id)?.style.setProperty('display','none','important');
       }
-      const fs=root.querySelector('#fullscreen');
-      const card=root.querySelector('.board-card');
-      if(fs&&!document.fullscreenEnabled&&!card?.requestFullscreen)fs.style.setProperty('display','none','important');
       root.dataset.phoneStudentBoard='1';
     }
     const svg=root.querySelector('#boardSvg'),status=root.querySelector('#boardStatus'),pageTabs=root.querySelector('#pageTabs'),zoomLabel=root.querySelector('#zoomLabel'),stage=root.querySelector('#stage'),solidHud=root.querySelector('#solidHud'),objectHud=root.querySelector('#objectHud'),followBadge=root.querySelector('#followBadge');
