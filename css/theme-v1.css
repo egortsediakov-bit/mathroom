@@ -612,3 +612,129 @@ html[data-theme="dark"] .mr-board-mode-icon{
   border-color:#343b45!important;
   color:#f4f6f8!important;
 }
+
+
+/* v47.3 — board tool rail remains in the approved light style in both themes */
+html[data-theme="dark"] .board-toolbar-side{
+  color-scheme:light!important;
+  background:rgba(255,255,255,.985)!important;
+  border-color:var(--mr-line)!important;
+  color:#20222b!important;
+  box-shadow:0 14px 38px rgba(26,27,35,.11)!important;
+}
+html[data-theme="dark"] .board-toolbar-side .board-rail-divider{
+  background:#ece9e4!important;
+}
+html[data-theme="dark"] .board-toolbar-side .board-rail-quick .btn{
+  background:#fff!important;
+  border-color:#ece9e5!important;
+  color:#20222b!important;
+  box-shadow:none!important;
+}
+html[data-theme="dark"] .board-toolbar-side .board-rail-quick .btn:hover:not(:disabled){
+  background:#faf9f7!important;
+  border-color:#ddd9d4!important;
+  color:#20222b!important;
+}
+html[data-theme="dark"] .board-toolbar-side .board-rail-quick .btn.active{
+  background:var(--mr-orange-soft)!important;
+  color:var(--mr-orange)!important;
+  border-color:var(--mr-orange-border)!important;
+  box-shadow:0 5px 14px rgba(245,90,22,.10)!important;
+}
+html[data-theme="dark"] .board-toolbar-side .board-tool-group>summary{
+  background:transparent!important;
+  color:#20222b!important;
+  border-color:transparent!important;
+}
+html[data-theme="dark"] .board-toolbar-side .board-tool-group>summary:hover{
+  background:#f8f7f5!important;
+  border-color:#ece8e3!important;
+  color:#20222b!important;
+}
+html[data-theme="dark"] .board-toolbar-side .board-tool-group[open]>summary,
+html[data-theme="dark"] .board-toolbar-side .board-tool-group.tool-active>summary{
+  background:var(--mr-orange-soft)!important;
+  color:var(--mr-orange)!important;
+  border-color:var(--mr-orange-border)!important;
+  box-shadow:0 5px 14px rgba(245,90,22,.08)!important;
+}
+html[data-theme="dark"] .board-toolbar-side .board-tool-popover{
+  color-scheme:light!important;
+  background:rgba(255,255,255,.992)!important;
+  color:#1d1e26!important;
+  border-color:var(--mr-line)!important;
+  box-shadow:var(--mr-shadow)!important;
+}
+html[data-theme="dark"] .board-toolbar-side .board-popover-head{
+  border-color:#efede9!important;
+}
+html[data-theme="dark"] .board-toolbar-side .board-popover-title{
+  color:#1c1d25!important;
+}
+html[data-theme="dark"] .board-toolbar-side .board-popover-subtitle{
+  color:#8b8b91!important;
+}
+html[data-theme="dark"] .board-toolbar-side .board-action-grid .btn{
+  background:#fff!important;
+  color:#1d1e26!important;
+  border-color:#e8e5e1!important;
+}
+html[data-theme="dark"] .board-toolbar-side .board-action-grid .btn:hover:not(:disabled){
+  background:#faf9f7!important;
+  color:#1d1e26!important;
+  border-color:#d8d4ce!important;
+}
+html[data-theme="dark"] .board-toolbar-side .board-action-grid .btn.active{
+  background:var(--mr-orange-soft)!important;
+  color:var(--mr-orange)!important;
+  border-color:var(--mr-orange-border)!important;
+}
+html[data-theme="dark"] .board-toolbar-side .board-action-grid .btn.danger:not(:disabled){
+  color:#c23e16!important;
+}
+html[data-theme="dark"] .board-toolbar-side .board-action-grid .btn:disabled{
+  background:#fbfbfa!important;
+  color:#c4c2be!important;
+  border-color:#f0efed!important;
+  opacity:1!important;
+}
+html[data-theme="dark"] .board-toolbar-side input,
+html[data-theme="dark"] .board-toolbar-side select,
+html[data-theme="dark"] .board-toolbar-side textarea,
+html[data-theme="dark"] .board-toolbar-side .board-select,
+html[data-theme="dark"] .board-toolbar-side .board-width-select{
+  color-scheme:light!important;
+  background:#fff!important;
+  color:#1d1e26!important;
+  border-color:#dedad4!important;
+}
+html[data-theme="dark"] .board-toolbar-side input::placeholder,
+html[data-theme="dark"] .board-toolbar-side textarea::placeholder{
+  color:#8b8b91!important;
+}
+html[data-theme="dark"] .board-toolbar-side .board-tool-help{
+  background:#faf8f6!important;
+  color:#777981!important;
+  border-color:#eeebe7!important;
+}
+html[data-theme="dark"] .board-toolbar-side .board-shape-icon{
+  background:#fff!important;
+  color:#282936!important;
+  border-color:#e7e4e0!important;
+}
+html[data-theme="dark"] .board-toolbar-side .board-shape-icon:hover{
+  background:#fbfaf8!important;
+  border-color:#d6d2cc!important;
+}
+html[data-theme="dark"] .board-toolbar-side .board-shape-label{
+  color:#686975!important;
+}
+html[data-theme="dark"] .board-toolbar-side .board-palette-section>b{
+  color:#6c6c76!important;
+}
+html[data-theme="dark"] .board-toolbar-side .board-solid-help{
+  background:#fff7f3!important;
+  border-color:#f7d2bf!important;
+  color:#78513f!important;
+}
