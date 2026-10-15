@@ -696,7 +696,7 @@ function renderAssignments(){
 
 async function saveSnapshot(lesson,title='Итог урока',note=''){
   if(S.boardController?.save) await S.boardController.save();
-  const {data:pages,error}=await sb.from('board_pages').select('id,title,sort_order,elements').eq('student_id',lesson.student_id).order('sort_order');if(error)throw error;
+  const {data:pages,error}=await sb.from('board_pages').select('id,title,sort_order,elements').eq('student_id',lesson.student_id).eq('lesson_id',lesson.id).order('sort_order');if(error)throw error;
   const {error:e2}=await sb.from('lesson_board_versions').insert({teacher_id:S.user.id,lesson_id:lesson.id,title,note,pages:pages||[]});if(e2)throw e2;
 }
 async function deleteCompletedLessonHistory(id,{ask=true}={}){
@@ -839,6 +839,7 @@ async function completeLesson(lesson,queue,live){
         const {data,error}=await sb.from('board_pages')
           .select('id,title,sort_order,elements')
           .eq('student_id',lesson.student_id)
+          .eq('lesson_id',lesson.id)
           .order('sort_order');
         if(error)throw error;
         pages=data||[];
@@ -1252,7 +1253,7 @@ async function renderStudent(){
         <div id="studentPreLessonBoard"></div>
       </section>
     </div>`;
-    await mountBoard(document.getElementById('studentPreLessonBoard'),S.student.id,false);
+    await mountBoard(document.getElementById('studentPreLessonBoard'),S.student.id,false,{lessonId:preLesson.id,studentName:S.student.name,followTeacher:true,teacherId:preLesson.teacher_id||''});
     const updateCountdown=()=>{
       const el=document.getElementById('mrPreLessonCountdown');if(!el)return;
       const left=Math.max(0,Math.ceil((startsAt.getTime()-Date.now())/1000));
@@ -1352,7 +1353,7 @@ async function renderStudent(){
   // Original desktop focus mode and cabinet remain unchanged.
   if(active&&live?.focus_enabled){
     app.innerHTML=`<div class="student-home student-focus">${studentLiveCard(active,live)}<div id="focusBoard"></div></div>`;
-    await mountBoard(document.getElementById('focusBoard'),S.student.id,false);
+    await mountBoard(document.getElementById('focusBoard'),S.student.id,false,{lessonId:active.id,studentName:S.student.name,followTeacher:true,teacherId:active.teacher_id||live.teacher_id||''});
     subscribeStudentLive(active.id);
     return;
   }
