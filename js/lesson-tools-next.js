@@ -2248,21 +2248,13 @@
       const mobile=(window.matchMedia?.('(pointer: coarse)')?.matches||window.innerWidth<=760);
       let processor=null;
 
-      /* First frame wins over identity filtering. BodyPix is deliberately
-         deferred until the high-quality SelfieSegmentation mask is already
-         visible, so TFJS compilation can never delay first background start. */
-      let bodyPixModel=this.virtualBgBodyPixModel||null;
-      let bodyPixLoadStarted=!!bodyPixModel;
-      const startIdentityModelLoad=()=>{
-        if(bodyPixModel||bodyPixLoadStarted||this.destroyed)return;
-        bodyPixLoadStarted=true;
-        this.ensureVirtualBgBodyPixModel()
-          .then(model=>{bodyPixModel=model})
-          .catch(e=>{
-            bodyPixLoadStarted=false;
-            console.warn('[Mathroom virtual background] BodyPix identity model',e);
-          });
-      };
+      /* 45.7: do not compile/run BodyPix in the live camera path.
+         BodyPix shared the main thread/WebGL context with MediaPipe and caused
+         the visible camera to pause every time identity inference ran. We keep
+         primary-person filtering, but derive a lightweight spatial envelope
+         from the SelfieSegmentation mask that is already being produced. */
+      let bodyPixModel=null;
+      const startIdentityModelLoad=()=>{};
 
       const source=document.createElement('video');
       source.autoplay=true;
@@ -2440,7 +2432,7 @@
       ctx.clearRect(0,0,w,h);
       drawBackground();
 
-      const output=canvas.captureStream(mobile?24:30);
+      const output=canvas.captureStream(mobile?22:24);
       const outTrack=output.getVideoTracks()[0];
       if(!outTrack)throw new Error('Не удалось создать обработанный видеопоток');
       outTrack.enabled=this.cameraEnabled;
@@ -2484,7 +2476,7 @@
       configureSegmentationProcessor(processor);
       this.virtualBgProcessor=processor;
 
-      this.virtualBgFrameInterval=mobile?72:42;
+      this.virtualBgFrameInterval=mobile?92:58;
       this.virtualBgAvgProcessMs=0;
       this.virtualBgPrimaryTrack=null;
 
@@ -2503,6 +2495,114 @@
          background immediately. Once identity is known, this envelope removes
          other people and false foreground far from the primary body. */
       let primaryEnvelope=null;
+
+      /* Lightweight primary-person tracker.
+         Run on a downsampled view of the existing segmentation mask. No second
+         neural network, no WebGL compilation, no periodic camera freeze. */
+      const componentStep=mobile?3:2;
+      const componentW=Math.max(1,Math.ceil(maskCanvas.width/componentStep));
+      const componentH=Math.max(1,Math.ceil(maskCanvas.height/componentStep));
+      const componentVisited=new Uint8Array(componentW*componentH);
+      const componentQueue=new Int32Array(componentW*componentH);
+      let lastComponentScan=0;
+
+      const updatePrimaryEnvelopeFromSelfie=(pixels,useAlpha)=>{
+        const now=performance.now();
+        if(now-lastComponentScan<(mobile?520:360))return;
+        lastComponentScan=now;
+        componentVisited.fill(0);
+
+        const threshold=mobile?52:46;
+        const minArea=Math.max(18,Math.round(componentW*componentH*.0025));
+        const prev=this.virtualBgPrimaryTrack;
+        let best=null,bestScore=-Infinity;
+
+        const confidenceAt=(gx,gy)=>{
+          const x=Math.min(maskCanvas.width-1,gx*componentStep);
+          const y=Math.min(maskCanvas.height-1,gy*componentStep);
+          const i=(y*maskCanvas.width+x)*4;
+          const lum=(pixels[i]+pixels[i+1]+pixels[i+2])/3;
+          return Math.max(0,Math.min(255,useAlpha?pixels[i+3]:lum));
+        };
+
+        for(let gy=0;gy<componentH;gy++){
+          for(let gx=0;gx<componentW;gx++){
+            const seed=gy*componentW+gx;
+            if(componentVisited[seed])continue;
+            componentVisited[seed]=1;
+            if(confidenceAt(gx,gy)<threshold)continue;
+
+            let head=0,tail=0;
+            componentQueue[tail++]=seed;
+            let area=0,sumX=0,sumY=0,minX=gx,maxX=gx,minY=gy,maxY=gy;
+
+            while(head<tail){
+              const q=componentQueue[head++];
+              const x=q%componentW;
+              const y=(q/componentW)|0;
+              area++;sumX+=x;sumY+=y;
+              if(x<minX)minX=x;if(x>maxX)maxX=x;
+              if(y<minY)minY=y;if(y>maxY)maxY=y;
+
+              for(let dy=-1;dy<=1;dy++){
+                for(let dx=-1;dx<=1;dx++){
+                  if(!dx&&!dy)continue;
+                  const nx=x+dx,ny=y+dy;
+                  if(nx<0||ny<0||nx>=componentW||ny>=componentH)continue;
+                  const ni=ny*componentW+nx;
+                  if(componentVisited[ni])continue;
+                  componentVisited[ni]=1;
+                  if(confidenceAt(nx,ny)>=threshold)componentQueue[tail++]=ni;
+                }
+              }
+            }
+
+            if(area<minArea)continue;
+            const cx=(sumX/area+.5)/componentW;
+            const cy=(sumY/area+.5)/componentH;
+            const box={
+              x:minX/componentW,
+              y:minY/componentH,
+              w:(maxX-minX+1)/componentW,
+              h:(maxY-minY+1)/componentH
+            };
+            const areaRatio=area/(componentW*componentH);
+            const centerDist=Math.hypot(cx-.5,(cy-.50)*.8);
+            let score=Math.min(1,areaRatio/.30)*4.8+Math.max(0,1-centerDist/.78)*1.6;
+
+            if(prev){
+              const dist=Math.hypot(cx-prev.cx,cy-prev.cy);
+              const iou=boxIou(box,prev.box);
+              score+=Math.max(0,1-dist/.50)*5.0+iou*3.0;
+            }
+
+            if(score>bestScore){
+              bestScore=score;
+              best={cx,cy,areaRatio,box};
+            }
+          }
+        }
+
+        if(!best){
+          /* Do not instantly drop the envelope on one weak mask. */
+          if(prev&&now-(prev.seenAt||0)>1800){
+            this.virtualBgPrimaryTrack=null;
+            primaryEnvelope=null;
+          }
+          return;
+        }
+
+        const k=prev?.cx!=null?.34:1;
+        const track={
+          cx:prev?prev.cx*(1-k)+best.cx*k:best.cx,
+          cy:prev?prev.cy*(1-k)+best.cy*k:best.cy,
+          areaRatio:prev?prev.areaRatio*(1-k)+best.areaRatio*k:best.areaRatio,
+          box:best.box,
+          seenAt:now
+        };
+        this.virtualBgPrimaryTrack=track;
+        primaryEnvelope=buildPrimaryEnvelope(track);
+      };
 
       const analysePerson=seg=>{
         const data=seg?.data;
@@ -2686,6 +2786,8 @@
         }
         const useAlpha=(alphaMax-alphaMin)>(lumMax-lumMin)*.55&&(alphaMax-alphaMin)>18;
 
+        updatePrimaryEnvelopeFromSelfie(d,useAlpha);
+
         const lo=mobile?24:22;
         const hi=mobile?158:154;
 
@@ -2765,18 +2867,6 @@
             this.bindMedia();
             this.paintPrejoin();
             this.paint();
-            const startIdentityWhenIdle=()=>{
-              if(!this.destroyed&&this.virtualBgTrack===outTrack)startIdentityModelLoad();
-            };
-            /* BodyPix is useful for rejecting a passer-by, but compiling it right
-               after the first mask was the source of the visible freeze the user
-               experienced. Let the camera become stable first, then use an idle
-               slice whenever Chromium has one. */
-            if(window.requestIdleCallback){
-              window.requestIdleCallback(startIdentityWhenIdle,{timeout:5000});
-            }else{
-              setTimeout(startIdentityWhenIdle,2200);
-            }
           });
         }
       };
@@ -2850,9 +2940,9 @@
             /* Never queue overlapping inference. A shorter target interval only
                means "send the next frame as soon as the current one finishes",
                which keeps hands/face responsive without building a backlog. */
-            if(this.virtualBgAvgProcessMs>115)this.virtualBgFrameInterval=mobile?105:70;
-            else if(this.virtualBgAvgProcessMs>80)this.virtualBgFrameInterval=mobile?84:50;
-            else this.virtualBgFrameInterval=mobile?66:34;
+            if(this.virtualBgAvgProcessMs>115)this.virtualBgFrameInterval=mobile?145:105;
+            else if(this.virtualBgAvgProcessMs>80)this.virtualBgFrameInterval=mobile?118:82;
+            else this.virtualBgFrameInterval=mobile?92:58;
             segBusy=false;
           });
       };
@@ -2898,12 +2988,6 @@
           sendSegmentationFrame();
         }
 
-        /* Identity refresh stays frequent enough to suppress a person walking
-           behind the tracked participant without running BodyPix every frame. */
-        if(baseMaskReady&&ts-lastIdentity>(mobile?2400:1800)){
-          lastIdentity=ts;
-          runIdentity();
-        }
       };
 
       /* Exactly one first inference. No retries are started while it is still
@@ -3532,7 +3616,7 @@
       const backdrop = document.createElement('div');
       backdrop.className = 'mr-native-prejoin-backdrop';
       backdrop.innerHTML = `<div class="mr-native-prejoin">
-        <div><div class="pill">Встроенная связь Mathroom · 45.6</div><h2>Подключиться к уроку</h2><p class="small muted">Микрофон и камеру можно проверить заранее. Камера необязательна — без неё в урок всё равно можно войти.</p></div>
+        <div><div class="pill">Встроенная связь Mathroom · 45.7</div><h2>Подключиться к уроку</h2><p class="small muted">Микрофон и камеру можно проверить заранее. Камера необязательна — без неё в урок всё равно можно войти.</p></div>
         <div class="mr-native-prejoin-grid">
           <div class="mr-prejoin-media-col">
             <div class="mr-native-preview"><video id="mrPrejoinVideo" autoplay muted playsinline></video><span class="mr-preview-name">Вы</span></div>
