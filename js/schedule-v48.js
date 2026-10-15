@@ -208,12 +208,187 @@
     });
   }
 
+
+  function studentInitials(name){
+    return String(name||'?').trim().split(/\s+/).filter(Boolean).slice(0,2).map(x=>x.charAt(0).toUpperCase()).join('')||'?';
+  }
+  function studentPickerRows({allowAll=false,query='',bucket='all'}={}){
+    const q=String(query||'').trim().toLocaleLowerCase('ru');
+    let rows=[...(S.students||[])];
+    rows=rows.filter(st=>{
+      const grade=Number(st.grade)||0,group=String(st.group_name||'').trim();
+      if(bucket==='junior'&&!(grade>=1&&grade<=4))return false;
+      if(bucket==='middle'&&!(grade>=5&&grade<=8))return false;
+      if(bucket==='senior'&&!(grade>=9&&grade<=11))return false;
+      if(bucket==='nogroup'&&group)return false;
+      if(q){
+        const hay=[st.name,grade+' класс',grade+' кл',group].join(' ').toLocaleLowerCase('ru');
+        if(!hay.includes(q))return false;
+      }
+      return true;
+    });
+    rows.sort((a,b)=>Number(a.grade)-Number(b.grade)||String(a.name).localeCompare(String(b.name),'ru'));
+    return rows;
+  }
+  function studentPickerHtml({kind='filter',value='all',allowAll=true}={}){
+    const selected=(S.students||[]).find(x=>String(x.id)===String(value));
+    const label=allowAll&&String(value)==='all'?'Все ученики':selected?selected.name:'Выбрать ученика';
+    const sub=selected?`${selected.grade} класс${selected.group_name?' · '+esc(selected.group_name):' · Без группы'}`:'По имени, классу или группе';
+    return `<div class="mr-sch48-picker" data-v48-picker="${kind}" data-picker-value="${esc(value||'')}">
+      <button type="button" class="mr-sch48-picker-trigger" data-v48-picker-trigger>
+        <span class="mr-sch48-picker-trigger-icon">${icon('people')}</span>
+        <span class="mr-sch48-picker-trigger-copy"><b>${esc(label)}</b><small>${esc(sub)}</small></span>
+        <span class="mr-sch48-picker-chevron">⌄</span>
+      </button>
+      <div class="mr-sch48-picker-popover" data-v48-picker-popover hidden>
+        <label class="mr-sch48-picker-search"><span>⌕</span><input type="search" placeholder="Поиск ученика, класса или группы..." autocomplete="off" data-v48-picker-search><kbd>Ctrl K</kbd></label>
+        <div class="mr-sch48-picker-chips">
+          <button type="button" class="active" data-v48-picker-bucket="all">Все</button>
+          <button type="button" data-v48-picker-bucket="junior">1–4 кл.</button>
+          <button type="button" data-v48-picker-bucket="middle">5–8 кл.</button>
+          <button type="button" data-v48-picker-bucket="senior">9–11 кл.</button>
+          <button type="button" data-v48-picker-bucket="nogroup">Без группы</button>
+        </div>
+        <div class="mr-sch48-picker-results" data-v48-picker-results></div>
+      </div>
+    </div>`;
+  }
+  function renderStudentPickerResults(picker){
+    if(!picker)return;
+    const results=picker.querySelector('[data-v48-picker-results]');
+    const q=picker.querySelector('[data-v48-picker-search]')?.value||'';
+    const bucket=picker.dataset.pickerBucket||'all';
+    const value=String(picker.dataset.pickerValue||'');
+    const allowAll=picker.dataset.v48Picker==='filter';
+    const rows=studentPickerRows({query:q,bucket});
+    let html='';
+    if(allowAll&&bucket==='all'&&!q){
+      html+=`<button type="button" class="mr-sch48-picker-row all ${value==='all'?'selected':''}" data-v48-student-choice="all">
+        <span class="avatar all">${icon('people')}</span><span><b>Все ученики</b><small>Показать всё расписание</small></span><i>${value==='all'?'✓':''}</i>
+      </button>`;
+    }
+    html+=rows.map(st=>`<button type="button" class="mr-sch48-picker-row ${String(st.id)===value?'selected':''}" data-v48-student-choice="${esc(st.id)}">
+      <span class="avatar">${esc(studentInitials(st.name))}</span>
+      <span><b>${esc(st.name)}</b><small>${esc(st.grade)} класс · ${esc(st.group_name||'Без группы')}</small></span>
+      <i>${String(st.id)===value?'✓':''}</i>
+    </button>`).join('');
+    results.innerHTML=html||'<div class="mr-sch48-picker-empty">Ничего не найдено</div>';
+  }
+  function bindStudentPicker(root,picker,onChoose){
+    if(!picker||picker.dataset.pickerBound==='1')return;
+    picker.dataset.pickerBound='1';picker.dataset.pickerBucket='all';
+    const trigger=picker.querySelector('[data-v48-picker-trigger]');
+    const pop=picker.querySelector('[data-v48-picker-popover]');
+    const search=picker.querySelector('[data-v48-picker-search]');
+    const close=()=>{pop.hidden=true;trigger.classList.remove('open')};
+    const open=()=>{pop.hidden=false;trigger.classList.add('open');renderStudentPickerResults(picker);setTimeout(()=>search?.focus(),0)};
+    trigger.onclick=()=>pop.hidden?open():close();
+    search?.addEventListener('input',()=>renderStudentPickerResults(picker));
+    picker.querySelectorAll('[data-v48-picker-bucket]').forEach(b=>b.onclick=()=>{
+      picker.dataset.pickerBucket=b.dataset.v48PickerBucket;
+      picker.querySelectorAll('[data-v48-picker-bucket]').forEach(x=>x.classList.toggle('active',x===b));
+      renderStudentPickerResults(picker);
+    });
+    picker.addEventListener('click',e=>{
+      const row=e.target.closest('[data-v48-student-choice]');if(!row)return;
+      const val=row.dataset.v48StudentChoice;picker.dataset.pickerValue=val;
+      const st=(S.students||[]).find(x=>String(x.id)===String(val));
+      const copy=trigger.querySelector('.mr-sch48-picker-trigger-copy');
+      if(copy){
+        copy.querySelector('b').textContent=val==='all'?'Все ученики':st?.name||'Выбрать ученика';
+        copy.querySelector('small').textContent=val==='all'?'По имени, классу или группе':st?`${st.grade} класс · ${st.group_name||'Без группы'}`:'По имени, классу или группе';
+      }
+      onChoose?.(val,st);close();
+    });
+    document.addEventListener('pointerdown',function outside(e){
+      if(!document.body.contains(picker)){document.removeEventListener('pointerdown',outside);return}
+      if(!picker.contains(e.target))close();
+    });
+    renderStudentPickerResults(picker);
+  }
+
+  function splitDateTimeValue(value){
+    const raw=String(value||'');
+    const m=raw.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/);
+    if(m)return {date:`${m[1]}-${m[2]}-${m[3]}`,time:`${m[4]}:${m[5]}`};
+    const d=parseDateKey(localState.selectedDay)||new Date(),p=n=>String(n).padStart(2,'0');
+    return {date:`${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`,time:'16:00'};
+  }
+  function decorateCreatePanel(root,create){
+    if(!create||create.dataset.modernized==='1')return;
+    create.dataset.modernized='1';
+    const form=create.querySelector('#mrScheduleCreate');if(!form)return;
+    create.classList.add('mr-sch48-create-panel','mr-sch48-create-v3');
+
+    const studentField=form.querySelector('#mrScStudent')?.closest('.field');
+    const topicField=form.querySelector('#mrScTopic')?.closest('.field');
+    const whenField=form.querySelector('#mrScWhen')?.closest('.field');
+    const durationField=form.querySelector('#mrScDuration')?.closest('.field');
+    const repeatField=form.querySelector('#mrScRepeat')?.closest('.field');
+    const intervalField=form.querySelector('#mrScInterval')?.closest('.field');
+    const submit=form.querySelector('button[type="submit"],button:not([type])');
+    if(!studentField||!topicField||!whenField||!durationField||!repeatField||!intervalField||!submit)return;
+
+    const legacyStudent=form.querySelector('#mrScStudent');
+    legacyStudent.classList.add('mr-sch48-visually-hidden-select');
+    studentField.classList.add('mr-sch48-student-field');
+    studentField.querySelector('label').textContent='Ученик';
+    const pickerWrap=document.createElement('div');
+    pickerWrap.innerHTML=studentPickerHtml({kind:'create',value:legacyStudent.value||'',allowAll:false});
+    studentField.appendChild(pickerWrap.firstElementChild);
+
+    const legacyWhen=form.querySelector('#mrScWhen');
+    const initial=splitDateTimeValue(legacyWhen.value);
+    legacyWhen.classList.add('mr-sch48-hidden-datetime');
+    whenField.querySelector('label').textContent='Дата и время';
+    const split=document.createElement('div');split.className='mr-sch48-datetime-split';
+    split.innerHTML=`<label><span>${icon('calendar')}</span><input type="date" value="${esc(initial.date)}" data-v48-date></label><label><span>◷</span><input type="time" value="${esc(initial.time)}" data-v48-time></label>`;
+    whenField.appendChild(split);
+    const syncWhen=()=>{const d=split.querySelector('[data-v48-date]').value,t=split.querySelector('[data-v48-time]').value;if(d&&t)legacyWhen.value=`${d}T${t}`};
+    split.querySelectorAll('input').forEach(i=>i.addEventListener('input',syncWhen));syncWhen();
+
+    topicField.classList.add('mr-sch48-topic-field');topicField.querySelector('label').textContent='Тема урока';
+    durationField.classList.add('mr-sch48-duration-field');durationField.querySelector('label').textContent='Длительность';
+    repeatField.classList.add('mr-sch48-repeat-field');repeatField.querySelector('label').textContent='Повторение';
+    intervalField.classList.add('mr-sch48-interval-field');intervalField.querySelector('label').textContent='Каждые';
+
+    const details=document.createElement('div');details.className='mr-sch48-create-details';
+    const rowTop=document.createElement('div');rowTop.className='mr-sch48-create-detail-row top';
+    const rowMid=document.createElement('div');rowMid.className='mr-sch48-create-detail-row mid';
+    const rowBottom=document.createElement('div');rowBottom.className='mr-sch48-create-detail-row bottom';
+    rowTop.append(topicField);
+    rowMid.append(whenField,durationField);
+    rowBottom.append(repeatField,intervalField);
+    details.append(rowTop,rowMid,rowBottom);
+
+    const studentPanel=document.createElement('div');studentPanel.className='mr-sch48-create-student-panel';
+    studentPanel.innerHTML=`<div class="mr-sch48-create-panel-title"><span>${icon('people')}</span><div><b>Кому занятие?</b><small>Найди ученика по имени, классу или группе</small></div></div>`;
+    studentPanel.append(studentField);
+
+    const body=document.createElement('div');body.className='mr-sch48-create-body';
+    body.append(studentPanel,details);
+
+    const footer=document.createElement('div');footer.className='mr-sch48-create-footer';
+    const cancel=document.createElement('button');cancel.type='button';cancel.className='mr-sch48-create-cancel';cancel.textContent='Отмена';
+    cancel.onclick=()=>openCreate(root,false);
+    submit.classList.add('mr-sch48-create-submit');submit.textContent='Добавить занятие';
+    footer.append(cancel,submit);
+
+    [...form.children].forEach(x=>{if(x!==submit)x.remove()});
+    form.append(body,footer);
+
+    bindStudentPicker(root,studentField.querySelector('[data-v48-picker]'),val=>{legacyStudent.value=val});
+    const repeat=form.querySelector('#mrScRepeat'),interval=form.querySelector('#mrScInterval');
+    const syncInterval=()=>{const single=String(repeat.value)==='1';intervalField.classList.toggle('disabled',single);interval.disabled=single};
+    repeat.addEventListener('change',syncInterval);syncInterval();
+  }
+
   function openCreate(root,open){
     const panel=root.querySelector('.mr-schedule-create');
     if(!panel)return;
     panel.hidden=!open;
     root.querySelector('[data-v48-add-main]')?.setAttribute('aria-expanded',open?'true':'false');
-    if(open)setTimeout(()=>panel.querySelector('select,input')?.focus(),0);
+    if(open)setTimeout(()=>panel.querySelector('[data-v48-picker-trigger]')?.focus(),0);
   }
 
   function upgrade(root){
@@ -232,7 +407,7 @@
 
       const shell=document.createElement('div');shell.className='mr-schedule-v48';
       shell.innerHTML=`<section class="mr-sch48-hero"><div class="mr-sch48-hero-copy"><span>РАСПИСАНИЕ</span><h1>Планируйте уроки<br>без лишнего шума</h1><p>Неделя — для общей картины. День — для работы с конкретными занятиями.</p></div><div class="mr-sch48-hero-side"><div class="mr-sch48-hero-metrics"><i><b>${esc(oldMetrics[0]||'0')}</b><small>уроков</small></i><i><b>${esc(oldMetrics[1]||'0')}</b><small>нагрузка</small></i><i><b>${esc(oldMetrics[2]||'0')}</b><small>переносов</small></i></div><button data-v48-add-main aria-expanded="false"><b>+</b> Добавить урок</button></div></section>
-        <section class="mr-sch48-controls"><div class="mr-sch48-modes"><button data-v48-mode="week">${icon('grid')}<span>Неделя</span></button><button data-v48-mode="day">${icon('list')}<span>День</span></button></div><div class="mr-sch48-nav"><button data-v48-prev>‹</button><strong>${esc(oldTitle)}</strong><button data-v48-next>›</button><button data-v48-today>Сегодня</button></div><div class="mr-sch48-tools"><label>${icon('filter')}<select data-v48-filter>${filterOptions}</select></label><button data-v48-templates>Шаблоны</button></div></section>
+        <section class="mr-sch48-controls"><div class="mr-sch48-modes"><button data-v48-mode="week">${icon('grid')}<span>Неделя</span></button><button data-v48-mode="day">${icon('list')}<span>День</span></button></div><div class="mr-sch48-nav"><button data-v48-prev>‹</button><strong>${esc(oldTitle)}</strong><button data-v48-next>›</button><button data-v48-today>Сегодня</button></div><div class="mr-sch48-tools"><div class="mr-sch48-top-filter">${studentPickerHtml({kind:'filter',value:oldFilter?.value||'all',allowAll:true})}</div><button data-v48-templates>Шаблоны</button></div></section>
         <div class="mr-sch48-create-slot"></div><div data-v48-slot></div>`;
       root.append(shell);root.append(engine);
 
@@ -244,6 +419,7 @@
           const close=document.createElement('button');close.type='button';close.className='mr-sch48-create-close';close.dataset.v48CreateClose='1';close.textContent='×';head.appendChild(close);
         }
         shell.querySelector('.mr-sch48-create-slot').append(create);
+        decorateCreatePanel(root,create);
         create.hidden=true;
       }
 
@@ -254,10 +430,10 @@
       shell.querySelector('[data-v48-templates]').onclick=()=>proxyClick(root,'#mrWeekTemplates');
       shell.querySelector('[data-v48-add-main]').onclick=()=>openCreate(root,root.querySelector('.mr-schedule-create')?.hidden!==false);
       shell.querySelector('[data-v48-create-close]')?.addEventListener('click',()=>openCreate(root,false));
-      shell.querySelector('[data-v48-filter]').onchange=e=>{
+      bindStudentPicker(root,shell.querySelector('[data-v48-picker="filter"]'),val=>{
         const old=engine.querySelector('#mrScheduleStudentFilter');if(!old)return;
-        old.value=e.target.value;old.dispatchEvent(new Event('change',{bubbles:true}));
-      };
+        old.value=val;old.dispatchEvent(new Event('change',{bubbles:true}));
+      });
 
       const prefill=String(root.dataset.schedulePrefillStudent||root.dataset.schedulePrefillTopic||'');
       if(prefill)openCreate(root,true);
