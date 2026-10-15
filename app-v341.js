@@ -1,21 +1,21 @@
 (() => {
-const {app,configured,sb,S,AUTH_STORAGE_KEY,authStorageAvailable,esc,nl,token,dateLong,dateShort,diffLabel,statusLabel,statusClass,toast,fail,copyText,modal,cleanupAll,cleanupBoard,cleanupLive,studentLink,configScreen,avg,shuffle}=window.MR;
+const {app,configured,sb,S,AUTH_STORAGE_KEY,authStorage,authStorageAvailable,esc,nl,token,dateLong,dateShort,diffLabel,statusLabel,statusClass,toast,fail,copyText,modal,cleanupAll,cleanupBoard,cleanupLive,studentLink,configScreen,avg,shuffle}=window.MR;
 const {mountBoard,mountSnapshot}=window.MathroomBoard;
 
 const AUTH_SESSION_TTL_MS=24*60*60*1000;
 const AUTH_SESSION_EXPIRY_KEY='mathroom.authSessionExpiresAt';
-function authSessionExpiry(){
-  try{return Number(localStorage.getItem(AUTH_SESSION_EXPIRY_KEY))||0}catch{return 0}
+async function authSessionExpiry(){
+  try{return Number(await authStorage.getItem(AUTH_SESSION_EXPIRY_KEY))||0}catch{return 0}
 }
-function rememberAuthSession(){
-  try{localStorage.setItem(AUTH_SESSION_EXPIRY_KEY,String(Date.now()+AUTH_SESSION_TTL_MS))}catch{}
+async function rememberAuthSession(){
+  try{await authStorage.setItem(AUTH_SESSION_EXPIRY_KEY,String(Date.now()+AUTH_SESSION_TTL_MS))}catch(e){console.warn('[Mathroom auth ttl:set]',e)}
 }
-function clearAuthSession(){
-  try{localStorage.removeItem(AUTH_SESSION_EXPIRY_KEY)}catch{}
+async function clearAuthSession(){
+  try{await authStorage.removeItem(AUTH_SESSION_EXPIRY_KEY)}catch(e){console.warn('[Mathroom auth ttl:remove]',e)}
 }
-function authSessionIsFresh(){
-  const expiresAt=authSessionExpiry();
-  return expiresAt> Date.now();
+async function authSessionIsFresh(){
+  const expiresAt=await authSessionExpiry();
+  return expiresAt>Date.now();
 }
 
 const TEACHER_VIEW_STORAGE_PREFIX='mathroom.teacherView.';
@@ -290,21 +290,21 @@ async function linkTextbookModal({topicId='',textbookId=''}={}){
 async function boot(){
   if(!configured)return configScreen();
   if(S.access)return bootStudent();
-  if(!authStorageAvailable?.()){
+  if(!(await authStorageAvailable?.())){
     app.innerHTML=`<div class="center-page"><div class="auth-card"><div class="brand">Mathroom</div><h1>Браузер не сохраняет вход</h1><p>Для работы кабинета разреши локальное хранилище / данные сайта для Mathroom.</p></div></div>`;
     return;
   }
   const {data:{session},error:sessionError}=await sb.auth.getSession();
   if(sessionError)console.warn('[Mathroom getSession]',sessionError);
   if(!session||session.user.is_anonymous){
-    clearAuthSession();
+    await clearAuthSession();
     return renderAuth();
   }
   /* Older sessions existed before the 24-hour policy. Keep the currently signed-in
      teacher instead of unexpectedly logging them out, and start the 24-hour window now. */
-  if(!authSessionExpiry())rememberAuthSession();
-  if(!authSessionIsFresh()){
-    clearAuthSession();
+  if(!(await authSessionExpiry()))await rememberAuthSession();
+  if(!(await authSessionIsFresh())){
+    await clearAuthSession();
     try{await sb.auth.signOut()}catch{}
     return renderAuth();
   }
@@ -325,7 +325,7 @@ function renderTeacherLoadError(error){
   const message=error?.message||'Не удалось загрузить кабинет.';
   app.innerHTML=`<div class="center-page"><div class="auth-card"><div class="brand">Mathroom</div><h1>Не удалось открыть кабинет</h1><p>${esc(message)}</p><div class="actions"><button class="btn primary" id="retryTeacherBoot">Повторить</button><button class="btn" id="loadErrorLogout">Выйти</button></div><div class="small muted" style="margin-top:12px">Авторизация сохранена. Повторно вводить пароль из-за ошибки загрузки не нужно.</div></div></div>`;
   document.getElementById('retryTeacherBoot').onclick=()=>boot().catch(e=>renderTeacherLoadError(e));
-  document.getElementById('loadErrorLogout').onclick=async()=>{clearAuthSession();try{await sb.auth.signOut()}catch{}S.user=S.teacher=null;renderAuth()};
+  document.getElementById('loadErrorLogout').onclick=async()=>{await clearAuthSession();try{await sb.auth.signOut()}catch{}S.user=S.teacher=null;renderAuth()};
 }
 function renderAuth(){
   app.innerHTML=`<div class="center-page"><div class="auth-card"><div class="brand">Mathroom</div><h1>Вход для преподавателя</h1><p>Доступ выдаётся администратором Mathroom.</p><form id="loginForm"><div class="field"><label>Email</label><input id="email" type="email" autocomplete="username" required></div><div class="field"><label>Пароль</label><input id="password" type="password" autocomplete="current-password" minlength="6" required></div><div class="actions"><button class="btn primary">Войти</button></div></form><div id="authMsg" class="small muted" style="margin-top:12px"></div></div></div>`;
@@ -335,7 +335,7 @@ function renderAuth(){
     const submit=form.querySelector('button[type="submit"],button:not([type])');
     const email=document.getElementById('email').value,password=document.getElementById('password').value,msg=document.getElementById('authMsg');
     if(submit?.disabled)return;
-    if(!authStorageAvailable?.())return msg.textContent='Браузер запретил локальное хранилище. Разреши данные сайта/cookies для Mathroom и повтори вход.';
+    if(!(await authStorageAvailable?.()))return msg.textContent='Браузер не дал открыть защищённое хранилище Mathroom. Разреши данные сайта и повтори вход.';
     if(submit){submit.disabled=true;submit.textContent='Входим…'}
     msg.textContent='';
     try{
@@ -346,9 +346,9 @@ function renderAuth(){
       // Calling setSession again here can serialize on the same auth lock and make
       // the UI look frozen after a successful password request.
       await new Promise(r=>setTimeout(r,0));
-      const stored=localStorage.getItem(AUTH_STORAGE_KEY);
-      if(!stored)throw new Error('Браузер не сохранил сессию Mathroom. Проверь разрешение на хранение данных сайта.');
-      rememberAuthSession();
+      const stored=await authStorage.getItem(AUTH_STORAGE_KEY);
+      if(!stored)throw new Error('Браузер не сохранил сессию Mathroom в IndexedDB.');
+      await rememberAuthSession();
       S.user=data.session.user||data.user;
       S.teacher=await ensureTeacher();
       await loadTeacher();
@@ -371,7 +371,7 @@ function shell(content,title,sub=''){
 }
 function bindShell(){
   document.querySelectorAll('[data-nav]').forEach(b=>b.onclick=()=>{cleanupAll();forgetActiveLesson();S.view=b.dataset.nav;S.topic=null;S.activeLesson=null;renderTeacher()});
-  const l=document.getElementById('logout');if(l)l.onclick=async()=>{cleanupAll();forgetActiveLesson();clearAuthSession();await sb.auth.signOut();S.user=S.teacher=null;renderAuth()};
+  const l=document.getElementById('logout');if(l)l.onclick=async()=>{cleanupAll();forgetActiveLesson();await clearAuthSession();await sb.auth.signOut();S.user=S.teacher=null;renderAuth()};
 }
 function renderTeacher(){
   cleanupAll();
