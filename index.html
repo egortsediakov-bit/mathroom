@@ -4,6 +4,28 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
   <meta name="theme-color" content="#17191c" />
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
+  <script>
+    window.__MATHROOM_BUILD__='45.4-cache-proof';
+    (() => {
+      /* GitHub Pages and Chromium forks may keep index.html longer than the
+         versioned JS files. A tiny no-store build probe makes the shell
+         self-healing without flushing cached ML/WASM assets. */
+      fetch('./build.json?t='+Date.now(),{cache:'no-store'})
+        .then(r=>r.ok?r.json():null)
+        .then(info=>{
+          const latest=String(info?.build||'');
+          if(!latest||latest===window.__MATHROOM_BUILD__)return;
+          const url=new URL(location.href);
+          if(url.searchParams.get('_mrbuild')===latest)return;
+          url.searchParams.set('_mrbuild',latest);
+          location.replace(url.toString());
+        })
+        .catch(()=>{});
+    })();
+  </script>
   <title>Mathroom</title>
   <link rel="icon" type="image/svg+xml" href="./favicon.svg?v=29.11.0" />
   <link rel="stylesheet" href="./styles.css?v=40.9-no-black-stripe" />
@@ -86,7 +108,7 @@
 
   <script src="./js/library-sync-preflight-v2972.js?v=29.9.3"></script>
   <script src="./app-v341.js?v=40.10-trial-attendance"></script>
-  <script src="./js/lesson-tools-next.js?v=45.3-yandex-nosimd"></script>
+  <script src="./js/lesson-tools-next.js?v=45.4-cache-proof"></script>
   <script src="./js/lesson-pro-suite.js?v=31.2-lesson-workspace"></script>
   <script src="./js/ux-v234.js?v=35.0-student-ui-kit"></script>
 
