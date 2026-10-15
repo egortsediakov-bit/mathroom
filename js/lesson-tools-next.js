@@ -148,6 +148,7 @@
       this.virtualBgTaskInference = null;
       this.virtualBgTaskTimestamp = 0;
       this.virtualBgTaskBackend = '';
+      this.virtualBgError = '';
       this.virtualBgFaceLibPromise = null;
       this.virtualBgFaceDetector = null;
       this.virtualBgPersonLibPromise = null;
@@ -1659,7 +1660,9 @@
       root.querySelectorAll('.mr-bg-saved-item').forEach(b=>b.classList.toggle('active',this.virtualBgMode==='custom'&&b.dataset.bgSavedId===this.virtualBgCustomId));
       const cameraLive=!!this.localStream?.getVideoTracks?.().find(t=>t.readyState==='live'&&t.enabled!==false);
       root.querySelectorAll('[data-bg-status]').forEach(status=>{
-        status.textContent=(this.virtualBgMode!=='none'&&cameraLive&&!this.virtualBgMaskReady)
+        status.textContent=(this.virtualBgMode!=='none'&&cameraLive&&this.virtualBgError)
+          ? 'Ошибка запуска фона'
+          : (this.virtualBgMode!=='none'&&cameraLive&&!this.virtualBgMaskReady)
           ? 'Подготавливаем фон…'
           : this.virtualBgMode==='none' ? 'Без обработки'
           : this.virtualBgMode==='blur' ? 'Размытие включено'
@@ -1876,7 +1879,7 @@
 
       const owner=this;
       this.virtualBgLibPromise=(async()=>{
-        const VERSION='1.0.1';
+        const VERSION='1.1.0';
         const moduleUrl=`https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${VERSION}/vision_bundle.mjs`;
         const wasmUrl=`https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${VERSION}/wasm`;
         const modelUrl='https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_segmenter_landscape/float16/latest/selfie_segmenter_landscape.tflite';
@@ -2291,6 +2294,7 @@
       }
 
       this.stopVirtualBackground();
+      this.virtualBgError='';
       this.virtualBgInitializing=true;
       this.virtualBgMaskReady=false;
       this.paintAllVirtualBgControls();
@@ -2740,6 +2744,7 @@
           baseMaskReady=true;
           this.virtualBgMaskReady=true;
           this.virtualBgInitializing=false;
+          this.virtualBgError='';
           this.virtualBgStartupRetries=0;
           clearTimeout(this.virtualBgStartupRetryTimer);
           this.virtualBgStartupRetryTimer=0;
@@ -2994,6 +2999,7 @@
         }catch(e){
           console.warn('[Mathroom virtual background activation]',e);
           this.virtualBgInitializing=false;
+          this.virtualBgError=String(e?.message||'Не удалось запустить виртуальный фон');
           this.stopVirtualBackground();
           this.paintPrejoin();
           this.paintAllVirtualBgControls();
@@ -3013,6 +3019,7 @@
       if(mode==='custom'&&!this.virtualBgCustomImage)return;
 
       const previous=this.virtualBgMode;
+      this.virtualBgError='';
 
       try{
         /* Load the exact background before switching state. This avoids the
