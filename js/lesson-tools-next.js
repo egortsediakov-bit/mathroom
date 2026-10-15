@@ -2179,137 +2179,34 @@
     }
 
     async prewarmVirtualBgEngine() {
-      if(this.virtualBgWarmProcessor)return true;
       if(this.virtualBgWarmupPromise)return this.virtualBgWarmupPromise;
 
-      const VERSION='0.1.1675465747';
-      const base=`https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation@${VERSION}/`;
-      const isYaBrowser=/YaBrowser/i.test(navigator.userAgent||'');
-      const assetUrl=file=>{
-        const safeFile=isYaBrowser
-          ? String(file||'').replace(
-              /selfie_segmentation_solution_simd_wasm_bin/g,
-              'selfie_segmentation_solution_wasm_bin'
-            )
-          : file;
-        return base+safeFile;
-      };
-      const wait=(ms)=>new Promise(resolve=>setTimeout(resolve,ms));
-
+      /* 45.6: preload assets only.
+         Do NOT run SelfieSegmentation on a synthetic canvas before a real
+         camera exists. In YaBrowser the legacy SolutionWasm runtime can report
+         that warm-up as successful and then never deliver a result for the
+         first MediaStream frame. The page already preloads the pinned WASM and
+         TFLite files, so here we only make sure the JS library/background image
+         are ready. The live processor is created fresh after the raw camera
+         track is actually producing frames. */
       this.virtualBgWarmupPromise=(async()=>{
         try{
-          this.virtualBgStage='модель';
+          this.virtualBgStage='загружаем модель';
           this.paintAllVirtualBgControls();
-          const Seg=await this.ensureVirtualBgLibrary();
+
+          await this.ensureVirtualBgLibrary();
           if(['studio','mathroom','classroom'].includes(this.virtualBgMode)){
             await this.ensureBuiltInBackgroundImage(this.virtualBgMode);
           }
 
-          for(let attempt=0;attempt<2;attempt++){
-            let processor=null;
-            try{
-              processor=new Seg({locateFile:assetUrl});
-              processor.setOptions({modelSelection:1});
+          if(this.destroyed)return false;
 
-              let gotResult=false;
-              let resolveResult;
-              const resultPromise=new Promise(resolve=>{resolveResult=resolve});
-              processor.onResults(()=>{
-                gotResult=true;
-                resolveResult?.(true);
-              });
-
-              if(typeof processor.initialize==='function'){
-                await Promise.race([
-                  Promise.resolve(processor.initialize()),
-                  wait(6500).then(()=>{throw new Error('SelfieSegmentation initialize timeout')})
-                ]);
-              }
-
-              const warm=document.createElement('canvas');
-              warm.width=256;warm.height=144;
-              const wctx=warm.getContext('2d',{alpha:false});
-              if(wctx){
-                const g=wctx.createLinearGradient(0,0,warm.width,warm.height);
-                g.addColorStop(0,'#d9d9d9');
-                g.addColorStop(1,'#666');
-                wctx.fillStyle=g;
-                wctx.fillRect(0,0,warm.width,warm.height);
-                wctx.fillStyle='#222';
-                wctx.beginPath();
-                wctx.arc(128,52,28,0,Math.PI*2);
-                wctx.fill();
-                wctx.fillRect(88,80,80,64);
-              }
-
-              const sendPromise=Promise.resolve(processor.send({image:warm}));
-              await Promise.race([
-                Promise.all([sendPromise,resultPromise]),
-                wait(5000).then(()=>{throw new Error('SelfieSegmentation warm frame timeout')})
-              ]);
-
-              if(!gotResult)throw new Error('SelfieSegmentation warm frame returned no mask');
-              if(this.destroyed){
-                try{processor.close?.()}catch{}
-                return false;
-              }
-
-              /* The warm-up instance is intentionally sacrificial.
-                 Reusing a SelfieSegmentation instance after feeding it a synthetic
-                 canvas can leave YaBrowser's legacy SolutionWasm pipeline alive
-                 but unable to produce results from a MediaStream frame. That was
-                 the reason the first background often did nothing while the
-                 second camera toggle suddenly worked. Warm the assets/runtime,
-                 then start the live camera with a fresh processor. */
-              try{await Promise.resolve(processor?.close?.())}catch{}
-              processor=null;
-              try{this.virtualBgWarmProcessor?.close?.()}catch{}
-              this.virtualBgWarmProcessor=null;
-              this.virtualBgSelfieWarm=true;
-
-              if(!this.virtualBgInitializing){
-                this.virtualBgStage='готово к запуску';
-                this.paintAllVirtualBgControls();
-
-                /* Race-proof hand-off: if the camera became live while warm-up
-                   was still running, start the selected effect automatically.
-                   The normal Camera handler also calls activation; the shared
-                   apply promise makes this idempotent. */
-                const liveRaw=this.localStream?.getVideoTracks?.().find(
-                  t=>t.readyState==='live'&&t.enabled!==false
-                )||null;
-                if(
-                  liveRaw &&
-                  this.cameraEnabled &&
-                  this.virtualBgMode!=='none' &&
-                  !this.virtualBgMaskReady &&
-                  !this.virtualBgApplyPromise
-                ){
-                  queueMicrotask(()=>{
-                    if(
-                      !this.destroyed &&
-                      this.cameraEnabled &&
-                      this.virtualBgMode!=='none' &&
-                      liveRaw.readyState==='live' &&
-                      liveRaw.enabled!==false
-                    ){
-                      this.activateSelectedVirtualBackground(liveRaw)
-                        .catch(e=>console.warn('[Mathroom virtual background] warm hand-off',e));
-                    }
-                  });
-                }
-              }
-              return true;
-            }catch(e){
-              console.warn('[Mathroom virtual background] warm attempt',attempt+1,e);
-              /* Do not wait on/close a processor whose WASM send is itself
-                 wedged; simply abandon that one and retry with a clean instance. */
-              processor=null;
-              if(attempt===0)await wait(120);
-            }
+          this.virtualBgSelfieWarm=true;
+          if(!this.virtualBgInitializing){
+            this.virtualBgStage='готово к запуску';
+            this.paintAllVirtualBgControls();
           }
-
-          return false;
+          return true;
         }catch(e){
           console.warn('[Mathroom virtual background] preload',e);
           return false;
@@ -2571,17 +2468,13 @@
         return selfieBase+safeFile;
       };
 
-      if(this.virtualBgWarmupPromise&&!this.virtualBgWarmProcessor){
-        /* Never start a second MediaPipe instance while prewarm is still
-           compiling/sending its validation frame. The selected background is
-           already visible on the canvas at this point, so waiting here does
-           not expose the real room and avoids the first-start race entirely. */
+      if(this.virtualBgWarmupPromise){
+        /* Asset preloading is safe to await because it never owns a MediaPipe
+           processor anymore. */
         await this.virtualBgWarmupPromise.catch(()=>false);
       }
 
-      /* Never reuse the synthetic warm-up processor for live camera frames.
-         A fresh instance is tied to the current raw track for its whole life. */
-      this.virtualBgStage='модель';
+      this.virtualBgStage='запускаем обработку';
       this.paintAllVirtualBgControls();
       const Seg=await this.ensureVirtualBgLibrary();
       try{this.virtualBgWarmProcessor?.close?.()}catch{}
@@ -3046,6 +2939,34 @@
       this.bindPrejoinPreview();
     }
 
+    armVirtualBackground(rawTrack=null) {
+      const raw=rawTrack||this.localStream?.getVideoTracks?.().find(t=>t.readyState==='live')||null;
+      if(!raw)return;
+
+      const tryStart=()=>{
+        if(
+          this.destroyed ||
+          !this.cameraEnabled ||
+          this.virtualBgMode==='none' ||
+          this.virtualBgMaskReady ||
+          raw.readyState!=='live' ||
+          raw.enabled===false ||
+          this.localStream?.getVideoTracks?.()[0]!==raw
+        )return;
+
+        this.activateSelectedVirtualBackground(raw)
+          .catch(e=>console.warn('[Mathroom virtual background watchdog]',e));
+      };
+
+      /* The first call is independent from switchInputDevice finishing its
+         device-list refresh. Two delayed checks cover browser/device events
+         that repaint the prejoin while the camera is starting. The activation
+         promise itself prevents concurrent processors. */
+      queueMicrotask(tryStart);
+      setTimeout(tryStart,320);
+      setTimeout(tryStart,1400);
+    }
+
     async activateSelectedVirtualBackground(rawTrack=null) {
       if(this.virtualBgMode==='none'||!this.cameraEnabled||this.destroyed)return null;
       if(this.virtualBgApplyPromise)return this.virtualBgApplyPromise;
@@ -3439,6 +3360,7 @@
         this.bindMedia();
         this.paintPrejoin();
         this.paint();
+        if(this.virtualBgMode!=='none')this.armVirtualBackground(next);
       }else if(!isAudio&&this.virtualBgMode!=='none'){
         try{await this.startVirtualBackground()}
         catch(e){
@@ -3476,7 +3398,11 @@
       }
 
       this.bindMedia();
-      await this.refreshDevices().catch(()=>{});
+      if(!isAudio&&opts.deferVirtualBg){
+        this.refreshDevices().catch(()=>{});
+      }else{
+        await this.refreshDevices().catch(()=>{});
+      }
       this.paintPrejoin();
       if(!opts.silent)toast(isAudio?'Микрофон переключён':'Камера переключена');
       return next;
@@ -3606,7 +3532,7 @@
       const backdrop = document.createElement('div');
       backdrop.className = 'mr-native-prejoin-backdrop';
       backdrop.innerHTML = `<div class="mr-native-prejoin">
-        <div><div class="pill">Встроенная связь Mathroom · 45.5</div><h2>Подключиться к уроку</h2><p class="small muted">Микрофон и камеру можно проверить заранее. Камера необязательна — без неё в урок всё равно можно войти.</p></div>
+        <div><div class="pill">Встроенная связь Mathroom · 45.6</div><h2>Подключиться к уроку</h2><p class="small muted">Микрофон и камеру можно проверить заранее. Камера необязательна — без неё в урок всё равно можно войти.</p></div>
         <div class="mr-native-prejoin-grid">
           <div class="mr-prejoin-media-col">
             <div class="mr-native-preview"><video id="mrPrejoinVideo" autoplay muted playsinline></video><span class="mr-preview-name">Вы</span></div>
@@ -3697,6 +3623,7 @@
           this.paintPrejoin();
 
           if(this.virtualBgMode!=='none'){
+            this.armVirtualBackground(rawTrack);
             await this.activateSelectedVirtualBackground(rawTrack);
           }
         }catch(e){
@@ -4008,7 +3935,7 @@
           toast('Камера включена');
 
           if(this.virtualBgMode!=='none'){
-            this.activateSelectedVirtualBackground(t).catch(e=>console.warn('[Mathroom camera background]',e));
+            this.armVirtualBackground(t);
           }
         }catch(e){
           this.cameraEnabled=false;
