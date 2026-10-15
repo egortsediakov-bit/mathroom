@@ -3834,3 +3834,22 @@ input[type="file"]{font-size:11px!important}
     order:1!important;
   }
 }
+
+
+/* Mathroom 46.5 — deterministic cursor on board page strip */
+.board-page-tabs{
+  cursor:default!important;
+}
+.board-page-tabs .btn,
+.board-page-tab{
+  cursor:pointer!important;
+}
+.board-page-tabs .btn[aria-current="page"],
+.board-page-tab.active,
+.board-page-tabs .btn:disabled{
+  cursor:default!important;
+}
+.board-page-tabs .btn[aria-current="page"] *,
+.board-page-tab.active *{
+  cursor:inherit!important;
+}
