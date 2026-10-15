@@ -1741,7 +1741,9 @@
         const model=await window.bodyPix.load({
           architecture:'MobileNetV1',
           outputStride:16,
-          multiplier:mobile?.50:1.0,
+          /* Identity only: the 0.50 MobileNet is enough to distinguish people
+             while avoiding the long main-thread stalls of the 1.0 desktop model. */
+          multiplier:.50,
           quantBytes:2
         });
 
@@ -2105,12 +2107,10 @@
           try{processor?.close?.()}catch{}
         }
 
-        /* Identity separation is deliberately secondary. BodyPix loads in the
-           background and later supplies a coarse envelope for the one primary
-           participant. It never owns the visible edge of the person. */
-        this.ensureVirtualBgBodyPixModel().catch(e=>
-          console.warn('[Mathroom virtual background] BodyPix preload',e)
-        );
+        /* Do not compile BodyPix during prejoin startup. TFJS/WebGL compilation
+           can monopolize the main thread exactly when the first camera frame and
+           first SelfieSegmentation mask need to appear. The identity model is
+           loaded only after the visible background is already working. */
         return this.virtualBgSelfieWarm;
       })();
 
@@ -2159,11 +2159,21 @@
       configureSegmentationProcessor(processor);
       this.virtualBgProcessor=processor;
 
-      /* BodyPix is not allowed to delay the first virtual-background frame. */
+      /* First frame wins over identity filtering. BodyPix is deliberately
+         deferred until SelfieSegmentation has produced a visible mask, so TFJS
+         compilation cannot stall the first background activation. */
       let bodyPixModel=this.virtualBgBodyPixModel||null;
-      this.ensureVirtualBgBodyPixModel()
-        .then(model=>{bodyPixModel=model})
-        .catch(e=>console.warn('[Mathroom virtual background] BodyPix identity model',e));
+      let bodyPixLoadStarted=!!bodyPixModel;
+      const startIdentityModelLoad=()=>{
+        if(bodyPixModel||bodyPixLoadStarted||this.destroyed)return;
+        bodyPixLoadStarted=true;
+        this.ensureVirtualBgBodyPixModel()
+          .then(model=>{bodyPixModel=model})
+          .catch(e=>{
+            bodyPixLoadStarted=false;
+            console.warn('[Mathroom virtual background] BodyPix identity model',e);
+          });
+      };
 
       const source=document.createElement('video');
       source.autoplay=true;
@@ -2200,7 +2210,7 @@
       /* SelfieSegmentation inference: larger than BodyPix identity detection
          because this mask defines the visible hair/body edge. */
       const segCanvas=document.createElement('canvas');
-      const segLong=mobile?384:512;
+      const segLong=mobile?352:448;
       const segScale=Math.min(1,segLong/Math.max(srcW,srcH));
       segCanvas.width=Math.max(192,Math.round(srcW*segScale));
       segCanvas.height=Math.max(144,Math.round(srcH*segScale));
@@ -2282,7 +2292,7 @@
       ctx.clearRect(0,0,w,h);
       drawBackground();
 
-      const output=canvas.captureStream(mobile?18:24);
+      const output=canvas.captureStream(mobile?24:30);
       const outTrack=output.getVideoTracks()[0];
       if(!outTrack)throw new Error('Не удалось создать обработанный видеопоток');
       outTrack.enabled=this.cameraEnabled;
@@ -2292,7 +2302,7 @@
       this.virtualBgCanvas=canvas;
       this.virtualBgStream=output;
       this.virtualBgTrack=outTrack;
-      this.virtualBgFrameInterval=mobile?100:78;
+      this.virtualBgFrameInterval=mobile?88:58;
       this.virtualBgAvgProcessMs=0;
       this.virtualBgPrimaryTrack=null;
 
@@ -2623,7 +2633,9 @@
           this.paintAllVirtualBgControls();
           try{resolveFirstMask?.(true)}catch{}
 
-          /* First valid mask swaps the raw preview automatically. */
+          /* First valid mask swaps the raw preview automatically. Identity
+             separation starts afterwards, when the visible camera is already
+             responsive. */
           queueMicrotask(async()=>{
             if(this.destroyed||this.virtualBgTrack!==outTrack)return;
             await this.syncOutgoingCameraTrack();
@@ -2631,6 +2643,9 @@
             this.bindMedia();
             this.paintPrejoin();
             this.paint();
+            setTimeout(()=>{
+              if(!this.destroyed&&this.virtualBgTrack===outTrack)startIdentityModelLoad();
+            },350);
           });
         }
       };
@@ -2649,13 +2664,15 @@
         idCtx.drawImage(source,0,0,idCanvas.width,idCanvas.height);
         Promise.resolve(bodyPixModel.segmentMultiPerson(idCanvas,{
           flipHorizontal:false,
-          internalResolution:mobile?'low':'medium',
-          segmentationThreshold:mobile?.52:.48,
+          /* BodyPix is only a coarse "which person?" envelope. Keep this pass
+             intentionally light; SelfieSegmentation owns the visible edge. */
+          internalResolution:'low',
+          segmentationThreshold:mobile?.54:.50,
           maxDetections:3,
           scoreThreshold:.12,
           nmsRadius:20,
           minKeypointScore:.10,
-          refineSteps:4
+          refineSteps:2
         }))
           .then(people=>{
             const primary=choosePrimary(people);
@@ -2668,6 +2685,43 @@
           })
           .catch(e=>console.warn('[Mathroom virtual background identity]',e))
           .finally(()=>{idBusy=false});
+      };
+
+      const sendSegmentationFrame=()=>{
+        if(
+          segBusy ||
+          source.readyState<2 ||
+          this.destroyed ||
+          this.virtualBgTrack!==outTrack ||
+          this.virtualBgMode==='none'
+        )return;
+
+        lastSeg=performance.now();
+        segBusy=true;
+        const started=performance.now();
+        try{
+          segCtx.drawImage(source,0,0,segCanvas.width,segCanvas.height);
+        }catch{
+          segBusy=false;
+          return;
+        }
+
+        Promise.resolve(processor.send({image:segCanvas}))
+          .catch(e=>console.warn('[Mathroom virtual background segmentation]',e))
+          .finally(()=>{
+            const elapsed=performance.now()-started;
+            this.virtualBgAvgProcessMs=this.virtualBgAvgProcessMs
+              ?this.virtualBgAvgProcessMs*.82+elapsed*.18
+              :elapsed;
+
+            /* Never queue overlapping inference. A shorter target interval only
+               means "send the next frame as soon as the current one finishes",
+               which keeps hands/face responsive without building a backlog. */
+            if(this.virtualBgAvgProcessMs>115)this.virtualBgFrameInterval=mobile?125:96;
+            else if(this.virtualBgAvgProcessMs>80)this.virtualBgFrameInterval=mobile?105:78;
+            else this.virtualBgFrameInterval=mobile?84:58;
+            segBusy=false;
+          });
       };
 
       const renderLoop=ts=>{
@@ -2708,34 +2762,21 @@
           source.readyState>=2 &&
           ts-lastSeg>=segInterval
         ){
-          lastSeg=ts;
-          segBusy=true;
-          const started=performance.now();
-          segCtx.drawImage(source,0,0,segCanvas.width,segCanvas.height);
-
-          Promise.resolve(processor.send({image:segCanvas}))
-            .catch(e=>console.warn('[Mathroom virtual background segmentation]',e))
-            .finally(()=>{
-              const elapsed=performance.now()-started;
-              this.virtualBgAvgProcessMs=this.virtualBgAvgProcessMs
-                ?this.virtualBgAvgProcessMs*.82+elapsed*.18
-                :elapsed;
-
-              if(this.virtualBgAvgProcessMs>115)this.virtualBgFrameInterval=mobile?170:145;
-              else if(this.virtualBgAvgProcessMs>80)this.virtualBgFrameInterval=mobile?135:110;
-              else this.virtualBgFrameInterval=mobile?105:82;
-              segBusy=false;
-            });
+          sendSegmentationFrame();
         }
 
         /* Identity refresh stays frequent enough to suppress a person walking
            behind the tracked participant without running BodyPix every frame. */
-        if(ts-lastIdentity>(mobile?900:620)){
+        if(baseMaskReady&&ts-lastIdentity>(mobile?1600:1100)){
           lastIdentity=ts;
           runIdentity();
         }
       };
 
+      /* Kick the very first inference immediately instead of waiting for the
+         first animation-frame scheduler turn. This removes the race where the
+         raw preview could remain visible until the user switched backgrounds. */
+      sendSegmentationFrame();
       this.virtualBgRaf=requestAnimationFrame(renderLoop);
 
       const ready=await Promise.race([
