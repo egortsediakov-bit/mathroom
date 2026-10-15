@@ -2467,10 +2467,11 @@
       const selfieBase=`https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation@${VERSION}/`;
 
       if(this.virtualBgWarmupPromise&&!this.virtualBgWarmProcessor){
-        await Promise.race([
-          this.virtualBgWarmupPromise.catch(()=>false),
-          new Promise(resolve=>setTimeout(resolve,1400))
-        ]);
+        /* Never start a second MediaPipe instance while prewarm is still
+           compiling/sending its validation frame. The selected background is
+           already visible on the canvas at this point, so waiting here does
+           not expose the real room and avoids the first-start race entirely. */
+        await this.virtualBgWarmupPromise.catch(()=>false);
       }
 
       const Seg=await this.ensureVirtualBgLibrary();
