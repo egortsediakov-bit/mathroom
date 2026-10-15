@@ -132,7 +132,6 @@ Deno.serve(async (req) => {
     student_id: student.id,
     scheduled_at: trialAt.toISOString(),
     duration_minutes: 60,
-    status: "assigned",
     schedule_note: "Пробный урок создан автоматически из КОТОМАТИКА CRM",
     lesson_type: "trial",
     crm_event_key: eventKey,
@@ -141,7 +140,7 @@ Deno.serve(async (req) => {
 
   const { data: existingLesson, error: existingLessonError } = await supabase
     .from("lessons")
-    .select("id")
+    .select("id, status, started_at, completed_at, cancelled_at, attendance_status")
     .eq("crm_event_key", eventKey)
     .maybeSingle();
 
@@ -149,9 +148,33 @@ Deno.serve(async (req) => {
     return json({ ok: false, error: "Ученик синхронизирован, но не удалось проверить пробный урок", details: existingLessonError.message }, 500, origin);
   }
 
+  // Обычное изменение даты/преподавателя не имеет права откатывать уже
+  // начатый урок обратно в assigned. Но если прошлое пробное не состоялось
+  // (неявка/таймаут) или было отменено, новая дата из CRM открывает тот же
+  // crm_event_key заново как запланированный пробный.
+  const reopenTrial = Boolean(
+    existingLesson &&
+      (existingLesson.status === "cancelled" || existingLesson.attendance_status === "absent")
+  );
+
+  const lessonUpdatePayload = reopenTrial
+    ? {
+        ...lessonPayload,
+        status: "assigned",
+        started_at: null,
+        completed_at: null,
+        cancelled_at: null,
+        cancellation_reason: "",
+        attendance_status: "unmarked",
+        attendance_note: "",
+        attendance_marked_at: null,
+        actual_duration_minutes: null,
+      }
+    : lessonPayload;
+
   const lessonQuery = existingLesson
-    ? supabase.from("lessons").update(lessonPayload).eq("id", existingLesson.id)
-    : supabase.from("lessons").insert(lessonPayload);
+    ? supabase.from("lessons").update(lessonUpdatePayload).eq("id", existingLesson.id)
+    : supabase.from("lessons").insert({ ...lessonPayload, status: "assigned" });
 
   const { data: lesson, error: lessonError } = await lessonQuery
     .select("id, scheduled_at, teacher_id, student_id, lesson_type")
