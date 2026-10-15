@@ -3616,7 +3616,7 @@
       const backdrop = document.createElement('div');
       backdrop.className = 'mr-native-prejoin-backdrop';
       backdrop.innerHTML = `<div class="mr-native-prejoin">
-        <div><div class="pill">Встроенная связь Mathroom · 46.5</div><h2>Подключиться к уроку</h2><p class="small muted">Микрофон и камеру можно проверить заранее. Камера необязательна — без неё в урок всё равно можно войти.</p></div>
+        <div><div class="pill">Встроенная связь Mathroom · 46.6</div><h2>Подключиться к уроку</h2><p class="small muted">Микрофон и камеру можно проверить заранее. Камера необязательна — без неё в урок всё равно можно войти.</p></div>
         <div class="mr-native-prejoin-grid">
           <div class="mr-prejoin-media-col">
             <div class="mr-native-preview"><video id="mrPrejoinVideo" autoplay muted playsinline></video><span class="mr-preview-name">Вы</span></div>
