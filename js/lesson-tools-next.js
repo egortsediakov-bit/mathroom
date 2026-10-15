@@ -1827,7 +1827,7 @@
           window.bodyPix.load({
             architecture:'MobileNetV1',
             outputStride:16,
-            multiplier:.75,
+            multiplier:.50,
             quantBytes:2
           }),
           15000,
@@ -1928,91 +1928,55 @@
     }
 
     async ensureVirtualBgLibrary() {
-      if(this.virtualBgTaskAdapterCtor)return this.virtualBgTaskAdapterCtor;
+      if(window.SelfieSegmentation)return window.SelfieSegmentation;
       if(this.virtualBgLibPromise)return this.virtualBgLibPromise;
 
-      const owner=this;
-      this.virtualBgLibPromise=(async()=>{
-        const model=await owner.ensureVirtualBgBodyPixModel();
+      const VERSION='0.1.1675465747';
+      const base=`https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation@${VERSION}/`;
 
-        class BodyPixVisibleSegmentationAdapter {
-          constructor(){
-            this.handler=null;
-            this.closed=false;
-            this.maskCanvas=document.createElement('canvas');
-            this.maskCanvas.width=256;
-            this.maskCanvas.height=144;
-            this.maskCtx=this.maskCanvas.getContext('2d',{alpha:false,willReadFrequently:true});
-            this.maskImage=null;
-          }
+      this.virtualBgLibPromise=new Promise((resolve,reject)=>{
+        let settled=false;
+        const finish=(error)=>{
+          if(settled)return;
+          settled=true;
+          clearTimeout(timer);
+          if(error)reject(error);
+          else if(window.SelfieSegmentation)resolve(window.SelfieSegmentation);
+          else reject(new Error('Модуль качественного виртуального фона недоступен'));
+        };
 
-          setOptions(){}
-
-          onResults(fn){
-            this.handler=typeof fn==='function'?fn:null;
-          }
-
-          async send(payload){
-            if(this.closed)return;
-            const image=payload?.image;
-            if(!image)throw new Error('Кадр виртуального фона недоступен');
-
-            const mobile=(window.matchMedia?.('(pointer: coarse)')?.matches||window.innerWidth<=760);
-            const first=!this._mrHasMask;
-            const segmentation=await model.segmentPerson(image,{
-              flipHorizontal:false,
-              internalResolution:first?'low':(mobile?'low':'medium'),
-              segmentationThreshold:first?.48:(mobile?.58:.54),
-              maxDetections:1,
-              scoreThreshold:.10,
-              nmsRadius:20
-            });
-
-            if(this.closed)return;
-            const data=segmentation?.data;
-            const mw=Math.max(1,Number(segmentation?.width)||image.width||256);
-            const mh=Math.max(1,Number(segmentation?.height)||image.height||144);
-            if(!data?.length)throw new Error('BodyPix не вернул маску человека');
-
-            if(this.maskCanvas.width!==mw||this.maskCanvas.height!==mh||!this.maskImage){
-              this.maskCanvas.width=mw;
-              this.maskCanvas.height=mh;
-              this.maskCtx=this.maskCanvas.getContext('2d',{alpha:false,willReadFrequently:true});
-              this.maskImage=this.maskCtx.createImageData(mw,mh);
-            }
-
-            const pixels=this.maskImage.data;
-            const len=Math.min(data.length,mw*mh);
-            for(let p=0,i=0;p<len;p++,i+=4){
-              const v=data[p]?255:0;
-              pixels[i]=v;
-              pixels[i+1]=v;
-              pixels[i+2]=v;
-              pixels[i+3]=255;
-            }
-            this.maskCtx.putImageData(this.maskImage,0,0);
-            this._mrHasMask=true;
-            this.handler?.({segmentationMask:this.maskCanvas});
-          }
-
-          close(){
-            this.closed=true;
-            this.handler=null;
-          }
+        let script=document.querySelector('script[data-mr-selfie-segmentation]');
+        if(script?.dataset?.mrFailed==='1'){
+          try{script.remove()}catch{}
+          script=null;
         }
 
-        owner.virtualBgTaskBackend='bodypix-visible';
-        owner.virtualBgTaskAdapterCtor=BodyPixVisibleSegmentationAdapter;
-        owner.virtualBgError='';
-        return BodyPixVisibleSegmentationAdapter;
-      })();
+        const timer=setTimeout(()=>{
+          if(script)script.dataset.mrFailed='1';
+          finish(new Error('Модуль качественного виртуального фона загружается слишком долго'));
+        },9000);
+
+        if(script){
+          if(window.SelfieSegmentation)return finish();
+          script.addEventListener('load',()=>finish(),{once:true});
+          script.addEventListener('error',()=>finish(new Error('Не удалось загрузить модуль качественного виртуального фона')),{once:true});
+          return;
+        }
+
+        script=document.createElement('script');
+        script.src=base+'selfie_segmentation.js';
+        script.async=true;
+        script.crossOrigin='anonymous';
+        script.dataset.mrSelfieSegmentation='1';
+        script.onload=()=>{script.dataset.mrLoaded='1';finish()};
+        script.onerror=()=>{script.dataset.mrFailed='1';finish(new Error('Не удалось загрузить модуль качественного виртуального фона'))};
+        document.head.appendChild(script);
+      });
 
       try{
         return await this.virtualBgLibPromise;
       }catch(e){
         this.virtualBgLibPromise=null;
-        this.virtualBgTaskAdapterCtor=null;
-        this.virtualBgError=String(e?.message||'Не удалось загрузить модель виртуального фона');
         throw e;
       }
     }
@@ -2211,17 +2175,85 @@
     }
 
     async prewarmVirtualBgEngine() {
-      if(this.virtualBgTaskAdapterCtor&&this.virtualBgBodyPixModel)return true;
+      if(this.virtualBgWarmProcessor)return true;
       if(this.virtualBgWarmupPromise)return this.virtualBgWarmupPromise;
+
+      const VERSION='0.1.1675465747';
+      const base=`https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation@${VERSION}/`;
+      const wait=(ms)=>new Promise(resolve=>setTimeout(resolve,ms));
 
       this.virtualBgWarmupPromise=(async()=>{
         try{
-          await this.ensureVirtualBgLibrary();
+          const Seg=await this.ensureVirtualBgLibrary();
           if(['studio','mathroom','classroom'].includes(this.virtualBgMode)){
             await this.ensureBuiltInBackgroundImage(this.virtualBgMode);
           }
-          this.virtualBgSelfieWarm=true;
-          return true;
+
+          for(let attempt=0;attempt<2;attempt++){
+            let processor=null;
+            try{
+              processor=new Seg({locateFile:file=>base+file});
+              processor.setOptions({modelSelection:1});
+
+              let gotResult=false;
+              let resolveResult;
+              const resultPromise=new Promise(resolve=>{resolveResult=resolve});
+              processor.onResults(()=>{
+                gotResult=true;
+                resolveResult?.(true);
+              });
+
+              if(typeof processor.initialize==='function'){
+                await Promise.race([
+                  Promise.resolve(processor.initialize()),
+                  wait(6500).then(()=>{throw new Error('SelfieSegmentation initialize timeout')})
+                ]);
+              }
+
+              const warm=document.createElement('canvas');
+              warm.width=256;warm.height=144;
+              const wctx=warm.getContext('2d',{alpha:false});
+              if(wctx){
+                const g=wctx.createLinearGradient(0,0,warm.width,warm.height);
+                g.addColorStop(0,'#d9d9d9');
+                g.addColorStop(1,'#666');
+                wctx.fillStyle=g;
+                wctx.fillRect(0,0,warm.width,warm.height);
+                wctx.fillStyle='#222';
+                wctx.beginPath();
+                wctx.arc(128,52,28,0,Math.PI*2);
+                wctx.fill();
+                wctx.fillRect(88,80,80,64);
+              }
+
+              const sendPromise=Promise.resolve(processor.send({image:warm}));
+              await Promise.race([
+                Promise.all([sendPromise,resultPromise]),
+                wait(5000).then(()=>{throw new Error('SelfieSegmentation warm frame timeout')})
+              ]);
+
+              if(!gotResult)throw new Error('SelfieSegmentation warm frame returned no mask');
+              if(this.destroyed){
+                try{processor.close?.()}catch{}
+                return false;
+              }
+
+              try{this.virtualBgWarmProcessor?.close?.()}catch{}
+              this.virtualBgWarmProcessor=processor;
+              processor=null;
+              this.virtualBgSelfieWarm=true;
+              this.paintAllVirtualBgControls();
+              return true;
+            }catch(e){
+              console.warn('[Mathroom virtual background] warm attempt',attempt+1,e);
+              /* Do not wait on/close a processor whose WASM send is itself
+                 wedged; simply abandon that one and retry with a clean instance. */
+              processor=null;
+              if(attempt===0)await wait(120);
+            }
+          }
+
+          return false;
         }catch(e){
           console.warn('[Mathroom virtual background] preload',e);
           return false;
@@ -2259,23 +2291,11 @@
       this.paintAllVirtualBgControls();
 
       const mobile=(window.matchMedia?.('(pointer: coarse)')?.matches||window.innerWidth<=760);
-      const Seg=await this.ensureVirtualBgLibrary();
-
-      /* Seg is now a compatibility adapter backed by the session-scoped
-         MediaPipe Tasks ImageSegmenter. No first-frame model initialization
-         happens here anymore. */
-      try{this.virtualBgWarmProcessor?.close?.()}catch{}
-      this.virtualBgWarmProcessor=null;
-      let processor=new Seg();
-      const configureSegmentationProcessor=p=>{
-        p.setOptions({modelSelection:1});
-      };
-      configureSegmentationProcessor(processor);
-      this.virtualBgProcessor=processor;
+      let processor=null;
 
       /* First frame wins over identity filtering. BodyPix is deliberately
-         deferred until SelfieSegmentation has produced a visible mask, so TFJS
-         compilation cannot stall the first background activation. */
+         deferred until the high-quality SelfieSegmentation mask is already
+         visible, so TFJS compilation can never delay first background start. */
       let bodyPixModel=this.virtualBgBodyPixModel||null;
       let bodyPixLoadStarted=!!bodyPixModel;
       const startIdentityModelLoad=()=>{
@@ -2442,6 +2462,27 @@
       this.virtualBgTrack=outTrack;
       this.bindPrejoinPreview();
       this.paintPrejoin();
+
+      const VERSION='0.1.1675465747';
+      const selfieBase=`https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation@${VERSION}/`;
+
+      if(this.virtualBgWarmupPromise&&!this.virtualBgWarmProcessor){
+        await Promise.race([
+          this.virtualBgWarmupPromise.catch(()=>false),
+          new Promise(resolve=>setTimeout(resolve,1400))
+        ]);
+      }
+
+      const Seg=await this.ensureVirtualBgLibrary();
+      processor=this.virtualBgWarmProcessor||null;
+      if(processor)this.virtualBgWarmProcessor=null;
+      if(!processor){
+        processor=new Seg({locateFile:file=>selfieBase+file});
+      }
+      const configureSegmentationProcessor=p=>p.setOptions({modelSelection:1});
+      configureSegmentationProcessor(processor);
+      this.virtualBgProcessor=processor;
+
       this.virtualBgFrameInterval=mobile?72:42;
       this.virtualBgAvgProcessMs=0;
       this.virtualBgPrimaryTrack=null;
@@ -2644,8 +2685,8 @@
         }
         const useAlpha=(alphaMax-alphaMin)>(lumMax-lumMin)*.55&&(alphaMax-alphaMin)>18;
 
-        const lo=mobile?38:36;
-        const hi=mobile?142:138;
+        const lo=mobile?24:22;
+        const hi=mobile?158:154;
 
         /* First build the current-frame confidence mask. */
         for(let p=0,i=0;p<total;p++,i+=4){
@@ -2729,7 +2770,11 @@
                after the first mask was the source of the visible freeze the user
                experienced. Let the camera become stable first, then use an idle
                slice whenever Chromium has one. */
-            setTimeout(startIdentityWhenIdle,320);
+            if(window.requestIdleCallback){
+              window.requestIdleCallback(startIdentityWhenIdle,{timeout:5000});
+            }else{
+              setTimeout(startIdentityWhenIdle,2200);
+            }
           });
         }
       };
@@ -2867,11 +2912,11 @@
 
       const ready=await Promise.race([
         firstMaskPromise,
-        new Promise(resolve=>setTimeout(()=>resolve(false),12000))
+        new Promise(resolve=>setTimeout(()=>resolve(false),4500))
       ]);
 
       if(!ready){
-        throw new Error('Не удалось получить первую маску виртуального фона');
+        throw new Error('Качественная маска не запустилась за 4.5 секунды');
       }
 
       return outTrack;
