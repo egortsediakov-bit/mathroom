@@ -12,6 +12,9 @@
     if(kind==='calendar')return '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5.5" width="16" height="14" rx="3"/><path d="M8 3.5v4M16 3.5v4M4 10h16"/><path class="accent" d="M8 14h3M13 14h3M8 17h3"/></svg>';
     if(kind==='clock')return '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path class="accent" d="M12 7v5l3 2"/></svg>';
     if(kind==='repeat')return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 8h11l-2.5-2.5"/><path class="accent" d="M19 16H8l2.5 2.5"/><path d="M5 8a7 7 0 0 0 1 8M19 16a7 7 0 0 0-1-8"/></svg>';
+    if(kind==='single')return '<svg class="mr-v3-repeat-mode-svg" viewBox="0 0 24 24" aria-hidden="true"><rect x="5.5" y="5.5" width="13" height="13" rx="3.5"/><path class="accent" d="M12 8.5v7"/><path class="accent" d="M10.2 10.1 12 8.5l1.8 1.6"/></svg>';
+    if(kind==='weekly')return '<svg class="mr-v3-repeat-mode-svg" viewBox="0 0 24 24" aria-hidden="true"><rect x="5.5" y="5.5" width="13" height="13" rx="3.5"/><path class="accent" d="M8.2 12c1.2-2 2.5-3 3.8-3s2.6 1 3.8 3c-1.2 2-2.5 3-3.8 3s-2.6-1-3.8-3Z"/><path d="M8.8 16.7c1 .6 2 .8 3.2.8 3.1 0 5.5-2.5 5.5-5.5"/></svg>';
+    if(kind==='custom')return '<svg class="mr-v3-repeat-mode-svg" viewBox="0 0 24 24" aria-hidden="true"><circle cx="7" cy="12" r="2"/><circle class="accent-fill" cx="17" cy="7" r="2"/><circle cx="17" cy="17" r="2"/><path d="M9 12h3c2.2 0 3-1.6 3-3"/><path class="accent" d="M12 12c2.2 0 3 1.6 3 3"/></svg>';
     return '';
   }
 
@@ -216,9 +219,9 @@
     const wrap=document.createElement('div');wrap.className='mr-v3-repeat';
     wrap.innerHTML=`
       <div class="mr-v3-repeat-modes">
-        <button type="button" data-mode="1"><span>●</span>Один урок</button>
-        <button type="button" data-mode="forever"><span>▣</span>Каждую неделю</button>
-        <button type="button" data-mode="custom"><span>↻</span>Другое</button>
+        <button type="button" data-mode="1"><span class="mr-v3-repeat-mode-icon">${svg('single')}</span>Один урок</button>
+        <button type="button" data-mode="forever"><span class="mr-v3-repeat-mode-icon">${svg('weekly')}</span>Каждую неделю</button>
+        <button type="button" data-mode="custom"><span class="mr-v3-repeat-mode-icon">${svg('custom')}</span>Другое</button>
       </div>
       <div class="mr-v3-repeat-extra" hidden>
         <span>Количество занятий</span>
