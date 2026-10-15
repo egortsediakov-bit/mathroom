@@ -17,48 +17,69 @@
     const prev=pts[pts.length-2],last=pts[pts.length-1];
     return d+` Q ${prev[0]} ${prev[1]} ${last[0]} ${last[1]}`;
   };
-  const stabilizeTouchPoints=(points=[])=>{
+  const stabilizeFreehandPoints=(points=[],inputType='mouse')=>{
+    const type=String(inputType||'mouse');
     const pts=(points||[]).filter(p=>Array.isArray(p)&&Number.isFinite(p[0])&&Number.isFinite(p[1]));
-    if(pts.length<3)return pts;
+    if(pts.length<3||type==='pen')return pts;
 
-    /* Finger input contains 1–3 px sensor wobble even when the user is moving
-       smoothly. Remove only tiny duplicate jitter first; keep real corners. */
+    /* 46.6: desktop mouse input needs the same quality pipeline as touch.
+       Chromium/Yandex can occasionally emit a single noisy coordinate while a
+       button is held. A median pre-filter removes that one-sample spike before
+       curve smoothing, without moving ordinary monotonic handwriting. */
+    const minDist=type==='touch'?.45:.60;
     const clean=[pts[0]];
     for(let i=1;i<pts.length;i++){
-      const p=pts[i],last=clean[clean.length-1];
-      const isLast=i===pts.length-1;
-      if(isLast||Math.hypot(p[0]-last[0],p[1]-last[1])>=.45)clean.push(p);
+      const p=pts[i],last=clean[clean.length-1],isLast=i===pts.length-1;
+      if(isLast||Math.hypot(p[0]-last[0],p[1]-last[1])>=minDist)clean.push(p);
     }
     if(clean.length<3)return clean;
 
-    /* Direction-aware 3-point filter. Straight/slightly curved handwriting gets
-       stronger stabilization; sharp corners (7, 4, x, etc.) are preserved. */
-    const out=[clean[0]];
+    const median3=(a,b,c)=>a>b?(b>c?b:a>c?c:a):(a>c?a:b>c?c:b);
+    let work=[clean[0]];
     for(let i=1;i<clean.length-1;i++){
       const a=clean[i-1],b=clean[i],c=clean[i+1];
-      const v1x=b[0]-a[0],v1y=b[1]-a[1],v2x=c[0]-b[0],v2y=c[1]-b[1];
-      const l1=Math.hypot(v1x,v1y),l2=Math.hypot(v2x,v2y);
-      let side=.18;
-      if(l1>.001&&l2>.001){
-        const cos=Math.max(-1,Math.min(1,(v1x*v2x+v1y*v2y)/(l1*l2)));
-        const turn=Math.acos(cos)/Math.PI;
-        side=.18*Math.max(.08,1-Math.min(1,turn*1.75));
-      }
-      const center=1-side*2;
-      const pressure=Number.isFinite(Number(b[2]))?Number(b[2]):.5;
-      out.push([
-        a[0]*side+b[0]*center+c[0]*side,
-        a[1]*side+b[1]*center+c[1]*side,
-        pressure
+      work.push([
+        median3(a[0],b[0],c[0]),
+        median3(a[1],b[1],c[1]),
+        Number.isFinite(Number(b[2]))?Number(b[2]):.5
       ]);
     }
-    out.push(clean[clean.length-1]);
-    return out;
+    work.push(clean[clean.length-1]);
+
+    /* Two light, direction-aware low-pass passes remove mouse stair-stepping
+       and finger wobble. Real deliberate corners are kept by reducing the
+       filter only when both neighbouring segments are long enough to represent
+       an intentional corner rather than sensor noise. */
+    const base=type==='touch'?.20:.24;
+    const passes=2;
+    for(let pass=0;pass<passes;pass++){
+      if(work.length<3)break;
+      const out=[work[0]];
+      for(let i=1;i<work.length-1;i++){
+        const a=work[i-1],b=work[i],c=work[i+1];
+        const v1x=b[0]-a[0],v1y=b[1]-a[1],v2x=c[0]-b[0],v2y=c[1]-b[1];
+        const l1=Math.hypot(v1x,v1y),l2=Math.hypot(v2x,v2y);
+        let side=base;
+        if(l1>.001&&l2>.001){
+          const cos=Math.max(-1,Math.min(1,(v1x*v2x+v1y*v2y)/(l1*l2)));
+          const turn=Math.acos(cos)/Math.PI;
+          const deliberateCorner=Math.min(l1,l2)>9&&turn>.28;
+          if(deliberateCorner)side*=Math.max(.05,1-Math.min(1,(turn-.28)*2.6));
+        }
+        const center=1-side*2;
+        out.push([
+          a[0]*side+b[0]*center+c[0]*side,
+          a[1]*side+b[1]*center+c[1]*side,
+          Number.isFinite(Number(b[2]))?Number(b[2]):.5
+        ]);
+      }
+      out.push(work[work.length-1]);
+      work=out;
+    }
+    return work;
   };
   const freehandPathD=o=>smoothPathD(
-    String(o?.inputType||'')==='touch'
-      ?stabilizeTouchPoints(o?.points||[])
-      :(o?.points||[])
+    stabilizeFreehandPoints(o?.points||[],String(o?.inputType||'mouse'))
   );
 
   const pressurePathGroup=o=>{
@@ -1189,7 +1210,7 @@
          provide many noisy coalesced samples. Treat both paths consistently. */
       const events=[...coalesced,e];
       const type=String(target.inputType||e.pointerType||'mouse');
-      const minStep=(type==='touch'?1.65:type==='pen'?.55:1.0)/Math.max(.25,camera.zoom);
+      const minStep=(type==='touch'?1.65:type==='pen'?.55:1.35)/Math.max(.25,camera.zoom);
       const maxStep=(type==='touch'?7.5:type==='pen'?5.5:8.5)/Math.max(.25,camera.zoom);
       let lastStamp=-Infinity,lastClientX=NaN,lastClientY=NaN;
 
