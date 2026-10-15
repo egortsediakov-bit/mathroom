@@ -522,3 +522,93 @@ html[data-theme="dark"] *{
     background:#0d0f12!important;
   }
 }
+
+
+/* remaining Pro Grid production surfaces */
+html[data-theme="dark"] .mr-ops-metrics>div,
+html[data-theme="dark"] .mr-action-metrics>div,
+html[data-theme="dark"] .mr-comms-stats>div,
+html[data-theme="dark"] .mr-schedule-metrics>div,
+html[data-theme="dark"] .mr-next-lesson,
+html[data-theme="dark"] .mr-curriculum-row,
+html[data-theme="dark"] .mr-calendar-day,
+html[data-theme="dark"] .task-bank-row,
+html[data-theme="dark"] .history-row,
+html[data-theme="dark"] .mr-schedule-toolbar,
+html[data-theme="dark"] .mr-week-load-card,
+html[data-theme="dark"] .mr-schedule-create,
+html[data-theme="dark"] .mr-library-sync,
+html[data-theme="dark"] .mr-library-hero,
+html[data-theme="dark"] .library-sync-card,
+html[data-theme="dark"] .textbook-card,
+html[data-theme="dark"] .library-book-card{
+  background:#15181d!important;
+  border-color:#2b3139!important;
+  color:#f4f6f8!important;
+}
+html[data-theme="dark"] .mr-calendar-day{
+  background:#121519!important;
+}
+html[data-theme="dark"] .mr-calendar-day>header,
+html[data-theme="dark"] .mr-calendar-day-body{
+  border-color:#2b3139!important;
+}
+html[data-theme="dark"] .mr-calendar-lesson{
+  background:#1b2027!important;
+  border-color:#343b45!important;
+}
+html[data-theme="dark"] .token-link{
+  background:#1a1e24!important;
+  color:#b7c0ca!important;
+}
+
+/* connection / prejoin / floating call chrome */
+html[data-theme="dark"] .mr-micro-connection-card,
+html[data-theme="dark"] .mr-micro-connection-card .mr-call-head,
+html[data-theme="dark"] .mr-micro-connection-card .mr-call-actions,
+html[data-theme="dark"] .mr-video-panel,
+html[data-theme="dark"] #mrVideoPanel,
+html[data-theme="dark"] .mr-native-prejoin,
+html[data-theme="dark"] .mr-native-prejoin-card,
+html[data-theme="dark"] .mr-prejoin-media-col,
+html[data-theme="dark"] .mr-prejoin-side,
+html[data-theme="dark"] .mr-native-call.floating{
+  background:#15181d!important;
+  border-color:#2b3139!important;
+  color:#f4f6f8!important;
+}
+html[data-theme="dark"] .mr-micro-connection-card .mr-video-note,
+html[data-theme="dark"] #mrVideoPanel .mr-video-note{
+  background:#191d22!important;
+  color:#9aa4b1!important;
+  border-color:#2b3139!important;
+}
+html[data-theme="dark"] .mr-bg-upload,
+html[data-theme="dark"] .mr-bg-swatch-upload,
+html[data-theme="dark"] .mr-prejoin-media-col .mr-native-prejoin-footer #mrPrejoinCancel{
+  background:#171b20!important;
+  color:#dce1e7!important;
+  border-color:#343b45!important;
+}
+
+/* destructive lesson actions remain readable */
+html[data-theme="dark"] #mrStopTaskTimer,
+html[data-theme="dark"] #mrRailFinish{
+  background:#1b1517!important;
+  border-color:#5a2c31!important;
+  color:#ff7e88!important;
+}
+html[data-theme="dark"] #mrStopTaskTimer:hover,
+html[data-theme="dark"] #mrRailFinish:hover{
+  background:#24171a!important;
+}
+
+/* whiteboard control chrome that lives outside the paper */
+html[data-theme="dark"] .board-head-actions .btn,
+html[data-theme="dark"] .mr-board-mode-control,
+html[data-theme="dark"] .mr-board-mode-control .board-permission-select,
+html[data-theme="dark"] .mr-board-mode-icon{
+  background:#171b20!important;
+  border-color:#343b45!important;
+  color:#f4f6f8!important;
+}
