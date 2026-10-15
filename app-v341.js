@@ -331,30 +331,35 @@ function renderAuth(){
   app.innerHTML=`<div class="center-page"><div class="auth-card"><div class="brand">Mathroom</div><h1>Вход для преподавателя</h1><p>Доступ выдаётся администратором Mathroom.</p><form id="loginForm"><div class="field"><label>Email</label><input id="email" type="email" autocomplete="username" required></div><div class="field"><label>Пароль</label><input id="password" type="password" autocomplete="current-password" minlength="6" required></div><div class="actions"><button class="btn primary">Войти</button></div></form><div id="authMsg" class="small muted" style="margin-top:12px"></div></div></div>`;
   document.getElementById('loginForm').onsubmit=async e=>{
     e.preventDefault();
+    const form=e.currentTarget;
+    const submit=form.querySelector('button[type="submit"],button:not([type])');
     const email=document.getElementById('email').value,password=document.getElementById('password').value,msg=document.getElementById('authMsg');
+    if(submit?.disabled)return;
     if(!authStorageAvailable?.())return msg.textContent='Браузер запретил локальное хранилище. Разреши данные сайта/cookies для Mathroom и повтори вход.';
-    const {data,error}=await sb.auth.signInWithPassword({email,password});
-    if(error)return msg.textContent=error.message;
+    if(submit){submit.disabled=true;submit.textContent='Входим…'}
+    msg.textContent='';
     try{
+      const {data,error}=await sb.auth.signInWithPassword({email,password});
+      if(error)throw error;
       if(!data.session?.access_token||!data.session?.refresh_token)throw new Error('Supabase не вернул сессию входа');
-      const persisted=await sb.auth.setSession({
-        access_token:data.session.access_token,
-        refresh_token:data.session.refresh_token
-      });
-      if(persisted.error)throw persisted.error;
+      // signInWithPassword already persists the session when persistSession=true.
+      // Calling setSession again here can serialize on the same auth lock and make
+      // the UI look frozen after a successful password request.
+      await new Promise(r=>setTimeout(r,0));
       const stored=localStorage.getItem(AUTH_STORAGE_KEY);
       if(!stored)throw new Error('Браузер не сохранил сессию Mathroom. Проверь разрешение на хранение данных сайта.');
-      const session=persisted.data?.session||data.session;
       rememberAuthSession();
-      S.user=session.user||data.user;
+      S.user=data.session.user||data.user;
       S.teacher=await ensureTeacher();
       await loadTeacher();
-      restoreActiveLesson();
+      const lessonRestored=restoreActiveLesson();
+      if(!lessonRestored)restoreTeacherView();
       renderTeacher();
       syncCurriculumBank();
     }catch(err){
       console.error('[Mathroom teacher login]',err);
       msg.textContent=err?.message||'Не удалось открыть кабинет';
+      if(submit){submit.disabled=false;submit.textContent='Войти'}
     }
   };
 }
