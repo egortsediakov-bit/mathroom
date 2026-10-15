@@ -9,12 +9,31 @@
   <link rel="stylesheet" href="./styles.css?v=40.9-no-black-stripe" />
   <link rel="stylesheet" href="./design-v4.css?v=5.8-hidden-strip-width" />
   <link rel="stylesheet" href="./css/library-v2968.css?v=29.11.0" />
-  <!-- Virtual background assets start downloading with the page, not when the
-       teacher clicks Camera. Exact version is pinned so Chrome/Yandex can reuse
-       the same cached WASM + landscape model on every lesson. -->
+  <!-- Virtual background assets start downloading with the page. Yandex gets
+       the non-SIMD MediaPipe runtime because its Chromium fork can select the
+       SIMD build but then stall inside the legacy SolutionWasm runtime. -->
+  <link rel="preconnect" crossorigin="anonymous" href="https://cdn.jsdelivr.net" />
   <link rel="preload" as="script" crossorigin="anonymous" href="https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation@0.1.1675465747/selfie_segmentation.js" />
-  <link rel="preload" as="fetch" type="application/wasm" crossorigin="anonymous" href="https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation@0.1.1675465747/selfie_segmentation_solution_simd_wasm_bin.wasm" />
   <link rel="preload" as="fetch" crossorigin="anonymous" href="https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation@0.1.1675465747/selfie_segmentation_landscape.tflite" />
+  <script>
+    (() => {
+      const base='https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation@0.1.1675465747/';
+      const ya=/YaBrowser/i.test(navigator.userAgent||'');
+      const stem=ya?'selfie_segmentation_solution_wasm_bin':'selfie_segmentation_solution_simd_wasm_bin';
+      [
+        [stem+'.js','script',''],
+        [stem+'.wasm','fetch','application/wasm']
+      ].forEach(([href,as,type])=>{
+        const link=document.createElement('link');
+        link.rel='preload';
+        link.as=as;
+        link.crossOrigin='anonymous';
+        link.href=base+href;
+        if(type)link.type=type;
+        document.head.appendChild(link);
+      });
+    })();
+  </script>
   <style>
     #mrHelpButton{display:none!important}
     .cloud-badge{display:inline-flex;align-items:center;gap:6px;padding:6px 9px;border-radius:999px;background:#edf7f1;color:#18794e;font-size:12px;font-weight:800}
@@ -67,7 +86,7 @@
 
   <script src="./js/library-sync-preflight-v2972.js?v=29.9.3"></script>
   <script src="./app-v341.js?v=40.10-trial-attendance"></script>
-  <script src="./js/lesson-tools-next.js?v=45.2-yandex-decoder-fix"></script>
+  <script src="./js/lesson-tools-next.js?v=45.3-yandex-nosimd"></script>
   <script src="./js/lesson-pro-suite.js?v=31.2-lesson-workspace"></script>
   <script src="./js/ux-v234.js?v=35.0-student-ui-kit"></script>
 
