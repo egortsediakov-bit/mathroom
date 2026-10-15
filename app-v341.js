@@ -398,13 +398,179 @@ function renderDashboard(){
 }
 
 function renderStudents(){
-  app.innerHTML=shell(`<div class="form-card"><h2>Добавить ученика</h2><form id="studentForm" class="form-grid"><div class="field"><label>Имя</label><input id="stName" required placeholder="Иван"></div><div class="field"><label>Класс</label><select id="stGrade">${Array.from({length:11},(_,i)=>`<option>${i+1}</option>`).join('')}</select></div><button class="btn primary">Добавить</button></form></div><div class="list">${S.students.length?S.students.map(st=>`<div class="row"><div class="row-main"><h3>${esc(st.name)} · ${st.grade} класс</h3><div class="token-link">${esc(studentLink(st))}</div></div><div class="actions"><button class="btn sm primary" data-profile="${st.id}">Профиль</button><button class="btn sm" data-copy="${st.id}">Копировать</button><button class="btn sm" data-board="${st.id}">Доска</button><button class="btn sm" data-rotate="${st.id}">Новая ссылка</button><button class="btn sm danger" data-delete="${st.id}">Удалить</button></div></div>`).join(''):'<div class="empty">Учеников пока нет.</div>'}</div>`,'Ученики','Персональные ссылки, прогресс и доски');bindShell();
-  document.getElementById('studentForm').onsubmit=async e=>{e.preventDefault();const body={teacher_id:S.user.id,name:document.getElementById('stName').value.trim(),grade:Number(document.getElementById('stGrade').value),access_token:token()};const {error}=await sb.from('students').insert(body);if(error)return fail(error);await loadTeacher();renderStudents();toast('Ученик создан')};
-  document.querySelectorAll('[data-profile]').forEach(b=>b.onclick=()=>{S.selectedStudent=b.dataset.profile;S.view='profile';renderTeacher()});
-  document.querySelectorAll('[data-copy]').forEach(b=>b.onclick=async()=>{const st=S.students.find(x=>x.id===b.dataset.copy);await copyText(studentLink(st));toast('Ссылка скопирована')});
-  document.querySelectorAll('[data-board]').forEach(b=>b.onclick=()=>{S.selectedStudent=b.dataset.board;S.view='board';renderTeacher()});
-  document.querySelectorAll('[data-rotate]').forEach(b=>b.onclick=async()=>{if(!confirm('Старая ссылка перестанет работать. Продолжить?'))return;const {error}=await sb.rpc('rotate_student_access',{p_student_id:b.dataset.rotate});if(error)return fail(error);await loadTeacher();renderStudents();toast('Новая ссылка создана')});
-  document.querySelectorAll('[data-delete]').forEach(b=>b.onclick=async()=>{if(!confirm('Удалить ученика и его данные?'))return;const {error}=await sb.from('students').delete().eq('id',b.dataset.delete);if(error)return fail(error);await loadTeacher();renderStudents()});
+  const all=(S.students||[]).slice();
+  const classes=[...new Set(all.map(s=>Number(s.grade)).filter(Boolean))].sort((a,b)=>a-b);
+  const namedGroups=[...new Set(all.map(s=>String(s.group_name||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ru'));
+  const activeCount=all.filter(s=>s.active!==false).length;
+  const activePct=all.length?Math.round(activeCount*100/all.length):0;
+  const state={query:'',grade:'all',group:'all',status:'all',sort:'grade',collapsed:new Set()};
+
+  const initials=name=>String(name||'?').trim().split(/\s+/).filter(Boolean).slice(0,2).map(x=>x.charAt(0).toUpperCase()).join('')||'?';
+  const studentLessons=id=>(S.lessons||[]).filter(l=>String(l.student_id)===String(id));
+  const studentMeta=st=>{
+    const lessons=studentLessons(st.id);
+    const completed=lessons.filter(l=>l.status==='completed');
+    const total=lessons.filter(l=>['assigned','in_progress','completed'].includes(l.status)).length;
+    const progress=total?Math.round(completed.length*100/total):0;
+    const dates=lessons.map(l=>l.completed_at||l.started_at||l.scheduled_at).filter(Boolean).map(v=>new Date(v)).filter(d=>!Number.isNaN(d.getTime())).sort((a,b)=>b-a);
+    return {completed:completed.length,total,progress,last:dates[0]||null};
+  };
+  const ago=d=>{
+    if(!d)return 'Нет занятий';
+    const ms=Date.now()-d.getTime();
+    if(ms<0)return dateLong(d.toISOString());
+    const min=Math.floor(ms/60000);
+    if(min<2)return 'Только что';
+    if(min<60)return `${min} мин назад`;
+    const h=Math.floor(min/60);
+    if(h<24)return `${h} ч назад`;
+    const days=Math.floor(h/24);
+    if(days<30)return `${days} дн. назад`;
+    return d.toLocaleDateString('ru-RU',{day:'2-digit',month:'short',year:d.getFullYear()!==new Date().getFullYear()?'numeric':undefined});
+  };
+  const gradeTone=g=>['orange','violet','blue','green','rose','amber'][Math.abs(Number(g)||0)%6];
+
+  const content=`
+    <div class="mr-students-directory">
+      <section class="mr-students-commandbar">
+        <label class="mr-students-search"><span aria-hidden="true">⌕</span><input id="studentDirectorySearch" type="search" autocomplete="off" placeholder="Поиск по имени, классу или группе..."><kbd>Ctrl K</kbd></label>
+        <button class="btn primary mr-students-add" id="addStudentDirectory">+&nbsp;&nbsp;Добавить ученика</button>
+      </section>
+      <section class="mr-students-overview">
+        <div class="mr-student-stat"><span class="icon people">👥</span><div><b>${all.length}</b><small>Всего учеников</small></div></div>
+        <div class="mr-student-stat"><span class="icon class">⌂</span><div><b>${classes.length}</b><small>Классов</small></div></div>
+        <div class="mr-student-stat"><span class="icon group">◎</span><div><b>${namedGroups.length}</b><small>Групп</small></div></div>
+        <div class="mr-student-stat"><span class="icon active">↗</span><div><b>${activePct}%</b><small>Активных</small></div></div>
+        <div class="mr-student-filters">
+          <label><span>Класс</span><select id="studentGradeFilter"><option value="all">Все классы</option>${classes.map(g=>`<option value="${g}">${g} класс</option>`).join('')}</select></label>
+          <label><span>Группа</span><select id="studentGroupFilter"><option value="all">Все группы</option><option value="__none__">Без группы</option>${namedGroups.map(g=>`<option value="${esc(g)}">${esc(g)}</option>`).join('')}</select></label>
+          <label><span>Статус</span><select id="studentStatusFilter"><option value="all">Все ученики</option><option value="active">Активные</option><option value="inactive">Неактивные</option></select></label>
+        </div>
+      </section>
+      <section class="mr-students-classes">
+        <div class="mr-students-section-head"><div><h2>Классы</h2><span class="mr-students-count">${classes.length}</span></div><label class="mr-students-sort">Сортировка<select id="studentSort"><option value="grade">По классу</option><option value="name">По имени</option><option value="activity">По активности</option></select></label></div>
+        <div class="mr-class-card-grid" id="studentClassCards"></div>
+      </section>
+      <section class="mr-students-list-section">
+        <div class="mr-students-section-head"><div><h2>Список учеников</h2><span class="mr-students-count" id="studentFoundCount">${all.length}</span></div><button class="mr-students-clear-filter" id="studentClearFilters" type="button">Сбросить фильтры</button></div>
+        <div id="studentDirectoryResults"></div>
+      </section>
+    </div>`;
+
+  app.innerHTML=shell(content,'Ученики','Управляйте учениками, классами, группами и доступами к Mathroom');
+  bindShell();
+
+  const search=document.getElementById('studentDirectorySearch');
+  const gradeFilter=document.getElementById('studentGradeFilter');
+  const groupFilter=document.getElementById('studentGroupFilter');
+  const statusFilter=document.getElementById('studentStatusFilter');
+  const sort=document.getElementById('studentSort');
+  const results=document.getElementById('studentDirectoryResults');
+  const classCards=document.getElementById('studentClassCards');
+  const found=document.getElementById('studentFoundCount');
+
+  const openStudentEditor=(st=null)=>{
+    const groupOptions=[...new Set((S.students||[]).map(x=>String(x.group_name||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ru'));
+    const m=modal(`
+      <div class="mr-card-head"><div><span class="pill">${st?'Профиль':'Новый ученик'}</span><h2>${st?'Изменить ученика':'Добавить ученика'}</h2><p class="muted">Имя, класс и группа используются для быстрого поиска и организации списка.</p></div></div>
+      <form id="studentDirectoryForm" class="mr-student-edit-form">
+        <div class="field"><label>Имя</label><input id="sdName" required autocomplete="off" value="${st?esc(st.name):''}" placeholder="Иван Петров"></div>
+        <div class="grid cols2">
+          <div class="field"><label>Класс</label><select id="sdGrade">${Array.from({length:11},(_,i)=>`<option value="${i+1}" ${Number(st?.grade)===i+1?'selected':''}>${i+1} класс</option>`).join('')}</select></div>
+          <div class="field"><label>Группа</label><input id="sdGroup" list="studentGroupNames" value="${st?esc(st.group_name||''):''}" placeholder="Например, ОГЭ или Олимпиада"><datalist id="studentGroupNames">${groupOptions.map(g=>`<option value="${esc(g)}"></option>`).join('')}</datalist></div>
+        </div>
+        ${st?`<div class="field"><label>Статус</label><select id="sdActive"><option value="1" ${st.active!==false?'selected':''}>Активный ученик</option><option value="0" ${st.active===false?'selected':''}>Неактивный</option></select></div>`:''}
+        <div class="actions"><button class="btn primary" type="submit">${st?'Сохранить':'Добавить ученика'}</button><button class="btn" type="button" id="studentDirectoryCancel">Отмена</button></div>
+      </form>`,'wide-modal');
+    m.querySelector('#studentDirectoryCancel').onclick=()=>m.remove();
+    m.querySelector('#studentDirectoryForm').onsubmit=async e=>{
+      e.preventDefault();
+      const name=m.querySelector('#sdName').value.trim();
+      if(!name)return toast('Укажи имя ученика');
+      const body={name,grade:Number(m.querySelector('#sdGrade').value),group_name:m.querySelector('#sdGroup').value.trim()};
+      if(st)body.active=m.querySelector('#sdActive').value==='1';
+      else{body.teacher_id=S.user.id;body.access_token=token()}
+      const req=st?sb.from('students').update(body).eq('id',st.id):sb.from('students').insert(body);
+      const {error}=await req;
+      if(error)return fail(error);
+      m.remove();await loadTeacher();renderStudents();toast(st?'Ученик обновлён':'Ученик создан');
+    };
+    setTimeout(()=>m.querySelector('#sdName')?.focus(),0);
+  };
+
+  const bindRowActions=()=>{
+    results.querySelectorAll('[data-profile]').forEach(b=>b.onclick=()=>{S.selectedStudent=b.dataset.profile;S.view='profile';renderTeacher()});
+    results.querySelectorAll('[data-copy]').forEach(b=>b.onclick=async()=>{const st=S.students.find(x=>x.id===b.dataset.copy);if(!st)return;await copyText(studentLink(st));toast('Ссылка скопирована')});
+    results.querySelectorAll('[data-board]').forEach(b=>b.onclick=()=>{S.selectedStudent=b.dataset.board;S.view='board';renderTeacher()});
+    results.querySelectorAll('[data-edit-student]').forEach(b=>b.onclick=()=>{const st=S.students.find(x=>x.id===b.dataset.editStudent);if(st)openStudentEditor(st)});
+    results.querySelectorAll('[data-rotate]').forEach(b=>b.onclick=async()=>{if(!confirm('Старая ссылка перестанет работать. Продолжить?'))return;const {error}=await sb.rpc('rotate_student_access',{p_student_id:b.dataset.rotate});if(error)return fail(error);await loadTeacher();renderStudents();toast('Новая ссылка создана')});
+    results.querySelectorAll('[data-delete]').forEach(b=>b.onclick=async()=>{if(!confirm('Удалить ученика и его данные?'))return;const {error}=await sb.from('students').delete().eq('id',b.dataset.delete);if(error)return fail(error);await loadTeacher();renderStudents();toast('Ученик удалён')});
+    results.querySelectorAll('[data-class-toggle]').forEach(b=>b.onclick=()=>{const g=String(b.dataset.classToggle);if(state.collapsed.has(g))state.collapsed.delete(g);else state.collapsed.add(g);paint()});
+  };
+
+  const paint=()=>{
+    const q=state.query.trim().toLocaleLowerCase('ru');
+    let rows=(S.students||[]).filter(st=>{
+      const group=String(st.group_name||'').trim();
+      const hay=[st.name,`${st.grade} класс`,`${st.grade} кл`,group].join(' ').toLocaleLowerCase('ru');
+      if(q&&!hay.includes(q))return false;
+      if(state.grade!=='all'&&Number(st.grade)!==Number(state.grade))return false;
+      if(state.group==='__none__'&&group)return false;
+      if(state.group!=='all'&&state.group!=='__none__'&&group!==state.group)return false;
+      if(state.status==='active'&&st.active===false)return false;
+      if(state.status==='inactive'&&st.active!==false)return false;
+      return true;
+    });
+    rows.sort((a,b)=>{
+      if(state.sort==='name')return String(a.name).localeCompare(String(b.name),'ru');
+      if(state.sort==='activity'){const am=studentMeta(a).last?.getTime()||0,bm=studentMeta(b).last?.getTime()||0;return bm-am||String(a.name).localeCompare(String(b.name),'ru')}
+      return Number(a.grade)-Number(b.grade)||String(a.name).localeCompare(String(b.name),'ru');
+    });
+    found.textContent=String(rows.length);
+
+    classCards.innerHTML=classes.map(g=>{
+      const members=(S.students||[]).filter(s=>Number(s.grade)===g);
+      const active=members.filter(s=>s.active!==false).length;
+      const pct=members.length?Math.round(active*100/members.length):0;
+      const selected=state.grade!=='all'&&Number(state.grade)===g;
+      return `<button class="mr-class-card tone-${gradeTone(g)} ${selected?'selected':''}" data-grade-card="${g}" type="button"><span class="mr-class-icon">${g}</span><span class="mr-class-copy"><b>${g} класс</b><small>${members.length} ${members.length===1?'ученик':members.length<5?'ученика':'учеников'}</small><em><i style="width:${pct}%"></i></em><small>${pct}% активных</small></span><span class="mr-class-arrow">›</span></button>`;
+    }).join('')||'<div class="empty">Классов пока нет.</div>';
+    classCards.querySelectorAll('[data-grade-card]').forEach(b=>b.onclick=()=>{const g=b.dataset.gradeCard;state.grade=state.grade===g?'all':g;gradeFilter.value=state.grade;paint()});
+
+    const grouped=new Map();
+    for(const st of rows){const g=Number(st.grade)||0;if(!grouped.has(g))grouped.set(g,[]);grouped.get(g).push(st)}
+    results.innerHTML=rows.length?[...grouped.entries()].map(([g,members])=>{
+      const collapsed=state.collapsed.has(String(g));
+      return `<section class="mr-student-grade-block ${collapsed?'collapsed':''}">
+        <button class="mr-student-grade-head" data-class-toggle="${g}" type="button"><span class="mr-grade-chip tone-${gradeTone(g)}">${g}</span><span><b>${g} класс</b><small>${members.length} ${members.length===1?'ученик':members.length<5?'ученика':'учеников'}</small></span><span class="mr-grade-chevron">⌃</span></button>
+        <div class="mr-student-table">
+          <div class="mr-student-table-head"><span>Ученик</span><span>Группа</span><span>Прогресс</span><span>Последняя активность</span><span>Ссылка</span><span></span></div>
+          ${members.map(st=>{
+            const meta=studentMeta(st),group=String(st.group_name||'').trim();
+            return `<article class="mr-student-directory-row ${st.active===false?'inactive':''}">
+              <div class="mr-student-identity"><span class="mr-student-avatar tone-${gradeTone(st.grade)}">${esc(initials(st.name))}</span><div><b>${esc(st.name)}</b><small>${st.grade} класс${st.active===false?' · неактивен':''}</small></div></div>
+              <div class="mr-student-group-cell">${group?`<span>${esc(group)}</span>`:'<span class="empty-group">Без группы</span>'}</div>
+              <div class="mr-student-progress-cell"><b>${meta.completed} завершено</b><div><i style="width:${meta.progress}%"></i></div><small>${meta.total?meta.progress+'%':'нет уроков'}</small></div>
+              <div class="mr-student-activity-cell"><span class="${st.active===false?'off':'on'}"></span><div><b>${esc(ago(meta.last))}</b><small>${meta.last?meta.last.toLocaleDateString('ru-RU',{day:'2-digit',month:'short'}):'—'}</small></div></div>
+              <div class="mr-student-link-cell"><button type="button" data-copy="${st.id}" title="Скопировать персональную ссылку">↗</button></div>
+              <div class="mr-student-row-actions"><button class="btn sm primary" data-profile="${st.id}">Профиль</button><button class="btn sm" data-board="${st.id}">Доска</button><button class="btn sm" data-rotate="${st.id}">Новая ссылка</button><details class="mr-student-more"><summary title="Ещё">•••</summary><div><button type="button" data-edit-student="${st.id}">Редактировать</button><button type="button" data-copy="${st.id}">Копировать ссылку</button><button type="button" class="danger" data-delete="${st.id}">Удалить ученика</button></div></details></div>
+            </article>`;
+          }).join('')}
+        </div>
+      </section>`;
+    }).join(''):'<div class="mr-students-empty"><span>⌕</span><h3>Ничего не найдено</h3><p>Измени запрос или сбрось фильтры.</p></div>';
+    bindRowActions();
+  };
+
+  search.oninput=()=>{state.query=search.value;paint()};
+  gradeFilter.onchange=()=>{state.grade=gradeFilter.value;paint()};
+  groupFilter.onchange=()=>{state.group=groupFilter.value;paint()};
+  statusFilter.onchange=()=>{state.status=statusFilter.value;paint()};
+  sort.onchange=()=>{state.sort=sort.value;paint()};
+  document.getElementById('studentClearFilters').onclick=()=>{state.query='';state.grade='all';state.group='all';state.status='all';state.sort='grade';search.value='';gradeFilter.value='all';groupFilter.value='all';statusFilter.value='all';sort.value='grade';paint()};
+  document.getElementById('addStudentDirectory').onclick=()=>openStudentEditor();
+  document.addEventListener('keydown',function studentDirectoryShortcut(e){if(S.view!=='students'){document.removeEventListener('keydown',studentDirectoryShortcut);return}if((e.ctrlKey||e.metaKey)&&String(e.key).toLowerCase()==='k'){e.preventDefault();search.focus();search.select()}});
+  paint();
 }
 
 async function profileAnalytics(studentId){
@@ -445,10 +611,10 @@ async function renderStudentProfile(studentId){
   const hours=(a.totalSeconds/3600).toFixed(a.totalSeconds>=36000?0:1);
   const focusHtml=a.weakLive.length?a.weakLive.map(w=>`<div class="progress-row"><div class="progress-head"><b>${esc(w.name)}</b><b>${w.confidence}% уверенно</b></div><div class="progress-track"><div class="progress-fill" style="width:${w.confidence}%"></div></div><div class="small muted">На уроках: ${w.reviewed} · сложно/позже: ${w.attention}</div></div>`).join(''):(a.weak.length?a.weak.map(w=>`<div class="progress-row"><div class="progress-head"><b>${esc(w.name)}</b><b>${w.score}%</b></div><div class="progress-track"><div class="progress-fill" style="width:${w.score}%"></div></div><div class="small muted">${w.total} проверенных задач</div></div>`).join(''):'<div class="empty">Статистика появится после выполненных работ и уроков.</div>');
   const pathSuggestion=suggestedTopicForStudent(studentId);
-  app.innerHTML=shell(`<div class="actions" style="margin-bottom:14px"><button class="btn" id="backStudents">← Ученики</button><button class="btn" id="profileBoard">Доска</button><button class="btn" id="profileLink">Скопировать ссылку</button></div><div class="card student-profile-head"><div><span class="pill">${st.grade} класс</span><h2>${esc(st.name)}</h2></div><div class="profile-edit"><input id="profileName" value="${esc(st.name)}"><select id="profileGrade">${Array.from({length:11},(_,i)=>`<option ${i+1===st.grade?'selected':''}>${i+1}</option>`).join('')}</select><button class="btn sm" id="saveProfile">Сохранить</button></div></div><div class="grid cols4 profile-metrics"><div class="card"><div class="muted">Уроков завершено</div><div class="metric">${a.completed}</div></div><div class="card"><div class="muted">Уверенно за 3 урока</div><div class="metric">${a.recentAvg==null?'—':a.recentAvg+'%'}</div><div class="small ${trendClass}">${trend}</div></div><div class="card"><div class="muted">Средний тест</div><div class="metric">${a.avgTest==null?'—':a.avgTest+'%'}</div></div><div class="card"><div class="muted">Времени занятий</div><div class="metric">${a.totalSeconds?hours+' ч':'—'}</div></div></div>${pathSuggestion?`<div class="card mr-profile-next-topic"><div><span class="pill">Следующая тема по программе</span><h2>${esc(pathSuggestion.topic.title)}</h2><p class="muted">${pathSuggestion.topic.grade} класс · ${esc(topicTrack(pathSuggestion.topic))}${pathSuggestion.after?` · после «${esc(pathSuggestion.after.title)}»`:''}</p></div><div class="actions"><button class="btn" id="profileNextTopic">Открыть тему</button><button class="btn primary" id="profileScheduleNext">Запланировать</button></div></div>`:''}<div class="grid cols2" style="margin-top:16px"><div class="card"><div class="mr-card-head"><h2>Динамика уроков</h2><span class="pill">последние ${Math.min(8,a.reports.length)}</span></div>${reportTrendHtml(a)}</div><div class="card"><h2>Что требует внимания</h2>${focusHtml}${a.weakTags.length?`<div class="mr-tag-cloud">${a.weakTags.slice(0,8).map(t=>`<span class="pill">#${esc(t.name)} · ${t.attention}</span>`).join('')}</div>`:''}</div></div><div class="grid cols2" style="margin-top:16px"><div class="card"><h2>Рекомендации на следующий урок</h2>${recommendations.length?recommendations.map(e=>`<div class="item-box"><b>${esc(e.title||'Задача')}</b><div class="small muted">${esc(e.category||'')} · ${diffLabel(e.difficulty)} ${(e.tags||[]).map(t=>'#'+esc(t)).join(' ')}</div><div class="prewrap">${nl(e.content)}</div></div>`).join(''):'<div class="empty">Пока нет данных для рекомендаций.</div>'}</div><div class="card"><h2>Последние отчёты</h2>${a.reports.length?a.reports.slice(-5).reverse().map(r=>{const l=S.lessons.find(x=>x.id===r.lesson_id);return `<div class="mr-report-mini"><div><b>${esc(l?.topics?.title||'Урок')}</b><span>${new Date(r.created_at).toLocaleDateString('ru-RU')}</span></div><div class="actions"><span class="pill">✓ ${r.solved_count}/${r.queue_total}</span><span class="pill">${Math.round(Number(r.solved_percent||0))}% уверенно</span></div>${r.public_focus?`<p class="small muted">Повторить: ${esc(r.public_focus)}</p>`:''}</div>`}).join(''):'<div class="empty">Отчётов пока нет.</div>'}</div></div><div class="section-title"><h2>Ближайшие уроки</h2></div><div class="list">${upcoming.length?upcoming.map(l=>`<div class="row"><div><h3>${esc(l.topics?.title||'Урок')}</h3><p>${dateLong(l.scheduled_at)}</p></div></div>`).join(''):'<div class="empty">Нет запланированных уроков.</div>'}</div>`,'Профиль ученика','Динамика считается по урокам, домашним и тестам');bindShell();
+  app.innerHTML=shell(`<div class="actions" style="margin-bottom:14px"><button class="btn" id="backStudents">← Ученики</button><button class="btn" id="profileBoard">Доска</button><button class="btn" id="profileLink">Скопировать ссылку</button></div><div class="card student-profile-head"><div><span class="pill">${st.grade} класс</span><h2>${esc(st.name)}</h2></div><div class="profile-edit"><input id="profileName" value="${esc(st.name)}"><select id="profileGrade">${Array.from({length:11},(_,i)=>`<option ${i+1===st.grade?'selected':''}>${i+1}</option>`).join('')}</select><input id="profileGroup" value="${esc(st.group_name||'')}" placeholder="Группа"><button class="btn sm" id="saveProfile">Сохранить</button></div></div><div class="grid cols4 profile-metrics"><div class="card"><div class="muted">Уроков завершено</div><div class="metric">${a.completed}</div></div><div class="card"><div class="muted">Уверенно за 3 урока</div><div class="metric">${a.recentAvg==null?'—':a.recentAvg+'%'}</div><div class="small ${trendClass}">${trend}</div></div><div class="card"><div class="muted">Средний тест</div><div class="metric">${a.avgTest==null?'—':a.avgTest+'%'}</div></div><div class="card"><div class="muted">Времени занятий</div><div class="metric">${a.totalSeconds?hours+' ч':'—'}</div></div></div>${pathSuggestion?`<div class="card mr-profile-next-topic"><div><span class="pill">Следующая тема по программе</span><h2>${esc(pathSuggestion.topic.title)}</h2><p class="muted">${pathSuggestion.topic.grade} класс · ${esc(topicTrack(pathSuggestion.topic))}${pathSuggestion.after?` · после «${esc(pathSuggestion.after.title)}»`:''}</p></div><div class="actions"><button class="btn" id="profileNextTopic">Открыть тему</button><button class="btn primary" id="profileScheduleNext">Запланировать</button></div></div>`:''}<div class="grid cols2" style="margin-top:16px"><div class="card"><div class="mr-card-head"><h2>Динамика уроков</h2><span class="pill">последние ${Math.min(8,a.reports.length)}</span></div>${reportTrendHtml(a)}</div><div class="card"><h2>Что требует внимания</h2>${focusHtml}${a.weakTags.length?`<div class="mr-tag-cloud">${a.weakTags.slice(0,8).map(t=>`<span class="pill">#${esc(t.name)} · ${t.attention}</span>`).join('')}</div>`:''}</div></div><div class="grid cols2" style="margin-top:16px"><div class="card"><h2>Рекомендации на следующий урок</h2>${recommendations.length?recommendations.map(e=>`<div class="item-box"><b>${esc(e.title||'Задача')}</b><div class="small muted">${esc(e.category||'')} · ${diffLabel(e.difficulty)} ${(e.tags||[]).map(t=>'#'+esc(t)).join(' ')}</div><div class="prewrap">${nl(e.content)}</div></div>`).join(''):'<div class="empty">Пока нет данных для рекомендаций.</div>'}</div><div class="card"><h2>Последние отчёты</h2>${a.reports.length?a.reports.slice(-5).reverse().map(r=>{const l=S.lessons.find(x=>x.id===r.lesson_id);return `<div class="mr-report-mini"><div><b>${esc(l?.topics?.title||'Урок')}</b><span>${new Date(r.created_at).toLocaleDateString('ru-RU')}</span></div><div class="actions"><span class="pill">✓ ${r.solved_count}/${r.queue_total}</span><span class="pill">${Math.round(Number(r.solved_percent||0))}% уверенно</span></div>${r.public_focus?`<p class="small muted">Повторить: ${esc(r.public_focus)}</p>`:''}</div>`}).join(''):'<div class="empty">Отчётов пока нет.</div>'}</div></div><div class="section-title"><h2>Ближайшие уроки</h2></div><div class="list">${upcoming.length?upcoming.map(l=>`<div class="row"><div><h3>${esc(l.topics?.title||'Урок')}</h3><p>${dateLong(l.scheduled_at)}</p></div></div>`).join(''):'<div class="empty">Нет запланированных уроков.</div>'}</div>`,'Профиль ученика','Динамика считается по урокам, домашним и тестам');bindShell();
   document.getElementById('backStudents').onclick=()=>{S.view='students';renderTeacher()};document.getElementById('profileBoard').onclick=()=>{S.view='board';renderTeacher()};document.getElementById('profileLink').onclick=async()=>{await copyText(studentLink(st));toast('Ссылка скопирована')};
   document.getElementById('profileNextTopic')?.addEventListener('click',()=>{S.topic=pathSuggestion.topic;S.topicGradeFilter=Number(pathSuggestion.topic.grade);S.view='topics';renderTeacher()});document.getElementById('profileScheduleNext')?.addEventListener('click',()=>{S.schedulePrefill={studentId:st.id,topicId:pathSuggestion.topic.id};S.view='schedule';renderTeacher()});
-  document.getElementById('saveProfile').onclick=async()=>{const {error}=await sb.from('students').update({name:document.getElementById('profileName').value.trim(),grade:Number(document.getElementById('profileGrade').value)}).eq('id',st.id);if(error)return fail(error);await loadTeacher();renderStudentProfile(st.id);toast('Профиль сохранён')};
+  document.getElementById('saveProfile').onclick=async()=>{const {error}=await sb.from('students').update({name:document.getElementById('profileName').value.trim(),grade:Number(document.getElementById('profileGrade').value),group_name:document.getElementById('profileGroup').value.trim()}).eq('id',st.id);if(error)return fail(error);await loadTeacher();renderStudentProfile(st.id);toast('Профиль сохранён')};
 }
 
 function exerciseSystemTags(tags=[]){return (tags||[]).filter(t=>String(t).startsWith('mathroom-core-bank-v')||String(t).startsWith('mrseed:'))}
