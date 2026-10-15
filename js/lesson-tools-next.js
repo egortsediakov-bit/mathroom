@@ -137,6 +137,7 @@
       this.virtualBgBusy = false;
       this.virtualBgStartPromise = null;
       this.virtualBgWarmupPromise = null;
+      this.virtualBgWarmProcessor = null;
       this.virtualBgApplyPromise = null;
       this.virtualBgLastFrame = 0;
       this.virtualBgFrameInterval = 50;
@@ -2076,6 +2077,7 @@
     }
 
     async prewarmVirtualBgEngine() {
+      if(this.virtualBgWarmProcessor)return true;
       if(this.virtualBgWarmupPromise)return this.virtualBgWarmupPromise;
       this.virtualBgWarmupPromise=(async()=>{
         let processor=null;
@@ -2084,13 +2086,12 @@
           processor=new Seg({
             locateFile:file=>`https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/${file}`
           });
-          /* modelSelection=1 is the landscape/general model. It is materially
-             more stable for seated/reclined full-body camera views than the
-             close-up selfie model used by the first implementation. */
-          const mobile=(window.matchMedia?.('(pointer: coarse)')?.matches||window.innerWidth<=760);
-          /* Use the higher-detail general model on desktops. The landscape
-             model stays on touch/mobile devices where inference budget matters. */
-          processor.setOptions({modelSelection:mobile?1:0});
+
+          /* Keep one genuinely warmed processor instead of compiling a throwaway
+             model and immediately closing it. The same processor is handed to
+             the first camera activation, so choosing a background before turning
+             the camera on actually removes the cold-start penalty. */
+          processor.setOptions({modelSelection:1});
           processor.onResults(()=>{});
           const warm=document.createElement('canvas');
           warm.width=160;warm.height=96;
@@ -2100,18 +2101,24 @@
             wctx.fillRect(0,0,warm.width,warm.height);
           }
           await processor.send({image:warm});
+
+          if(this.destroyed){
+            try{processor.close?.()}catch{}
+            processor=null;
+            return false;
+          }
+
+          try{this.virtualBgWarmProcessor?.close?.()}catch{}
+          this.virtualBgWarmProcessor=processor;
+          processor=null;
           this.virtualBgSelfieWarm=true;
+          return true;
         }catch(e){
           console.warn('[Mathroom virtual background] SelfieSegmentation preload',e);
+          return false;
         }finally{
           try{processor?.close?.()}catch{}
         }
-
-        /* Do not compile BodyPix during prejoin startup. TFJS/WebGL compilation
-           can monopolize the main thread exactly when the first camera frame and
-           first SelfieSegmentation mask need to appear. The identity model is
-           loaded only after the visible background is already working. */
-        return this.virtualBgSelfieWarm;
       })();
 
       try{return await this.virtualBgWarmupPromise}
@@ -2148,13 +2155,22 @@
 
       const mobile=(window.matchMedia?.('(pointer: coarse)')?.matches||window.innerWidth<=760);
       const Seg=await this.ensureVirtualBgLibrary();
-      let processor=new Seg({
-        locateFile:file=>`https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/${file}`
-      });
+
+      /* Prefer the already-compiled processor prepared while the camera was off.
+         Falling back to a fresh instance is still safe when the user turns the
+         camera on before prewarm has completed. */
+      let processor=this.virtualBgWarmProcessor||null;
+      if(processor)this.virtualBgWarmProcessor=null;
+      if(!processor){
+        processor=new Seg({
+          locateFile:file=>`https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/${file}`
+        });
+      }
       const configureSegmentationProcessor=p=>{
-        /* modelSelection=0 keeps hair, hands and shoulder contours noticeably
-           better on desktop. Mobile keeps the lighter landscape model. */
-        p.setOptions({modelSelection:mobile?1:0});
+        /* The landscape model is substantially lighter and keeps the render loop
+           responsive on Chromium. Fine edge stability is recovered by the
+           temporal mask below rather than by blocking every video frame. */
+        p.setOptions({modelSelection:1});
       };
       configureSegmentationProcessor(processor);
       this.virtualBgProcessor=processor;
@@ -2244,9 +2260,9 @@
       if(!idCtx)throw new Error('Canvas идентификации недоступен');
 
       const blurCanvas=document.createElement('canvas');
-      /* The old blur was effectively a ~7% thumbnail stretched to 720p,
-         which looked grainy/pixelated. Keep enough spatial resolution and
-         apply a real Gaussian canvas blur instead. */
+      /* Keep blur quality, but do not recompute the expensive Gaussian pass on
+         every 30-fps render. The background may update at ~12 fps while the
+         foreground person continues rendering at full preview cadence. */
       const blurScale=mobile?.24:.34;
       blurCanvas.width=Math.max(96,Math.round(w*blurScale));
       blurCanvas.height=Math.max(72,Math.round(h*blurScale));
@@ -2255,21 +2271,27 @@
         blurCtx.imageSmoothingEnabled=true;
         blurCtx.imageSmoothingQuality='high';
       }
+      let lastBlurPaint=0;
 
       const drawBackground=()=>{
         if(this.virtualBgMode==='blur'){
           if(blurCtx){
-            const pad=Math.max(10,Math.round(Math.min(blurCanvas.width,blurCanvas.height)*.08));
-            blurCtx.save();
-            blurCtx.filter=mobile?'blur(7px)':'blur(10px)';
-            /* Overscan avoids dark/transparent blur edges. */
-            blurCtx.drawImage(
-              source,
-              -pad,-pad,
-              blurCanvas.width+pad*2,
-              blurCanvas.height+pad*2
-            );
-            blurCtx.restore();
+            const now=performance.now();
+            if(!lastBlurPaint||now-lastBlurPaint>=82){
+              lastBlurPaint=now;
+              const pad=Math.max(10,Math.round(Math.min(blurCanvas.width,blurCanvas.height)*.08));
+              blurCtx.save();
+              blurCtx.clearRect(0,0,blurCanvas.width,blurCanvas.height);
+              blurCtx.filter=mobile?'blur(7px)':'blur(10px)';
+              /* Overscan avoids dark/transparent blur edges. */
+              blurCtx.drawImage(
+                source,
+                -pad,-pad,
+                blurCanvas.width+pad*2,
+                blurCanvas.height+pad*2
+              );
+              blurCtx.restore();
+            }
 
             ctx.save();
             ctx.imageSmoothingEnabled=true;
@@ -2643,9 +2665,18 @@
             this.bindMedia();
             this.paintPrejoin();
             this.paint();
-            setTimeout(()=>{
+            const startIdentityWhenIdle=()=>{
               if(!this.destroyed&&this.virtualBgTrack===outTrack)startIdentityModelLoad();
-            },350);
+            };
+            /* BodyPix is useful for rejecting a passer-by, but compiling it right
+               after the first mask was the source of the visible freeze the user
+               experienced. Let the camera become stable first, then use an idle
+               slice whenever Chromium has one. */
+            if(window.requestIdleCallback){
+              window.requestIdleCallback(startIdentityWhenIdle,{timeout:7000});
+            }else{
+              setTimeout(startIdentityWhenIdle,4200);
+            }
           });
         }
       };
@@ -2767,7 +2798,7 @@
 
         /* Identity refresh stays frequent enough to suppress a person walking
            behind the tracked participant without running BodyPix every frame. */
-        if(baseMaskReady&&ts-lastIdentity>(mobile?1600:1100)){
+        if(baseMaskReady&&ts-lastIdentity>(mobile?2400:1800)){
           lastIdentity=ts;
           runIdentity();
         }
@@ -2785,10 +2816,13 @@
       ]);
 
       if(!ready){
-        /* Keep the engine alive; the raw camera remains visible until the first
-           Selfie mask arrives, then the callback auto-switches the preview. */
-        console.warn('[Mathroom virtual background] first Selfie mask is slow');
-        return null;
+        /* Do NOT tear down a slow first processor. A cold MediaPipe compile may
+           exceed the UI timeout, but the render loop is already alive and the
+           onResults callback will swap the preview as soon as that first mask
+           arrives. Returning the live processed track marks activation as
+           pending instead of triggering a destructive second initialization. */
+        console.warn('[Mathroom virtual background] first Selfie mask is slow; keeping processor alive');
+        return outTrack;
       }
 
       return outTrack;
@@ -2817,26 +2851,11 @@
         const rawId=raw.id||'';
 
         try{
-          let processed=await this.startVirtualBackground();
+          const processed=await this.startVirtualBackground();
 
-          /* Some Chromium/MediaPipe combinations occasionally stall on the
-             very first SelfieSegmentation send after WASM initialization.
-             Previously the user had to click another background and back.
-             Recreate the processor once automatically: this is the exact
-             recovery that a manual background switch used to trigger. */
-          if(
-            !processed &&
-            this.cameraEnabled &&
-            !this.destroyed &&
-            this.virtualBgMode!=='none' &&
-            this.localStream?.getVideoTracks?.()[0]?.id===rawId
-          ){
-            console.warn('[Mathroom virtual background] first activation stalled; retrying automatically');
-            this.stopVirtualBackground();
-            await wait(140);
-            processed=await this.startVirtualBackground();
-          }
-
+          /* A slow cold start stays alive in the background. Never emulate the
+             old manual "switch background and back" workaround here: restarting
+             the processor is exactly what made first activation unreliable. */
           if(
             !processed ||
             processed.readyState!=='live' ||
