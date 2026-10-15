@@ -784,7 +784,10 @@ async function completeLesson(lesson,queue,live){
   const strengths=insightText(categories,'strength'),focus=insightText(categories,'focus')||insightText(tags,'focus');
   const summary=`На уроке разобрали ${counts.total} задач. Уверенно решено: ${counts.solved}. Сложными отмечено: ${counts.hard}. Вернуться позже: ${counts.later}.${strengths?` Лучше всего сегодня получалось: ${strengths}.`:''}`;
   const plan=`${counts.hw?`В домашнюю добавлено ${counts.hw} задач. `:''}${focus?`Повторить: ${focus}. `:''}${counts.later?`Вернуться к ${counts.later} отложенным задачам. `:'Закрепить материал по необходимости. '}${nextTopic?`Следующая тема по программе: ${nextTopic.title}.`:''}`.trim();
-  const m=modal(`<h2>Завершить урок</h2><div class="lesson-report-preview"><div class="report-stats"><span>Задач: ${counts.total}</span><span>Решено: ${counts.solved}</span><span>Сложно: ${counts.hard}</span><span>Позже: ${counts.later}</span><span>Разобрано: ${completion}%</span><span>Время: ${mins} мин</span></div></div><div class="grid cols2"><div class="field"><label>Что сегодня получилось</label><textarea id="finishHighlights">${esc(strengths?`Хорошо получалось: ${strengths}.`:`Уверенно решено ${counts.solved} из ${counts.total} задач.`)}</textarea></div><div class="field"><label>Что повторить</label><textarea id="finishFocus">${esc(focus?`Повторить: ${focus}.`:counts.later?`Вернуться к ${counts.later} отложенным задачам.`:'Закрепить материал по необходимости.')}</textarea></div></div><div class="field"><label>Итоги ученику</label><textarea id="finishSummary">${esc(summary)}</textarea></div><div class="field"><label>К следующему уроку</label><textarea id="finishPlan">${esc(plan)}</textarea></div><div class="field"><label>Приватная заметка</label><textarea id="finishPrivate">${esc(lesson.private_notes||`Очередь: ${counts.total}; решено: ${counts.solved}; сложно: ${counts.hard}; позже: ${counts.later}; таймер: ${mins} мин.`)}</textarea></div><button class="btn primary" id="finishConfirm">Завершить и сохранить доску</button>`);
+  const isCrmTrial=lesson.lesson_type==='trial'||String(lesson.crm_event_key||'').startsWith('crm-trial:');
+  const currentAttendance=['present','late','absent'].includes(lesson.attendance_status)?lesson.attendance_status:'';
+  const trialAttendanceHtml=isCrmTrial?`<div class="notice"><b>Посещение пробного</b><div class="field" style="margin-top:8px"><label>Перед завершением отметьте ученика</label><select id="finishTrialAttendance"><option value="">Выберите посещаемость</option><option value="present" ${currentAttendance==='present'?'selected':''}>Был</option><option value="late" ${currentAttendance==='late'?'selected':''}>Опоздал</option><option value="absent" ${currentAttendance==='absent'?'selected':''}>Неявка</option></select></div><div class="small muted">CRM получит «Пробный проведён» только для «Был» или «Опоздал». «Неявка» потребует назначить новую дату.</div></div>`:'';
+  const m=modal(`<h2>Завершить урок</h2>${trialAttendanceHtml}<div class="lesson-report-preview"><div class="report-stats"><span>Задач: ${counts.total}</span><span>Решено: ${counts.solved}</span><span>Сложно: ${counts.hard}</span><span>Позже: ${counts.later}</span><span>Разобрано: ${completion}%</span><span>Время: ${mins} мин</span></div></div><div class="grid cols2"><div class="field"><label>Что сегодня получилось</label><textarea id="finishHighlights">${esc(strengths?`Хорошо получалось: ${strengths}.`:`Уверенно решено ${counts.solved} из ${counts.total} задач.`)}</textarea></div><div class="field"><label>Что повторить</label><textarea id="finishFocus">${esc(focus?`Повторить: ${focus}.`:counts.later?`Вернуться к ${counts.later} отложенным задачам.`:'Закрепить материал по необходимости.')}</textarea></div></div><div class="field"><label>Итоги ученику</label><textarea id="finishSummary">${esc(summary)}</textarea></div><div class="field"><label>К следующему уроку</label><textarea id="finishPlan">${esc(plan)}</textarea></div><div class="field"><label>Приватная заметка</label><textarea id="finishPrivate">${esc(lesson.private_notes||`Очередь: ${counts.total}; решено: ${counts.solved}; сложно: ${counts.hard}; позже: ${counts.later}; таймер: ${mins} мин.`)}</textarea></div><button class="btn primary" id="finishConfirm">Завершить и сохранить доску</button>`);
   m.querySelector('#finishConfirm').onclick=async()=>{
     const btn=m.querySelector('#finishConfirm');
     if(!btn||btn.dataset.busy==='1')return;
@@ -795,6 +798,11 @@ async function completeLesson(lesson,queue,live){
     const privateNotes=m.querySelector('#finishPrivate')?.value||'';
     const publicHighlights=m.querySelector('#finishHighlights')?.value||'';
     const publicFocus=m.querySelector('#finishFocus')?.value||'';
+    const trialAttendance=isCrmTrial?(m.querySelector('#finishTrialAttendance')?.value||''):'';
+    if(isCrmTrial&&!['present','late','absent'].includes(trialAttendance)){
+      fail(new Error('Перед завершением пробного отметьте посещаемость ученика'));
+      return;
+    }
 
     const originalText=btn.textContent;
     btn.dataset.busy='1';
@@ -846,13 +854,19 @@ async function completeLesson(lesson,queue,live){
       if(versionError)throw versionError;
 
       const completedAt=new Date().toISOString();
-      const {error}=await sb.from('lessons').update({
+      const lessonCompletionPatch={
         status:'completed',
         completed_at:completedAt,
         public_summary:publicSummary,
         homework_plan:homeworkPlan,
         private_notes:privateNotes
-      }).eq('id',lesson.id);
+      };
+      if(isCrmTrial){
+        lessonCompletionPatch.attendance_status=trialAttendance;
+        lessonCompletionPatch.attendance_marked_at=completedAt;
+        lessonCompletionPatch.actual_duration_minutes=trialAttendance==='absent'?0:Math.max(0,mins);
+      }
+      const {error}=await sb.from('lessons').update(lessonCompletionPatch).eq('id',lesson.id);
       if(error)throw error;
 
       const report={
