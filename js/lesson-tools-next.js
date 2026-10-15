@@ -2163,7 +2163,10 @@
       this.virtualBgPoseResultHandler=null;
 
       try{this.virtualBgSourceVideo?.pause?.()}catch{}
-      if(this.virtualBgSourceVideo)this.virtualBgSourceVideo.srcObject=null;
+      if(this.virtualBgSourceVideo){
+        try{this.virtualBgSourceVideo.srcObject=null}catch{}
+        try{this.virtualBgSourceVideo.remove?.()}catch{}
+      }
       this.virtualBgSourceVideo=null;
 
       try{this.virtualBgTrack?.stop?.()}catch{}
@@ -2313,8 +2316,39 @@
       source.autoplay=true;
       source.muted=true;
       source.playsInline=true;
+      source.disablePictureInPicture=true;
+      source.setAttribute('aria-hidden','true');
+
+      /* Do not use display:none. Yandex Browser may stop decoding a detached or
+         fully hidden MediaStream video, leaving source.play() pending forever.
+         A 2px offscreen element keeps the decoder clock alive without being
+         visible or affecting layout. */
+      Object.assign(source.style,{
+        position:'fixed',
+        left:'-10000px',
+        top:'0',
+        width:'2px',
+        height:'2px',
+        opacity:'0.001',
+        pointerEvents:'none',
+        zIndex:'-1'
+      });
+      document.body.appendChild(source);
+
       source.srcObject=new MediaStream([raw]);
-      await source.play().catch(()=>{});
+
+      /* Chromium usually resolves play() immediately; YaBrowser can keep this
+         promise pending even though metadata/frames are already arriving.
+         Never let that browser quirk block creation of the background canvas. */
+      try{
+        const playPromise=source.play();
+        if(playPromise?.then){
+          await Promise.race([
+            playPromise.catch(()=>{}),
+            new Promise(resolve=>setTimeout(resolve,220))
+          ]);
+        }
+      }catch{}
 
       if(source.readyState<2||!source.videoWidth||!source.videoHeight){
         await new Promise(resolve=>{
@@ -2322,8 +2356,9 @@
           const done=()=>{if(settled)return;settled=true;resolve()};
           source.addEventListener('loadeddata',done,{once:true});
           source.addEventListener('canplay',done,{once:true});
+          source.addEventListener('playing',done,{once:true});
           source.addEventListener('loadedmetadata',done,{once:true});
-          setTimeout(done,1600);
+          setTimeout(done,1200);
         });
       }
 
@@ -2336,10 +2371,10 @@
           let settled=false;
           const done=()=>{if(settled)return;settled=true;resolve()};
           try{source.requestVideoFrameCallback(done)}catch{done()}
-          setTimeout(done,900);
+          setTimeout(done,520);
         });
       }else{
-        await new Promise(resolve=>setTimeout(resolve,80));
+        await new Promise(resolve=>setTimeout(resolve,60));
       }
 
       const settings=raw.getSettings?.()||{};
