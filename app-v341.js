@@ -1337,11 +1337,11 @@ async function renderStudent(){
       <div id="mrStudentLessonAddon" class="mr-lesson-addon mr-lesson-video-top mr-desktop-video-shell"><div id="mrStudentVideoMount"></div></div>
       <div class="mr-student-desktop-lesson-meta mr-desktop-lesson-meta topbar"><div><span class="mr-mobile-kicker">Урок идёт</span><h1>${esc(active.topics?.title||'Урок')}</h1></div><div class="mr-student-desktop-live-dot"><span></span>Онлайн</div></div>
       <div class="mr-student-desktop-workspace mr-teacher-workspace mr-desktop-workspace-unified">
-        <div class="mr-student-desktop-board mr-lesson-board-main"><div id="studentLessonBoard"></div></div>
         <aside class="mr-student-desktop-lesson-rail mr-teacher-rail">
           <section id="studentLessonTaskMount" class="mr-student-rail-section">${studentLessonTaskCard(live)}</section>
           <section class="mr-student-desktop-timer-card mr-student-rail-section"><div class="mr-desk-section-head"><div><span class="mr-mobile-kicker">Таймер</span><h2>Время урока</h2></div></div><div class="mr-student-desktop-timers"><div><span>Урок</span><b id="studentTimer">${fmtTime(elapsedSeconds(live))}</b></div><div id="studentTaskTimerWrap" class="${live.task_timer_running?'active':''}"><span>На задачу</span><b id="studentTaskTimer">${live.task_timer_running?fmtTime(taskLeft):'—'}</b></div></div></section>
         </aside>
+        <div class="mr-student-desktop-board mr-lesson-board-main"><div id="studentLessonBoard"></div></div>
       </div>
     </div>`;
     await mountBoard(document.getElementById('studentLessonBoard'),S.student.id,false,{lessonId:active.id,studentName:S.student.name,followTeacher:true,teacherReplica:true,teacherId:active.teacher_id||live.teacher_id||''});
