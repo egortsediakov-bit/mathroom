@@ -3772,3 +3772,65 @@ input[type="file"]{font-size:11px!important}
     overscroll-behavior-y:auto!important;
   }
 }
+
+
+/* =========================================================
+   Mathroom 46.1 — desktop lesson: utility rail left, board right
+   Preserve the existing rail width and board width; only swap their sides.
+   Teacher and student use the same workspace geometry.
+   ========================================================= */
+@media (min-width:901px){
+  .mr-desktop-lesson-unified .mr-desktop-workspace-unified.mr-teacher-workspace,
+  .mr-teacher-lesson-content.mr-desktop-lesson-unified .mr-teacher-workspace{
+    grid-template-columns:clamp(220px,17vw,280px) minmax(0,1fr)!important;
+  }
+
+  .mr-desktop-lesson-unified .mr-desktop-workspace-unified.mr-teacher-workspace>.mr-teacher-rail,
+  .mr-teacher-lesson-content.mr-desktop-lesson-unified .mr-teacher-workspace>.mr-teacher-rail{
+    grid-column:1!important;
+    grid-row:1!important;
+    order:0!important;
+    justify-self:stretch!important;
+    margin-left:0!important;
+    margin-right:0!important;
+  }
+
+  .mr-desktop-lesson-unified .mr-desktop-workspace-unified.mr-teacher-workspace>.mr-lesson-board-main,
+  .mr-teacher-lesson-content.mr-desktop-lesson-unified .mr-teacher-workspace>.mr-lesson-board-main{
+    grid-column:2!important;
+    grid-row:1!important;
+    order:1!important;
+    width:100%!important;
+    min-width:0!important;
+    margin:0!important;
+  }
+}
+
+/* Medium desktop keeps exactly the same compact rail width it had before. */
+@media (min-width:901px) and (max-width:1180px){
+  .mr-desktop-lesson-unified .mr-desktop-workspace-unified.mr-teacher-workspace,
+  .mr-teacher-lesson-content.mr-desktop-lesson-unified .mr-teacher-workspace{
+    grid-template-columns:clamp(210px,22vw,240px) minmax(0,1fr)!important;
+  }
+}
+
+/* Narrow desktop/tablet still stacks for usability, but the left-rail content
+   comes first so the responsive order stays consistent with desktop. */
+@media (min-width:761px) and (max-width:900px){
+  .mr-desktop-lesson-unified .mr-desktop-workspace-unified.mr-teacher-workspace,
+  .mr-teacher-lesson-content.mr-desktop-lesson-unified .mr-teacher-workspace{
+    display:flex!important;
+    flex-direction:column!important;
+  }
+
+  .mr-desktop-lesson-unified .mr-desktop-workspace-unified.mr-teacher-workspace>.mr-teacher-rail,
+  .mr-teacher-lesson-content.mr-desktop-lesson-unified .mr-teacher-workspace>.mr-teacher-rail{
+    order:0!important;
+    margin:0 0 10px!important;
+  }
+
+  .mr-desktop-lesson-unified .mr-desktop-workspace-unified.mr-teacher-workspace>.mr-lesson-board-main,
+  .mr-teacher-lesson-content.mr-desktop-lesson-unified .mr-teacher-workspace>.mr-lesson-board-main{
+    order:1!important;
+  }
+}
