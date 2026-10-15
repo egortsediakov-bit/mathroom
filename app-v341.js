@@ -429,6 +429,40 @@ function renderStudents(){
     return d.toLocaleDateString('ru-RU',{day:'2-digit',month:'short',year:d.getFullYear()!==new Date().getFullYear()?'numeric':undefined});
   };
   const gradeTone=g=>['orange','violet','blue','green','rose','amber'][Math.abs(Number(g)||0)%6];
+  const studentStatIcon=kind=>{
+    const common='class="mr-stat-icon-svg" viewBox="0 0 56 56" aria-hidden="true" focusable="false"';
+    if(kind==='people')return `<svg ${common}>
+      <circle class="mr-stat-orange-fill" cx="22" cy="20" r="8"/>
+      <circle class="mr-stat-orange-fill" cx="36" cy="20" r="8"/>
+      <path class="mr-stat-orange-fill" d="M10 45c1.2-10.2 7.1-15.5 14.5-15.5S37.8 34.8 39 45H10Z"/>
+      <circle class="mr-stat-ink" cx="19" cy="18" r="7"/>
+      <circle class="mr-stat-ink" cx="35" cy="18" r="7"/>
+      <path class="mr-stat-ink" d="M8.5 44c.9-10 6.3-15.2 13.6-15.2 4.6 0 8.3 1.9 10.7 5.7"/>
+      <path class="mr-stat-ink" d="M28.3 34.5c2.4-3.8 5.7-5.7 9.7-5.7 6.2 0 10.7 4.4 11.5 15.2"/>
+      <path class="mr-stat-ink" d="M8.5 44h41"/>
+    </svg>`;
+    if(kind==='class')return `<svg ${common}>
+      <rect class="mr-stat-orange-fill" x="29" y="8" width="17" height="40" rx="5"/>
+      <rect class="mr-stat-orange-fill" x="21" y="12" width="17" height="40" rx="5" opacity=".72"/>
+      <path class="mr-stat-ink" d="M8 12.5c7.8-2.8 15.2-1.7 20 2.4v32.2c-4.8-4.1-12.2-5.2-20-2.4V12.5Z"/>
+      <path class="mr-stat-ink" d="M48 12.5c-7.8-2.8-15.2-1.7-20 2.4v32.2c4.8-4.1 12.2-5.2 20-2.4V12.5Z"/>
+      <path class="mr-stat-ink" d="M28 15v32"/>
+    </svg>`;
+    if(kind==='group')return `<svg ${common}>
+      <circle class="mr-stat-orange" cx="37.5" cy="18" r="7"/>
+      <circle class="mr-stat-orange" cx="41" cy="35" r="10"/>
+      <circle class="mr-stat-ink" cx="20" cy="18" r="7"/>
+      <circle class="mr-stat-ink" cx="34" cy="19" r="6"/>
+      <path class="mr-stat-ink" d="M7.5 44c1-9.3 5.7-14 12.7-14 7.2 0 11.9 4.7 12.8 14H7.5Z"/>
+      <path class="mr-stat-ink" d="M29.5 32.4c1.8-2.2 4.4-3.4 7.5-3.4 6.2 0 10.3 4.7 11.2 14.1"/>
+    </svg>`;
+    return `<svg ${common}>
+      <rect class="mr-stat-ink" x="7" y="30" width="9" height="17" rx="4.5"/>
+      <rect class="mr-stat-ink" x="21" y="21" width="9" height="26" rx="4.5"/>
+      <rect class="mr-stat-orange-fill" x="35" y="8" width="10" height="39" rx="5"/>
+      <rect class="mr-stat-ink" x="38" y="16" width="9" height="31" rx="4.5"/>
+    </svg>`;
+  };
 
   const content=`
     <div class="mr-students-directory">
@@ -437,10 +471,10 @@ function renderStudents(){
         <button class="btn primary mr-students-add" id="addStudentDirectory">+&nbsp;&nbsp;Добавить ученика</button>
       </section>
       <section class="mr-students-overview">
-        <div class="mr-student-stat"><span class="icon people">👥</span><div><b>${all.length}</b><small>Всего учеников</small></div></div>
-        <div class="mr-student-stat"><span class="icon class">⌂</span><div><b>${classes.length}</b><small>Классов</small></div></div>
-        <div class="mr-student-stat"><span class="icon group">◎</span><div><b>${namedGroups.length}</b><small>Групп</small></div></div>
-        <div class="mr-student-stat"><span class="icon active">↗</span><div><b>${activePct}%</b><small>Активных</small></div></div>
+        <div class="mr-student-stat"><span class="icon people">${studentStatIcon('people')}</span><div><b>${all.length}</b><small>Всего учеников</small></div></div>
+        <div class="mr-student-stat"><span class="icon class">${studentStatIcon('class')}</span><div><b>${classes.length}</b><small>Классов</small></div></div>
+        <div class="mr-student-stat"><span class="icon group">${studentStatIcon('group')}</span><div><b>${namedGroups.length}</b><small>Групп</small></div></div>
+        <div class="mr-student-stat"><span class="icon active">${studentStatIcon('active')}</span><div><b>${activePct}%</b><small>Активных</small></div></div>
         <div class="mr-student-filters">
           <label><span>Класс</span><select id="studentGradeFilter"><option value="all">Все классы</option>${classes.map(g=>`<option value="${g}">${g} класс</option>`).join('')}</select></label>
           <label><span>Группа</span><select id="studentGroupFilter"><option value="all">Все группы</option><option value="__none__">Без группы</option>${namedGroups.map(g=>`<option value="${esc(g)}">${esc(g)}</option>`).join('')}</select></label>
