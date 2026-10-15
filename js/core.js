@@ -2,9 +2,19 @@ const app = document.getElementById('app');
 const toastEl = document.getElementById('toast');
 const CFG = window.MATHROOM_CONFIG || {};
 const configured = /^https:\/\/.+\.supabase\.co$/.test(CFG.SUPABASE_URL || '') && CFG.SUPABASE_ANON_KEY && !/(YOUR_|REPLACE_ME|PROJECT\.supabase\.co)/i.test(`${CFG.SUPABASE_URL||''} ${CFG.SUPABASE_ANON_KEY||''}`);
+const AUTH_STORAGE_KEY='mathroom.supabase.auth.v1';
 const sb = configured ? supabase.createClient(CFG.SUPABASE_URL, CFG.SUPABASE_ANON_KEY, {
-  auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
+  auth: {
+    storageKey: AUTH_STORAGE_KEY,
+    persistSession: true,
+    autoRefreshToken: true,
+    detectSessionInUrl: true
+  }
 }) : null;
+
+// Expose the one canonical browser client so feature modules reuse the same
+// Auth instance instead of creating competing GoTrue clients for one project.
+if(sb) window.supabaseClient=sb;
 
 const S = {
   user: null, teacher: null,
