@@ -149,6 +149,7 @@
       this.virtualBgTaskTimestamp = 0;
       this.virtualBgTaskBackend = '';
       this.virtualBgError = '';
+      this.virtualBgStage = '';
       this.virtualBgFaceLibPromise = null;
       this.virtualBgFaceDetector = null;
       this.virtualBgPersonLibPromise = null;
@@ -1673,7 +1674,7 @@
         status.textContent=(this.virtualBgMode!=='none'&&cameraLive&&this.virtualBgError)
           ? 'Ошибка запуска фона'
           : (this.virtualBgMode!=='none'&&cameraLive&&!this.virtualBgMaskReady)
-          ? 'Подготавливаем фон…'
+          ? ('Подготавливаем фон' + (this.virtualBgStage ? ' · '+this.virtualBgStage : '') + '…')
           : this.virtualBgMode==='none' ? 'Без обработки'
           : this.virtualBgMode==='blur' ? 'Размытие включено'
           : this.virtualBgMode==='studio' ? 'Студия'
@@ -2183,10 +2184,22 @@
 
       const VERSION='0.1.1675465747';
       const base=`https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation@${VERSION}/`;
+      const isYaBrowser=/YaBrowser/i.test(navigator.userAgent||'');
+      const assetUrl=file=>{
+        const safeFile=isYaBrowser
+          ? String(file||'').replace(
+              /selfie_segmentation_solution_simd_wasm_bin/g,
+              'selfie_segmentation_solution_wasm_bin'
+            )
+          : file;
+        return base+safeFile;
+      };
       const wait=(ms)=>new Promise(resolve=>setTimeout(resolve,ms));
 
       this.virtualBgWarmupPromise=(async()=>{
         try{
+          this.virtualBgStage='модель';
+          this.paintAllVirtualBgControls();
           const Seg=await this.ensureVirtualBgLibrary();
           if(['studio','mathroom','classroom'].includes(this.virtualBgMode)){
             await this.ensureBuiltInBackgroundImage(this.virtualBgMode);
@@ -2195,7 +2208,7 @@
           for(let attempt=0;attempt<2;attempt++){
             let processor=null;
             try{
-              processor=new Seg({locateFile:file=>base+file});
+              processor=new Seg({locateFile:assetUrl});
               processor.setOptions({modelSelection:1});
 
               let gotResult=false;
@@ -2245,6 +2258,8 @@
               this.virtualBgWarmProcessor=processor;
               processor=null;
               this.virtualBgSelfieWarm=true;
+              this.virtualBgStage='готово';
+              this.paintAllVirtualBgControls();
               this.paintAllVirtualBgControls();
               return true;
             }catch(e){
@@ -2289,8 +2304,10 @@
 
       this.stopVirtualBackground();
       this.virtualBgError='';
+      this.virtualBgStage='видео';
       this.virtualBgInitializing=true;
       this.virtualBgMaskReady=false;
+      this.paintAllVirtualBgControls();
       this.paintAllVirtualBgControls();
 
       const mobile=(window.matchMedia?.('(pointer: coarse)')?.matches||window.innerWidth<=760);
@@ -2376,6 +2393,9 @@
       }else{
         await new Promise(resolve=>setTimeout(resolve,60));
       }
+
+      this.virtualBgStage='кадр';
+      this.paintAllVirtualBgControls();
 
       const settings=raw.getSettings?.()||{};
       const srcW=Math.max(1,Number(source.videoWidth)||Number(settings.width)||960);
@@ -2495,11 +2515,23 @@
       this.virtualBgCanvas=canvas;
       this.virtualBgStream=output;
       this.virtualBgTrack=outTrack;
+      this.virtualBgStage='модель';
       this.bindPrejoinPreview();
       this.paintPrejoin();
+      this.paintAllVirtualBgControls();
 
       const VERSION='0.1.1675465747';
       const selfieBase=`https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation@${VERSION}/`;
+      const isYaBrowser=/YaBrowser/i.test(navigator.userAgent||'');
+      const selfieAssetUrl=file=>{
+        const safeFile=isYaBrowser
+          ? String(file||'').replace(
+              /selfie_segmentation_solution_simd_wasm_bin/g,
+              'selfie_segmentation_solution_wasm_bin'
+            )
+          : file;
+        return selfieBase+safeFile;
+      };
 
       if(this.virtualBgWarmupPromise&&!this.virtualBgWarmProcessor){
         /* Never start a second MediaPipe instance while prewarm is still
@@ -2513,7 +2545,7 @@
       processor=this.virtualBgWarmProcessor||null;
       if(processor)this.virtualBgWarmProcessor=null;
       if(!processor){
-        processor=new Seg({locateFile:file=>selfieBase+file});
+        processor=new Seg({locateFile:selfieAssetUrl});
       }
       const configureSegmentationProcessor=p=>p.setOptions({modelSelection:1});
       configureSegmentationProcessor(processor);
@@ -2783,6 +2815,7 @@
           this.virtualBgMaskReady=true;
           this.virtualBgInitializing=false;
           this.virtualBgError='';
+          this.virtualBgStage='готово';
           this.virtualBgStartupRetries=0;
           clearTimeout(this.virtualBgStartupRetryTimer);
           this.virtualBgStartupRetryTimer=0;
@@ -2943,6 +2976,8 @@
       /* Exactly one first inference. No retries are started while it is still
          running. TFJS/BodyPix owns a single WebGL model and concurrent first
          inferences were the root race behind the never-ending startup state. */
+      this.virtualBgStage='маска';
+      this.paintAllVirtualBgControls();
       sendSegmentationFrame();
       this.virtualBgRaf=requestAnimationFrame(renderLoop);
 
@@ -3010,6 +3045,7 @@
           console.warn('[Mathroom virtual background activation]',e);
           this.virtualBgInitializing=false;
           this.virtualBgError=String(e?.message||'Не удалось запустить виртуальный фон');
+          this.virtualBgStage='ошибка';
           this.stopVirtualBackground();
           this.paintPrejoin();
           this.paintAllVirtualBgControls();
