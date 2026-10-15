@@ -143,6 +143,11 @@
       this.virtualBgFrameInterval = 50;
       this.virtualBgAvgProcessMs = 0;
       this.virtualBgLibPromise = null;
+      this.virtualBgTaskSegmenter = null;
+      this.virtualBgTaskAdapterCtor = null;
+      this.virtualBgTaskInference = null;
+      this.virtualBgTaskTimestamp = 0;
+      this.virtualBgTaskBackend = '';
       this.virtualBgFaceLibPromise = null;
       this.virtualBgFaceDetector = null;
       this.virtualBgPersonLibPromise = null;
@@ -1864,27 +1869,185 @@
     }
 
     async ensureVirtualBgLibrary() {
-      if (window.SelfieSegmentation) return window.SelfieSegmentation;
-      if (this.virtualBgLibPromise) return this.virtualBgLibPromise;
-      this.virtualBgLibPromise = new Promise((resolve,reject)=>{
-        const existing=document.querySelector('script[data-mr-selfie-segmentation]');
-        if(existing){
-          const ready=()=>window.SelfieSegmentation?resolve(window.SelfieSegmentation):reject(new Error('Модуль виртуального фона не загрузился'));
-          if(window.SelfieSegmentation)return ready();
-          existing.addEventListener('load',ready,{once:true});
-          existing.addEventListener('error',()=>reject(new Error('Не удалось загрузить модуль виртуального фона')),{once:true});
-          return;
+      if(this.virtualBgTaskAdapterCtor&&this.virtualBgTaskSegmenter){
+        return this.virtualBgTaskAdapterCtor;
+      }
+      if(this.virtualBgLibPromise)return this.virtualBgLibPromise;
+
+      const owner=this;
+      this.virtualBgLibPromise=(async()=>{
+        const VERSION='1.0.1';
+        const moduleUrl=`https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${VERSION}/vision_bundle.mjs`;
+        const wasmUrl=`https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${VERSION}/wasm`;
+        const modelUrl='https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_segmenter_landscape/float16/latest/selfie_segmenter_landscape.tflite';
+
+        let visionModule;
+        try{
+          visionModule=await import(moduleUrl);
+        }catch(e){
+          throw new Error('Не удалось загрузить современный модуль виртуального фона');
         }
-        const s=document.createElement('script');
-        s.src='https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/selfie_segmentation.js';
-        s.async=true;
-        s.dataset.mrSelfieSegmentation='1';
-        s.onload=()=>window.SelfieSegmentation?resolve(window.SelfieSegmentation):reject(new Error('Модуль виртуального фона недоступен'));
-        s.onerror=()=>reject(new Error('Не удалось загрузить модуль виртуального фона'));
-        document.head.appendChild(s);
-      });
-      try{return await this.virtualBgLibPromise}
-      catch(e){this.virtualBgLibPromise=null;throw e}
+
+        const {FilesetResolver,ImageSegmenter}=visionModule||{};
+        if(!FilesetResolver||!ImageSegmenter){
+          throw new Error('Модуль виртуального фона загрузился некорректно');
+        }
+
+        const fileset=await FilesetResolver.forVisionTasks(wasmUrl);
+
+        /* Initialize the model BEFORE a camera frame is ever sent. This is the
+           key difference from the legacy @mediapipe/selfie_segmentation API:
+           model/WASM startup is now a deterministic preparation phase instead
+           of being hidden inside the first processor.send(). CPU is deliberate
+           here: for this tiny landscape model it avoids WebGL-driver startup
+           races in Chromium/YaBrowser and keeps first activation predictable. */
+        let segmenter;
+        try{
+          segmenter=await ImageSegmenter.createFromOptions(fileset,{
+            baseOptions:{
+              modelAssetPath:modelUrl,
+              delegate:'CPU'
+            },
+            runningMode:'VIDEO',
+            outputCategoryMask:false,
+            outputConfidenceMasks:true
+          });
+          owner.virtualBgTaskBackend='tasks-cpu';
+        }catch(cpuError){
+          console.warn('[Mathroom virtual background] Tasks CPU init failed, trying GPU',cpuError);
+          segmenter=await ImageSegmenter.createFromOptions(fileset,{
+            baseOptions:{
+              modelAssetPath:modelUrl,
+              delegate:'GPU'
+            },
+            runningMode:'VIDEO',
+            outputCategoryMask:false,
+            outputConfidenceMasks:true
+          });
+          owner.virtualBgTaskBackend='tasks-gpu';
+        }
+
+        owner.virtualBgTaskSegmenter=segmenter;
+
+        const labels=Array.isArray(segmenter.getLabels?.())?segmenter.getLabels():[];
+        const labeledPerson=labels.findIndex(x=>/person/i.test(String(x||'')));
+        const personIndex=labeledPerson>=0?labeledPerson:1;
+
+        class TasksSelfieSegmentationAdapter {
+          constructor(){
+            this.handler=null;
+            this.closed=false;
+            this.maskCanvas=document.createElement('canvas');
+            this.maskCanvas.width=256;
+            this.maskCanvas.height=144;
+            this.maskCtx=this.maskCanvas.getContext('2d',{alpha:false,willReadFrequently:true});
+            this.maskImage=null;
+          }
+
+          setOptions(){}
+
+          onResults(fn){
+            this.handler=typeof fn==='function'?fn:null;
+          }
+
+          async send(payload){
+            if(this.closed)return;
+            const image=payload?.image;
+            if(!image)throw new Error('Кадр виртуального фона недоступен');
+            const liveSegmenter=owner.virtualBgTaskSegmenter;
+            if(!liveSegmenter)throw new Error('Сегментация виртуального фона не готова');
+
+            const execute=()=>new Promise((resolve,reject)=>{
+              let ts=Math.max(performance.now(),(owner.virtualBgTaskTimestamp||0)+1);
+              owner.virtualBgTaskTimestamp=ts;
+
+              const finish=result=>{
+                try{
+                  if(this.closed){
+                    try{result?.close?.()}catch{}
+                    resolve();
+                    return;
+                  }
+
+                  const masks=result?.confidenceMasks||[];
+                  const selected=masks[personIndex]||masks[masks.length>1?1:0]||null;
+                  if(!selected)throw new Error('Модель не вернула маску человека');
+
+                  const values=selected.getAsFloat32Array();
+                  const mw=Math.max(1,Number(selected.width)||256);
+                  const mh=Math.max(1,Number(selected.height)||144);
+
+                  if(this.maskCanvas.width!==mw||this.maskCanvas.height!==mh||!this.maskImage){
+                    this.maskCanvas.width=mw;
+                    this.maskCanvas.height=mh;
+                    this.maskCtx=this.maskCanvas.getContext('2d',{alpha:false,willReadFrequently:true});
+                    this.maskImage=this.maskCtx.createImageData(mw,mh);
+                  }
+
+                  const pixels=this.maskImage.data;
+                  const len=Math.min(values.length,mw*mh);
+                  for(let p=0,i=0;p<len;p++,i+=4){
+                    const v=Math.max(0,Math.min(255,Math.round(values[p]*255)));
+                    pixels[i]=v;
+                    pixels[i+1]=v;
+                    pixels[i+2]=v;
+                    pixels[i+3]=255;
+                  }
+                  this.maskCtx.putImageData(this.maskImage,0,0);
+
+                  const cb=this.handler;
+                  if(cb)cb({segmentationMask:this.maskCanvas});
+                  resolve();
+                }catch(e){
+                  reject(e);
+                }finally{
+                  try{result?.close?.()}catch{}
+                }
+              };
+
+              try{
+                liveSegmenter.segmentForVideo(image,ts,finish);
+              }catch(e){
+                reject(e);
+              }
+            });
+
+            /* A single ImageSegmenter instance is deliberately shared across
+               camera toggles. Serialize inference so a stale frame from an old
+               pipeline can never overlap a new first frame. */
+            const previous=owner.virtualBgTaskInference;
+            const task=(previous?Promise.resolve(previous).catch(()=>{}):Promise.resolve())
+              .then(execute);
+            owner.virtualBgTaskInference=task;
+
+            try{
+              await task;
+            }finally{
+              if(owner.virtualBgTaskInference===task)owner.virtualBgTaskInference=null;
+            }
+          }
+
+          /* The underlying Tasks model is session-scoped and intentionally
+             survives camera off/on. close() only detaches this adapter. */
+          close(){
+            this.closed=true;
+            this.handler=null;
+          }
+        }
+
+        owner.virtualBgTaskAdapterCtor=TasksSelfieSegmentationAdapter;
+        return TasksSelfieSegmentationAdapter;
+      })();
+
+      try{
+        return await this.virtualBgLibPromise;
+      }catch(e){
+        this.virtualBgLibPromise=null;
+        this.virtualBgTaskAdapterCtor=null;
+        try{this.virtualBgTaskSegmenter?.close?.()}catch{}
+        this.virtualBgTaskSegmenter=null;
+        throw e;
+      }
     }
 
     async ensureVirtualBgFaceLibrary() {
@@ -2081,22 +2244,20 @@
     }
 
     async prewarmVirtualBgEngine() {
+      if(this.virtualBgTaskSegmenter&&this.virtualBgTaskAdapterCtor)return true;
       if(this.virtualBgWarmupPromise)return this.virtualBgWarmupPromise;
 
       this.virtualBgWarmupPromise=(async()=>{
         try{
+          /* MediaPipe Tasks can initialize WASM + the selfie model without a
+             fake camera frame. Do the expensive work here, before Camera is
+             pressed, so first live inference is just inference. */
           await this.ensureVirtualBgLibrary();
 
           if(['studio','mathroom','classroom'].includes(this.virtualBgMode)){
             await this.ensureBuiltInBackgroundImage(this.virtualBgMode);
           }
 
-          /* Only cache network/WASM/background assets here. A MediaPipe
-             SelfieSegmentation instance is created after a real camera frame
-             exists. Reusing a pre-initialized instance was the remaining cause
-             of "selected background, raw camera on first enable" in Chromium. */
-          try{this.virtualBgWarmProcessor?.close?.()}catch{}
-          this.virtualBgWarmProcessor=null;
           this.virtualBgSelfieWarm=true;
           return true;
         }catch(e){
@@ -2137,19 +2298,13 @@
       const mobile=(window.matchMedia?.('(pointer: coarse)')?.matches||window.innerWidth<=760);
       const Seg=await this.ensureVirtualBgLibrary();
 
-      /* Always start from a processor bound to the current live camera.
-         MediaPipe solution instances that were initialized before a real video
-         frame existed can occasionally never deliver their first onResults in
-         Chromium/YaBrowser. */
+      /* Seg is now a compatibility adapter backed by the session-scoped
+         MediaPipe Tasks ImageSegmenter. No first-frame model initialization
+         happens here anymore. */
       try{this.virtualBgWarmProcessor?.close?.()}catch{}
       this.virtualBgWarmProcessor=null;
-      let processor=new Seg({
-        locateFile:file=>`https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/${file}`
-      });
+      let processor=new Seg();
       const configureSegmentationProcessor=p=>{
-        /* The landscape model is substantially lighter and keeps the render loop
-           responsive on Chromium. Fine edge stability is recovered by the
-           temporal mask below rather than by blocking every video frame. */
         p.setOptions({modelSelection:1});
       };
       configureSegmentationProcessor(processor);
@@ -2758,9 +2913,7 @@
 
         console.warn('[Mathroom virtual background] recycling stalled first inference',attempt);
         try{processor?.close?.()}catch{}
-        processor=new Seg({
-          locateFile:file=>`https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/${file}`
-        });
+        processor=new Seg();
         configureSegmentationProcessor(processor);
         processor.onResults(handleSegmentationResults);
         this.virtualBgProcessor=processor;
@@ -3393,7 +3546,7 @@
               this.bindPrejoinPreview();
               this.paintPrejoin();
             }else{
-              this.activateSelectedVirtualBackground(existing).catch(e=>console.warn('[Mathroom prejoin background]',e));
+              await this.activateSelectedVirtualBackground(existing);
             }
           }
           return;
@@ -3422,7 +3575,7 @@
           this.paintPrejoin();
 
           if(this.virtualBgMode!=='none'){
-            this.activateSelectedVirtualBackground(rawTrack).catch(e=>console.warn('[Mathroom prejoin background]',e));
+            await this.activateSelectedVirtualBackground(rawTrack);
           }
         }catch(e){
           this.cameraEnabled=false;
@@ -4924,6 +5077,11 @@
       this.localStream?.getTracks?.().forEach(t => t.stop());
       this.localStream = null;
       this.stopVirtualBackground();
+      try{this.virtualBgTaskSegmenter?.close?.()}catch{}
+      this.virtualBgTaskSegmenter=null;
+      this.virtualBgTaskAdapterCtor=null;
+      this.virtualBgTaskInference=null;
+      this.virtualBgLibPromise=null;
       try{this.virtualBgPoseProcessor?.close?.()}catch{}
       this.virtualBgPoseProcessor=null;
       this.virtualBgPoseReadyPromise=null;
