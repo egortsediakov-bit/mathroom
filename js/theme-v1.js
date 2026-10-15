@@ -23,9 +23,13 @@
       btn.setAttribute('aria-label',isDark?'Включить светлую тему':'Включить тёмную тему');
       btn.title=isDark?'Светлая тема':'Тёмная тема';
       const ico=btn.querySelector('.mr-theme-icon');
-      if(ico)ico.innerHTML=icon(next);
+      if(ico&&ico.dataset.themeIcon!==next){
+        ico.dataset.themeIcon=next;
+        ico.innerHTML=icon(next);
+      }
       const label=btn.querySelector('.mr-theme-label');
-      if(label)label.textContent=isDark?'Светлая тема':'Тёмная тема';
+      const labelText=isDark?'Светлая тема':'Тёмная тема';
+      if(label&&label.textContent!==labelText)label.textContent=labelText;
     });
     window.dispatchEvent(new CustomEvent('mathroom:theme-change',{detail:{theme:next}}));
   };
