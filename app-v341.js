@@ -2,6 +2,22 @@
 const {app,configured,sb,S,esc,nl,token,dateLong,dateShort,diffLabel,statusLabel,statusClass,toast,fail,copyText,modal,cleanupAll,cleanupBoard,cleanupLive,studentLink,configScreen,avg,shuffle}=window.MR;
 const {mountBoard,mountSnapshot}=window.MathroomBoard;
 
+const AUTH_SESSION_TTL_MS=24*60*60*1000;
+const AUTH_SESSION_EXPIRY_KEY='mathroom.authSessionExpiresAt';
+function authSessionExpiry(){
+  try{return Number(localStorage.getItem(AUTH_SESSION_EXPIRY_KEY))||0}catch{return 0}
+}
+function rememberAuthSession(){
+  try{localStorage.setItem(AUTH_SESSION_EXPIRY_KEY,String(Date.now()+AUTH_SESSION_TTL_MS))}catch{}
+}
+function clearAuthSession(){
+  try{localStorage.removeItem(AUTH_SESSION_EXPIRY_KEY)}catch{}
+}
+function authSessionIsFresh(){
+  const expiresAt=authSessionExpiry();
+  return expiresAt> Date.now();
+}
+
 function activeLessonStorageKey(){return S.user?.id?`mathroom.activeLesson.${S.user.id}`:'mathroom.activeLesson'}
 function activeLessonSessionKey(){return S.user?.id?`mathroom.activeLesson.session.${S.user.id}`:'mathroom.activeLesson.session'}
 function lessonIdFromHash(){
@@ -253,13 +269,24 @@ async function boot(){
   if(!configured)return configScreen();
   if(S.access)return bootStudent();
   const {data:{session}}=await sb.auth.getSession();
-  if(!session||session.user.is_anonymous)return renderAuth();
+  if(!session||session.user.is_anonymous){
+    clearAuthSession();
+    return renderAuth();
+  }
+  /* Older sessions existed before the 24-hour policy. Keep the currently signed-in
+     teacher instead of unexpectedly logging them out, and start the 24-hour window now. */
+  if(!authSessionExpiry())rememberAuthSession();
+  if(!authSessionIsFresh()){
+    clearAuthSession();
+    try{await sb.auth.signOut()}catch{}
+    return renderAuth();
+  }
   S.user=session.user;try{S.teacher=await ensureTeacher();await loadTeacher();restoreActiveLesson();renderTeacher();syncCurriculumBank()}catch(e){fail(e);renderAuth()}
 }
 function renderAuth(){
   app.innerHTML=`<div class="center-page"><div class="auth-card"><div class="brand">Mathroom</div><h1>Облачный кабинет</h1><p>GitHub Pages + Supabase</p><form id="loginForm"><div class="field"><label>Email</label><input id="email" type="email" required></div><div class="field"><label>Пароль</label><input id="password" type="password" minlength="6" required></div><div class="actions"><button class="btn primary">Войти</button><button type="button" class="btn" id="register">Создать аккаунт</button></div></form><div id="authMsg" class="small muted" style="margin-top:12px"></div></div></div>`;
-  document.getElementById('loginForm').onsubmit=async e=>{e.preventDefault();const email=document.getElementById('email').value,password=document.getElementById('password').value;const {data,error}=await sb.auth.signInWithPassword({email,password});if(error)return document.getElementById('authMsg').textContent=error.message;S.user=data.user;S.teacher=await ensureTeacher();await loadTeacher();restoreActiveLesson();renderTeacher();syncCurriculumBank()};
-  document.getElementById('register').onclick=async()=>{const email=document.getElementById('email').value,password=document.getElementById('password').value;const {data,error}=await sb.auth.signUp({email,password});if(error)return document.getElementById('authMsg').textContent=error.message;if(!data.session){document.getElementById('authMsg').textContent='Аккаунт создан. Подтверди email, затем войди.';return}S.user=data.user;S.teacher=await ensureTeacher();await loadTeacher();restoreActiveLesson();renderTeacher();syncCurriculumBank()};
+  document.getElementById('loginForm').onsubmit=async e=>{e.preventDefault();const email=document.getElementById('email').value,password=document.getElementById('password').value;const {data,error}=await sb.auth.signInWithPassword({email,password});if(error)return document.getElementById('authMsg').textContent=error.message;rememberAuthSession();S.user=data.user;S.teacher=await ensureTeacher();await loadTeacher();restoreActiveLesson();renderTeacher();syncCurriculumBank()};
+  document.getElementById('register').onclick=async()=>{const email=document.getElementById('email').value,password=document.getElementById('password').value;const {data,error}=await sb.auth.signUp({email,password});if(error)return document.getElementById('authMsg').textContent=error.message;if(!data.session){document.getElementById('authMsg').textContent='Аккаунт создан. Подтверди email, затем войди.';return}rememberAuthSession();S.user=data.user;S.teacher=await ensureTeacher();await loadTeacher();restoreActiveLesson();renderTeacher();syncCurriculumBank()};
 }
 
 const nav=[['dashboard','Главная'],['schedule','Расписание'],['students','Ученики'],['topics','Темы'],['textbooks','Учебники'],['bank','Банк задач'],['assignments','Задания'],['history','История'],['scratch','Черновик'],['board','Доска']];
@@ -269,7 +296,7 @@ function shell(content,title,sub=''){
 }
 function bindShell(){
   document.querySelectorAll('[data-nav]').forEach(b=>b.onclick=()=>{cleanupAll();forgetActiveLesson();S.view=b.dataset.nav;S.topic=null;S.activeLesson=null;renderTeacher()});
-  const l=document.getElementById('logout');if(l)l.onclick=async()=>{cleanupAll();forgetActiveLesson();await sb.auth.signOut();S.user=S.teacher=null;renderAuth()};
+  const l=document.getElementById('logout');if(l)l.onclick=async()=>{cleanupAll();forgetActiveLesson();clearAuthSession();await sb.auth.signOut();S.user=S.teacher=null;renderAuth()};
 }
 function renderTeacher(){
   cleanupAll();
