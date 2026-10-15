@@ -1741,7 +1741,7 @@
         const model=await window.bodyPix.load({
           architecture:'MobileNetV1',
           outputStride:16,
-          multiplier:mobile?.50:.75,
+          multiplier:mobile?.50:1.0,
           quantBytes:2
         });
 
@@ -2085,7 +2085,10 @@
           /* modelSelection=1 is the landscape/general model. It is materially
              more stable for seated/reclined full-body camera views than the
              close-up selfie model used by the first implementation. */
-          processor.setOptions({modelSelection:1});
+          const mobile=(window.matchMedia?.('(pointer: coarse)')?.matches||window.innerWidth<=760);
+          /* Use the higher-detail general model on desktops. The landscape
+             model stays on touch/mobile devices where inference budget matters. */
+          processor.setOptions({modelSelection:mobile?1:0});
           processor.onResults(()=>{});
           const warm=document.createElement('canvas');
           warm.width=160;warm.height=96;
@@ -2143,11 +2146,17 @@
       this.virtualBgMaskReady=false;
       this.paintAllVirtualBgControls();
 
+      const mobile=(window.matchMedia?.('(pointer: coarse)')?.matches||window.innerWidth<=760);
       const Seg=await this.ensureVirtualBgLibrary();
-      const processor=new Seg({
+      let processor=new Seg({
         locateFile:file=>`https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/${file}`
       });
-      processor.setOptions({modelSelection:1});
+      const configureSegmentationProcessor=p=>{
+        /* modelSelection=0 keeps hair, hands and shoulder contours noticeably
+           better on desktop. Mobile keeps the lighter landscape model. */
+        p.setOptions({modelSelection:mobile?1:0});
+      };
+      configureSegmentationProcessor(processor);
       this.virtualBgProcessor=processor;
 
       /* BodyPix is not allowed to delay the first virtual-background frame. */
@@ -2177,7 +2186,6 @@
       const settings=raw.getSettings?.()||{};
       const srcW=Math.max(1,Number(source.videoWidth)||Number(settings.width)||960);
       const srcH=Math.max(1,Number(source.videoHeight)||Number(settings.height)||540);
-      const mobile=(window.matchMedia?.('(pointer: coarse)')?.matches||window.innerWidth<=760);
 
       const outLong=mobile?540:720;
       const outScale=Math.min(1,outLong/Math.max(srcW,srcH));
@@ -2192,7 +2200,7 @@
       /* SelfieSegmentation inference: larger than BodyPix identity detection
          because this mask defines the visible hair/body edge. */
       const segCanvas=document.createElement('canvas');
-      const segLong=mobile?320:448;
+      const segLong=mobile?384:512;
       const segScale=Math.min(1,segLong/Math.max(srcW,srcH));
       segCanvas.width=Math.max(192,Math.round(srcW*segScale));
       segCanvas.height=Math.max(144,Math.round(srcH*segScale));
@@ -2202,7 +2210,7 @@
 
       /* Final alpha mask is deliberately smaller than the output video. */
       const maskCanvas=document.createElement('canvas');
-      const maskLong=mobile?208:288;
+      const maskLong=mobile?288:384;
       const maskScale=Math.min(1,maskLong/Math.max(w,h));
       maskCanvas.width=Math.max(128,Math.round(w*maskScale));
       maskCanvas.height=Math.max(96,Math.round(h*maskScale));
@@ -2226,28 +2234,42 @@
       if(!idCtx)throw new Error('Canvas идентификации недоступен');
 
       const blurCanvas=document.createElement('canvas');
-      const blurScale=mobile?.055:.075;
-      blurCanvas.width=Math.max(24,Math.round(w*blurScale));
-      blurCanvas.height=Math.max(24,Math.round(h*blurScale));
+      /* The old blur was effectively a ~7% thumbnail stretched to 720p,
+         which looked grainy/pixelated. Keep enough spatial resolution and
+         apply a real Gaussian canvas blur instead. */
+      const blurScale=mobile?.24:.34;
+      blurCanvas.width=Math.max(96,Math.round(w*blurScale));
+      blurCanvas.height=Math.max(72,Math.round(h*blurScale));
       const blurCtx=blurCanvas.getContext('2d',{alpha:false,desynchronized:true});
-      if(blurCtx)blurCtx.imageSmoothingEnabled=true;
+      if(blurCtx){
+        blurCtx.imageSmoothingEnabled=true;
+        blurCtx.imageSmoothingQuality='high';
+      }
 
       const drawBackground=()=>{
         if(this.virtualBgMode==='blur'){
           if(blurCtx){
-            blurCtx.clearRect(0,0,blurCanvas.width,blurCanvas.height);
-            blurCtx.drawImage(source,0,0,blurCanvas.width,blurCanvas.height);
+            const pad=Math.max(10,Math.round(Math.min(blurCanvas.width,blurCanvas.height)*.08));
+            blurCtx.save();
+            blurCtx.filter=mobile?'blur(7px)':'blur(10px)';
+            /* Overscan avoids dark/transparent blur edges. */
+            blurCtx.drawImage(
+              source,
+              -pad,-pad,
+              blurCanvas.width+pad*2,
+              blurCanvas.height+pad*2
+            );
+            blurCtx.restore();
+
             ctx.save();
             ctx.imageSmoothingEnabled=true;
             ctx.imageSmoothingQuality='high';
             ctx.drawImage(blurCanvas,0,0,blurCanvas.width,blurCanvas.height,0,0,w,h);
-            ctx.globalAlpha=.94;
-            ctx.drawImage(blurCanvas,0,0,blurCanvas.width,blurCanvas.height,0,0,w,h);
             ctx.restore();
           }else{
             ctx.save();
-            ctx.filter='blur(22px)';
-            ctx.drawImage(source,0,0,w,h);
+            ctx.filter=mobile?'blur(16px)':'blur(22px)';
+            ctx.drawImage(source,-28,-28,w+56,h+56);
             ctx.restore();
           }
         }else if(this.virtualBgMode==='custom'&&this.virtualBgCustomImage){
@@ -2260,7 +2282,7 @@
       ctx.clearRect(0,0,w,h);
       drawBackground();
 
-      const output=canvas.captureStream(mobile?15:18);
+      const output=canvas.captureStream(mobile?18:24);
       const outTrack=output.getVideoTracks()[0];
       if(!outTrack)throw new Error('Не удалось создать обработанный видеопоток');
       outTrack.enabled=this.cameraEnabled;
@@ -2332,9 +2354,26 @@
       };
 
       const choosePrimary=people=>{
-        const candidates=(people||[]).map(analysePerson).filter(Boolean);
+        let candidates=(people||[]).map(analysePerson).filter(Boolean);
         if(!candidates.length)return null;
         const prev=this.virtualBgPrimaryTrack;
+
+        /* Once a participant has been acquired, do not jump to a passer-by.
+           Re-acquisition is allowed only after the tracked person has genuinely
+           disappeared for a short grace period. */
+        if(prev){
+          const compatible=candidates.filter(cand=>{
+            const dist=Math.hypot(cand.cx-prev.cx,cand.cy-prev.cy);
+            const iou=boxIou(cand.box,prev.box);
+            const noseDist=(cand.nose&&prev.nose)
+              ?Math.hypot(cand.nose.x-prev.nose.x,cand.nose.y-prev.nose.y)
+              :Infinity;
+            return iou>=.035||dist<=.30||noseDist<=.24;
+          });
+          if(compatible.length)candidates=compatible;
+          else if(performance.now()-(prev.seenAt||0)<1400)return null;
+        }
+
         let best=null,bestScore=-Infinity;
 
         for(const cand of candidates){
@@ -2489,7 +2528,7 @@
         }
         if(!qt)return null;
 
-        const maxGrow=mobile?12:14;
+        const maxGrow=mobile?8:10;
         while(qh<qt){
           const p=queue[qh++];
           const d=dist[p];
@@ -2542,8 +2581,8 @@
         }
         const useAlpha=(alphaMax-alphaMin)>(lumMax-lumMin)*.55&&(alphaMax-alphaMin)>18;
 
-        const lo=mobile?52:58;
-        const hi=mobile?150:158;
+        const lo=mobile?42:40;
+        const hi=mobile?150:148;
         for(let p=0,i=0;p<total;p++,i+=4){
           const lum=(d[i]+d[i+1]+d[i+2])/3;
           const confidence=Math.max(0,Math.min(255,useAlpha?d[i+3]:lum));
@@ -2558,7 +2597,9 @@
           const env=primaryEnvelope?primaryEnvelope[p]:255;
           const target=Math.round(base*env/255);
           const prev=temporalAlpha[p];
-          const gain=target>=prev?.68:.84;
+          /* Rise quickly when a hand/hair strand appears, decay more gently
+             so limbs do not flicker away between inference frames. */
+          const gain=target>=prev?.78:.46;
           const next=Math.round(prev+(target-prev)*gain);
           temporalAlpha[p]=next<3?0:next;
 
@@ -2571,7 +2612,7 @@
         return true;
       };
 
-      processor.onResults(results=>{
+      const handleSegmentationResults=results=>{
         if(this.destroyed||this.virtualBgTrack!==outTrack)return;
         if(!updateVisibleMask(results))return;
 
@@ -2582,8 +2623,7 @@
           this.paintAllVirtualBgControls();
           try{resolveFirstMask?.(true)}catch{}
 
-          /* First fast Selfie mask is enough to switch the background. BodyPix
-             will refine WHO is kept sharp a little later. */
+          /* First valid mask swaps the raw preview automatically. */
           queueMicrotask(async()=>{
             if(this.destroyed||this.virtualBgTrack!==outTrack)return;
             await this.syncOutgoingCameraTrack();
@@ -2593,7 +2633,8 @@
             this.paint();
           });
         }
-      });
+      };
+      processor.onResults(handleSegmentationResults);
 
       const runIdentity=()=>{
         if(
@@ -2608,13 +2649,13 @@
         idCtx.drawImage(source,0,0,idCanvas.width,idCanvas.height);
         Promise.resolve(bodyPixModel.segmentMultiPerson(idCanvas,{
           flipHorizontal:false,
-          internalResolution:'low',
-          segmentationThreshold:.54,
+          internalResolution:mobile?'low':'medium',
+          segmentationThreshold:mobile?.52:.48,
           maxDetections:3,
-          scoreThreshold:.14,
+          scoreThreshold:.12,
           nmsRadius:20,
-          minKeypointScore:.12,
-          refineSteps:3
+          minKeypointScore:.10,
+          refineSteps:4
         }))
           .then(people=>{
             const primary=choosePrimary(people);
@@ -2644,7 +2685,9 @@
           ctx.clearRect(0,0,w,h);
 
           if(baseMaskReady){
-            ctx.filter=mobile?'blur(1.65px)':'blur(1.15px)';
+            ctx.imageSmoothingEnabled=true;
+            ctx.imageSmoothingQuality='high';
+            ctx.filter=mobile?'blur(.95px)':'blur(.65px)';
             ctx.drawImage(maskCanvas,0,0,maskCanvas.width,maskCanvas.height,0,0,w,h);
             ctx.filter='none';
             ctx.globalCompositeOperation='source-in';
@@ -2685,8 +2728,9 @@
             });
         }
 
-        /* Multi-person identity refinement is intentionally low-frequency. */
-        if(ts-lastIdentity>900){
+        /* Identity refresh stays frequent enough to suppress a person walking
+           behind the tracked participant without running BodyPix every frame. */
+        if(ts-lastIdentity>(mobile?900:620)){
           lastIdentity=ts;
           runIdentity();
         }
@@ -2696,7 +2740,7 @@
 
       const ready=await Promise.race([
         firstMaskPromise,
-        new Promise(resolve=>setTimeout(()=>resolve(false),5000))
+        new Promise(resolve=>setTimeout(()=>resolve(false),2600))
       ]);
 
       if(!ready){
@@ -2732,7 +2776,25 @@
         const rawId=raw.id||'';
 
         try{
-          const processed=await this.startVirtualBackground();
+          let processed=await this.startVirtualBackground();
+
+          /* Some Chromium/MediaPipe combinations occasionally stall on the
+             very first SelfieSegmentation send after WASM initialization.
+             Previously the user had to click another background and back.
+             Recreate the processor once automatically: this is the exact
+             recovery that a manual background switch used to trigger. */
+          if(
+            !processed &&
+            this.cameraEnabled &&
+            !this.destroyed &&
+            this.virtualBgMode!=='none' &&
+            this.localStream?.getVideoTracks?.()[0]?.id===rawId
+          ){
+            console.warn('[Mathroom virtual background] first activation stalled; retrying automatically');
+            this.stopVirtualBackground();
+            await wait(140);
+            processed=await this.startVirtualBackground();
+          }
 
           if(
             !processed ||
