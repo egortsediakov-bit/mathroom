@@ -1,5 +1,5 @@
 (() => {
-const {app,configured,sb,S,esc,nl,token,dateLong,dateShort,diffLabel,statusLabel,statusClass,toast,fail,copyText,modal,cleanupAll,cleanupBoard,cleanupLive,studentLink,configScreen,avg,shuffle}=window.MR;
+const {app,configured,sb,S,AUTH_STORAGE_KEY,authStorageAvailable,esc,nl,token,dateLong,dateShort,diffLabel,statusLabel,statusClass,toast,fail,copyText,modal,cleanupAll,cleanupBoard,cleanupLive,studentLink,configScreen,avg,shuffle}=window.MR;
 const {mountBoard,mountSnapshot}=window.MathroomBoard;
 
 const AUTH_SESSION_TTL_MS=24*60*60*1000;
@@ -271,7 +271,12 @@ async function linkTextbookModal({topicId='',textbookId=''}={}){
 async function boot(){
   if(!configured)return configScreen();
   if(S.access)return bootStudent();
-  const {data:{session}}=await sb.auth.getSession();
+  if(!authStorageAvailable?.()){
+    app.innerHTML=`<div class="center-page"><div class="auth-card"><div class="brand">Mathroom</div><h1>Браузер не сохраняет вход</h1><p>Для работы кабинета разреши локальное хранилище / данные сайта для Mathroom.</p></div></div>`;
+    return;
+  }
+  const {data:{session},error:sessionError}=await sb.auth.getSession();
+  if(sessionError)console.warn('[Mathroom getSession]',sessionError);
   if(!session||session.user.is_anonymous){
     clearAuthSession();
     return renderAuth();
@@ -307,11 +312,21 @@ function renderAuth(){
   document.getElementById('loginForm').onsubmit=async e=>{
     e.preventDefault();
     const email=document.getElementById('email').value,password=document.getElementById('password').value,msg=document.getElementById('authMsg');
+    if(!authStorageAvailable?.())return msg.textContent='Браузер запретил локальное хранилище. Разреши данные сайта/cookies для Mathroom и повтори вход.';
     const {data,error}=await sb.auth.signInWithPassword({email,password});
     if(error)return msg.textContent=error.message;
     try{
+      if(!data.session?.access_token||!data.session?.refresh_token)throw new Error('Supabase не вернул сессию входа');
+      const persisted=await sb.auth.setSession({
+        access_token:data.session.access_token,
+        refresh_token:data.session.refresh_token
+      });
+      if(persisted.error)throw persisted.error;
+      const stored=localStorage.getItem(AUTH_STORAGE_KEY);
+      if(!stored)throw new Error('Браузер не сохранил сессию Mathroom. Проверь разрешение на хранение данных сайта.');
+      const session=persisted.data?.session||data.session;
       rememberAuthSession();
-      S.user=data.user;
+      S.user=session.user||data.user;
       S.teacher=await ensureTeacher();
       await loadTeacher();
       restoreActiveLesson();
