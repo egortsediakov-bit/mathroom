@@ -1,0 +1,524 @@
+/* Mathroom dark theme v1 — black / white / orange Kotomatika palette */
+
+html[data-theme="dark"]{
+  color-scheme:dark;
+  --pg-bg:#0d0f12;
+  --pg-surface:#15181d;
+  --pg-surface-2:#1a1e24;
+  --pg-surface-3:#22272f;
+  --pg-text:#f4f6f8;
+  --pg-muted:#9aa4b1;
+  --pg-line:#2b3139;
+  --pg-line-2:#353c46;
+  --pg-orange:#ff7300;
+  --pg-orange-2:#ff5b00;
+  --pg-orange-soft:#2c1b10;
+  --bg:var(--pg-bg);
+  --panel:var(--pg-surface);
+  --text:var(--pg-text);
+  --muted:var(--pg-muted);
+  --line:var(--pg-line);
+  --accent:#080a0d;
+  --accent2:var(--pg-surface-3);
+}
+
+html[data-theme="dark"],
+html[data-theme="dark"] body{
+  background:#0d0f12!important;
+  color:#f4f6f8!important;
+}
+
+/* generic app chrome */
+html[data-theme="dark"] .layout,
+html[data-theme="dark"] .content,
+html[data-theme="dark"] .view-lesson .topbar{
+  background:#0d0f12!important;
+}
+html[data-theme="dark"] .topbar{
+  background:rgba(13,15,18,.94)!important;
+  border-color:#2b3139!important;
+}
+html[data-theme="dark"] .topbar h1,
+html[data-theme="dark"] .topbar h2,
+html[data-theme="dark"] .section-title h2,
+html[data-theme="dark"] h1,
+html[data-theme="dark"] h2,
+html[data-theme="dark"] h3,
+html[data-theme="dark"] h4,
+html[data-theme="dark"] strong,
+html[data-theme="dark"] b{
+  color:#f4f6f8;
+}
+html[data-theme="dark"] .muted,
+html[data-theme="dark"] .topbar p,
+html[data-theme="dark"] .small{
+  color:#9aa4b1!important;
+}
+
+html[data-theme="dark"] .card,
+html[data-theme="dark"] .form-card,
+html[data-theme="dark"] .row,
+html[data-theme="dark"] .item-box,
+html[data-theme="dark"] .video-card,
+html[data-theme="dark"] .mr-teacher-rail,
+html[data-theme="dark"] .lesson-live-card,
+html[data-theme="dark"] .mr-lesson-commandbar,
+html[data-theme="dark"] .mr-lesson-header,
+html[data-theme="dark"] .mr-live-commandbar,
+html[data-theme="dark"] .mr-lesson-shell,
+html[data-theme="dark"] .mr-lesson-controlbar,
+html[data-theme="dark"] .auth-card,
+html[data-theme="dark"] .modal,
+html[data-theme="dark"] .board-task-library{
+  background:#15181d!important;
+  border-color:#2b3139!important;
+  color:#f4f6f8!important;
+  box-shadow:none!important;
+}
+html[data-theme="dark"] .item-box,
+html[data-theme="dark"] .task-preview,
+html[data-theme="dark"] .generator-card,
+html[data-theme="dark"] .board-library-item,
+html[data-theme="dark"] .notice{
+  background:#191d22!important;
+  border-color:#2d333c!important;
+  color:#e8ebef!important;
+}
+html[data-theme="dark"] .row:hover,
+html[data-theme="dark"] .topic-card:hover{
+  background:#191d22!important;
+  border-color:#3b434e!important;
+}
+
+/* controls */
+html[data-theme="dark"] .btn,
+html[data-theme="dark"] #mrQuickJumpButton,
+html[data-theme="dark"] .search,
+html[data-theme="dark"] .field input,
+html[data-theme="dark"] .field select,
+html[data-theme="dark"] .field textarea,
+html[data-theme="dark"] .profile-edit input,
+html[data-theme="dark"] .profile-edit select,
+html[data-theme="dark"] .board-select,
+html[data-theme="dark"] .mr-rail-panel input,
+html[data-theme="dark"] .mr-rail-panel textarea,
+html[data-theme="dark"] .mr-rail-panel select,
+html[data-theme="dark"] select,
+html[data-theme="dark"] input,
+html[data-theme="dark"] textarea{
+  background:#171b20!important;
+  color:#f4f6f8!important;
+  border-color:#343b45!important;
+}
+html[data-theme="dark"] input::placeholder,
+html[data-theme="dark"] textarea::placeholder{
+  color:#737d8a!important;
+}
+html[data-theme="dark"] .btn:hover:not(:disabled),
+html[data-theme="dark"] #mrQuickJumpButton:hover{
+  background:#22272f!important;
+  border-color:#49525f!important;
+}
+html[data-theme="dark"] .btn.primary{
+  background:#ff7300!important;
+  border-color:#ff7300!important;
+  color:#fff!important;
+}
+html[data-theme="dark"] .btn.primary:hover{
+  background:#ff5b00!important;
+  border-color:#ff5b00!important;
+}
+html[data-theme="dark"] .btn.active,
+html[data-theme="dark"] .board-toolbar .btn.active{
+  background:#080a0d!important;
+  border-color:#ff7300!important;
+  color:#fff!important;
+}
+html[data-theme="dark"] .pill{
+  background:#242a32!important;
+  color:#c2c9d1!important;
+}
+html[data-theme="dark"] .pill.ok{background:#11281f!important;color:#63d6a4!important}
+html[data-theme="dark"] .pill.warn{background:#2a2111!important;color:#f0b84a!important}
+html[data-theme="dark"] .pill.bad{background:#2b1719!important;color:#ff8585!important}
+html[data-theme="dark"] .progress-track{background:#292f37!important}
+html[data-theme="dark"] .progress-fill{background:#ff7300!important}
+
+/* quick jump + top controls */
+html[data-theme="dark"] #mrQuickJumpButton,
+html[data-theme="dark"] .mr-topbar-tools .btn{
+  background:#171b20!important;
+  color:#f4f6f8!important;
+  border-color:#343b45!important;
+}
+html[data-theme="dark"] #mrQuickJumpButton kbd,
+html[data-theme="dark"] .mr-students-search kbd{
+  background:#22272f!important;
+  border-color:#343b45!important;
+  color:#aeb7c2!important;
+}
+
+/* theme toggle */
+.mr-theme-toggle{
+  appearance:none;
+  min-width:38px;
+  height:38px;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:9px;
+  padding:0 12px;
+  border:1px solid #d8dde4;
+  border-radius:10px;
+  background:#fff;
+  color:#17191c;
+  cursor:pointer;
+  font:800 12px/1 Inter,ui-sans-serif,system-ui,sans-serif;
+  transition:background .16s ease,border-color .16s ease,color .16s ease,transform .16s ease;
+}
+.mr-theme-toggle:hover{transform:translateY(-1px)}
+.mr-theme-toggle.compact{width:38px;min-width:38px;padding:0}
+.mr-theme-icon{width:18px;height:18px;display:grid;place-items:center}
+.mr-theme-icon svg{
+  width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.9;
+  stroke-linecap:round;stroke-linejoin:round;
+}
+html[data-theme="dark"] .mr-theme-toggle{
+  background:#171b20;
+  border-color:#343b45;
+  color:#fff;
+}
+html[data-theme="dark"] .mr-theme-toggle:hover{
+  background:#22272f;
+  border-color:#ff7300;
+}
+.mr-theme-floating{
+  position:fixed;
+  top:calc(16px + env(safe-area-inset-top));
+  right:16px;
+  z-index:9999;
+  box-shadow:0 10px 28px rgba(0,0,0,.12);
+}
+
+/* teacher sidebar stays branded black; dark mode only lifts separation */
+html[data-theme="dark"] .sidebar{
+  background:linear-gradient(180deg,#080a0d 0%,#101318 100%)!important;
+  border-color:#242a32!important;
+}
+html[data-theme="dark"] .sidebar-footer{
+  background:#101419!important;
+  border-color:#262d36!important;
+}
+html[data-theme="dark"] .sidebar .nav button:hover,
+html[data-theme="dark"] .sidebar .nav button.active{
+  background:#1a1f26!important;
+  color:#fff!important;
+}
+
+/* lesson / rail */
+html[data-theme="dark"] .mr-teacher-rail,
+html[data-theme="dark"] .mr-lesson-board-main,
+html[data-theme="dark"] .mr-student-desktop-lesson-rail{
+  color:#f4f6f8!important;
+}
+html[data-theme="dark"] .mr-rail-home-menu>.btn{
+  background:#171b20!important;
+  border-color:#2f3640!important;
+}
+html[data-theme="dark"] .mr-rail-home-menu>.btn:hover{
+  background:#20262d!important;
+}
+html[data-theme="dark"] .mr-rail-home-menu>.btn:first-child{
+  background:#2b1a0f!important;
+  border-color:#5a3218!important;
+}
+html[data-theme="dark"] .mr-rail-home-menu>.btn>span:first-child{
+  background:#22272f!important;
+  color:#f4f6f8!important;
+}
+html[data-theme="dark"] .mr-rail-home-menu>.btn:first-child>span:first-child{
+  background:#121519!important;
+  color:#ff7300!important;
+}
+html[data-theme="dark"] .mr-rail-section,
+html[data-theme="dark"] .mr-rail-view-head{
+  border-color:#2b3139!important;
+}
+
+/* video */
+html[data-theme="dark"] .video-head,
+html[data-theme="dark"] .mr-video-head,
+html[data-theme="dark"] .video-controls{
+  background:#15181d!important;
+  border-color:#2b3139!important;
+}
+html[data-theme="dark"] .video-stage{background:#050607!important}
+html[data-theme="dark"] .video-note{color:#aab3be!important}
+
+/* keep the actual whiteboard white: dark theme changes chrome, not paper */
+html[data-theme="dark"] .board-card{
+  background:#15181d!important;
+  border-color:#2b3139!important;
+}
+html[data-theme="dark"] .board-toolbar,
+html[data-theme="dark"] .board-pages,
+html[data-theme="dark"] .board-page-tabs,
+html[data-theme="dark"] .board-head,
+html[data-theme="dark"] .board-hint{
+  background:#15181d!important;
+  border-color:#2b3139!important;
+  color:#f4f6f8!important;
+}
+html[data-theme="dark"] .board-page-tab{
+  background:#1a1e24!important;
+  color:#f4f6f8!important;
+  border-color:#343b45!important;
+}
+html[data-theme="dark"] .board-page-tab.active{
+  background:#080a0d!important;
+  color:#fff!important;
+  border-color:#ff7300!important;
+}
+html[data-theme="dark"] .board-wrap,
+html[data-theme="dark"] .board-stage,
+html[data-theme="dark"] .board-card:fullscreen .board-wrap,
+html[data-theme="dark"] .board-card:fullscreen .board-stage{
+  background:#fff!important;
+}
+html[data-theme="dark"] .board-floating{
+  background:#15181d!important;
+  border-color:#343b45!important;
+}
+html[data-theme="dark"] .board-tool-popover,
+html[data-theme="dark"] .board-object-hud,
+html[data-theme="dark"] .board-solid-hud{
+  background:#171b20!important;
+  color:#f4f6f8!important;
+  border-color:#343b45!important;
+}
+
+/* modal + overlays */
+html[data-theme="dark"] .modal-backdrop{
+  background:rgba(0,0,0,.68)!important;
+}
+html[data-theme="dark"] .mr-quick-search,
+html[data-theme="dark"] .mr-quick-result{
+  background:#171b20!important;
+  color:#f4f6f8!important;
+  border-color:#343b45!important;
+}
+html[data-theme="dark"] .mr-quick-result.active,
+html[data-theme="dark"] .mr-quick-result:hover{
+  background:#2b1a0f!important;
+}
+
+/* Students directory 47.1 */
+html[data-theme="dark"] .view-students .content{
+  background:
+    radial-gradient(circle at 82% 0%,rgba(255,115,0,.08),transparent 28%),
+    #0d0f12!important;
+}
+html[data-theme="dark"] .mr-students-search,
+html[data-theme="dark"] .mr-students-overview,
+html[data-theme="dark"] .mr-class-card,
+html[data-theme="dark"] .mr-student-grade-block,
+html[data-theme="dark"] .mr-student-grade-head,
+html[data-theme="dark"] .mr-student-directory-row,
+html[data-theme="dark"] .mr-students-empty{
+  background:#15181d!important;
+  border-color:#2b3139!important;
+  color:#f4f6f8!important;
+  box-shadow:none!important;
+}
+html[data-theme="dark"] .mr-students-search input{
+  background:transparent!important;
+}
+html[data-theme="dark"] .mr-student-stat{
+  border-color:#282e36!important;
+}
+html[data-theme="dark"] .mr-student-filters{
+  border-color:#282e36!important;
+}
+html[data-theme="dark"] .mr-student-filters select,
+html[data-theme="dark"] .mr-students-sort select{
+  background:#171b20!important;
+  border-color:#343b45!important;
+  color:#f4f6f8!important;
+}
+html[data-theme="dark"] .mr-class-card:hover,
+html[data-theme="dark"] .mr-student-directory-row:hover{
+  background:#1a1f25!important;
+}
+html[data-theme="dark"] .mr-class-card.selected{
+  border-color:#ff7300!important;
+  box-shadow:0 0 0 3px rgba(255,115,0,.12)!important;
+}
+html[data-theme="dark"] .mr-student-table-head{
+  background:#111419!important;
+  color:#9aa4b1!important;
+}
+html[data-theme="dark"] .mr-student-directory-row,
+html[data-theme="dark"] .mr-student-grade-head{
+  border-color:#252b32!important;
+}
+html[data-theme="dark"] .mr-student-group-cell span,
+html[data-theme="dark"] .mr-student-grade-head small,
+html[data-theme="dark"] .mr-students-count{
+  background:#242a32!important;
+  color:#b5bec8!important;
+}
+html[data-theme="dark"] .mr-student-link-cell button,
+html[data-theme="dark"] .mr-student-more summary{
+  background:#171b20!important;
+  color:#d9dee5!important;
+  border-color:#343b45!important;
+}
+html[data-theme="dark"] .mr-student-more>div{
+  background:#171b20!important;
+  border-color:#343b45!important;
+  box-shadow:0 18px 45px rgba(0,0,0,.34)!important;
+}
+html[data-theme="dark"] .mr-student-more>div button{
+  color:#e7ebef!important;
+}
+html[data-theme="dark"] .mr-student-more>div button:hover{
+  background:#22272f!important;
+}
+
+/* student desktop cabinet */
+@media(min-width:1101px){
+  html[data-theme="dark"] body:has(.mr-student-desktop-shell),
+  html[data-theme="dark"] body:has(.student-desktop-lesson-mode){
+    background:#0d0f12!important;
+  }
+  html[data-theme="dark"] .mr-student-desktop-shell{
+    --sd-ink:#f4f6f8;
+    --sd-muted:#9aa4b1;
+    --sd-line:#2b3139;
+    --sd-orange-soft:#2c1b10;
+    --sd-cream:#171b20;
+    background:#0d0f12!important;
+    color:#f4f6f8!important;
+  }
+  html[data-theme="dark"] .mr-student-desktop-sidebar{
+    background:#101318!important;
+    border-color:#262d36!important;
+  }
+  html[data-theme="dark"] .mr-student-desktop-sidebar nav button{
+    color:#abb4bf!important;
+  }
+  html[data-theme="dark"] .mr-student-desktop-sidebar nav button:hover,
+  html[data-theme="dark"] .mr-student-desktop-sidebar nav button.active{
+    background:#1c2128!important;
+    color:#fff!important;
+  }
+  html[data-theme="dark"] .mr-student-desktop-topbar{
+    background:rgba(13,15,18,.95)!important;
+    border-color:#2b3139!important;
+  }
+  html[data-theme="dark"] .mr-student-desktop-content{
+    background:#0d0f12!important;
+  }
+  html[data-theme="dark"] .mr-desk-card,
+  html[data-theme="dark"] .mr-desk-next,
+  html[data-theme="dark"] .mr-desk-current-task,
+  html[data-theme="dark"] .mr-desk-task-strip>button,
+  html[data-theme="dark"] .mr-desk-recent-lessons>button,
+  html[data-theme="dark"] .mr-desk-assignment-list>article,
+  html[data-theme="dark"] .mr-desk-more-grid>article{
+    background:#15181d!important;
+    border-color:#2b3139!important;
+    color:#f4f6f8!important;
+    box-shadow:none!important;
+  }
+  html[data-theme="dark"] .mr-desk-hero-welcome{
+    background:
+      radial-gradient(circle at 93% 22%,rgba(255,115,0,.12),transparent 210px),
+      linear-gradient(135deg,#15181d 0%,#21160f 100%)!important;
+    border-color:#4b2b17!important;
+    box-shadow:none!important;
+  }
+  html[data-theme="dark"] .mr-desk-hero-copy h1,
+  html[data-theme="dark"] .mr-desk-card h2,
+  html[data-theme="dark"] .mr-desk-section-head h2{
+    color:#f4f6f8!important;
+  }
+  html[data-theme="dark"] .mr-desk-feature-row,
+  html[data-theme="dark"] .mr-desk-feedback>div:not(.mr-desk-card-head){
+    background:#1a1e24!important;
+    border-color:#2b3139!important;
+  }
+  html[data-theme="dark"] .mr-desk-feedback>div.warn{
+    background:#23170f!important;
+    border-color:#4d2a16!important;
+  }
+  html[data-theme="dark"] .mr-desk-online-pill{
+    background:#11251c!important;
+    color:#8ad8af!important;
+  }
+  html[data-theme="dark"] .mr-student-desktop-shell .btn:not(.primary){
+    background:#171b20!important;
+    color:#f4f6f8!important;
+    border-color:#343b45!important;
+  }
+}
+
+/* student mobile */
+html[data-theme="dark"] .student-mobile-shell{
+  --ms-bg:#0d0f12;
+  --ms-card:#15181d;
+  --ms-ink:#f4f6f8;
+  --ms-muted:#9aa4b1;
+  --ms-line:#2b3139;
+  background:#0d0f12!important;
+  color:#f4f6f8!important;
+}
+html[data-theme="dark"] .student-mobile-shell .mr-mobile-card,
+html[data-theme="dark"] .student-mobile-shell .mr-mobile-assignment,
+html[data-theme="dark"] .student-mobile-shell .mr-mobile-lesson-card,
+html[data-theme="dark"] .student-mobile-shell .mr-mobile-profile-card,
+html[data-theme="dark"] .student-mobile-shell .mr-mobile-menu-list>button{
+  background:#15181d!important;
+  color:#f4f6f8!important;
+  border-color:#2b3139!important;
+}
+html[data-theme="dark"] .student-mobile-shell .mr-mobile-student-nav{
+  background:rgba(15,18,22,.96)!important;
+  border-color:#2b3139!important;
+}
+html[data-theme="dark"] .student-mobile-shell .mr-mobile-student-nav button{
+  color:#8f99a6!important;
+}
+html[data-theme="dark"] .student-mobile-shell .mr-mobile-student-nav button.active{
+  color:#ff7300!important;
+}
+html[data-theme="dark"] .mr-theme-mobile-menu{
+  width:100%;
+  text-align:left;
+}
+
+/* misc */
+html[data-theme="dark"] .empty{
+  background:rgba(21,24,29,.72)!important;
+  border-color:#343b45!important;
+}
+html[data-theme="dark"] .token-link,
+html[data-theme="dark"] .version-note-preview,
+html[data-theme="dark"] .summary-preview{
+  background:#1a1e24!important;
+  color:#b5bec8!important;
+}
+html[data-theme="dark"] ::selection{
+  background:#ff7300;
+  color:#fff;
+}
+html[data-theme="dark"] *{
+  scrollbar-color:#454d58 #15181d;
+}
+
+@media(max-width:760px){
+  .mr-theme-toggle.compact{width:36px;min-width:36px;height:36px}
+  html[data-theme="dark"] .topbar{
+    background:#0d0f12!important;
+  }
+}
