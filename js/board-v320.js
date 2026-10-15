@@ -78,9 +78,20 @@
     }
     return work;
   };
-  const freehandPathD=o=>smoothPathD(
-    stabilizeFreehandPoints(o?.points||[],String(o?.inputType||'mouse'))
-  );
+  const freehandPoints=(o,live=false)=>{
+    const type=String(o?.inputType||'mouse');
+    let pts=stabilizeFreehandPoints(o?.points||[],type);
+
+    /* 46.8: during a live desktop-mouse stroke the newest coordinate has no
+       "future" neighbour yet, so no median filter can validate it. If that one
+       sample is bogus, it briefly appears as a downward spike and disappears
+       on the next pointer event. Render mouse ink one sample behind instead:
+       the previous point has already been validated by the newest sample.
+       The delay is only one pointer event (~8–16 ms), visually imperceptible. */
+    if(live&&type==='mouse'&&pts.length>=4)pts=pts.slice(0,-1);
+    return pts;
+  };
+  const freehandPathD=(o,live=false)=>smoothPathD(freehandPoints(o,live));
 
   const pressurePathGroup=o=>{
     const pts=(o.points||[]).filter(p=>Array.isArray(p)&&Number.isFinite(p[0])&&Number.isFinite(p[1]));
@@ -986,7 +997,7 @@
 
       for(const [id,s] of [...remoteLiveStrokes]){
         if((s.expires||0)<=now){remoteLiveStrokes.delete(id);continue}
-        g.appendChild(svgEl('path',{d:freehandPathD(s),fill:'none',stroke:s.color||'#15171a','stroke-width':s.width||3,'stroke-linecap':'round','stroke-linejoin':'round','shape-rendering':'geometricPrecision',opacity:s.opacity==null?1:s.opacity,'pointer-events':'none'}));
+        g.appendChild(svgEl('path',{d:freehandPathD(s,true),fill:'none',stroke:s.color||'#15171a','stroke-width':s.width||3,'stroke-linecap':'round','stroke-linejoin':'round','shape-rendering':'geometricPrecision',opacity:s.opacity==null?1:s.opacity,'pointer-events':'none'}));
       }
 
       if(remoteCursor&&remoteCursor.expires>now){
@@ -1282,7 +1293,7 @@
       if(!target||target.type!=='path'||target.pressureSensitive)return false;
       const node=bindLiveInkNode(target);
       if(!node||String(node.tagName).toLowerCase()!=='path')return false;
-      node.setAttribute('d',freehandPathD(target));
+      node.setAttribute('d',freehandPathD(target,true));
       return true;
     }
     function clearLiveInk(){liveInkNode=null;liveInkId=''}
