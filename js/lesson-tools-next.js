@@ -2057,6 +2057,8 @@
       this.virtualBgPrimaryTrack=null;
       this.virtualBgAvgProcessMs=0;
       this.virtualBgFrameInterval=140;
+      clearTimeout(this.virtualBgFirstMaskRecoveryTimer);
+      this.virtualBgFirstMaskRecoveryTimer=0;
 
       /* Close legacy processors left by an earlier hot-loaded build. */
       try{this.virtualBgProcessor?.close?.()}catch{}
@@ -2079,53 +2081,27 @@
     }
 
     async prewarmVirtualBgEngine() {
-      if(this.virtualBgWarmProcessor)return true;
       if(this.virtualBgWarmupPromise)return this.virtualBgWarmupPromise;
 
       this.virtualBgWarmupPromise=(async()=>{
-        let processor=null;
         try{
-          const Seg=await this.ensureVirtualBgLibrary();
+          await this.ensureVirtualBgLibrary();
 
           if(['studio','mathroom','classroom'].includes(this.virtualBgMode)){
             await this.ensureBuiltInBackgroundImage(this.virtualBgMode);
           }
 
-          processor=new Seg({
-            locateFile:file=>`https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/${file}`
-          });
-          processor.setOptions({modelSelection:1});
-          processor.onResults(()=>{});
-
-          /* MediaPipe's initialize() loads/compiles the WASM/model without
-             running segmentation on a dummy image. That is the important
-             difference from the old warmup which could wedge the first send(). */
-          if(typeof processor.initialize==='function'){
-            const init=processor.initialize();
-            await Promise.race([
-              Promise.resolve(init),
-              new Promise((_,reject)=>setTimeout(()=>reject(new Error('prewarm timeout')),3500))
-            ]);
-          }
-
-          if(this.destroyed||this.virtualBgProcessor){
-            try{processor.close?.()}catch{}
-            processor=null;
-            return false;
-          }
-
+          /* Only cache network/WASM/background assets here. A MediaPipe
+             SelfieSegmentation instance is created after a real camera frame
+             exists. Reusing a pre-initialized instance was the remaining cause
+             of "selected background, raw camera on first enable" in Chromium. */
           try{this.virtualBgWarmProcessor?.close?.()}catch{}
-          this.virtualBgWarmProcessor=processor;
-          processor=null;
+          this.virtualBgWarmProcessor=null;
           this.virtualBgSelfieWarm=true;
           return true;
         }catch(e){
-          /* Prewarm is only an optimization. A timeout must never block the
-             real camera path; live activation will create its own processor. */
           console.warn('[Mathroom virtual background] preload',e);
           return false;
-        }finally{
-          try{processor?.close?.()}catch{}
         }
       })();
 
@@ -2161,16 +2137,15 @@
       const mobile=(window.matchMedia?.('(pointer: coarse)')?.matches||window.innerWidth<=760);
       const Seg=await this.ensureVirtualBgLibrary();
 
-      /* Reuse an initialize()-warmed processor when it is already ready.
-         If prewarm is still running, do not wait for it: camera activation
-         gets a fresh processor and remains independent from preload. */
-      let processor=this.virtualBgWarmProcessor||null;
-      if(processor)this.virtualBgWarmProcessor=null;
-      if(!processor){
-        processor=new Seg({
-          locateFile:file=>`https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/${file}`
-        });
-      }
+      /* Always start from a processor bound to the current live camera.
+         MediaPipe solution instances that were initialized before a real video
+         frame existed can occasionally never deliver their first onResults in
+         Chromium/YaBrowser. */
+      try{this.virtualBgWarmProcessor?.close?.()}catch{}
+      this.virtualBgWarmProcessor=null;
+      let processor=new Seg({
+        locateFile:file=>`https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/${file}`
+      });
       const configureSegmentationProcessor=p=>{
         /* The landscape model is substantially lighter and keeps the render loop
            responsive on Chromium. Fine edge stability is recovered by the
@@ -2212,6 +2187,21 @@
           source.addEventListener('loadedmetadata',done,{once:true});
           setTimeout(done,1600);
         });
+      }
+
+      /* loadedmetadata can fire before Chromium has decoded the first real
+         camera frame. Starting MediaPipe on that empty frame is surprisingly
+         unreliable on some Windows camera drivers, so wait for one video-frame
+         callback when the API is available. */
+      if(typeof source.requestVideoFrameCallback==='function'){
+        await new Promise(resolve=>{
+          let settled=false;
+          const done=()=>{if(settled)return;settled=true;resolve()};
+          try{source.requestVideoFrameCallback(done)}catch{done()}
+          setTimeout(done,900);
+        });
+      }else{
+        await new Promise(resolve=>setTimeout(resolve,80));
       }
 
       const settings=raw.getSettings?.()||{};
@@ -2553,40 +2543,27 @@
           targetAlpha[p]=Math.round(base*env/255);
         }
 
-        /* A 2px safety halo closes the gap between two segmentation frames.
-           It is deliberately soft, so rapid head/hand motion does not get
-           guillotined while normal stationary edges stay clean. */
-        const radius=2;
-        for(let y=0;y<mh;y++){
-          const row=y*mw;
-          for(let x=0;x<mw;x++){
-            let m=0;
-            const xa=Math.max(0,x-radius),xb=Math.min(mw-1,x+radius);
-            for(let xx=xa;xx<=xb;xx++)if(targetAlpha[row+xx]>m)m=targetAlpha[row+xx];
-            dilateX[row+x]=m;
-          }
-        }
-        for(let y=0;y<mh;y++){
-          for(let x=0;x<mw;x++){
-            let m=0;
-            const ya=Math.max(0,y-radius),yb=Math.min(mh-1,y+radius);
-            for(let yy=ya;yy<=yb;yy++)if(dilateX[yy*mw+x]>m)m=dilateX[yy*mw+x];
-            dilateXY[y*mw+x]=m;
-          }
-        }
-
+        /* Do not dilate the person mask into nearby background. That safety
+           halo helped a moving outline a little, but it also turned real
+           openings (between a hand and the face, fingers, arm/body gaps) into
+           foreground, leaving the original sharp room visible inside them. */
         for(let p=0,i=0;p<total;p++,i+=4){
-          const direct=targetAlpha[p];
-          const halo=Math.round(dilateXY[p]*.82);
-          const target=Math.max(direct,halo);
+          const target=targetAlpha[p];
           const prev=temporalAlpha[p];
           const delta=Math.abs(target-prev);
 
-          /* Large changes are motion: accept them nearly immediately.
-             Small changes are edge noise: keep light temporal smoothing. */
-          const gain=target>=prev
-            ? (delta>42 ? .98 : .88)
-            : (delta>42 ? .86 : .68);
+          /* New foreground still appears very quickly. Strong current-frame
+             background evidence clears even faster, so holes inside a hand/arm
+             are blurred/replaced instead of retaining the old raw background. */
+          let gain;
+          if(target>=prev){
+            gain=delta>42?.98:.90;
+          }else if(target<24){
+            gain=delta>28?.97:.90;
+          }else{
+            gain=delta>42?.90:.74;
+          }
+
           const next=Math.round(prev+(target-prev)*gain);
           temporalAlpha[p]=next<2?0:next;
 
@@ -2611,6 +2588,8 @@
           this.virtualBgStartupRetries=0;
           clearTimeout(this.virtualBgStartupRetryTimer);
           this.virtualBgStartupRetryTimer=0;
+          clearTimeout(this.virtualBgFirstMaskRecoveryTimer);
+          this.virtualBgFirstMaskRecoveryTimer=0;
           this.paintAllVirtualBgControls();
           try{resolveFirstMask?.(true)}catch{}
 
@@ -2731,7 +2710,7 @@
           if(baseMaskReady){
             ctx.imageSmoothingEnabled=true;
             ctx.imageSmoothingQuality='high';
-            ctx.filter=mobile?'blur(.72px)':'blur(.38px)';
+            ctx.filter=mobile?'blur(.55px)':'blur(.28px)';
             ctx.drawImage(maskCanvas,0,0,maskCanvas.width,maskCanvas.height,0,0,w,h);
             ctx.filter='none';
             ctx.globalCompositeOperation='source-in';
@@ -2763,42 +2742,55 @@
         }
       };
 
-      /* Kick the very first inference immediately instead of waiting for the
-         first animation-frame scheduler turn. This removes the race where the
-         raw preview could remain visible until the user switched backgrounds. */
+      const recycleFirstMaskProcessor=()=>{
+        if(
+          baseMaskReady ||
+          this.destroyed ||
+          this.virtualBgMode==='none' ||
+          !this.cameraEnabled ||
+          this.virtualBgTrack!==outTrack ||
+          raw.readyState!=='live'
+        )return;
+
+        const attempt=(this.virtualBgStartupRetries||0)+1;
+        this.virtualBgStartupRetries=attempt;
+        if(attempt>2)return;
+
+        console.warn('[Mathroom virtual background] recycling stalled first inference',attempt);
+        try{processor?.close?.()}catch{}
+        processor=new Seg({
+          locateFile:file=>`https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/${file}`
+        });
+        configureSegmentationProcessor(processor);
+        processor.onResults(handleSegmentationResults);
+        this.virtualBgProcessor=processor;
+        segBusy=false;
+        lastSeg=0;
+        sendSegmentationFrame();
+
+        clearTimeout(this.virtualBgFirstMaskRecoveryTimer);
+        this.virtualBgFirstMaskRecoveryTimer=setTimeout(
+          recycleFirstMaskProcessor,
+          attempt===1?1500:1900
+        );
+      };
+
+      /* Kick the first inference only after a decoded camera frame exists.
+         If MediaPipe still wedges, recycle only the solution instance; keep the
+         camera/canvas/output track alive so the user never has to toggle the
+         camera two or three times by hand. */
       sendSegmentationFrame();
+      clearTimeout(this.virtualBgFirstMaskRecoveryTimer);
+      this.virtualBgFirstMaskRecoveryTimer=setTimeout(recycleFirstMaskProcessor,1500);
       this.virtualBgRaf=requestAnimationFrame(renderLoop);
 
       const ready=await Promise.race([
         firstMaskPromise,
-        new Promise(resolve=>setTimeout(()=>resolve(false),5000))
+        new Promise(resolve=>setTimeout(()=>resolve(false),6500))
       ]);
 
       if(!ready){
-        /* A cold first inference is allowed to continue, but it may also be a
-           genuinely wedged MediaPipe send. Recover automatically once, instead
-           of requiring the user to click Blur and then Studio by hand. */
-        console.warn('[Mathroom virtual background] first mask is slow; scheduling one automatic recovery');
-        if((this.virtualBgStartupRetries||0)<1){
-          this.virtualBgStartupRetries=(this.virtualBgStartupRetries||0)+1;
-          clearTimeout(this.virtualBgStartupRetryTimer);
-          this.virtualBgStartupRetryTimer=setTimeout(()=>{
-            if(
-              this.destroyed ||
-              this.virtualBgMode==='none' ||
-              !this.cameraEnabled ||
-              this.virtualBgMaskReady ||
-              this.virtualBgTrack!==outTrack ||
-              raw.readyState!=='live'
-            )return;
-
-            console.warn('[Mathroom virtual background] restarting stalled first inference');
-            this.stopVirtualBackground();
-            this.activateSelectedVirtualBackground(raw)
-              .catch(e=>console.warn('[Mathroom virtual background retry]',e));
-          },1200);
-        }
-        return outTrack;
+        console.warn('[Mathroom virtual background] first mask still pending after automatic recovery');
       }
 
       return outTrack;
