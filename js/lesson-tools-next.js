@@ -438,7 +438,7 @@
           background:#fff!important;
           overflow:visible!important
         }
-        .mr-native-call.floating.desktop-lesson-unified{right:calc(clamp(220px,17vw,280px) + 22px)!important}
+        .mr-native-call.floating.desktop-lesson-unified{right:clamp(12px,1.2vw,20px)!important}
         .mr-native-call.floating.expanded{width:clamp(230px,20vw,340px)!important;max-height:none!important;overflow:visible!important}
         .mr-native-call.floating .mr-call-head{display:none!important}
         .mr-native-call.floating .mr-call-note,.mr-native-call.floating .mr-call-quality{display:none!important}
@@ -523,7 +523,7 @@
         @media(max-width:1180px) and (min-width:761px){
           .mr-native-call.floating{width:clamp(215px,24vw,300px)!important}
           .mr-native-call.floating.view-both{width:clamp(215px,24vw,300px)!important}
-          .mr-native-call.floating.desktop-lesson-unified{right:clamp(236px,25vw,270px)!important}
+          .mr-native-call.floating.desktop-lesson-unified{right:clamp(12px,1.2vw,20px)!important}
           .mr-video-hero-mount>.mr-native-call.joined:not(.floating){
             padding:9px!important;
             gap:7px!important;
@@ -3616,7 +3616,7 @@
       const backdrop = document.createElement('div');
       backdrop.className = 'mr-native-prejoin-backdrop';
       backdrop.innerHTML = `<div class="mr-native-prejoin">
-        <div><div class="pill">Встроенная связь Mathroom · 46.1</div><h2>Подключиться к уроку</h2><p class="small muted">Микрофон и камеру можно проверить заранее. Камера необязательна — без неё в урок всё равно можно войти.</p></div>
+        <div><div class="pill">Встроенная связь Mathroom · 46.2</div><h2>Подключиться к уроку</h2><p class="small muted">Микрофон и камеру можно проверить заранее. Камера необязательна — без неё в урок всё равно можно войти.</p></div>
         <div class="mr-native-prejoin-grid">
           <div class="mr-prejoin-media-col">
             <div class="mr-native-preview"><video id="mrPrejoinVideo" autoplay muted playsinline></video><span class="mr-preview-name">Вы</span></div>
@@ -5853,11 +5853,21 @@
       },500);
     }
 
-    /* 46.1: desktop lesson uses helper-left / board-right. Keep the DOM order
-       identical to the visual order too, so keyboard navigation and screen
-       readers do not jump from the board to a panel that is visually left. */
-    if(host.parentElement!==workspace)workspace.insertBefore(host,boardWrap);
-    else if(host.nextElementSibling!==boardWrap)workspace.insertBefore(host,boardWrap);
+    /* 46.2 audit:
+       Desktop/tablet uses helper-left -> board-right, so the DOM follows that
+       visual order. On a phone the columns collapse; the primary lesson action
+       is the board, therefore keep board -> helper instead of forcing the
+       desktop DOM order onto a 360–430 px viewport. */
+    const helperFirst=window.matchMedia?.('(min-width:761px)')?.matches ?? window.innerWidth>=761;
+    if(helperFirst){
+      if(host.parentElement!==workspace||host.nextElementSibling!==boardWrap){
+        workspace.insertBefore(host,boardWrap);
+      }
+    }else{
+      if(boardWrap.parentElement!==workspace)workspace.insertBefore(boardWrap,workspace.firstChild);
+      if(host.parentElement!==workspace)workspace.appendChild(host);
+      if(boardWrap.nextElementSibling!==host)workspace.insertBefore(host,boardWrap.nextElementSibling);
+    }
 
     const ordered=[...queue].sort((a,b)=>(a.position||0)-(b.position||0));
     const current=ordered.find(x=>x.id===live?.current_queue_item_id)||null;
