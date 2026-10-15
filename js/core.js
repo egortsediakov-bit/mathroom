@@ -2,27 +2,62 @@ const app = document.getElementById('app');
 const toastEl = document.getElementById('toast');
 const CFG = window.MATHROOM_CONFIG || {};
 const configured = /^https:\/\/.+\.supabase\.co$/.test(CFG.SUPABASE_URL || '') && CFG.SUPABASE_ANON_KEY && !/(YOUR_|REPLACE_ME|PROJECT\.supabase\.co)/i.test(`${CFG.SUPABASE_URL||''} ${CFG.SUPABASE_ANON_KEY||''}`);
-const AUTH_STORAGE_KEY='mathroom.supabase.auth.v1';
+const AUTH_STORAGE_KEY='mathroom.supabase.auth.v2';
 const AUTH_STORAGE_PROBE_KEY='mathroom.supabase.storageProbe';
+const AUTH_DB_NAME='mathroom-auth';
+const AUTH_DB_STORE='kv';
+let authDbPromise=null;
+function openAuthDb(){
+  if(authDbPromise)return authDbPromise;
+  authDbPromise=new Promise((resolve,reject)=>{
+    if(!('indexedDB' in window))return reject(new Error('IndexedDB недоступен'));
+    const req=window.indexedDB.open(AUTH_DB_NAME,1);
+    req.onupgradeneeded=()=>{
+      const db=req.result;
+      if(!db.objectStoreNames.contains(AUTH_DB_STORE))db.createObjectStore(AUTH_DB_STORE);
+    };
+    req.onsuccess=()=>resolve(req.result);
+    req.onerror=()=>reject(req.error||new Error('Не удалось открыть хранилище авторизации'));
+    req.onblocked=()=>reject(new Error('Хранилище авторизации заблокировано другой вкладкой'));
+  });
+  return authDbPromise;
+}
 const authStorage={
-  getItem(key){
-    try{return window.localStorage.getItem(key)}
-    catch(e){console.error('[Mathroom auth storage:get]',e);return null}
+  async getItem(key){
+    const db=await openAuthDb();
+    return new Promise((resolve,reject)=>{
+      const tx=db.transaction(AUTH_DB_STORE,'readonly');
+      const req=tx.objectStore(AUTH_DB_STORE).get(key);
+      req.onsuccess=()=>resolve(req.result??null);
+      req.onerror=()=>reject(req.error||new Error('Не удалось прочитать сессию'));
+    });
   },
-  setItem(key,value){
-    try{window.localStorage.setItem(key,value)}
-    catch(e){console.error('[Mathroom auth storage:set]',e);throw e}
+  async setItem(key,value){
+    const db=await openAuthDb();
+    return new Promise((resolve,reject)=>{
+      const tx=db.transaction(AUTH_DB_STORE,'readwrite');
+      tx.objectStore(AUTH_DB_STORE).put(String(value),key);
+      tx.oncomplete=()=>resolve();
+      tx.onerror=()=>reject(tx.error||new Error('Не удалось сохранить сессию'));
+      tx.onabort=()=>reject(tx.error||new Error('Сохранение сессии отменено'));
+    });
   },
-  removeItem(key){
-    try{window.localStorage.removeItem(key)}
-    catch(e){console.error('[Mathroom auth storage:remove]',e)}
+  async removeItem(key){
+    const db=await openAuthDb();
+    return new Promise((resolve,reject)=>{
+      const tx=db.transaction(AUTH_DB_STORE,'readwrite');
+      tx.objectStore(AUTH_DB_STORE).delete(key);
+      tx.oncomplete=()=>resolve();
+      tx.onerror=()=>reject(tx.error||new Error('Не удалось удалить сессию'));
+      tx.onabort=()=>reject(tx.error||new Error('Удаление сессии отменено'));
+    });
   }
 };
-function authStorageAvailable(){
+async function authStorageAvailable(){
   try{
-    window.localStorage.setItem(AUTH_STORAGE_PROBE_KEY,'1');
-    const ok=window.localStorage.getItem(AUTH_STORAGE_PROBE_KEY)==='1';
-    window.localStorage.removeItem(AUTH_STORAGE_PROBE_KEY);
+    await authStorage.setItem(AUTH_STORAGE_PROBE_KEY,'1');
+    const ok=(await authStorage.getItem(AUTH_STORAGE_PROBE_KEY))==='1';
+    await authStorage.removeItem(AUTH_STORAGE_PROBE_KEY);
     return ok;
   }catch(e){
     console.error('[Mathroom auth storage probe]',e);
@@ -120,4 +155,4 @@ function configScreen(){
 function avg(nums){ const a=nums.filter(x=>Number.isFinite(Number(x))).map(Number); return a.length ? Math.round(a.reduce((s,x)=>s+x,0)/a.length) : null; }
 function shuffle(arr){ const a=[...arr]; for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];} return a; }
 
-window.MR = { app, toastEl, CFG, configured, sb, S, AUTH_STORAGE_KEY, authStorageAvailable, esc, nl, uid, token, dateLong, dateShort, diffLabel, statusLabel, statusClass, clamp, toast, fail, copyText, modal, cleanupBoard, cleanupLive, cleanupAll, studentLink, configScreen, avg, shuffle };
+window.MR = { app, toastEl, CFG, configured, sb, S, AUTH_STORAGE_KEY, authStorage, authStorageAvailable, esc, nl, uid, token, dateLong, dateShort, diffLabel, statusLabel, statusClass, clamp, toast, fail, copyText, modal, cleanupBoard, cleanupLive, cleanupAll, studentLink, configScreen, avg, shuffle };
