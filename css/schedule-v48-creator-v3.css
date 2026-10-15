@@ -133,7 +133,20 @@
   min-height:46px;padding:0 10px;border:1px solid #dfe3e7;border-radius:12px;background:#fff;color:#30343a;
   display:flex;align-items:center;justify-content:center;gap:7px;font-size:9.5px;font-weight:850;cursor:pointer
 }
-.mr-v3-repeat-modes button>span{color:#f35a16;font-size:14px}
+.mr-v3-repeat-mode-icon{
+  width:28px;height:28px;flex:0 0 28px;border-radius:9px;background:#fff5ef;border:1px solid #ffd8c5;
+  color:#17191c;display:grid;place-items:center;transition:background .16s ease,border-color .16s ease,color .16s ease
+}
+.mr-v3-repeat-mode-icon svg{
+  width:19px!important;height:19px!important;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round
+}
+.mr-v3-repeat-mode-icon svg .accent{stroke:#f35a16}
+.mr-v3-repeat-mode-icon svg .accent-fill{fill:#f35a16;stroke:none}
+.mr-v3-repeat-modes button.active .mr-v3-repeat-mode-icon{
+  background:#f35a16;border-color:#f35a16;color:#fff
+}
+.mr-v3-repeat-modes button.active .mr-v3-repeat-mode-icon svg .accent{stroke:#fff}
+.mr-v3-repeat-modes button.active .mr-v3-repeat-mode-icon svg .accent-fill{fill:#fff}
 .mr-v3-repeat-modes button:hover{border-color:#f4b99f;background:#fff8f4}
 .mr-v3-repeat-modes button.active{background:#fff0e8;border-color:#f35a16;color:#f35a16;box-shadow:inset 0 0 0 1px rgba(243,90,22,.05)}
 .mr-v3-repeat-extra,.mr-v3-interval{
@@ -207,4 +220,11 @@ html[data-theme="dark"] .mr-v3-interval button.active{background:#f4f6f8;border-
   .mr-v3-repeat-modes{grid-template-columns:1fr}
   .mr-v3-repeat-extra,.mr-v3-interval{grid-template-columns:1fr}
   .mr-v3-repeat-extra>div,.mr-v3-interval>div{justify-content:flex-start}
+}
+
+html[data-theme="dark"] .mr-v3-repeat-mode-icon{
+  background:#22170f;border-color:#5a301a;color:#f4f6f8
+}
+html[data-theme="dark"] .mr-v3-repeat-modes button.active .mr-v3-repeat-mode-icon{
+  background:#ff6a24;border-color:#ff6a24;color:#fff
 }
