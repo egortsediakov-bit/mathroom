@@ -364,7 +364,7 @@ function renderAuth(){
   };
 }
 
-const nav=[['dashboard','Главная'],['schedule','Расписание'],['students','Ученики'],['topics','Темы'],['textbooks','Учебники'],['bank','Банк задач'],['assignments','Задания'],['history','История'],['scratch','Черновик'],['board','Доска']];
+const nav=[['dashboard','Главная'],['schedule','Расписание'],['students','Ученики'],['topics','Темы'],['textbooks','Учебники'],['bank','Банк задач'],['assignments','Задания'],['history','История'],['scratch','Черновик']];
 function shell(content,title,sub=''){
   const workspace=['scratch','board','lesson'].includes(S.view);
   return `<div class="layout auto-sidebar ${workspace?'workspace-mode':''} view-${S.view}"><aside class="sidebar" aria-label="Главное меню"><div class="brand">Mathroom <span class="cloud-badge">☁ cloud</span></div><nav class="nav">${nav.map(([id,n])=>`<button data-nav="${id}" class="${S.view===id?'active':''}">${n}</button>`).join('')}</nav><div class="sidebar-footer"><button class="btn ghost sm sidebar-help" id="sidebarHelp" type="button">? Справка</button><button class="btn ghost sm" id="logout">Выйти</button></div></aside><main class="content"><div class="topbar"><div><h1>${esc(title)}</h1>${sub?`<p>${esc(sub)}</p>`:''}</div></div>${content}</main></div>`;
@@ -385,7 +385,7 @@ function renderTeacher(){
   if(S.view==='assignments')return renderAssignments();
   if(S.view==='history')return renderHistory();
   if(S.view==='scratch'){S.selectedStudent='__scratch__';return renderBoardPage()}
-  if(S.view==='board')return renderBoardPage();
+  if(S.view==='board'){S.view='scratch';S.selectedStudent='__scratch__';return renderBoardPage();}
   if(S.view==='lesson')return renderLesson();
   return renderDashboard();
 }
@@ -501,7 +501,6 @@ function renderStudents(){
   const bindRowActions=()=>{
     results.querySelectorAll('[data-profile]').forEach(b=>b.onclick=()=>{S.selectedStudent=b.dataset.profile;S.view='profile';renderTeacher()});
     results.querySelectorAll('[data-copy]').forEach(b=>b.onclick=async()=>{const st=S.students.find(x=>x.id===b.dataset.copy);if(!st)return;await copyText(studentLink(st));toast('Ссылка скопирована')});
-    results.querySelectorAll('[data-board]').forEach(b=>b.onclick=()=>{S.selectedStudent=b.dataset.board;S.view='board';renderTeacher()});
     results.querySelectorAll('[data-edit-student]').forEach(b=>b.onclick=()=>{const st=S.students.find(x=>x.id===b.dataset.editStudent);if(st)openStudentEditor(st)});
     results.querySelectorAll('[data-rotate]').forEach(b=>b.onclick=async()=>{if(!confirm('Старая ссылка перестанет работать. Продолжить?'))return;const {error}=await sb.rpc('rotate_student_access',{p_student_id:b.dataset.rotate});if(error)return fail(error);await loadTeacher();renderStudents();toast('Новая ссылка создана')});
     results.querySelectorAll('[data-delete]').forEach(b=>b.onclick=async()=>{if(!confirm('Удалить ученика и его данные?'))return;const {error}=await sb.from('students').delete().eq('id',b.dataset.delete);if(error)return fail(error);await loadTeacher();renderStudents();toast('Ученик удалён')});
@@ -553,7 +552,7 @@ function renderStudents(){
               <div class="mr-student-progress-cell"><b>${meta.completed} завершено</b><div><i style="width:${meta.progress}%"></i></div><small>${meta.total?meta.progress+'%':'нет уроков'}</small></div>
               <div class="mr-student-activity-cell"><span class="${st.active===false?'off':'on'}"></span><div><b>${esc(ago(meta.last))}</b><small>${meta.last?meta.last.toLocaleDateString('ru-RU',{day:'2-digit',month:'short'}):'—'}</small></div></div>
               <div class="mr-student-link-cell"><button type="button" data-copy="${st.id}" title="Скопировать персональную ссылку">↗</button></div>
-              <div class="mr-student-row-actions"><button class="btn sm primary" data-profile="${st.id}">Профиль</button><button class="btn sm" data-board="${st.id}">Доска</button><button class="btn sm" data-rotate="${st.id}">Новая ссылка</button><details class="mr-student-more"><summary title="Ещё">•••</summary><div><button type="button" data-edit-student="${st.id}">Редактировать</button><button type="button" data-copy="${st.id}">Копировать ссылку</button><button type="button" class="danger" data-delete="${st.id}">Удалить ученика</button></div></details></div>
+              <div class="mr-student-row-actions"><button class="btn sm primary" data-profile="${st.id}">Профиль</button><button class="btn sm" data-rotate="${st.id}">Новая ссылка</button><details class="mr-student-more"><summary title="Ещё">•••</summary><div><button type="button" data-edit-student="${st.id}">Редактировать</button><button type="button" data-copy="${st.id}">Копировать ссылку</button><button type="button" class="danger" data-delete="${st.id}">Удалить ученика</button></div></details></div>
             </article>`;
           }).join('')}
         </div>
@@ -611,8 +610,8 @@ async function renderStudentProfile(studentId){
   const hours=(a.totalSeconds/3600).toFixed(a.totalSeconds>=36000?0:1);
   const focusHtml=a.weakLive.length?a.weakLive.map(w=>`<div class="progress-row"><div class="progress-head"><b>${esc(w.name)}</b><b>${w.confidence}% уверенно</b></div><div class="progress-track"><div class="progress-fill" style="width:${w.confidence}%"></div></div><div class="small muted">На уроках: ${w.reviewed} · сложно/позже: ${w.attention}</div></div>`).join(''):(a.weak.length?a.weak.map(w=>`<div class="progress-row"><div class="progress-head"><b>${esc(w.name)}</b><b>${w.score}%</b></div><div class="progress-track"><div class="progress-fill" style="width:${w.score}%"></div></div><div class="small muted">${w.total} проверенных задач</div></div>`).join(''):'<div class="empty">Статистика появится после выполненных работ и уроков.</div>');
   const pathSuggestion=suggestedTopicForStudent(studentId);
-  app.innerHTML=shell(`<div class="actions" style="margin-bottom:14px"><button class="btn" id="backStudents">← Ученики</button><button class="btn" id="profileBoard">Доска</button><button class="btn" id="profileLink">Скопировать ссылку</button></div><div class="card student-profile-head"><div><span class="pill">${st.grade} класс</span><h2>${esc(st.name)}</h2></div><div class="profile-edit"><input id="profileName" value="${esc(st.name)}"><select id="profileGrade">${Array.from({length:11},(_,i)=>`<option ${i+1===st.grade?'selected':''}>${i+1}</option>`).join('')}</select><input id="profileGroup" value="${esc(st.group_name||'')}" placeholder="Группа"><button class="btn sm" id="saveProfile">Сохранить</button></div></div><div class="grid cols4 profile-metrics"><div class="card"><div class="muted">Уроков завершено</div><div class="metric">${a.completed}</div></div><div class="card"><div class="muted">Уверенно за 3 урока</div><div class="metric">${a.recentAvg==null?'—':a.recentAvg+'%'}</div><div class="small ${trendClass}">${trend}</div></div><div class="card"><div class="muted">Средний тест</div><div class="metric">${a.avgTest==null?'—':a.avgTest+'%'}</div></div><div class="card"><div class="muted">Времени занятий</div><div class="metric">${a.totalSeconds?hours+' ч':'—'}</div></div></div>${pathSuggestion?`<div class="card mr-profile-next-topic"><div><span class="pill">Следующая тема по программе</span><h2>${esc(pathSuggestion.topic.title)}</h2><p class="muted">${pathSuggestion.topic.grade} класс · ${esc(topicTrack(pathSuggestion.topic))}${pathSuggestion.after?` · после «${esc(pathSuggestion.after.title)}»`:''}</p></div><div class="actions"><button class="btn" id="profileNextTopic">Открыть тему</button><button class="btn primary" id="profileScheduleNext">Запланировать</button></div></div>`:''}<div class="grid cols2" style="margin-top:16px"><div class="card"><div class="mr-card-head"><h2>Динамика уроков</h2><span class="pill">последние ${Math.min(8,a.reports.length)}</span></div>${reportTrendHtml(a)}</div><div class="card"><h2>Что требует внимания</h2>${focusHtml}${a.weakTags.length?`<div class="mr-tag-cloud">${a.weakTags.slice(0,8).map(t=>`<span class="pill">#${esc(t.name)} · ${t.attention}</span>`).join('')}</div>`:''}</div></div><div class="grid cols2" style="margin-top:16px"><div class="card"><h2>Рекомендации на следующий урок</h2>${recommendations.length?recommendations.map(e=>`<div class="item-box"><b>${esc(e.title||'Задача')}</b><div class="small muted">${esc(e.category||'')} · ${diffLabel(e.difficulty)} ${(e.tags||[]).map(t=>'#'+esc(t)).join(' ')}</div><div class="prewrap">${nl(e.content)}</div></div>`).join(''):'<div class="empty">Пока нет данных для рекомендаций.</div>'}</div><div class="card"><h2>Последние отчёты</h2>${a.reports.length?a.reports.slice(-5).reverse().map(r=>{const l=S.lessons.find(x=>x.id===r.lesson_id);return `<div class="mr-report-mini"><div><b>${esc(l?.topics?.title||'Урок')}</b><span>${new Date(r.created_at).toLocaleDateString('ru-RU')}</span></div><div class="actions"><span class="pill">✓ ${r.solved_count}/${r.queue_total}</span><span class="pill">${Math.round(Number(r.solved_percent||0))}% уверенно</span></div>${r.public_focus?`<p class="small muted">Повторить: ${esc(r.public_focus)}</p>`:''}</div>`}).join(''):'<div class="empty">Отчётов пока нет.</div>'}</div></div><div class="section-title"><h2>Ближайшие уроки</h2></div><div class="list">${upcoming.length?upcoming.map(l=>`<div class="row"><div><h3>${esc(l.topics?.title||'Урок')}</h3><p>${dateLong(l.scheduled_at)}</p></div></div>`).join(''):'<div class="empty">Нет запланированных уроков.</div>'}</div>`,'Профиль ученика','Динамика считается по урокам, домашним и тестам');bindShell();
-  document.getElementById('backStudents').onclick=()=>{S.view='students';renderTeacher()};document.getElementById('profileBoard').onclick=()=>{S.view='board';renderTeacher()};document.getElementById('profileLink').onclick=async()=>{await copyText(studentLink(st));toast('Ссылка скопирована')};
+  app.innerHTML=shell(`<div class="actions" style="margin-bottom:14px"><button class="btn" id="backStudents">← Ученики</button><button class="btn" id="profileLink">Скопировать ссылку</button></div><div class="card student-profile-head"><div><span class="pill">${st.grade} класс</span><h2>${esc(st.name)}</h2></div><div class="profile-edit"><input id="profileName" value="${esc(st.name)}"><select id="profileGrade">${Array.from({length:11},(_,i)=>`<option ${i+1===st.grade?'selected':''}>${i+1}</option>`).join('')}</select><input id="profileGroup" value="${esc(st.group_name||'')}" placeholder="Группа"><button class="btn sm" id="saveProfile">Сохранить</button></div></div><div class="grid cols4 profile-metrics"><div class="card"><div class="muted">Уроков завершено</div><div class="metric">${a.completed}</div></div><div class="card"><div class="muted">Уверенно за 3 урока</div><div class="metric">${a.recentAvg==null?'—':a.recentAvg+'%'}</div><div class="small ${trendClass}">${trend}</div></div><div class="card"><div class="muted">Средний тест</div><div class="metric">${a.avgTest==null?'—':a.avgTest+'%'}</div></div><div class="card"><div class="muted">Времени занятий</div><div class="metric">${a.totalSeconds?hours+' ч':'—'}</div></div></div>${pathSuggestion?`<div class="card mr-profile-next-topic"><div><span class="pill">Следующая тема по программе</span><h2>${esc(pathSuggestion.topic.title)}</h2><p class="muted">${pathSuggestion.topic.grade} класс · ${esc(topicTrack(pathSuggestion.topic))}${pathSuggestion.after?` · после «${esc(pathSuggestion.after.title)}»`:''}</p></div><div class="actions"><button class="btn" id="profileNextTopic">Открыть тему</button><button class="btn primary" id="profileScheduleNext">Запланировать</button></div></div>`:''}<div class="grid cols2" style="margin-top:16px"><div class="card"><div class="mr-card-head"><h2>Динамика уроков</h2><span class="pill">последние ${Math.min(8,a.reports.length)}</span></div>${reportTrendHtml(a)}</div><div class="card"><h2>Что требует внимания</h2>${focusHtml}${a.weakTags.length?`<div class="mr-tag-cloud">${a.weakTags.slice(0,8).map(t=>`<span class="pill">#${esc(t.name)} · ${t.attention}</span>`).join('')}</div>`:''}</div></div><div class="grid cols2" style="margin-top:16px"><div class="card"><h2>Рекомендации на следующий урок</h2>${recommendations.length?recommendations.map(e=>`<div class="item-box"><b>${esc(e.title||'Задача')}</b><div class="small muted">${esc(e.category||'')} · ${diffLabel(e.difficulty)} ${(e.tags||[]).map(t=>'#'+esc(t)).join(' ')}</div><div class="prewrap">${nl(e.content)}</div></div>`).join(''):'<div class="empty">Пока нет данных для рекомендаций.</div>'}</div><div class="card"><h2>Последние отчёты</h2>${a.reports.length?a.reports.slice(-5).reverse().map(r=>{const l=S.lessons.find(x=>x.id===r.lesson_id);return `<div class="mr-report-mini"><div><b>${esc(l?.topics?.title||'Урок')}</b><span>${new Date(r.created_at).toLocaleDateString('ru-RU')}</span></div><div class="actions"><span class="pill">✓ ${r.solved_count}/${r.queue_total}</span><span class="pill">${Math.round(Number(r.solved_percent||0))}% уверенно</span></div>${r.public_focus?`<p class="small muted">Повторить: ${esc(r.public_focus)}</p>`:''}</div>`}).join(''):'<div class="empty">Отчётов пока нет.</div>'}</div></div><div class="section-title"><h2>Ближайшие уроки</h2></div><div class="list">${upcoming.length?upcoming.map(l=>`<div class="row"><div><h3>${esc(l.topics?.title||'Урок')}</h3><p>${dateLong(l.scheduled_at)}</p></div></div>`).join(''):'<div class="empty">Нет запланированных уроков.</div>'}</div>`,'Профиль ученика','Динамика считается по урокам, домашним и тестам');bindShell();
+  document.getElementById('backStudents').onclick=()=>{S.view='students';renderTeacher()};document.getElementById('profileLink').onclick=async()=>{await copyText(studentLink(st));toast('Ссылка скопирована')};
   document.getElementById('profileNextTopic')?.addEventListener('click',()=>{S.topic=pathSuggestion.topic;S.topicGradeFilter=Number(pathSuggestion.topic.grade);S.view='topics';renderTeacher()});document.getElementById('profileScheduleNext')?.addEventListener('click',()=>{S.schedulePrefill={studentId:st.id,topicId:pathSuggestion.topic.id};S.view='schedule';renderTeacher()});
   document.getElementById('saveProfile').onclick=async()=>{const {error}=await sb.from('students').update({name:document.getElementById('profileName').value.trim(),grade:Number(document.getElementById('profileGrade').value),group_name:document.getElementById('profileGroup').value.trim()}).eq('id',st.id);if(error)return fail(error);await loadTeacher();renderStudentProfile(st.id);toast('Профиль сохранён')};
 }
@@ -1116,39 +1115,31 @@ async function completeLesson(lesson,queue,live){
 }
 
 async function renderBoardPage(){
-  const scratch=S.selectedStudent==='__scratch__'||!S.students.length;
-  const st=scratch?null:(S.students.find(x=>x.id===S.selectedStudent)||S.students[0]);
-  if(st)S.selectedStudent=st.id;else S.selectedStudent='__scratch__';
+  S.view='scratch';
+  S.selectedStudent='__scratch__';
   const teacherKey=S.user?.id||S.teacher?.id||'teacher';
-  const studentOptions=S.students.map(s=>`<option value="${s.id}" ${(!scratch&&st?.id===s.id)?'selected':''}>${esc(s.name)} · ${s.grade} кл.</option>`).join('');
-  app.innerHTML=shell(`<div class="actions board-mode-switch" style="margin-bottom:12px"><select id="boardStudent" class="search"><option value="__scratch__" ${scratch?'selected':''}>Моя доска-черновик</option>${studentOptions}</select><span class="small muted">${scratch?'Черновик виден только в этом браузере преподавателя и открывается сразу как отдельная рабочая доска.':'Доска ученика синхронизируется в реальном времени.'}</span></div><div id="boardRoot"><div class="card board-loading-card"><div class="muted">Загружаем доску…</div></div></div>`,'Доска',scratch?'Личный черновик преподавателя':`${st.name} · совместная доска урока`);
+  app.innerHTML=shell(`<div id="boardRoot"><div class="card board-loading-card"><div class="muted">Загружаем черновик…</div></div></div>`,'Черновик','Личная рабочая доска преподавателя');
   bindShell();
-  const selector=document.getElementById('boardStudent');
-  selector.onchange=()=>{const v=selector.value;S.selectedStudent=v;S.view=v==='__scratch__'?'scratch':'board';renderBoardPage()};
   const root=document.getElementById('boardRoot');
   try{
+    const scratchKey=`mathroom.teacher.scratch.${teacherKey}`;
     let controller=null;
-    if(scratch){
-      const scratchKey=`mathroom.teacher.scratch.${teacherKey}`;
-      try{controller=await mountBoard(root,'teacher-scratch',true,{localOnly:true,localKey:scratchKey})}
-      catch(firstError){
-        console.warn('[Mathroom scratch] первая загрузка не удалась, восстанавливаем чистое рабочее состояние',firstError);
-        try{const old=localStorage.getItem(scratchKey);if(old)localStorage.setItem(`${scratchKey}.backup.${Date.now()}`,old);localStorage.removeItem(scratchKey)}catch{}
-        root.innerHTML='';
-        controller=await mountBoard(root,'teacher-scratch',true,{localOnly:true,localKey:scratchKey});
-        toast('Черновик восстановлен. Старые данные сохранены в резервной копии браузера.');
-      }
-    }else{
-      controller=await mountBoard(root,st.id,true,{studentName:st.name});
+    try{controller=await mountBoard(root,'teacher-scratch',true,{localOnly:true,localKey:scratchKey})}
+    catch(firstError){
+      console.warn('[Mathroom scratch] первая загрузка не удалась, восстанавливаем чистое рабочее состояние',firstError);
+      try{const old=localStorage.getItem(scratchKey);if(old)localStorage.setItem(`${scratchKey}.backup.${Date.now()}`,old);localStorage.removeItem(scratchKey)}catch{}
+      root.innerHTML='';
+      controller=await mountBoard(root,'teacher-scratch',true,{localOnly:true,localKey:scratchKey});
+      toast('Черновик восстановлен. Старые данные сохранены в резервной копии браузера.');
     }
     S.boardController=controller||null;
     if(!controller){
-      root.innerHTML=`<div class="card"><h2>Не удалось открыть доску</h2><p class="muted">Попробуй обновить страницу. Если проблема повторится, переключись на другой режим доски и вернись обратно.</p><div class="actions"><button class="btn primary" id="retryBoardMount">Обновить доску</button></div></div>`;
+      root.innerHTML=`<div class="card"><h2>Не удалось открыть черновик</h2><p class="muted">Попробуй обновить страницу. Если проблема повторится, перезапусти черновик кнопкой ниже.</p><div class="actions"><button class="btn primary" id="retryBoardMount">Обновить черновик</button></div></div>`;
       root.querySelector('#retryBoardMount')?.addEventListener('click',()=>renderBoardPage());
     }
   }catch(e){
-    console.error('[Mathroom board page]',e);
-    root.innerHTML=`<div class="card"><h2>Ошибка загрузки доски</h2><p class="muted">Черновик или доска ученика не смогли загрузиться. Мы сохранили навигацию и даём быстрый перезапуск страницы доски.</p><div class="actions"><button class="btn primary" id="retryBoardMount">Перезапустить доску</button></div></div>`;
+    console.error('[Mathroom scratch board page]',e);
+    root.innerHTML=`<div class="card"><h2>Ошибка загрузки черновика</h2><p class="muted">Личный черновик преподавателя не смог загрузиться. Навигация сохранена — можно быстро перезапустить доску.</p><div class="actions"><button class="btn primary" id="retryBoardMount">Перезапустить черновик</button></div></div>`;
     root.querySelector('#retryBoardMount')?.addEventListener('click',()=>renderBoardPage());
   }
 }
