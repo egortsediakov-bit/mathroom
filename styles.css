@@ -5504,3 +5504,253 @@ button.mr-mobile-lesson-asset{cursor:pointer}
     gap:clamp(8px,1vw,16px)!important;
   }
 }
+
+
+/* =========================================================
+   Mathroom 46.2 — teacher phone lesson-board audit
+   Student phones already had a dedicated touch canvas. The teacher used the
+   desktop vertical board rail on a phone, which made controls cramped and
+   popovers easy to lose. Use the generic board device flags so BOTH roles have
+   a real phone interaction model while teacher permissions/features stay intact.
+   ========================================================= */
+@media (max-width:760px){
+  [data-phone-board="1"][data-board-role="teacher"]{
+    width:100%!important;
+    min-width:0!important;
+  }
+
+  [data-phone-board="1"][data-board-role="teacher"] .board-card{
+    width:100%!important;
+    max-width:none!important;
+    border-left:0!important;
+    border-right:0!important;
+    border-radius:0!important;
+    overflow:visible!important;
+  }
+
+  [data-phone-board="1"][data-board-role="teacher"] .board-head{
+    min-width:0!important;
+    padding:7px 8px!important;
+    gap:5px!important;
+  }
+
+  [data-phone-board="1"][data-board-role="teacher"] .board-head-title{
+    min-width:52px!important;
+    max-width:60px!important;
+    padding-right:6px!important;
+  }
+
+  [data-phone-board="1"][data-board-role="teacher"] .board-head-title strong{
+    font-size:11px!important;
+  }
+
+  [data-phone-board="1"][data-board-role="teacher"] .board-head-actions{
+    min-width:0!important;
+    width:100%!important;
+    display:flex!important;
+    flex-wrap:nowrap!important;
+    align-items:center!important;
+    gap:4px!important;
+    overflow-x:auto!important;
+    overflow-y:hidden!important;
+    scrollbar-width:none!important;
+    -webkit-overflow-scrolling:touch!important;
+    overscroll-behavior-x:contain!important;
+  }
+  [data-phone-board="1"][data-board-role="teacher"] .board-head-actions::-webkit-scrollbar{display:none!important}
+  [data-phone-board="1"][data-board-role="teacher"] .board-head-actions>*{flex:0 0 auto!important}
+  [data-phone-board="1"][data-board-role="teacher"] .board-head-actions .board-head-label,
+  [data-phone-board="1"][data-board-role="teacher"] #quickCommands span,
+  [data-phone-board="1"][data-board-role="teacher"] #fullscreen span{display:none!important}
+  [data-phone-board="1"][data-board-role="teacher"] .board-head-actions #quickCommands,
+  [data-phone-board="1"][data-board-role="teacher"] .board-head-actions #fullscreen,
+  [data-phone-board="1"][data-board-role="teacher"] .board-head-actions #addPage,
+  [data-phone-board="1"][data-board-role="teacher"] .board-head-actions #delPage{
+    width:38px!important;
+    min-width:38px!important;
+    height:38px!important;
+    min-height:38px!important;
+    padding:0!important;
+    justify-content:center!important;
+  }
+
+  [data-phone-board="1"][data-board-role="teacher"] .board-page-tabs{
+    display:flex!important;
+    gap:5px!important;
+    overflow-x:auto!important;
+    overflow-y:hidden!important;
+    padding:6px 8px!important;
+    scrollbar-width:none!important;
+    -webkit-overflow-scrolling:touch!important;
+  }
+  [data-phone-board="1"][data-board-role="teacher"] .board-page-tabs::-webkit-scrollbar{display:none!important}
+  [data-phone-board="1"][data-board-role="teacher"] .board-page-tabs button{
+    flex:0 0 auto!important;
+    min-height:36px!important;
+  }
+
+  [data-phone-board="1"][data-board-role="teacher"] .board-stage{
+    width:100%!important;
+    height:min(68dvh,620px)!important;
+    min-height:470px!important;
+    overflow:hidden!important;
+    position:relative!important;
+  }
+  [data-phone-board="1"][data-board-role="teacher"] .board-stage>svg{
+    width:100%!important;
+    height:100%!important;
+  }
+
+  /* Horizontal touch dock. Teacher keeps every teacher-only tool; the row
+     scrolls rather than shrinking 44px targets below a usable finger size. */
+  [data-phone-board="1"][data-board-role="teacher"] .board-toolbar-side{
+    position:absolute!important;
+    left:8px!important;
+    right:8px!important;
+    top:auto!important;
+    bottom:8px!important;
+    width:auto!important;
+    height:58px!important;
+    min-height:58px!important;
+    max-height:58px!important;
+    display:flex!important;
+    flex-direction:row!important;
+    align-items:center!important;
+    padding:6px!important;
+    margin:0!important;
+    border-radius:16px!important;
+    overflow-x:auto!important;
+    overflow-y:hidden!important;
+    scrollbar-width:none!important;
+    -webkit-overflow-scrolling:touch!important;
+    overscroll-behavior-x:contain!important;
+    transform:none!important;
+    opacity:1!important;
+    backdrop-filter:none!important;
+    -webkit-backdrop-filter:none!important;
+    z-index:7200!important;
+  }
+  [data-phone-board="1"][data-board-role="teacher"] .board-toolbar-side::-webkit-scrollbar{display:none!important}
+  [data-phone-board="1"][data-board-role="teacher"] .board-toolbar-side::after{display:none!important}
+
+  [data-phone-board="1"][data-board-role="teacher"] .board-toolbar-side .board-tool-groups{
+    display:flex!important;
+    flex-direction:row!important;
+    align-items:center!important;
+    justify-content:flex-start!important;
+    gap:5px!important;
+    width:max-content!important;
+    min-width:max-content!important;
+    height:44px!important;
+    padding:0!important;
+    overflow:visible!important;
+  }
+  [data-phone-board="1"][data-board-role="teacher"] .board-toolbar-side .board-rail-quick{
+    display:flex!important;
+    flex-direction:row!important;
+    gap:5px!important;
+    width:auto!important;
+    flex:0 0 auto!important;
+  }
+  [data-phone-board="1"][data-board-role="teacher"] .board-toolbar-side .board-rail-divider,
+  [data-phone-board="1"][data-board-role="teacher"] .board-toolbar-side .board-side-label{display:none!important}
+
+  [data-phone-board="1"][data-board-role="teacher"] .board-toolbar-side .board-rail-quick .btn,
+  [data-phone-board="1"][data-board-role="teacher"] .board-toolbar-side #eraserRail,
+  [data-phone-board="1"][data-board-role="teacher"] .board-toolbar-side .board-rail-action,
+  [data-phone-board="1"][data-board-role="teacher"] .board-toolbar-side .board-tool-group>summary{
+    box-sizing:border-box!important;
+    width:44px!important;
+    min-width:44px!important;
+    max-width:44px!important;
+    height:44px!important;
+    min-height:44px!important;
+    max-height:44px!important;
+    padding:0!important;
+    margin:0!important;
+    border-radius:12px!important;
+    display:grid!important;
+    place-items:center!important;
+    flex:0 0 44px!important;
+  }
+  [data-phone-board="1"][data-board-role="teacher"] .board-toolbar-side .board-tool-group{
+    position:static!important;
+    width:44px!important;
+    min-width:44px!important;
+    flex:0 0 44px!important;
+  }
+  [data-phone-board="1"][data-board-role="teacher"] .board-toolbar-side .board-tool-group>summary::-webkit-details-marker{display:none!important}
+
+  /* Fixed palettes escape the horizontally scrolling dock and remain above the
+     software keyboard / safe-area. */
+  [data-phone-board="1"][data-board-role="teacher"] .board-toolbar-side .board-tool-popover,
+  [data-phone-board="1"][data-board-role="teacher"] .board-toolbar-side .board-tool-group:nth-last-child(-n+2) .board-tool-popover{
+    position:fixed!important;
+    left:50%!important;
+    right:auto!important;
+    top:auto!important;
+    bottom:calc(76px + env(safe-area-inset-bottom))!important;
+    transform:translateX(-50%)!important;
+    width:min(92vw,420px)!important;
+    min-width:0!important;
+    max-width:min(92vw,420px)!important;
+    max-height:min(52dvh,420px)!important;
+    overflow:auto!important;
+    box-sizing:border-box!important;
+    padding:10px!important;
+    border-radius:16px!important;
+    background:#fff!important;
+    z-index:7800!important;
+    overscroll-behavior:contain!important;
+  }
+  [data-phone-board="1"][data-board-role="teacher"] .board-toolbar-side details:not([open])>.board-tool-popover{display:none!important}
+  [data-phone-board="1"][data-board-role="teacher"] .board-toolbar-side details[open]>.board-tool-popover{display:block!important}
+
+  [data-phone-board="1"][data-board-role="teacher"] .board-tool-popover .board-action-grid,
+  [data-phone-board="1"][data-board-role="teacher"] .board-tool-popover .board-writing-grid,
+  [data-phone-board="1"][data-board-role="teacher"] .board-tool-popover .board-geometry-grid,
+  [data-phone-board="1"][data-board-role="teacher"] .board-tool-popover .board-more-grid{
+    grid-template-columns:repeat(2,minmax(0,1fr))!important;
+    gap:6px!important;
+  }
+  [data-phone-board="1"][data-board-role="teacher"] .board-tool-popover .board-action-grid .btn{
+    min-height:42px!important;
+    padding:6px 8px!important;
+    font-size:10.5px!important;
+  }
+  [data-phone-board="1"][data-board-role="teacher"] .board-shapes-popover .board-palette-grid{
+    grid-template-columns:repeat(3,minmax(0,1fr))!important;
+    gap:5px!important;
+  }
+
+  [data-phone-board="1"][data-board-role="teacher"] .board-floating{
+    right:8px!important;
+    top:8px!important;
+    bottom:auto!important;
+    padding:4px!important;
+  }
+  [data-phone-board="1"][data-board-role="teacher"] .board-floating #zoomOut,
+  [data-phone-board="1"][data-board-role="teacher"] .board-floating #zoomIn,
+  [data-phone-board="1"][data-board-role="teacher"] .board-floating #zoomLabel{display:none!important}
+  [data-phone-board="1"][data-board-role="teacher"] .board-floating #homeView{
+    min-width:36px!important;
+    min-height:36px!important;
+  }
+
+  [data-phone-board="1"][data-board-role="teacher"] .board-object-hud,
+  [data-phone-board="1"][data-board-role="teacher"] .board-solid-hud{display:none!important}
+  [data-phone-board="1"][data-board-role="teacher"] .board-hint{display:none!important}
+}
+
+@media (orientation:landscape) and (max-height:600px) and (pointer:coarse){
+  [data-phone-board="1"][data-board-role="teacher"] .board-stage{
+    min-height:300px!important;
+    height:min(82dvh,500px)!important;
+  }
+  [data-phone-board="1"][data-board-role="teacher"] .board-toolbar-side .board-tool-popover{
+    width:min(72vw,520px)!important;
+    max-width:min(72vw,520px)!important;
+    max-height:calc(100dvh - 92px)!important;
+    bottom:70px!important;
+  }
+}
