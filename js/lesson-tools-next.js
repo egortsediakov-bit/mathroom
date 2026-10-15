@@ -3616,7 +3616,7 @@
       const backdrop = document.createElement('div');
       backdrop.className = 'mr-native-prejoin-backdrop';
       backdrop.innerHTML = `<div class="mr-native-prejoin">
-        <div><div class="pill">Встроенная связь Mathroom · 46.0</div><h2>Подключиться к уроку</h2><p class="small muted">Микрофон и камеру можно проверить заранее. Камера необязательна — без неё в урок всё равно можно войти.</p></div>
+        <div><div class="pill">Встроенная связь Mathroom · 46.1</div><h2>Подключиться к уроку</h2><p class="small muted">Микрофон и камеру можно проверить заранее. Камера необязательна — без неё в урок всё равно можно войти.</p></div>
         <div class="mr-native-prejoin-grid">
           <div class="mr-prejoin-media-col">
             <div class="mr-native-preview"><video id="mrPrejoinVideo" autoplay muted playsinline></video><span class="mr-preview-name">Вы</span></div>
@@ -5852,6 +5852,12 @@
         syncTaskTimerControls(host);
       },500);
     }
+
+    /* 46.1: desktop lesson uses helper-left / board-right. Keep the DOM order
+       identical to the visual order too, so keyboard navigation and screen
+       readers do not jump from the board to a panel that is visually left. */
+    if(host.parentElement!==workspace)workspace.insertBefore(host,boardWrap);
+    else if(host.nextElementSibling!==boardWrap)workspace.insertBefore(host,boardWrap);
 
     const ordered=[...queue].sort((a,b)=>(a.position||0)-(b.position||0));
     const current=ordered.find(x=>x.id===live?.current_queue_item_id)||null;
