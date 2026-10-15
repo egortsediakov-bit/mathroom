@@ -1872,71 +1872,31 @@
     }
 
     async ensureVirtualBgLibrary() {
-      if(this.virtualBgTaskAdapterCtor&&this.virtualBgTaskSegmenter){
-        return this.virtualBgTaskAdapterCtor;
-      }
+      if(this.virtualBgTaskAdapterCtor)return this.virtualBgTaskAdapterCtor;
       if(this.virtualBgLibPromise)return this.virtualBgLibPromise;
 
       const owner=this;
-      this.virtualBgLibPromise=(async()=>{
-        const VERSION='1.1.0';
-        const moduleUrl=`https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${VERSION}/vision_bundle.mjs`;
-        const wasmUrl=`https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${VERSION}/wasm`;
-        const modelUrl='https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_segmenter_landscape/float16/latest/selfie_segmenter_landscape.tflite';
+      const timeout=(promise,ms,label)=>new Promise((resolve,reject)=>{
+        let done=false;
+        const timer=setTimeout(()=>{
+          if(done)return;
+          done=true;
+          reject(new Error(label||'Таймаут загрузки виртуального фона'));
+        },ms);
+        Promise.resolve(promise).then(
+          value=>{if(done)return;done=true;clearTimeout(timer);resolve(value)},
+          error=>{if(done)return;done=true;clearTimeout(timer);reject(error)}
+        );
+      });
 
-        let visionModule;
-        try{
-          visionModule=await import(moduleUrl);
-        }catch(e){
-          throw new Error('Не удалось загрузить современный модуль виртуального фона');
-        }
+      const makeBodyPixAdapter=async()=>{
+        const model=await timeout(
+          owner.ensureVirtualBgBodyPixModel(),
+          15000,
+          'Модель резервного виртуального фона загружается слишком долго'
+        );
 
-        const {FilesetResolver,ImageSegmenter}=visionModule||{};
-        if(!FilesetResolver||!ImageSegmenter){
-          throw new Error('Модуль виртуального фона загрузился некорректно');
-        }
-
-        const fileset=await FilesetResolver.forVisionTasks(wasmUrl);
-
-        /* Initialize the model BEFORE a camera frame is ever sent. This is the
-           key difference from the legacy @mediapipe/selfie_segmentation API:
-           model/WASM startup is now a deterministic preparation phase instead
-           of being hidden inside the first processor.send(). CPU is deliberate
-           here: for this tiny landscape model it avoids WebGL-driver startup
-           races in Chromium/YaBrowser and keeps first activation predictable. */
-        let segmenter;
-        try{
-          segmenter=await ImageSegmenter.createFromOptions(fileset,{
-            baseOptions:{
-              modelAssetPath:modelUrl,
-              delegate:'CPU'
-            },
-            runningMode:'VIDEO',
-            outputCategoryMask:false,
-            outputConfidenceMasks:true
-          });
-          owner.virtualBgTaskBackend='tasks-cpu';
-        }catch(cpuError){
-          console.warn('[Mathroom virtual background] Tasks CPU init failed, trying GPU',cpuError);
-          segmenter=await ImageSegmenter.createFromOptions(fileset,{
-            baseOptions:{
-              modelAssetPath:modelUrl,
-              delegate:'GPU'
-            },
-            runningMode:'VIDEO',
-            outputCategoryMask:false,
-            outputConfidenceMasks:true
-          });
-          owner.virtualBgTaskBackend='tasks-gpu';
-        }
-
-        owner.virtualBgTaskSegmenter=segmenter;
-
-        const labels=Array.isArray(segmenter.getLabels?.())?segmenter.getLabels():[];
-        const labeledPerson=labels.findIndex(x=>/person/i.test(String(x||'')));
-        const personIndex=labeledPerson>=0?labeledPerson:1;
-
-        class TasksSelfieSegmentationAdapter {
+        class BodyPixSegmentationAdapter {
           constructor(){
             this.handler=null;
             this.closed=false;
@@ -1957,49 +1917,196 @@
             if(this.closed)return;
             const image=payload?.image;
             if(!image)throw new Error('Кадр виртуального фона недоступен');
-            const liveSegmenter=owner.virtualBgTaskSegmenter;
-            if(!liveSegmenter)throw new Error('Сегментация виртуального фона не готова');
 
-            const execute=()=>new Promise((resolve,reject)=>{
-              let ts=Math.max(performance.now(),(owner.virtualBgTaskTimestamp||0)+1);
-              owner.virtualBgTaskTimestamp=ts;
+            const mobile=(window.matchMedia?.('(pointer: coarse)')?.matches||window.innerWidth<=760);
+            const people=await model.segmentMultiPerson(image,{
+              flipHorizontal:false,
+              internalResolution:mobile?'low':'medium',
+              segmentationThreshold:mobile?.55:.50,
+              maxDetections:3,
+              scoreThreshold:.12,
+              nmsRadius:20,
+              minKeypointScore:.10,
+              refineSteps:2
+            });
+
+            if(this.closed)return;
+            const list=Array.isArray(people)?people.filter(Boolean):[];
+
+            /* Pick one primary participant instead of merging every detected
+               person. This keeps somebody walking behind the tutor out of the
+               virtual-background foreground from the very first frame. */
+            let primary=null;
+            let primaryScore=-Infinity;
+            for(const person of list){
+              const data=person?.data;
+              const width=Number(person?.width)||image.width||256;
+              const height=Number(person?.height)||image.height||144;
+              if(!data?.length||!width||!height)continue;
+
+              let minX=width,minY=height,maxX=-1,maxY=-1,count=0;
+              const step=Math.max(1,Math.floor(data.length/50000));
+              for(let i=0;i<data.length;i+=step){
+                if(!data[i])continue;
+                const x=i%width;
+                const y=Math.floor(i/width);
+                if(x<minX)minX=x;if(x>maxX)maxX=x;
+                if(y<minY)minY=y;if(y>maxY)maxY=y;
+                count++;
+              }
+              if(maxX<minX||maxY<minY)continue;
+
+              const cx=((minX+maxX)*.5)/width;
+              const cy=((minY+maxY)*.5)/height;
+              const bw=(maxX-minX+1)/width;
+              const bh=(maxY-minY+1)/height;
+              const area=Math.max(.001,bw*bh);
+              const centerDist=Math.hypot(cx-.5,(cy-.48)*.85);
+              const score=area*2.35-centerDist*.78;
+              if(score>primaryScore){
+                primaryScore=score;
+                primary=person;
+              }
+            }
+
+            const width=Number(primary?.width)||image.width||256;
+            const height=Number(primary?.height)||image.height||144;
+            if(this.maskCanvas.width!==width||this.maskCanvas.height!==height||!this.maskImage){
+              this.maskCanvas.width=width;
+              this.maskCanvas.height=height;
+              this.maskCtx=this.maskCanvas.getContext('2d',{alpha:false,willReadFrequently:true});
+              this.maskImage=this.maskCtx.createImageData(width,height);
+            }
+
+            const pixels=this.maskImage.data;
+            const data=primary?.data||null;
+            const len=width*height;
+            for(let p=0,i=0;p<len;p++,i+=4){
+              const v=data&&data[p]?255:0;
+              pixels[i]=v;
+              pixels[i+1]=v;
+              pixels[i+2]=v;
+              pixels[i+3]=255;
+            }
+            this.maskCtx.putImageData(this.maskImage,0,0);
+
+            const cb=this.handler;
+            if(cb)cb({segmentationMask:this.maskCanvas});
+          }
+
+          close(){
+            this.closed=true;
+            this.handler=null;
+          }
+        }
+
+        owner.virtualBgTaskBackend='bodypix-primary';
+        return BodyPixSegmentationAdapter;
+      };
+
+      const makeTasksAdapter=async()=>{
+        const VERSION='1.1.0';
+        const moduleUrl=`https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${VERSION}/vision_bundle.mjs`;
+        const wasmUrl=`https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${VERSION}/wasm`;
+        const modelUrl='https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_segmenter_landscape/float16/latest/selfie_segmenter_landscape.tflite';
+
+        const visionModule=await timeout(
+          import(moduleUrl),
+          5500,
+          'MediaPipe Tasks не загрузился вовремя'
+        );
+        const {FilesetResolver,ImageSegmenter}=visionModule||{};
+        if(!FilesetResolver||!ImageSegmenter){
+          throw new Error('MediaPipe Tasks загрузился без ImageSegmenter');
+        }
+
+        const fileset=await timeout(
+          FilesetResolver.forVisionTasks(wasmUrl),
+          5500,
+          'MediaPipe WASM не инициализировался вовремя'
+        );
+
+        const segmenter=await timeout(
+          ImageSegmenter.createFromOptions(fileset,{
+            baseOptions:{modelAssetPath:modelUrl,delegate:'CPU'},
+            runningMode:'VIDEO',
+            outputCategoryMask:false,
+            outputConfidenceMasks:true
+          }),
+          8000,
+          'Модель MediaPipe не инициализировалась вовремя'
+        );
+
+        owner.virtualBgTaskSegmenter=segmenter;
+        owner.virtualBgTaskBackend='tasks-cpu';
+
+        const labels=Array.isArray(segmenter.getLabels?.())?segmenter.getLabels():[];
+        const labeledPerson=labels.findIndex(x=>/person/i.test(String(x||'')));
+        const personIndex=labeledPerson>=0?labeledPerson:Math.max(0,labels.length-1);
+
+        class TasksSelfieSegmentationAdapter {
+          constructor(){
+            this.handler=null;
+            this.closed=false;
+            this.maskCanvas=document.createElement('canvas');
+            this.maskCanvas.width=256;
+            this.maskCanvas.height=144;
+            this.maskCtx=this.maskCanvas.getContext('2d',{alpha:false,willReadFrequently:true});
+            this.maskImage=null;
+          }
+          setOptions(){}
+          onResults(fn){this.handler=typeof fn==='function'?fn:null}
+          async send(payload){
+            if(this.closed)return;
+            const image=payload?.image;
+            if(!image)throw new Error('Кадр виртуального фона недоступен');
+            const liveSegmenter=owner.virtualBgTaskSegmenter;
+            if(!liveSegmenter)throw new Error('Сегментация MediaPipe не готова');
+
+            const ts=Math.max(performance.now(),(owner.virtualBgTaskTimestamp||0)+1);
+            owner.virtualBgTaskTimestamp=ts;
+
+            await new Promise((resolve,reject)=>{
+              let settled=false;
+              const timer=setTimeout(()=>{
+                if(settled)return;
+                settled=true;
+                reject(new Error('Кадр MediaPipe обрабатывается слишком долго'));
+              },1800);
 
               const finish=result=>{
+                if(settled){
+                  try{result?.close?.()}catch{}
+                  return;
+                }
+                settled=true;
+                clearTimeout(timer);
                 try{
                   if(this.closed){
-                    try{result?.close?.()}catch{}
                     resolve();
                     return;
                   }
-
                   const masks=result?.confidenceMasks||[];
-                  const selected=masks[personIndex]||masks[masks.length>1?1:0]||null;
-                  if(!selected)throw new Error('Модель не вернула маску человека');
+                  const selected=masks[personIndex]||masks[masks.length>1?1:0]||masks[0]||null;
+                  if(!selected)throw new Error('MediaPipe не вернул маску человека');
 
                   const values=selected.getAsFloat32Array();
                   const mw=Math.max(1,Number(selected.width)||256);
                   const mh=Math.max(1,Number(selected.height)||144);
-
                   if(this.maskCanvas.width!==mw||this.maskCanvas.height!==mh||!this.maskImage){
                     this.maskCanvas.width=mw;
                     this.maskCanvas.height=mh;
                     this.maskCtx=this.maskCanvas.getContext('2d',{alpha:false,willReadFrequently:true});
                     this.maskImage=this.maskCtx.createImageData(mw,mh);
                   }
-
                   const pixels=this.maskImage.data;
                   const len=Math.min(values.length,mw*mh);
                   for(let p=0,i=0;p<len;p++,i+=4){
                     const v=Math.max(0,Math.min(255,Math.round(values[p]*255)));
-                    pixels[i]=v;
-                    pixels[i+1]=v;
-                    pixels[i+2]=v;
-                    pixels[i+3]=255;
+                    pixels[i]=v;pixels[i+1]=v;pixels[i+2]=v;pixels[i+3]=255;
                   }
                   this.maskCtx.putImageData(this.maskImage,0,0);
-
-                  const cb=this.handler;
-                  if(cb)cb({segmentationMask:this.maskCanvas});
+                  this.handler?.({segmentationMask:this.maskCanvas});
                   resolve();
                 }catch(e){
                   reject(e);
@@ -2011,35 +2118,57 @@
               try{
                 liveSegmenter.segmentForVideo(image,ts,finish);
               }catch(e){
-                reject(e);
+                if(!settled){
+                  settled=true;
+                  clearTimeout(timer);
+                  reject(e);
+                }
               }
             });
-
-            /* A single ImageSegmenter instance is deliberately shared across
-               camera toggles. Serialize inference so a stale frame from an old
-               pipeline can never overlap a new first frame. */
-            const previous=owner.virtualBgTaskInference;
-            const task=(previous?Promise.resolve(previous).catch(()=>{}):Promise.resolve())
-              .then(execute);
-            owner.virtualBgTaskInference=task;
-
-            try{
-              await task;
-            }finally{
-              if(owner.virtualBgTaskInference===task)owner.virtualBgTaskInference=null;
-            }
           }
+          close(){this.closed=true;this.handler=null}
+        }
 
-          /* The underlying Tasks model is session-scoped and intentionally
-             survives camera off/on. close() only detaches this adapter. */
-          close(){
-            this.closed=true;
-            this.handler=null;
+        return TasksSelfieSegmentationAdapter;
+      };
+
+      this.virtualBgLibPromise=(async()=>{
+        const isYaBrowser=/YaBrowser/i.test(navigator.userAgent||'');
+
+        /* Yandex Browser is where the first-frame MediaPipe Tasks startup has
+           repeatedly stalled in production. Use the already-warmed BodyPix
+           path there instead of gambling on another first-frame WASM race.
+           Other Chromium browsers keep MediaPipe quality, with a hard timeout
+           and the exact same BodyPix fallback if Tasks cannot initialize. */
+        if(isYaBrowser){
+          try{
+            const Adapter=await makeBodyPixAdapter();
+            owner.virtualBgTaskAdapterCtor=Adapter;
+            owner.virtualBgError='';
+            return Adapter;
+          }catch(bodyError){
+            console.warn('[Mathroom virtual background] BodyPix primary failed',bodyError);
+            const Adapter=await makeTasksAdapter();
+            owner.virtualBgTaskAdapterCtor=Adapter;
+            owner.virtualBgError='';
+            return Adapter;
           }
         }
 
-        owner.virtualBgTaskAdapterCtor=TasksSelfieSegmentationAdapter;
-        return TasksSelfieSegmentationAdapter;
+        try{
+          const Adapter=await makeTasksAdapter();
+          owner.virtualBgTaskAdapterCtor=Adapter;
+          owner.virtualBgError='';
+          return Adapter;
+        }catch(tasksError){
+          console.warn('[Mathroom virtual background] MediaPipe Tasks fallback',tasksError);
+          try{owner.virtualBgTaskSegmenter?.close?.()}catch{}
+          owner.virtualBgTaskSegmenter=null;
+          const Adapter=await makeBodyPixAdapter();
+          owner.virtualBgTaskAdapterCtor=Adapter;
+          owner.virtualBgError='';
+          return Adapter;
+        }
       })();
 
       try{
@@ -2047,8 +2176,7 @@
       }catch(e){
         this.virtualBgLibPromise=null;
         this.virtualBgTaskAdapterCtor=null;
-        try{this.virtualBgTaskSegmenter?.close?.()}catch{}
-        this.virtualBgTaskSegmenter=null;
+        owner.virtualBgError=String(e?.message||'Не удалось загрузить модель виртуального фона');
         throw e;
       }
     }
@@ -2977,7 +3105,13 @@
         const rawId=raw.id||'';
 
         try{
-          const processed=await this.startVirtualBackground();
+          const processed=await Promise.race([
+            this.startVirtualBackground(),
+            new Promise((_,reject)=>setTimeout(
+              ()=>reject(new Error('Виртуальный фон не запустился за 20 секунд')),
+              20000
+            ))
+          ]);
 
           /* A slow cold start stays alive in the background. Never emulate the
              old manual "switch background and back" workaround here: restarting
@@ -3611,6 +3745,9 @@
          camera so prejoin can never be blocked by an off-camera warmup. */
       if(this.virtualBgMode!=='none'){
         this.prewarmVirtualBgEngine().catch(()=>{});
+        if(/YaBrowser/i.test(navigator.userAgent||'')){
+          this.ensureVirtualBgBodyPixModel().catch(()=>{});
+        }
       }
 
       join.onclick = () => this.joinCall();
