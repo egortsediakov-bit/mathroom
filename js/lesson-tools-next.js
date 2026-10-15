@@ -2079,26 +2079,53 @@
     }
 
     async prewarmVirtualBgEngine() {
+      if(this.virtualBgWarmProcessor)return true;
       if(this.virtualBgWarmupPromise)return this.virtualBgWarmupPromise;
 
-      /* Prewarm must never run an inference while the camera is off.
-         The previous version called processor.send() on a dummy canvas and
-         camera activation then awaited that promise. On some Chromium builds
-         the cold WASM/WebGL compile could sit there for tens of seconds, which
-         is exactly why Studio stayed on the raw webcam until the user switched
-         to another background. Here we only preload network assets. */
       this.virtualBgWarmupPromise=(async()=>{
+        let processor=null;
         try{
-          await this.ensureVirtualBgLibrary();
+          const Seg=await this.ensureVirtualBgLibrary();
 
           if(['studio','mathroom','classroom'].includes(this.virtualBgMode)){
             await this.ensureBuiltInBackgroundImage(this.virtualBgMode);
           }
 
+          processor=new Seg({
+            locateFile:file=>`https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/${file}`
+          });
+          processor.setOptions({modelSelection:1});
+          processor.onResults(()=>{});
+
+          /* MediaPipe's initialize() loads/compiles the WASM/model without
+             running segmentation on a dummy image. That is the important
+             difference from the old warmup which could wedge the first send(). */
+          if(typeof processor.initialize==='function'){
+            const init=processor.initialize();
+            await Promise.race([
+              Promise.resolve(init),
+              new Promise((_,reject)=>setTimeout(()=>reject(new Error('prewarm timeout')),3500))
+            ]);
+          }
+
+          if(this.destroyed||this.virtualBgProcessor){
+            try{processor.close?.()}catch{}
+            processor=null;
+            return false;
+          }
+
+          try{this.virtualBgWarmProcessor?.close?.()}catch{}
+          this.virtualBgWarmProcessor=processor;
+          processor=null;
+          this.virtualBgSelfieWarm=true;
           return true;
         }catch(e){
+          /* Prewarm is only an optimization. A timeout must never block the
+             real camera path; live activation will create its own processor. */
           console.warn('[Mathroom virtual background] preload',e);
           return false;
+        }finally{
+          try{processor?.close?.()}catch{}
         }
       })();
 
@@ -2134,14 +2161,16 @@
       const mobile=(window.matchMedia?.('(pointer: coarse)')?.matches||window.innerWidth<=760);
       const Seg=await this.ensureVirtualBgLibrary();
 
-      /* Always bind a fresh processor to the live camera. Preloading only loads
-         the library/assets; it never owns an inference instance. This removes
-         the deadlock where a dummy warmup send could block first activation. */
-      try{this.virtualBgWarmProcessor?.close?.()}catch{}
-      this.virtualBgWarmProcessor=null;
-      const processor=new Seg({
-        locateFile:file=>`https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/${file}`
-      });
+      /* Reuse an initialize()-warmed processor when it is already ready.
+         If prewarm is still running, do not wait for it: camera activation
+         gets a fresh processor and remains independent from preload. */
+      let processor=this.virtualBgWarmProcessor||null;
+      if(processor)this.virtualBgWarmProcessor=null;
+      if(!processor){
+        processor=new Seg({
+          locateFile:file=>`https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/${file}`
+        });
+      }
       const configureSegmentationProcessor=p=>{
         /* The landscape model is substantially lighter and keeps the render loop
            responsive on Chromium. Fine edge stability is recovered by the
@@ -2221,6 +2250,9 @@
       const maskImage=maskCtx.createImageData(maskCanvas.width,maskCanvas.height);
       const maskPixels=maskImage.data;
       const temporalAlpha=new Uint8Array(maskCanvas.width*maskCanvas.height);
+      const targetAlpha=new Uint8Array(maskCanvas.width*maskCanvas.height);
+      const dilateX=new Uint8Array(maskCanvas.width*maskCanvas.height);
+      const dilateXY=new Uint8Array(maskCanvas.width*maskCanvas.height);
 
       const selfieMaskCanvas=document.createElement('canvas');
       selfieMaskCanvas.width=maskCanvas.width;
@@ -2421,146 +2453,59 @@
       };
 
       const buildPrimaryEnvelope=primary=>{
-        if(!primary?.seg?.data)return null;
-        const data=primary.seg.data;
-        const sw=primary.sw,sh=primary.sh;
-        if(sw!==maskCanvas.width||sh!==maskCanvas.height)return null;
+        if(!primary?.box)return null;
+
+        /* BodyPix is intentionally NOT used as a pixel-accurate clipping mask.
+           It refreshes much slower than SelfieSegmentation, so multiplying its
+           old silhouette into the live mask is what produced the huge diagonal
+           cuts through the face during a fast head movement.
+
+           Instead BodyPix answers only "where is the primary participant?".
+           We turn that into a wide, feathered ROI. The fast Selfie mask still
+           owns the real hair/face/hand edge. */
+        const sw=maskCanvas.width,sh=maskCanvas.height;
         const total=sw*sh;
+        const box=primary.box;
 
-        const keypoints=Array.isArray(primary.seg?.pose?.keypoints)
-          ?primary.seg.pose.keypoints
-          :[];
-        const validKp=keypoints
-          .map(k=>({
-            name:String(k?.part||''),
-            x:Number(k?.position?.x)/sw,
-            y:Number(k?.position?.y)/sh,
-            score:Number(k?.score)||0
-          }))
-          .filter(k=>Number.isFinite(k.x)&&Number.isFinite(k.y)&&k.score>=.14);
-
-        const byName=new Map(validKp.map(k=>[k.name,k]));
-        const lShoulder=byName.get('leftShoulder');
-        const rShoulder=byName.get('rightShoulder');
-        const lHip=byName.get('leftHip');
-        const rHip=byName.get('rightHip');
-        const nose=byName.get('nose');
-        const lEye=byName.get('leftEye');
-        const rEye=byName.get('rightEye');
-        const lEar=byName.get('leftEar');
-        const rEar=byName.get('rightEar');
-
-        /* Global anatomical ROI: intentionally broad. It is used only to stop
-           a giant cast shadow from becoming part of the coarse identity
-           envelope. Fine shoulders/hair/hands are recovered by dilation and
-           the high-quality Selfie mask. */
-        let gate=null;
-        if(validKp.length>=5){
-          let minX=1,minY=1,maxX=0,maxY=0;
-          for(const k of validKp){
-            minX=Math.min(minX,k.x);minY=Math.min(minY,k.y);
-            maxX=Math.max(maxX,k.x);maxY=Math.max(maxY,k.y);
-          }
-
-          const shoulderSpan=(lShoulder&&rShoulder)
-            ?Math.hypot(lShoulder.x-rShoulder.x,lShoulder.y-rShoulder.y)
-            :Math.max(.12,primary.box.w*.28);
-          const torsoBottom=Math.max(
-            lHip?.y||0,
-            rHip?.y||0,
-            (lShoulder?.y||rShoulder?.y||primary.cy)+Math.max(.28,primary.box.h*.52)
-          );
-
-          minX=Math.min(minX,primary.cx-shoulderSpan*1.55);
-          maxX=Math.max(maxX,primary.cx+shoulderSpan*1.55);
-          minY=Math.min(minY,(nose?.y||lEye?.y||rEye?.y||primary.box.y)-shoulderSpan*.80);
-          maxY=Math.max(maxY,torsoBottom+Math.max(.18,shoulderSpan*.85));
-
-          /* Reclining users need significantly more horizontal room than a
-             standing pose, so expand asymmetrically based on the instance box. */
-          const padX=Math.max(.055,shoulderSpan*.42,primary.box.w*.10);
-          const padY=Math.max(.055,shoulderSpan*.34,primary.box.h*.08);
-
-          gate={
-            x:Math.max(0,minX-padX),
-            y:Math.max(0,minY-padY),
-            r:Math.min(1,maxX+padX),
-            b:Math.min(1,maxY+padY)
-          };
-
-          const facePts=[nose,lEye,rEye,lEar,rEar].filter(Boolean);
-          if(facePts.length){
-            const fx=facePts.reduce((s,p)=>s+p.x,0)/facePts.length;
-            const fy=facePts.reduce((s,p)=>s+p.y,0)/facePts.length;
-            gate.face={
-              x:fx,y:fy,
-              rx:Math.max(.075,shoulderSpan*.46),
-              ry:Math.max(.10,shoulderSpan*.62)
-            };
-          }
-        }
-
-        const insideGate=(x,y)=>{
-          if(!gate)return true;
-          if(x>=gate.x&&x<=gate.r&&y>=gate.y&&y<=gate.b)return true;
-          const f=gate.face;
-          if(f){
-            const dx=(x-f.x)/f.rx,dy=(y-f.y)/f.ry;
-            if(dx*dx+dy*dy<=1)return true;
-          }
-          return false;
+        const prevBox=this.virtualBgPrimaryTrack?.box||box;
+        const union={
+          x:Math.min(box.x,prevBox.x),
+          y:Math.min(box.y,prevBox.y),
+          r:Math.max(box.x+box.w,prevBox.x+prevBox.w),
+          b:Math.max(box.y+box.h,prevBox.y+prevBox.h)
         };
 
-        /* Distance-from-primary dilation. BodyPix determines WHO; Selfie
-           Segmentation determines the actual visible edge. */
-        const dist=new Int16Array(total);
-        dist.fill(-1);
-        const queue=new Int32Array(total);
-        let qh=0,qt=0;
+        const padX=Math.max(.18,box.w*.42);
+        const padTop=Math.max(.16,box.h*.30);
+        const padBottom=Math.max(.20,box.h*.34);
 
-        for(let p=0;p<total;p++){
-          if(!data[p])continue;
-          const x=p%sw,y=(p/sw)|0;
-          const nx=(x+.5)/sw,ny=(y+.5)/sh;
-          if(!insideGate(nx,ny))continue;
-          dist[p]=0;
-          queue[qt++]=p;
-        }
-
-        /* If pose confidence is too weak, never throw away the entire BodyPix
-           instance; fall back to its original person mask. */
-        if(!qt){
-          for(let p=0;p<total;p++){
-            if(data[p]){dist[p]=0;queue[qt++]=p}
-          }
-        }
-        if(!qt)return null;
-
-        const maxGrow=mobile?8:10;
-        while(qh<qt){
-          const p=queue[qh++];
-          const d=dist[p];
-          if(d>=maxGrow)continue;
-          const x=p%sw,y=(p/sw)|0;
-          const visit=n=>{
-            if(dist[n]>=0)return;
-            dist[n]=d+1;
-            queue[qt++]=n;
-          };
-          if(x>0)visit(p-1);
-          if(x<sw-1)visit(p+1);
-          if(y>0)visit(p-sw);
-          if(y<sh-1)visit(p+sw);
-        }
+        const left=Math.max(0,union.x-padX);
+        const right=Math.min(1,union.r+padX);
+        const top=Math.max(0,union.y-padTop);
+        const bottom=Math.min(1,union.b+padBottom);
+        const feather=.075;
 
         const env=new Uint8Array(total);
-        for(let p=0;p<total;p++){
-          const d=dist[p];
-          if(d<0)continue;
-          if(d<=maxGrow-4)env[p]=255;
-          else{
-            const t=(maxGrow-d+1)/5;
-            env[p]=Math.max(0,Math.min(255,Math.round(255*t)));
+        for(let y=0,p=0;y<sh;y++){
+          const ny=(y+.5)/sh;
+          for(let x=0;x<sw;x++,p++){
+            const nx=(x+.5)/sw;
+
+            let dx=0,dy=0;
+            if(nx<left)dx=left-nx;
+            else if(nx>right)dx=nx-right;
+            if(ny<top)dy=top-ny;
+            else if(ny>bottom)dy=ny-bottom;
+
+            const dist=Math.hypot(dx,dy);
+            if(dist<=0){
+              env[p]=255;
+            }else if(dist<feather){
+              const t=1-dist/feather;
+              env[p]=Math.round(255*t*t*(3-2*t));
+            }else{
+              env[p]=0;
+            }
           }
         }
         return env;
@@ -2570,15 +2515,15 @@
         const mask=results?.segmentationMask||null;
         if(!mask)return false;
 
-        /* Draw MediaPipe probability mask into the reusable low-res alpha map. */
         selfieMaskCtx.clearRect(0,0,selfieMaskCanvas.width,selfieMaskCanvas.height);
         selfieMaskCtx.drawImage(mask,0,0,selfieMaskCanvas.width,selfieMaskCanvas.height);
 
         let imageData;
         try{imageData=selfieMaskCtx.getImageData(0,0,selfieMaskCanvas.width,selfieMaskCanvas.height)}
         catch{return false}
+
         const d=imageData.data;
-        const total=maskCanvas.width*maskCanvas.height;
+        const mw=maskCanvas.width,mh=maskCanvas.height,total=mw*mh;
 
         let alphaMin=255,alphaMax=0,lumMin=255,lumMax=0;
         for(let i=0;i<d.length;i+=4){
@@ -2589,8 +2534,10 @@
         }
         const useAlpha=(alphaMax-alphaMin)>(lumMax-lumMin)*.55&&(alphaMax-alphaMin)>18;
 
-        const lo=mobile?42:40;
-        const hi=mobile?150:148;
+        const lo=mobile?38:36;
+        const hi=mobile?142:138;
+
+        /* First build the current-frame confidence mask. */
         for(let p=0,i=0;p<total;p++,i+=4){
           const lum=(d[i]+d[i+1]+d[i+2])/3;
           const confidence=Math.max(0,Math.min(255,useAlpha?d[i+3]:lum));
@@ -2603,23 +2550,52 @@
           }
 
           const env=primaryEnvelope?primaryEnvelope[p]:255;
-          const target=Math.round(base*env/255);
+          targetAlpha[p]=Math.round(base*env/255);
+        }
+
+        /* A 2px safety halo closes the gap between two segmentation frames.
+           It is deliberately soft, so rapid head/hand motion does not get
+           guillotined while normal stationary edges stay clean. */
+        const radius=2;
+        for(let y=0;y<mh;y++){
+          const row=y*mw;
+          for(let x=0;x<mw;x++){
+            let m=0;
+            const xa=Math.max(0,x-radius),xb=Math.min(mw-1,x+radius);
+            for(let xx=xa;xx<=xb;xx++)if(targetAlpha[row+xx]>m)m=targetAlpha[row+xx];
+            dilateX[row+x]=m;
+          }
+        }
+        for(let y=0;y<mh;y++){
+          for(let x=0;x<mw;x++){
+            let m=0;
+            const ya=Math.max(0,y-radius),yb=Math.min(mh-1,y+radius);
+            for(let yy=ya;yy<=yb;yy++)if(dilateX[yy*mw+x]>m)m=dilateX[yy*mw+x];
+            dilateXY[y*mw+x]=m;
+          }
+        }
+
+        for(let p=0,i=0;p<total;p++,i+=4){
+          const direct=targetAlpha[p];
+          const halo=Math.round(dilateXY[p]*.82);
+          const target=Math.max(direct,halo);
           const prev=temporalAlpha[p];
-          /* Motion-adaptive temporal smoothing. Large edge changes are usually
-             a moving hand/head, not noise, so converge almost immediately.
-             Small changes keep enough smoothing to avoid shimmering hair. */
           const delta=Math.abs(target-prev);
+
+          /* Large changes are motion: accept them nearly immediately.
+             Small changes are edge noise: keep light temporal smoothing. */
           const gain=target>=prev
-            ? (delta>56 ? .96 : .84)
-            : (delta>56 ? .90 : .72);
+            ? (delta>42 ? .98 : .88)
+            : (delta>42 ? .86 : .68);
           const next=Math.round(prev+(target-prev)*gain);
-          temporalAlpha[p]=next<3?0:next;
+          temporalAlpha[p]=next<2?0:next;
 
           maskPixels[i]=255;
           maskPixels[i+1]=255;
           maskPixels[i+2]=255;
           maskPixels[i+3]=temporalAlpha[p];
         }
+
         maskCtx.putImageData(maskImage,0,0);
         return true;
       };
@@ -2731,9 +2707,9 @@
             /* Never queue overlapping inference. A shorter target interval only
                means "send the next frame as soon as the current one finishes",
                which keeps hands/face responsive without building a backlog. */
-            if(this.virtualBgAvgProcessMs>115)this.virtualBgFrameInterval=mobile?112:78;
-            else if(this.virtualBgAvgProcessMs>80)this.virtualBgFrameInterval=mobile?92:58;
-            else this.virtualBgFrameInterval=mobile?72:42;
+            if(this.virtualBgAvgProcessMs>115)this.virtualBgFrameInterval=mobile?105:70;
+            else if(this.virtualBgAvgProcessMs>80)this.virtualBgFrameInterval=mobile?84:50;
+            else this.virtualBgFrameInterval=mobile?66:34;
             segBusy=false;
           });
       };
@@ -2755,7 +2731,7 @@
           if(baseMaskReady){
             ctx.imageSmoothingEnabled=true;
             ctx.imageSmoothingQuality='high';
-            ctx.filter=mobile?'blur(.80px)':'blur(.45px)';
+            ctx.filter=mobile?'blur(.72px)':'blur(.38px)';
             ctx.drawImage(maskCanvas,0,0,maskCanvas.width,maskCanvas.height,0,0,w,h);
             ctx.filter='none';
             ctx.globalCompositeOperation='source-in';
@@ -3416,7 +3392,17 @@
           this.bindPrejoinPreview();
           this.paintPrejoin();
           if(next&&this.virtualBgMode!=='none'){
-            this.activateSelectedVirtualBackground(existing).catch(e=>console.warn('[Mathroom prejoin background]',e));
+            const samePipeline=
+              this.virtualBgTrack?.readyState==='live' &&
+              this.virtualBgSourceVideo?.srcObject?.getVideoTracks?.()[0]===existing;
+            if(samePipeline){
+              this.virtualBgTrack.enabled=true;
+              this.syncOutgoingCameraTrack().catch(()=>{});
+              this.bindPrejoinPreview();
+              this.paintPrejoin();
+            }else{
+              this.activateSelectedVirtualBackground(existing).catch(e=>console.warn('[Mathroom prejoin background]',e));
+            }
           }
           return;
         }
@@ -3784,8 +3770,16 @@
         this.bindMedia();
         this.paint();
         this.paintPrejoin();
-        if(next&&this.virtualBgMode!=='none'&&(!this.virtualBgTrack||this.virtualBgTrack.readyState!=='live')){
-          this.activateSelectedVirtualBackground(t).catch(e=>console.warn('[Mathroom camera background]',e));
+        if(next&&this.virtualBgMode!=='none'){
+          const samePipeline=
+            this.virtualBgTrack?.readyState==='live' &&
+            this.virtualBgSourceVideo?.srcObject?.getVideoTracks?.()[0]===t;
+          if(samePipeline){
+            this.virtualBgTrack.enabled=true;
+            await this.syncOutgoingCameraTrack().catch(()=>{});
+          }else{
+            this.activateSelectedVirtualBackground(t).catch(e=>console.warn('[Mathroom camera background]',e));
+          }
         }
       }finally{
         clearTimeout(cameraLockFailsafe);
