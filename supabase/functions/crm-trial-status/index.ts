@@ -64,7 +64,7 @@ Deno.serve(async (req) => {
 
   const { data, error } = await supabase
     .from("crm_trial_sync_state")
-    .select("lead_id, state, scheduled_at, completed_at, changed_at")
+    .select("lead_id, state, reason, scheduled_at, started_at, completed_at, attendance_status, changed_at")
     .in("lead_id", leadIds);
 
   if (error) {
@@ -76,8 +76,11 @@ Deno.serve(async (req) => {
     states: (data || []).map((row: any) => ({
       leadId: row.lead_id,
       state: row.state,
+      reason: row.reason,
       scheduledAt: row.scheduled_at,
+      startedAt: row.started_at,
       completedAt: row.completed_at,
+      attendanceStatus: row.attendance_status,
       changedAt: row.changed_at,
     })),
   }, 200, origin);
