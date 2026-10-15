@@ -428,7 +428,7 @@ function renderStudents(){
     if(days<30)return `${days} дн. назад`;
     return d.toLocaleDateString('ru-RU',{day:'2-digit',month:'short',year:d.getFullYear()!==new Date().getFullYear()?'numeric':undefined});
   };
-  const gradeTone=g=>['orange','violet','blue','green','rose','amber'][Math.abs(Number(g)||0)%6];
+  const gradeTone=()=> 'brand';
   const studentStatIcon=kind=>{
     const common='class="mr-stat-icon-svg" viewBox="0 0 56 56" aria-hidden="true" focusable="false"';
     if(kind==='people')return `<svg ${common}>
@@ -462,6 +462,16 @@ function renderStudents(){
       <rect class="mr-stat-orange-fill" x="35" y="8" width="10" height="39" rx="5"/>
       <rect class="mr-stat-ink" x="38" y="16" width="9" height="31" rx="4.5"/>
     </svg>`;
+  };
+  const studentUiIcon=kind=>{
+    const common='class="mr-student-ui-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"';
+    if(kind==='chevron')return `<svg ${common}><path d="M9 6l6 6-6 6"/></svg>`;
+    if(kind==='collapse')return `<svg ${common}><path d="M6 14l6-6 6 6"/></svg>`;
+    if(kind==='link')return `<svg ${common}><path d="M9.4 14.6l5.2-5.2"/><path d="M7.1 17.8l-1 .9a4 4 0 0 1-5.7-5.6l3.1-3.2a4 4 0 0 1 5.7 0"/><path d="M16.9 6.2l1-.9a4 4 0 0 1 5.7 5.6l-3.1 3.2a4 4 0 0 1-5.7 0"/></svg>`;
+    if(kind==='profile')return `<svg ${common}><circle cx="10" cy="8" r="3"/><path d="M4 19c.7-4 2.7-6 6-6s5.3 2 6 6"/><path class="mr-ui-icon-accent" d="M18 9v6M15 12h6"/></svg>`;
+    if(kind==='refresh')return `<svg ${common}><path d="M19 7V3l-2 2a8 8 0 1 0 2.2 8"/><path class="mr-ui-icon-accent" d="M19 3h-4"/></svg>`;
+    if(kind==='more')return `<svg ${common}><circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/></svg>`;
+    return '';
   };
 
   const content=`
@@ -566,7 +576,7 @@ function renderStudents(){
       const active=members.filter(s=>s.active!==false).length;
       const pct=members.length?Math.round(active*100/members.length):0;
       const selected=state.grade!=='all'&&Number(state.grade)===g;
-      return `<button class="mr-class-card tone-${gradeTone(g)} ${selected?'selected':''}" data-grade-card="${g}" type="button"><span class="mr-class-icon">${g}</span><span class="mr-class-copy"><b>${g} класс</b><small>${members.length} ${members.length===1?'ученик':members.length<5?'ученика':'учеников'}</small><em><i style="width:${pct}%"></i></em><small>${pct}% активных</small></span><span class="mr-class-arrow">›</span></button>`;
+      return `<button class="mr-class-card tone-${gradeTone(g)} ${selected?'selected':''}" data-grade-card="${g}" type="button"><span class="mr-class-icon">${g}</span><span class="mr-class-copy"><b>${g} класс</b><small>${members.length} ${members.length===1?'ученик':members.length<5?'ученика':'учеников'}</small><em><i style="width:${pct}%"></i></em><small>${pct}% активных</small></span><span class="mr-class-arrow">${studentUiIcon('chevron')}</span></button>`;
     }).join('')||'<div class="empty">Классов пока нет.</div>';
     classCards.querySelectorAll('[data-grade-card]').forEach(b=>b.onclick=()=>{const g=b.dataset.gradeCard;state.grade=state.grade===g?'all':g;gradeFilter.value=state.grade;paint()});
 
@@ -575,9 +585,9 @@ function renderStudents(){
     results.innerHTML=rows.length?[...grouped.entries()].map(([g,members])=>{
       const collapsed=state.collapsed.has(String(g));
       return `<section class="mr-student-grade-block ${collapsed?'collapsed':''}">
-        <button class="mr-student-grade-head" data-class-toggle="${g}" type="button"><span class="mr-grade-chip tone-${gradeTone(g)}">${g}</span><span><b>${g} класс</b><small>${members.length} ${members.length===1?'ученик':members.length<5?'ученика':'учеников'}</small></span><span class="mr-grade-chevron">⌃</span></button>
+        <button class="mr-student-grade-head" data-class-toggle="${g}" type="button"><span class="mr-grade-chip tone-${gradeTone(g)}">${g}</span><span><b>${g} класс</b><small>${members.length} ${members.length===1?'ученик':members.length<5?'ученика':'учеников'}</small></span><span class="mr-grade-chevron">${studentUiIcon('collapse')}</span></button>
         <div class="mr-student-table">
-          <div class="mr-student-table-head"><span>Ученик</span><span>Группа</span><span>Прогресс</span><span>Последняя активность</span><span>Ссылка</span><span></span></div>
+          <div class="mr-student-table-head"><span>Ученик</span><span>Группа</span><span>Прогресс</span><span>Последняя активность</span><span>Доступ</span><span>Действия</span></div>
           ${members.map(st=>{
             const meta=studentMeta(st),group=String(st.group_name||'').trim();
             return `<article class="mr-student-directory-row ${st.active===false?'inactive':''}">
@@ -585,8 +595,8 @@ function renderStudents(){
               <div class="mr-student-group-cell">${group?`<span>${esc(group)}</span>`:'<span class="empty-group">Без группы</span>'}</div>
               <div class="mr-student-progress-cell"><b>${meta.completed} завершено</b><div><i style="width:${meta.progress}%"></i></div><small>${meta.total?meta.progress+'%':'нет уроков'}</small></div>
               <div class="mr-student-activity-cell"><span class="${st.active===false?'off':'on'}"></span><div><b>${esc(ago(meta.last))}</b><small>${meta.last?meta.last.toLocaleDateString('ru-RU',{day:'2-digit',month:'short'}):'—'}</small></div></div>
-              <div class="mr-student-link-cell"><button type="button" data-copy="${st.id}" title="Скопировать персональную ссылку">↗</button></div>
-              <div class="mr-student-row-actions"><button class="btn sm primary" data-profile="${st.id}">Профиль</button><button class="btn sm" data-rotate="${st.id}">Новая ссылка</button><details class="mr-student-more"><summary title="Ещё">•••</summary><div><button type="button" data-edit-student="${st.id}">Редактировать</button><button type="button" data-copy="${st.id}">Копировать ссылку</button><button type="button" class="danger" data-delete="${st.id}">Удалить ученика</button></div></details></div>
+              <div class="mr-student-link-cell"><button type="button" data-copy="${st.id}" title="Скопировать персональную ссылку" aria-label="Скопировать персональную ссылку">${studentUiIcon('link')}</button></div>
+              <div class="mr-student-row-actions"><button class="btn sm primary mr-student-profile-action" data-profile="${st.id}">${studentUiIcon('profile')}<span>Профиль</span></button><button class="btn sm mr-student-refresh-action" data-rotate="${st.id}">${studentUiIcon('refresh')}<span>Новая ссылка</span></button><details class="mr-student-more"><summary title="Ещё" aria-label="Ещё действия">${studentUiIcon('more')}</summary><div><button type="button" data-edit-student="${st.id}">Редактировать</button><button type="button" data-copy="${st.id}">Копировать ссылку</button><button type="button" class="danger" data-delete="${st.id}">Удалить ученика</button></div></details></div>
             </article>`;
           }).join('')}
         </div>
