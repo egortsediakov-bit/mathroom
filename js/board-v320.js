@@ -601,7 +601,7 @@
         if(ob.x+ob.w<viewRect.x0||ob.y+ob.h<viewRect.y0||ob.x>viewRect.x1||ob.y>viewRect.y1)continue;
       }
       let n=null;
-      if(o.type==='path') n=pressurePathGroup(o)||svgEl('path',{d:freehandPathD(o),fill:'none',stroke:o.color||'#15171a','stroke-width':o.width||3,'stroke-linecap':'round','stroke-linejoin':'round','shape-rendering':'geometricPrecision',opacity:o.opacity==null?1:o.opacity});
+      if(o.type==='path') n=pressurePathGroup(o)||svgEl('path',{d:freehandPathD(o,!!o._livePreview),fill:'none',stroke:o.color||'#15171a','stroke-width':o.width||3,'stroke-linecap':'round','stroke-linejoin':'round','shape-rendering':'geometricPrecision',opacity:o.opacity==null?1:o.opacity});
       else if(o.type==='line') n=svgEl('line',{x1:o.x1,y1:o.y1,x2:o.x2,y2:o.y2,stroke:o.color||'#15171a','stroke-width':o.width||3,'stroke-linecap':'round'});
       else if(o.type==='rect') n=svgEl('rect',{x:Math.min(o.x1,o.x2),y:Math.min(o.y1,o.y2),width:Math.abs(o.x2-o.x1),height:Math.abs(o.y2-o.y1),fill:o.fill||'none',stroke:o.color||'#15171a','stroke-width':o.width||3});
       else if(o.type==='ellipse') n=svgEl('ellipse',{cx:(o.x1+o.x2)/2,cy:(o.y1+o.y2)/2,rx:Math.abs(o.x2-o.x1)/2,ry:Math.abs(o.y2-o.y1)/2,fill:o.fill||'none',stroke:o.color||'#15171a','stroke-width':o.width||3});
@@ -1171,7 +1171,26 @@
       strokeSentIndex=(stroke.points||[]).length;lastStrokeSent=now;
       if(force)broadcastTransient('stroke',{phase:'end',strokeId:stroke.id});
     }
-    function render(){applyBackground();drawElements(svg,elements,camera,selectionList(),grid,needAsset,isTeacher);drawTransient();syncSelectionButtons();syncHistoryButtons();syncSolidHud();syncObjectHud();syncClassroomUi()}
+    function render(){
+      applyBackground();
+
+      /* 46.9: a realtime/state/cursor event can force a complete SVG redraw
+         while the teacher is still holding the mouse button. Previously that
+         redraw used the durable path renderer and exposed the newest, not-yet-
+         validated coordinate for one frame. Keep the active stroke in live
+         preview mode through every full redraw too. */
+      const renderElements=drawing?.type==='path'
+        ?elements.map(o=>o?.id===drawing.id?{...o,_livePreview:true}:o)
+        :elements;
+
+      drawElements(svg,renderElements,camera,selectionList(),grid,needAsset,isTeacher);
+      drawTransient();
+      syncSelectionButtons();
+      syncHistoryButtons();
+      syncSolidHud();
+      syncObjectHud();
+      syncClassroomUi();
+    }
     function clearPendingPlanePoints(){for(const o of elements){if(o?.type==='solid3d'&&Array.isArray(o.solidPoints))for(const p of o.solidPoints)p.pendingPlane=false}}
     function cancelCompassDraft(){if(!compassDraft)return;const id=compassDraft.id;if(id)elements=elements.filter(z=>z.id!==id);compassDraft=null;const last=undoStack[undoStack.length-1];if(last?.type==='elements'&&last.pageId===current.id)undoStack.pop();syncHistoryButtons();render()}
     function setTool(v){if(!canUseTool(v)){toast(classroomMode==='view'?'Доска сейчас в режиме просмотра':'Преподаватель разрешил только письмо');return}if(tool==='compass'&&v!=='compass'&&compassDraft)cancelCompassDraft();if(tool==='solid-plane'&&v!=='solid-plane'){solidPlanePick=null;clearPendingPlanePoints()}tool=v;eraserPoint=v==='eraser'?eraserPoint:null;root.querySelectorAll('[data-tool]').forEach(b=>b.classList.toggle('active',b.dataset.tool===v));const cats={pen:'write',pencil:'write',marker:'write',text:'write',note:'write',line:'geometry',arrow:'geometry',ruler:'geometry',compass:'geometry','solid-point':'shapes','solid-plane':'shapes','solid-rotate':'shapes',laser:'lesson',focus:'lesson'};root.querySelectorAll('.board-tool-group').forEach(d=>d.classList.toggle('tool-active',d.dataset.category===cats[v]));svg.style.cursor=v==='hand'?'grab':v==='select'?'default':v==='eraser'?'none':'crosshair';stage?.classList.toggle('hand-mode',v==='hand');render()}
@@ -1955,6 +1974,7 @@
              was dispatched. Keep the written character connected to the finger. */
           appendFreehandPoints(drawing,e);
           sendStrokeChunk(drawing,true);
+          remoteLiveStrokes.delete(drawing.id);
         }
         clearLiveInk();
         drawing=null;moveStart=null;resizeStart=null;rotationStart=null;solidRotateStart=null;
@@ -2352,7 +2372,7 @@
     }
 
     async function refreshPages(){if(localOnly){const stored=readLocal();if(!stored.length)return;const old=current?.id;pages=stored;const found=pages.find(x=>x.id===old);if(found){current=found;if(!moveStart&&!drawing)elements=clone(found.elements||[]).map(normalizeElement).filter(Boolean)}else{current=pages[0];elements=clone(current?.elements||[]).map(normalizeElement).filter(Boolean)}collabBaseline=clone(elements);renderTabs();render();return}let q=sb.from('board_pages').select('*').eq('student_id',studentId);q=lessonId?q.eq('lesson_id',lessonId):q.is('lesson_id',null);const {data}=await q.order('sort_order');if(!data)return;const old=current?.id;pages=data.map(normalizePage);const found=pages.find(x=>x.id===old);if(found){current=found;if(!moveStart&&!drawing)elements=clone(found.elements||[]).map(normalizeElement).filter(Boolean)}else{current=pages[0];elements=clone(current?.elements||[]).map(normalizeElement).filter(Boolean)}collabBaseline=clone(elements);renderTabs();render();joinChannel()}
-    function broadcastTransient(kind,payload){channel?.send({type:'broadcast',event:'transient',payload:{pageId:current?.id,kind,...payload}}).catch(()=>{})}
+    function broadcastTransient(kind,payload){channel?.send({type:'broadcast',event:'transient',payload:{pageId:current?.id,actor:actorKey,kind,...payload}}).catch(()=>{})}
     function joinChannel(){
       if(channel)sb.removeChannel(channel);channel=null;channelSubscribed=false;
       if(!current)return;
@@ -2369,7 +2389,7 @@
           setSyncState(boardNetworkOnline?'online':'offline');
         })
         .on('broadcast',{event:'transient'},({payload})=>{
-          if(payload.pageId!==current.id)return;
+          if(payload.pageId!==current.id||payload.actor===actorKey)return;
           if(payload.kind==='laser')remoteLaser=payload.point||null;
           if(payload.kind==='focus')remoteFocusRect=payload.rect||null;
           if(payload.kind==='cursor'){
