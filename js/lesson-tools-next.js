@@ -172,6 +172,8 @@
       this.virtualBgPrimaryTrack = null;
       this.virtualBgMaskReady = false;
       this.virtualBgInitializing = false;
+      this.virtualBgStartupRetries = 0;
+      this.virtualBgStartupRetryTimer = 0;
 
       this.devices = { audioinput:[], videoinput:[], audiooutput:[] };
       this.deviceModal = null;
@@ -2077,47 +2079,26 @@
     }
 
     async prewarmVirtualBgEngine() {
-      if(this.virtualBgWarmProcessor)return true;
       if(this.virtualBgWarmupPromise)return this.virtualBgWarmupPromise;
+
+      /* Prewarm must never run an inference while the camera is off.
+         The previous version called processor.send() on a dummy canvas and
+         camera activation then awaited that promise. On some Chromium builds
+         the cold WASM/WebGL compile could sit there for tens of seconds, which
+         is exactly why Studio stayed on the raw webcam until the user switched
+         to another background. Here we only preload network assets. */
       this.virtualBgWarmupPromise=(async()=>{
-        let processor=null;
         try{
-          const Seg=await this.ensureVirtualBgLibrary();
-          processor=new Seg({
-            locateFile:file=>`https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/${file}`
-          });
+          await this.ensureVirtualBgLibrary();
 
-          /* Keep one genuinely warmed processor instead of compiling a throwaway
-             model and immediately closing it. The same processor is handed to
-             the first camera activation, so choosing a background before turning
-             the camera on actually removes the cold-start penalty. */
-          processor.setOptions({modelSelection:1});
-          processor.onResults(()=>{});
-          const warm=document.createElement('canvas');
-          warm.width=160;warm.height=96;
-          const wctx=warm.getContext('2d',{alpha:false});
-          if(wctx){
-            wctx.fillStyle='#777';
-            wctx.fillRect(0,0,warm.width,warm.height);
-          }
-          await processor.send({image:warm});
-
-          if(this.destroyed){
-            try{processor.close?.()}catch{}
-            processor=null;
-            return false;
+          if(['studio','mathroom','classroom'].includes(this.virtualBgMode)){
+            await this.ensureBuiltInBackgroundImage(this.virtualBgMode);
           }
 
-          try{this.virtualBgWarmProcessor?.close?.()}catch{}
-          this.virtualBgWarmProcessor=processor;
-          processor=null;
-          this.virtualBgSelfieWarm=true;
           return true;
         }catch(e){
-          console.warn('[Mathroom virtual background] SelfieSegmentation preload',e);
+          console.warn('[Mathroom virtual background] preload',e);
           return false;
-        }finally{
-          try{processor?.close?.()}catch{}
         }
       })();
 
@@ -2136,9 +2117,6 @@
 
     async startVirtualBackgroundInternal() {
       if(this.virtualBgMode==='none')return null;
-      if(this.virtualBgWarmupPromise){
-        try{await this.virtualBgWarmupPromise}catch{}
-      }
 
       const raw=this.localStream?.getVideoTracks?.()[0]||null;
       if(!raw||raw.readyState!=='live')throw new Error('Камера недоступна');
@@ -2156,16 +2134,14 @@
       const mobile=(window.matchMedia?.('(pointer: coarse)')?.matches||window.innerWidth<=760);
       const Seg=await this.ensureVirtualBgLibrary();
 
-      /* Prefer the already-compiled processor prepared while the camera was off.
-         Falling back to a fresh instance is still safe when the user turns the
-         camera on before prewarm has completed. */
-      let processor=this.virtualBgWarmProcessor||null;
-      if(processor)this.virtualBgWarmProcessor=null;
-      if(!processor){
-        processor=new Seg({
-          locateFile:file=>`https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/${file}`
-        });
-      }
+      /* Always bind a fresh processor to the live camera. Preloading only loads
+         the library/assets; it never owns an inference instance. This removes
+         the deadlock where a dummy warmup send could block first activation. */
+      try{this.virtualBgWarmProcessor?.close?.()}catch{}
+      this.virtualBgWarmProcessor=null;
+      const processor=new Seg({
+        locateFile:file=>`https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/${file}`
+      });
       const configureSegmentationProcessor=p=>{
         /* The landscape model is substantially lighter and keeps the render loop
            responsive on Chromium. Fine edge stability is recovered by the
@@ -2226,7 +2202,7 @@
       /* SelfieSegmentation inference: larger than BodyPix identity detection
          because this mask defines the visible hair/body edge. */
       const segCanvas=document.createElement('canvas');
-      const segLong=mobile?352:448;
+      const segLong=mobile?320:384;
       const segScale=Math.min(1,segLong/Math.max(srcW,srcH));
       segCanvas.width=Math.max(192,Math.round(srcW*segScale));
       segCanvas.height=Math.max(144,Math.round(srcH*segScale));
@@ -2277,7 +2253,7 @@
         if(this.virtualBgMode==='blur'){
           if(blurCtx){
             const now=performance.now();
-            if(!lastBlurPaint||now-lastBlurPaint>=82){
+            if(!lastBlurPaint||now-lastBlurPaint>=(mobile?62:42)){
               lastBlurPaint=now;
               const pad=Math.max(10,Math.round(Math.min(blurCanvas.width,blurCanvas.height)*.08));
               blurCtx.save();
@@ -2324,7 +2300,7 @@
       this.virtualBgCanvas=canvas;
       this.virtualBgStream=output;
       this.virtualBgTrack=outTrack;
-      this.virtualBgFrameInterval=mobile?88:58;
+      this.virtualBgFrameInterval=mobile?72:42;
       this.virtualBgAvgProcessMs=0;
       this.virtualBgPrimaryTrack=null;
 
@@ -2629,9 +2605,13 @@
           const env=primaryEnvelope?primaryEnvelope[p]:255;
           const target=Math.round(base*env/255);
           const prev=temporalAlpha[p];
-          /* Rise quickly when a hand/hair strand appears, decay more gently
-             so limbs do not flicker away between inference frames. */
-          const gain=target>=prev?.78:.46;
+          /* Motion-adaptive temporal smoothing. Large edge changes are usually
+             a moving hand/head, not noise, so converge almost immediately.
+             Small changes keep enough smoothing to avoid shimmering hair. */
+          const delta=Math.abs(target-prev);
+          const gain=target>=prev
+            ?(delta>56?.96:.84)
+            :(delta>56?.90:.72);
           const next=Math.round(prev+(target-prev)*gain);
           temporalAlpha[p]=next<3?0:next;
 
@@ -2652,6 +2632,9 @@
           baseMaskReady=true;
           this.virtualBgMaskReady=true;
           this.virtualBgInitializing=false;
+          this.virtualBgStartupRetries=0;
+          clearTimeout(this.virtualBgStartupRetryTimer);
+          this.virtualBgStartupRetryTimer=0;
           this.paintAllVirtualBgControls();
           try{resolveFirstMask?.(true)}catch{}
 
@@ -2748,9 +2731,9 @@
             /* Never queue overlapping inference. A shorter target interval only
                means "send the next frame as soon as the current one finishes",
                which keeps hands/face responsive without building a backlog. */
-            if(this.virtualBgAvgProcessMs>115)this.virtualBgFrameInterval=mobile?125:96;
-            else if(this.virtualBgAvgProcessMs>80)this.virtualBgFrameInterval=mobile?105:78;
-            else this.virtualBgFrameInterval=mobile?84:58;
+            if(this.virtualBgAvgProcessMs>115)this.virtualBgFrameInterval=mobile?112:78;
+            else if(this.virtualBgAvgProcessMs>80)this.virtualBgFrameInterval=mobile?92:58;
+            else this.virtualBgFrameInterval=mobile?72:42;
             segBusy=false;
           });
       };
@@ -2772,7 +2755,7 @@
           if(baseMaskReady){
             ctx.imageSmoothingEnabled=true;
             ctx.imageSmoothingQuality='high';
-            ctx.filter=mobile?'blur(.95px)':'blur(.65px)';
+            ctx.filter=mobile?'blur(.80px)':'blur(.45px)';
             ctx.drawImage(maskCanvas,0,0,maskCanvas.width,maskCanvas.height,0,0,w,h);
             ctx.filter='none';
             ctx.globalCompositeOperation='source-in';
@@ -2812,16 +2795,33 @@
 
       const ready=await Promise.race([
         firstMaskPromise,
-        new Promise(resolve=>setTimeout(()=>resolve(false),2600))
+        new Promise(resolve=>setTimeout(()=>resolve(false),5000))
       ]);
 
       if(!ready){
-        /* Do NOT tear down a slow first processor. A cold MediaPipe compile may
-           exceed the UI timeout, but the render loop is already alive and the
-           onResults callback will swap the preview as soon as that first mask
-           arrives. Returning the live processed track marks activation as
-           pending instead of triggering a destructive second initialization. */
-        console.warn('[Mathroom virtual background] first Selfie mask is slow; keeping processor alive');
+        /* A cold first inference is allowed to continue, but it may also be a
+           genuinely wedged MediaPipe send. Recover automatically once, instead
+           of requiring the user to click Blur and then Studio by hand. */
+        console.warn('[Mathroom virtual background] first mask is slow; scheduling one automatic recovery');
+        if((this.virtualBgStartupRetries||0)<1){
+          this.virtualBgStartupRetries=(this.virtualBgStartupRetries||0)+1;
+          clearTimeout(this.virtualBgStartupRetryTimer);
+          this.virtualBgStartupRetryTimer=setTimeout(()=>{
+            if(
+              this.destroyed ||
+              this.virtualBgMode==='none' ||
+              !this.cameraEnabled ||
+              this.virtualBgMaskReady ||
+              this.virtualBgTrack!==outTrack ||
+              raw.readyState!=='live'
+            )return;
+
+            console.warn('[Mathroom virtual background] restarting stalled first inference');
+            this.stopVirtualBackground();
+            this.activateSelectedVirtualBackground(raw)
+              .catch(e=>console.warn('[Mathroom virtual background retry]',e));
+          },1200);
+        }
         return outTrack;
       }
 
@@ -3468,8 +3468,9 @@
       };
       this.bindVirtualBgControls(backdrop);
 
-      /* Load and compile the single canonical multi-person model while the
-         user is still choosing devices/backgrounds. */
+      /* Preload the segmentation library and selected background asset while
+         the user is still choosing devices. Inference starts only with a live
+         camera so prejoin can never be blocked by an off-camera warmup. */
       if(this.virtualBgMode!=='none'){
         this.prewarmVirtualBgEngine().catch(()=>{});
       }
