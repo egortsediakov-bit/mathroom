@@ -716,6 +716,7 @@
     const desktopTeacherReplica=!!options.teacherReplica&&!isTeacher;
     const fullBoardTools=isTeacher||desktopTeacherReplica;
     const localOnly=!!options.localOnly;
+    const lessonId=String(options.lessonId||'');
     const localKey=options.localKey||`mathroom.board.scratch.${S.user?.id||'teacher'}`;
     const assetOwner=localOnly?`scratch/${S.user?.id||'teacher'}`:studentId;
     const normalizeElement=o=>{
@@ -740,8 +741,25 @@
     const readLocal=()=>{try{const raw=JSON.parse(localStorage.getItem(localKey)||'[]');return Array.isArray(raw)?raw.map(normalizePage):[]}catch(e){console.warn('[Mathroom scratch migrate]',e);try{localStorage.setItem(`${localKey}.broken.${Date.now()}`,localStorage.getItem(localKey)||'')}catch{}return []}};
     const writeLocal=()=>{if(!localOnly)return;try{localStorage.setItem(localKey,JSON.stringify(pages.map((x,i)=>normalizePage({...x,sort_order:i,updated_at:new Date().toISOString()},i))))}catch(e){console.warn('[Mathroom board scratch]',e)}};
     let pages=[];
-    if(localOnly){pages=readLocal();if(!pages.length)pages=[normalizePage({title:'Черновик 1',elements:[]},0)];writeLocal()}
-    else{const res=await sb.from('board_pages').select('*').eq('student_id',studentId).order('sort_order');if(res.error)throw res.error;pages=(res.data||[]).map(normalizePage);if(!pages.length&&fullBoardTools){const owner=options.teacherId||S.user?.id||'';const {data:p,error:e}=await sb.from('board_pages').insert({teacher_id:owner,student_id:studentId,title:'Лист 1',sort_order:0}).select().single();if(e)throw e;pages=[normalizePage(p,0)]}}
+    if(localOnly){
+      pages=readLocal();
+      if(!pages.length)pages=[normalizePage({title:'Черновик 1',elements:[]},0)];
+      writeLocal();
+    }else{
+      let q=sb.from('board_pages').select('*').eq('student_id',studentId);
+      q=lessonId?q.eq('lesson_id',lessonId):q.is('lesson_id',null);
+      const res=await q.order('sort_order');
+      if(res.error)throw res.error;
+      pages=(res.data||[]).map(normalizePage);
+      if(!pages.length&&fullBoardTools){
+        const owner=options.teacherId||S.user?.id||'';
+        const row={teacher_id:owner,student_id:studentId,title:'Лист 1',sort_order:0,elements:[]};
+        if(lessonId)row.lesson_id=lessonId;
+        const {data:p,error:e}=await sb.from('board_pages').insert(row).select().single();
+        if(e)throw e;
+        pages=[normalizePage(p,0)];
+      }
+    }
     if(!pages.length){root.innerHTML='<div class="empty">Доска пока не создана.</div>';return null}
 
     let current=pages[0],elements=clone(current.elements||[]),tool='hand',color='#15171a',width=3,camera={x:0,y:0,zoom:1},drawing=null,selected=null,selectedIds=new Set(),saveTimer=null,channel=null,pagesChannel=null,grid=true;
@@ -752,8 +770,9 @@
     const actorRole=isTeacher?'teacher':'student';
     const actorId=String(isTeacher?(S.user?.id||'teacher'):(studentId||S.user?.id||'student'));
     const actorKey=`${actorRole}:${actorId}`;
-    const collabQueueKey=`mathroom.board.pendingOps.${studentId||'local'}.${S.user?.id||actorId}`;
-    const offlineSnapshotKey=`mathroom.board.offlineSnapshot.${studentId||'local'}.${S.user?.id||actorId}`;
+    const boardScopeKey=lessonId?`lesson.${lessonId}`:'student';
+    const collabQueueKey=`mathroom.board.pendingOps.${studentId||'local'}.${boardScopeKey}.${S.user?.id||actorId}`;
+    const offlineSnapshotKey=`mathroom.board.offlineSnapshot.${studentId||'local'}.${boardScopeKey}.${S.user?.id||actorId}`;
     let collabBaseline=clone(elements),channelSubscribed=false,lastStateBroadcast=0,lastOpSent=0;
     let pendingOps=[],dbPendingOps=[],deleteJournal=new Map(),remoteLiveStrokes=new Map(),strokeSentIndex=0,lastStrokeSent=0,seenOps=new Set();
     let boardNetworkOnline=navigator.onLine!==false,saveInFlight=false,lastServerSaveAt=0;
@@ -788,7 +807,7 @@
     const selectOnly=id=>{selected=id||null;selectedIds.clear()};
     const setSelection=ids=>{const clean=[...new Set((ids||[]).filter(id=>elements.some(o=>o.id===id)))];selected=clean[0]||null;selectedIds=new Set(clean.slice(1))};
     const toggleSelection=id=>{if(!id)return;if(selectionHas(id)){const next=selectionList().filter(x=>x!==id);setSelection(next)}else setSelection([...selectionList(),id])};
-    const lessonId=options.lessonId||'';const checkpointKey=lessonId?`mathroom.board.checkpoints.${lessonId}`:'';let checkpointTimer=null;
+    const checkpointKey=lessonId?`mathroom.board.checkpoints.${lessonId}`:'';let checkpointTimer=null;
     const boardUA=String(navigator.userAgent||'');
     const boardTouch=Number(navigator.maxTouchPoints||0)>0;
     const boardCoarse=window.matchMedia?.('(pointer: coarse)')?.matches||false;
@@ -1419,8 +1438,8 @@
     function pushElementsHistory(){if(busyHistory)return;undoStack.push({type:'elements',pageId:current.id,elements:clone(elements),actor:actorKey});if(undoStack.length>140)undoStack.shift();redoStack.length=0;syncHistoryButtons()}
     async function switchPage(id,{skipSave=false,fromLeader=false}={}){if(current?.id===id)return;if(!skipSave)await save();const p=pages.find(x=>x.id===id);if(!p)return;current=p;elements=clone(p.elements||[]).map(normalizeElement).filter(Boolean);collabBaseline=clone(elements);clearSelection();camera={x:0,y:0,zoom:1};zoomLabel.textContent='100%';renderTabs();render();joinChannel();if(isTeacher&&followTeacher&&!fromLeader)pagesChannel?.send({type:'broadcast',event:'navigate',payload:{pageId:id}}).catch(()=>{});sendViewport(true)}
     function hit(x,y){for(let i=elements.length-1;i>=0;i--){const o=elements[i];if(o.type==='board-bg')continue;if(o.teacherOnly&&!isTeacher)continue;const b=bounds(o);if(x>=b.x-20&&x<=b.x+b.w+20&&y>=b.y-20&&y<=b.y+b.h+20)return o}return null}
-    async function restorePage(p){let data;if(localOnly){data={...clone(p),updated_at:new Date().toISOString()}}else{const row={id:p.id,teacher_id:p.teacher_id,student_id:p.student_id,title:p.title,sort_order:p.sort_order,elements:p.elements||[],created_at:p.created_at,updated_at:new Date().toISOString()};const res=await sb.from('board_pages').insert(row).select().single();if(res.error)throw res.error;data=res.data}pages.push(data);pages.sort((a,b)=>a.sort_order-b.sort_order);pagesChanged();await switchPage(data.id,{skipSave:true})}
-    async function createPage(title,initialElements=[]){let data;if(localOnly){data={id:uid(),teacher_id:S.user?.id||'',student_id:null,title,sort_order:pages.length,elements:clone(initialElements),created_at:new Date().toISOString(),updated_at:new Date().toISOString()}}else{const owner=options.teacherId||current?.teacher_id||pages[0]?.teacher_id||S.user?.id||'';const res=await sb.from('board_pages').insert({teacher_id:owner,student_id:studentId,title,sort_order:pages.length,elements:initialElements}).select().single();if(res.error)throw res.error;data=res.data}undoStack.push({type:'createPage',page:clone(data)});redoStack.length=0;pages.push(data);renderTabs();pagesChanged();return data}
+    async function restorePage(p){let data;if(localOnly){data={...clone(p),updated_at:new Date().toISOString()}}else{const row={id:p.id,teacher_id:p.teacher_id,student_id:p.student_id,lesson_id:p.lesson_id||lessonId||null,title:p.title,sort_order:p.sort_order,elements:p.elements||[],created_at:p.created_at,updated_at:new Date().toISOString()};const res=await sb.from('board_pages').insert(row).select().single();if(res.error)throw res.error;data=res.data}pages.push(data);pages.sort((a,b)=>a.sort_order-b.sort_order);pagesChanged();await switchPage(data.id,{skipSave:true})}
+    async function createPage(title,initialElements=[]){let data;if(localOnly){data={id:uid(),teacher_id:S.user?.id||'',student_id:null,title,sort_order:pages.length,elements:clone(initialElements),created_at:new Date().toISOString(),updated_at:new Date().toISOString()}}else{const owner=options.teacherId||current?.teacher_id||pages[0]?.teacher_id||S.user?.id||'';const row={teacher_id:owner,student_id:studentId,lesson_id:lessonId||null,title,sort_order:pages.length,elements:initialElements};const res=await sb.from('board_pages').insert(row).select().single();if(res.error)throw res.error;data=res.data}undoStack.push({type:'createPage',page:clone(data)});redoStack.length=0;pages.push(data);renderTabs();pagesChanged();return data}
     async function undo(){const action=undoStack.pop();if(!action){syncHistoryButtons();return}busyHistory=true;try{if(action.type==='elements'){const p=pages.find(x=>x.id===action.pageId);if(!p)return;if(current.id!==p.id)await switchPage(p.id);const redo={type:'elements',pageId:p.id,elements:clone(elements),actor:actorKey};if(applySafeSnapshot(action.elements)){redoStack.push(redo);changed()}}else if(action.type==='deletePage'){redoStack.push({type:'deletePage',page:clone(action.page)});await restorePage(action.page)}else if(action.type==='createPage'){const p=pages.find(x=>x.id===action.page.id);if(p){redoStack.push({type:'createPage',page:clone(p)});await deletePageRecord(p.id);pages=pages.filter(x=>x.id!==p.id);current=pages[0];elements=clone(current.elements||[]).map(normalizeElement).filter(Boolean);collabBaseline=clone(elements);renderTabs();render();joinChannel();pagesChanged()}}}catch(e){fail(e)}finally{busyHistory=false;syncHistoryButtons()}}
     async function redo(){const action=redoStack.pop();if(!action){syncHistoryButtons();return}busyHistory=true;try{if(action.type==='elements'){const p=pages.find(x=>x.id===action.pageId);if(!p)return;if(current.id!==p.id)await switchPage(p.id);const undoAction={type:'elements',pageId:p.id,elements:clone(elements),actor:actorKey};if(applySafeSnapshot(action.elements)){undoStack.push(undoAction);changed()}}else if(action.type==='deletePage'){const p=pages.find(x=>x.id===action.page.id);if(p){undoStack.push({type:'deletePage',page:clone(p)});await deletePageRecord(p.id);pages=pages.filter(x=>x.id!==p.id);current=pages[0];elements=clone(current.elements||[]).map(normalizeElement).filter(Boolean);collabBaseline=clone(elements);renderTabs();render();joinChannel();pagesChanged()}}else if(action.type==='createPage'){undoStack.push({type:'createPage',page:clone(action.page)});await restorePage(action.page)}}catch(e){fail(e)}finally{busyHistory=false;syncHistoryButtons()}}
 
@@ -1600,7 +1619,7 @@
       try{localStorage.setItem(checkpointKey,JSON.stringify(rows))}catch(e){console.warn('[board checkpoint]',e)}
     }
     async function saveCheckpoint(label='Автосохранение'){if(!checkpointKey)return;await save();writeCheckpointSnapshot(label)}
-    async function restoreCheckpoint(cp){if(!cp?.pages?.length)return;try{if(localOnly){pages=clone(cp.pages);writeLocal()}else{for(const pg of cp.pages){const found=pages.find(x=>x.id===pg.id);if(found){const{error}=await sb.from('board_pages').update({title:pg.title,sort_order:pg.sort_order,elements:pg.elements||[],updated_at:new Date().toISOString()}).eq('id',pg.id);if(error)throw error}else{const{error}=await sb.from('board_pages').insert({id:pg.id,teacher_id:S.user.id,student_id:studentId,title:pg.title,sort_order:pg.sort_order,elements:pg.elements||[]});if(error)throw error}}pages=clone(cp.pages)}current=pages.find(x=>x.id===cp.currentId)||pages[0];elements=clone(current.elements||[]).map(normalizeElement).filter(Boolean);collabBaseline=clone(elements);clearSelection();renderTabs();render();joinChannel();pagesChanged();setTimeout(()=>broadcastState(true),120);toast('Состояние доски восстановлено')}catch(e){fail(e)}}
+    async function restoreCheckpoint(cp){if(!cp?.pages?.length)return;try{if(localOnly){pages=clone(cp.pages);writeLocal()}else{for(const pg of cp.pages){const found=pages.find(x=>x.id===pg.id);if(found){const{error}=await sb.from('board_pages').update({title:pg.title,sort_order:pg.sort_order,elements:pg.elements||[],updated_at:new Date().toISOString()}).eq('id',pg.id);if(error)throw error}else{const{error}=await sb.from('board_pages').insert({id:pg.id,teacher_id:S.user.id,student_id:studentId,lesson_id:pg.lesson_id||lessonId||null,title:pg.title,sort_order:pg.sort_order,elements:pg.elements||[]});if(error)throw error}}pages=clone(cp.pages)}current=pages.find(x=>x.id===cp.currentId)||pages[0];elements=clone(current.elements||[]).map(normalizeElement).filter(Boolean);collabBaseline=clone(elements);clearSelection();renderTabs();render();joinChannel();pagesChanged();setTimeout(()=>broadcastState(true),120);toast('Состояние доски восстановлено')}catch(e){fail(e)}}
     function openBoardHistory(){
       const rows=readCheckpoints().slice().reverse();
       const m=modal(`<div class="mr-card-head"><div><h2>История доски</h2><p class="muted">Контрольные точки, восстановление и просмотр хода урока.</p></div><div class="actions"><button class="btn sm primary" id="checkpointNow">Сохранить сейчас</button><button class="btn sm" id="checkpointReplay" ${rows.length>1?'':'disabled'}>▶ Воспроизвести</button><button class="btn sm danger" id="checkpointClear" ${rows.length?'':'disabled'}>Удалить историю</button></div></div><div class="list">${rows.length?rows.map(x=>`<div class="row"><div><b>${esc(x.label||'Снимок')}</b><div class="small muted">${new Date(x.at).toLocaleString('ru-RU')} · ${x.pages?.length||0} лист.</div></div><div class="actions"><button class="btn sm" data-restore-cp="${x.id}">Восстановить</button><button class="btn sm danger" data-delete-cp="${x.id}">Удалить</button></div></div>`).join(''):'<div class="empty">Контрольных точек пока нет.</div>'}</div>`,'wide-modal');
@@ -2275,7 +2294,7 @@
       },true);
     }
 
-    async function refreshPages(){if(localOnly){const stored=readLocal();if(!stored.length)return;const old=current?.id;pages=stored;const found=pages.find(x=>x.id===old);if(found){current=found;if(!moveStart&&!drawing)elements=clone(found.elements||[]).map(normalizeElement).filter(Boolean)}else{current=pages[0];elements=clone(current?.elements||[]).map(normalizeElement).filter(Boolean)}collabBaseline=clone(elements);renderTabs();render();return}const {data}=await sb.from('board_pages').select('*').eq('student_id',studentId).order('sort_order');if(!data)return;const old=current?.id;pages=data.map(normalizePage);const found=pages.find(x=>x.id===old);if(found){current=found;if(!moveStart&&!drawing)elements=clone(found.elements||[]).map(normalizeElement).filter(Boolean)}else{current=pages[0];elements=clone(current?.elements||[]).map(normalizeElement).filter(Boolean)}collabBaseline=clone(elements);renderTabs();render();joinChannel()}
+    async function refreshPages(){if(localOnly){const stored=readLocal();if(!stored.length)return;const old=current?.id;pages=stored;const found=pages.find(x=>x.id===old);if(found){current=found;if(!moveStart&&!drawing)elements=clone(found.elements||[]).map(normalizeElement).filter(Boolean)}else{current=pages[0];elements=clone(current?.elements||[]).map(normalizeElement).filter(Boolean)}collabBaseline=clone(elements);renderTabs();render();return}let q=sb.from('board_pages').select('*').eq('student_id',studentId);q=lessonId?q.eq('lesson_id',lessonId):q.is('lesson_id',null);const {data}=await q.order('sort_order');if(!data)return;const old=current?.id;pages=data.map(normalizePage);const found=pages.find(x=>x.id===old);if(found){current=found;if(!moveStart&&!drawing)elements=clone(found.elements||[]).map(normalizeElement).filter(Boolean)}else{current=pages[0];elements=clone(current?.elements||[]).map(normalizeElement).filter(Boolean)}collabBaseline=clone(elements);renderTabs();render();joinChannel()}
     function broadcastTransient(kind,payload){channel?.send({type:'broadcast',event:'transient',payload:{pageId:current?.id,kind,...payload}}).catch(()=>{})}
     function joinChannel(){
       if(channel)sb.removeChannel(channel);channel=null;channelSubscribed=false;
@@ -2480,7 +2499,7 @@
     const onWindowBlur=e=>{preferInternalClipboard=false;if(S.boardClipboard)S.boardClipboard.preferInternal=false;releaseSpaceHand(e)};
     window.addEventListener('blur',onWindowBlur);
     document.addEventListener('paste',pasteExternal,true);
-    if(!localOnly)pagesChannel=sb.channel(`student:${studentId}:pages`,{config:{private:true}}).on('broadcast',{event:'pages'},()=>refreshPages()).on('broadcast',{event:'navigate'},({payload})=>{if(!isTeacher&&followTeacher&&payload?.pageId)switchPage(payload.pageId,{fromLeader:true}).catch(()=>{})}).on('broadcast',{event:'hello'},()=>{if(isTeacher)persistClassroom()}).on('broadcast',{event:'classroom'},({payload})=>{if(isTeacher)return;classroomMode=payload?.mode||'view';followTeacher=payload?.follow!==false;publishStudentLessonPermission();if(followTeacher&&payload?.pageId&&payload.pageId!==current?.id)switchPage(payload.pageId,{fromLeader:true}).then(()=>{if(payload.camera){camera={...payload.camera};zoomLabel.textContent=Math.round(camera.zoom*100)+'%';render()}}).catch(()=>{});else if(payload?.camera&&followTeacher){camera={...payload.camera};zoomLabel.textContent=Math.round(camera.zoom*100)+'%'};if(classroomMode==='view')setTool('hand');else if(classroomMode==='pen'&&!['pen','pencil','eraser','hand'].includes(tool))setTool('pen');renderTabs();render()}).subscribe(s=>{if(s==='SUBSCRIBED'){if(isTeacher)persistClassroom();else pagesChannel?.send({type:'broadcast',event:'hello',payload:{role:'student'}}).catch(()=>{})}});renderTabs();render();joinChannel();
+    if(!localOnly)pagesChannel=sb.channel(`student:${studentId}:${lessonId||'persistent'}:pages`,{config:{private:true}}).on('broadcast',{event:'pages'},()=>refreshPages()).on('broadcast',{event:'navigate'},({payload})=>{if(!isTeacher&&followTeacher&&payload?.pageId)switchPage(payload.pageId,{fromLeader:true}).catch(()=>{})}).on('broadcast',{event:'hello'},()=>{if(isTeacher)persistClassroom()}).on('broadcast',{event:'classroom'},({payload})=>{if(isTeacher)return;classroomMode=payload?.mode||'view';followTeacher=payload?.follow!==false;publishStudentLessonPermission();if(followTeacher&&payload?.pageId&&payload.pageId!==current?.id)switchPage(payload.pageId,{fromLeader:true}).then(()=>{if(payload.camera){camera={...payload.camera};zoomLabel.textContent=Math.round(camera.zoom*100)+'%';render()}}).catch(()=>{});else if(payload?.camera&&followTeacher){camera={...payload.camera};zoomLabel.textContent=Math.round(camera.zoom*100)+'%'};if(classroomMode==='view')setTool('hand');else if(classroomMode==='pen'&&!['pen','pencil','eraser','hand'].includes(tool))setTool('pen');renderTabs();render()}).subscribe(s=>{if(s==='SUBSCRIBED'){if(isTeacher)persistClassroom();else pagesChannel?.send({type:'broadcast',event:'hello',payload:{role:'student'}}).catch(()=>{})}});renderTabs();render();joinChannel();
     if(lessonId&&isTeacher){if(!readCheckpoints().length)setTimeout(()=>saveCheckpoint('Начало урока'),800);checkpointTimer=setInterval(()=>saveCheckpoint('Авто · '+new Date().toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'})).catch(()=>{}),5*60*1000)}
 
     const onBoardPageHide=()=>{
