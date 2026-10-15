@@ -2610,8 +2610,8 @@
              Small changes keep enough smoothing to avoid shimmering hair. */
           const delta=Math.abs(target-prev);
           const gain=target>=prev
-            ?(delta>56?.96:.84)
-            :(delta>56?.90:.72);
+            ? (delta>56 ? .96 : .84)
+            : (delta>56 ? .90 : .72);
           const next=Math.round(prev+(target-prev)*gain);
           temporalAlpha[p]=next<3?0:next;
 
