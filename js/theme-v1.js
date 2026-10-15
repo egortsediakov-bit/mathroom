@@ -47,9 +47,16 @@
 
   function injectTeacher(){
     document.querySelectorAll('.layout .topbar').forEach(bar=>{
-      if(bar.querySelector(':scope > .mr-theme-toggle'))return;
-      const b=button(true);
-      bar.appendChild(b);
+      const wrap=bar.querySelector(':scope > .mr-topbar-tools');
+      let b=bar.querySelector('.mr-theme-toggle');
+      if(!b)b=button(true);
+      if(wrap){
+        if(b.parentElement!==wrap)wrap.insertBefore(b,wrap.firstChild);
+      }else if(b.parentElement!==bar){
+        bar.appendChild(b);
+      }else if(!b.isConnected){
+        bar.appendChild(b);
+      }
     });
   }
 
