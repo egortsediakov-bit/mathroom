@@ -14,7 +14,7 @@
   function candidateClient(v){return v&&typeof v==='object'&&typeof v.from==='function'&&v.storage&&v.auth?v:null;}
   function resolveClient(){
     if(candidateClient(sb)) return sb;
-    const known=[window.supabaseClient,window.sb,window._supabase,window.appSupabase,window.Mathroom?.supabase,window.Mathroom?.sb,window.api?.supabase];
+    const known=[window.supabaseClient,window.MR?.sb,window.sb,window._supabase,window.appSupabase,window.Mathroom?.supabase,window.Mathroom?.sb,window.api?.supabase];
     for(const c of known){if(candidateClient(c)){sb=c;return sb;}}
     try{
       for(const k of Object.keys(window)){
