@@ -1704,7 +1704,11 @@
     bindPrejoinPreview() {
       const video = this.prejoin?.querySelector('#mrPrejoinVideo');
       if (!video) return;
-      const track=this.effectiveCameraTrack();
+      const initializingTrack=(
+        this.virtualBgMode!=='none' &&
+        this.virtualBgTrack?.readyState==='live'
+      ) ? this.virtualBgTrack : null;
+      const track=initializingTrack||this.effectiveCameraTrack();
       const current=video.srcObject?.getVideoTracks?.()[0];
       const stream=track ? (current===track ? video.srcObject : new MediaStream([track])) : null;
       if (video.srcObject !== stream) video.srcObject = stream;
@@ -1715,21 +1719,67 @@
       if(this.virtualBgBodyPixModel)return this.virtualBgBodyPixModel;
       if(this.virtualBgBodyPixModelPromise)return this.virtualBgBodyPixModelPromise;
 
+      const withTimeout=(promise,ms,message)=>new Promise((resolve,reject)=>{
+        let settled=false;
+        const timer=setTimeout(()=>{
+          if(settled)return;
+          settled=true;
+          reject(new Error(message));
+        },ms);
+        Promise.resolve(promise).then(
+          value=>{if(settled)return;settled=true;clearTimeout(timer);resolve(value)},
+          error=>{if(settled)return;settled=true;clearTimeout(timer);reject(error)}
+        );
+      });
+
       const loadScript=(src,attr)=>new Promise((resolve,reject)=>{
-        const existing=document.querySelector(`script[${attr}]`);
+        let existing=document.querySelector(`script[${attr}]`);
+        if(existing?.dataset?.mrFailed==='1'){
+          try{existing.remove()}catch{}
+          existing=null;
+        }
         if(existing){
           if(existing.dataset.mrLoaded==='1')return resolve();
-          existing.addEventListener('load',resolve,{once:true});
-          existing.addEventListener('error',()=>reject(new Error('Не удалось загрузить модуль виртуального фона')),{once:true});
+          const timer=setTimeout(()=>{
+            existing.dataset.mrFailed='1';
+            try{existing.remove()}catch{}
+            reject(new Error('Модуль виртуального фона не загрузился вовремя'));
+          },8000);
+          existing.addEventListener('load',()=>{
+            clearTimeout(timer);
+            existing.dataset.mrLoaded='1';
+            resolve();
+          },{once:true});
+          existing.addEventListener('error',()=>{
+            clearTimeout(timer);
+            existing.dataset.mrFailed='1';
+            try{existing.remove()}catch{}
+            reject(new Error('Не удалось загрузить модуль виртуального фона'));
+          },{once:true});
           return;
         }
+
         const el=document.createElement('script');
         el.src=src;
         el.async=true;
         el.crossOrigin='anonymous';
         el.setAttribute(attr,'1');
-        el.onload=()=>{el.dataset.mrLoaded='1';resolve()};
-        el.onerror=()=>reject(new Error('Не удалось загрузить модуль виртуального фона'));
+        const timer=setTimeout(()=>{
+          el.dataset.mrFailed='1';
+          try{el.remove()}catch{}
+          reject(new Error('Модуль виртуального фона не загрузился вовремя'));
+        },8000);
+        el.onload=()=>{
+          clearTimeout(timer);
+          el.dataset.mrLoaded='1';
+          resolve();
+        };
+        el.onerror=()=>{
+          clearTimeout(timer);
+          el.dataset.mrFailed='1';
+          try{el.remove()}catch{}
+          reject(new Error('Не удалось загрузить модуль виртуального фона'));
+        };
         document.head.appendChild(el);
       });
 
@@ -1746,59 +1796,57 @@
             'data-mr-body-pix'
           );
         }
-        if(!window.tf||!window.bodyPix?.load)throw new Error('Модель разделения людей не загрузилась');
+        if(!window.tf||!window.bodyPix?.load){
+          throw new Error('Модель разделения людей не загрузилась');
+        }
 
+        /* WebGL is much faster after startup, but do not let backend selection
+           become another infinite "Подготавливаем фон…". */
         try{
           if(window.tf.getBackend?.()!=='webgl'){
-            await window.tf.setBackend?.('webgl');
+            await withTimeout(
+              window.tf.setBackend?.('webgl'),
+              3500,
+              'WebGL виртуального фона не запустился вовремя'
+            );
           }
-          await window.tf.ready?.();
+          await withTimeout(
+            window.tf.ready?.(),
+            3500,
+            'TensorFlow не подготовился вовремя'
+          );
         }catch(e){
-          console.warn('[Mathroom virtual background] WebGL backend fallback',e);
-          try{await window.tf.ready?.()}catch{}
+          console.warn('[Mathroom virtual background] WebGL fallback',e);
+          try{
+            await window.tf.setBackend?.('cpu');
+            await window.tf.ready?.();
+          }catch{}
         }
 
-        const mobile=(window.matchMedia?.('(pointer: coarse)')?.matches||window.innerWidth<=760);
-        const model=await window.bodyPix.load({
-          architecture:'MobileNetV1',
-          outputStride:16,
-          /* Identity only: the 0.50 MobileNet is enough to distinguish people
-             while avoiding the long main-thread stalls of the 1.0 desktop model. */
-          multiplier:.75,
-          quantBytes:2
-        });
+        const model=await withTimeout(
+          window.bodyPix.load({
+            architecture:'MobileNetV1',
+            outputStride:16,
+            multiplier:.75,
+            quantBytes:2
+          }),
+          15000,
+          'Модель виртуального фона загружается слишком долго'
+        );
 
-        /* Compile the graph once before camera activation. This warmup is
-           serialized through virtualBgWarmupPromise, so it cannot race the
-           first real camera inference. */
-        try{
-          const warm=document.createElement('canvas');
-          warm.width=128;warm.height=96;
-          const wctx=warm.getContext('2d',{alpha:false});
-          if(wctx){
-            wctx.fillStyle='#777';
-            wctx.fillRect(0,0,warm.width,warm.height);
-          }
-          await model.segmentPerson(warm,{
-            flipHorizontal:false,
-            internalResolution:'low',
-            segmentationThreshold:.54,
-            maxDetections:1,
-            scoreThreshold:.10,
-            nmsRadius:20
-          });
-          this.virtualBgBodyPixWarm=true;
-          this.paintAllVirtualBgControls();
-        }catch(e){
-          console.warn('[Mathroom virtual background] BodyPix warmup',e);
-        }
-
+        /* Important: do NOT run a fake warmup inference here. The previous
+           implementation could leave that first TFJS inference running while
+           the real camera started, after which our retry logic launched more
+           inference on the same model. That race is the actual reason the
+           first background could remain in "preparing" forever. */
+        this.virtualBgBodyPixWarm=false;
         this.virtualBgBodyPixModel=model;
         return model;
       })();
 
-      try{return await this.virtualBgBodyPixModelPromise}
-      catch(e){
+      try{
+        return await this.virtualBgBodyPixModelPromise;
+      }catch(e){
         this.virtualBgBodyPixModelPromise=null;
         this.virtualBgBodyPixModel=null;
         throw e;
@@ -1910,10 +1958,11 @@
             if(!image)throw new Error('Кадр виртуального фона недоступен');
 
             const mobile=(window.matchMedia?.('(pointer: coarse)')?.matches||window.innerWidth<=760);
+            const first=!this._mrHasMask;
             const segmentation=await model.segmentPerson(image,{
               flipHorizontal:false,
-              internalResolution:mobile?'low':'medium',
-              segmentationThreshold:mobile?.58:.54,
+              internalResolution:first?'low':(mobile?'low':'medium'),
+              segmentationThreshold:first?.48:(mobile?.58:.54),
               maxDetections:1,
               scoreThreshold:.10,
               nmsRadius:20
@@ -1942,6 +1991,7 @@
               pixels[i+3]=255;
             }
             this.maskCtx.putImageData(this.maskImage,0,0);
+            this._mrHasMask=true;
             this.handler?.({segmentationMask:this.maskCanvas});
           }
 
@@ -2390,6 +2440,8 @@
       this.virtualBgCanvas=canvas;
       this.virtualBgStream=output;
       this.virtualBgTrack=outTrack;
+      this.bindPrejoinPreview();
+      this.paintPrejoin();
       this.virtualBgFrameInterval=mobile?72:42;
       this.virtualBgAvgProcessMs=0;
       this.virtualBgPrimaryTrack=null;
@@ -2657,8 +2709,6 @@
           this.virtualBgStartupRetries=0;
           clearTimeout(this.virtualBgStartupRetryTimer);
           this.virtualBgStartupRetryTimer=0;
-          clearTimeout(this.virtualBgFirstMaskRecoveryTimer);
-          this.virtualBgFirstMaskRecoveryTimer=0;
           this.paintAllVirtualBgControls();
           try{resolveFirstMask?.(true)}catch{}
 
@@ -2688,6 +2738,7 @@
       const runIdentity=()=>{
         if(
           idBusy ||
+          segBusy ||
           !bodyPixModel ||
           source.readyState<2 ||
           this.destroyed ||
@@ -2724,6 +2775,7 @@
       const sendSegmentationFrame=()=>{
         if(
           segBusy ||
+          idBusy ||
           source.readyState<2 ||
           this.destroyed ||
           this.virtualBgTrack!==outTrack ||
@@ -2807,53 +2859,19 @@
         }
       };
 
-      const recycleFirstMaskProcessor=()=>{
-        if(
-          baseMaskReady ||
-          this.destroyed ||
-          this.virtualBgMode==='none' ||
-          !this.cameraEnabled ||
-          this.virtualBgTrack!==outTrack ||
-          raw.readyState!=='live'
-        )return;
-
-        const attempt=(this.virtualBgStartupRetries||0)+1;
-        this.virtualBgStartupRetries=attempt;
-        if(attempt>2)return;
-
-        console.warn('[Mathroom virtual background] recycling stalled first inference',attempt);
-        try{processor?.close?.()}catch{}
-        processor=new Seg();
-        configureSegmentationProcessor(processor);
-        processor.onResults(handleSegmentationResults);
-        this.virtualBgProcessor=processor;
-        segBusy=false;
-        lastSeg=0;
-        sendSegmentationFrame();
-
-        clearTimeout(this.virtualBgFirstMaskRecoveryTimer);
-        this.virtualBgFirstMaskRecoveryTimer=setTimeout(
-          recycleFirstMaskProcessor,
-          attempt===1?1500:1900
-        );
-      };
-
-      /* Kick the first inference only after a decoded camera frame exists.
-         If MediaPipe still wedges, recycle only the solution instance; keep the
-         camera/canvas/output track alive so the user never has to toggle the
-         camera two or three times by hand. */
+      /* Exactly one first inference. No retries are started while it is still
+         running. TFJS/BodyPix owns a single WebGL model and concurrent first
+         inferences were the root race behind the never-ending startup state. */
       sendSegmentationFrame();
-      clearTimeout(this.virtualBgFirstMaskRecoveryTimer);
-      this.virtualBgFirstMaskRecoveryTimer=setTimeout(recycleFirstMaskProcessor,1500);
       this.virtualBgRaf=requestAnimationFrame(renderLoop);
 
       const ready=await Promise.race([
         firstMaskPromise,
-        new Promise(resolve=>setTimeout(()=>resolve(false),6500))
+        new Promise(resolve=>setTimeout(()=>resolve(false),12000))
       ]);
 
       if(!ready){
-        console.warn('[Mathroom virtual background] first mask still pending after automatic recovery');
+        throw new Error('Не удалось получить первую маску виртуального фона');
       }
 
       return outTrack;
@@ -2885,8 +2903,8 @@
           const processed=await Promise.race([
             this.startVirtualBackground(),
             new Promise((_,reject)=>setTimeout(
-              ()=>reject(new Error('Виртуальный фон не запустился за 20 секунд')),
-              20000
+              ()=>reject(new Error('Виртуальный фон не запустился за 15 секунд')),
+              15000
             ))
           ]);
 
