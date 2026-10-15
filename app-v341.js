@@ -474,6 +474,33 @@ function renderStudents(){
     return '';
   };
 
+  const filterGlyph=kind=>{
+    const common='class="mr-student-filter-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"';
+    if(kind==='grade')return `<svg ${common}><path d="M3 9.5 12 5l9 4.5-9 4.5-9-4.5Z"/><path d="M7 12v4.2c2.8 1.8 7.2 1.8 10 0V12"/><path class="accent" d="M20 10v5"/></svg>`;
+    if(kind==='group')return `<svg ${common}><circle cx="9" cy="8" r="3"/><circle class="accent" cx="16.5" cy="9" r="2.5"/><path d="M3.5 19c.7-4 2.6-6 5.7-6 3.2 0 5.2 2 5.8 6"/><path class="accent" d="M14 14c3.6-.5 5.8 1.2 6.5 5"/></svg>`;
+    return `<svg ${common}><circle cx="12" cy="12" r="7.5"/><path class="accent" d="m8.7 12.2 2.1 2.1 4.6-5"/></svg>`;
+  };
+  const classFilterRows=[{value:'all',label:'Все классы',count:all.length},...classes.map(g=>({value:String(g),label:`${g} класс`,count:all.filter(s=>Number(s.grade)===g).length}))];
+  const groupFilterRows=[{value:'all',label:'Все группы',count:all.length},{value:'__none__',label:'Без группы',count:all.filter(s=>!String(s.group_name||'').trim()).length},...namedGroups.map(g=>({value:g,label:g,count:all.filter(s=>String(s.group_name||'').trim()===g).length}))];
+  const statusFilterRows=[
+    {value:'all',label:'Все ученики',count:all.length},
+    {value:'active',label:'Активные',count:activeCount},
+    {value:'inactive',label:'Неактивные',count:all.length-activeCount}
+  ];
+  const filterControlHtml=(id,kind,title,rows)=>`<div class="mr-student-segment-filter" data-student-filter="${kind}">
+    <span class="mr-student-filter-label">${title}</span>
+    <select id="${id}" class="mr-student-filter-native" tabindex="-1" aria-hidden="true">${rows.map(r=>`<option value="${esc(r.value)}">${esc(r.label)}</option>`).join('')}</select>
+    <button class="mr-student-filter-trigger" type="button" data-student-filter-trigger aria-expanded="false">
+      <span class="mr-student-filter-trigger-icon">${filterGlyph(kind)}</span>
+      <span class="mr-student-filter-trigger-copy"><b data-student-filter-value>${esc(rows[0]?.label||'')}</b><small>${kind==='grade'?'Фильтр по классу':kind==='group'?'Фильтр по группе':'Фильтр по статусу'}</small></span>
+      <span class="mr-student-filter-chevron">⌄</span>
+    </button>
+    <div class="mr-student-filter-popover" data-student-filter-popover hidden>
+      <div class="mr-student-filter-pop-head"><span>${filterGlyph(kind)}</span><div><b>${title}</b><small>${rows.length} вариантов</small></div></div>
+      <div class="mr-student-filter-segments">${rows.map((r,i)=>`<button type="button" class="${i===0?'active':''}" data-student-filter-option="${esc(r.value)}"><span>${esc(r.label)}</span><em>${r.count}</em></button>`).join('')}</div>
+    </div>
+  </div>`;
+
   const content=`
     <div class="mr-students-directory">
       <section class="mr-students-commandbar">
@@ -485,10 +512,10 @@ function renderStudents(){
         <div class="mr-student-stat"><span class="icon class">${studentStatIcon('class')}</span><div><b>${classes.length}</b><small>Классов</small></div></div>
         <div class="mr-student-stat"><span class="icon group">${studentStatIcon('group')}</span><div><b>${namedGroups.length}</b><small>Групп</small></div></div>
         <div class="mr-student-stat"><span class="icon active">${studentStatIcon('active')}</span><div><b>${activePct}%</b><small>Активных</small></div></div>
-        <div class="mr-student-filters">
-          <label><span>Класс</span><select id="studentGradeFilter"><option value="all">Все классы</option>${classes.map(g=>`<option value="${g}">${g} класс</option>`).join('')}</select></label>
-          <label><span>Группа</span><select id="studentGroupFilter"><option value="all">Все группы</option><option value="__none__">Без группы</option>${namedGroups.map(g=>`<option value="${esc(g)}">${esc(g)}</option>`).join('')}</select></label>
-          <label><span>Статус</span><select id="studentStatusFilter"><option value="all">Все ученики</option><option value="active">Активные</option><option value="inactive">Неактивные</option></select></label>
+        <div class="mr-student-filters mr-student-filters-v5">
+          ${filterControlHtml('studentGradeFilter','grade','Класс',classFilterRows)}
+          ${filterControlHtml('studentGroupFilter','group','Группа',groupFilterRows)}
+          ${filterControlHtml('studentStatusFilter','status','Статус',statusFilterRows)}
         </div>
       </section>
       <section class="mr-students-classes">
@@ -512,6 +539,28 @@ function renderStudents(){
   const results=document.getElementById('studentDirectoryResults');
   const classCards=document.getElementById('studentClassCards');
   const found=document.getElementById('studentFoundCount');
+
+  const filterRowsByKind={grade:classFilterRows,group:groupFilterRows,status:statusFilterRows};
+  const syncStudentFilterWidget=(select)=>{
+    const widget=select?.closest('.mr-student-segment-filter');if(!widget)return;
+    const rows=filterRowsByKind[widget.dataset.studentFilter]||[];
+    const current=rows.find(r=>String(r.value)===String(select.value))||rows[0];
+    const valueEl=widget.querySelector('[data-student-filter-value]');if(valueEl)valueEl.textContent=current?.label||'';
+    widget.querySelectorAll('[data-student-filter-option]').forEach(b=>b.classList.toggle('active',String(b.dataset.studentFilterOption)===String(select.value)));
+  };
+  const bindStudentFilterWidget=(select)=>{
+    const widget=select?.closest('.mr-student-segment-filter');if(!widget)return;
+    const trigger=widget.querySelector('[data-student-filter-trigger]');
+    const pop=widget.querySelector('[data-student-filter-popover]');
+    const close=()=>{pop.hidden=true;trigger.classList.remove('open');trigger.setAttribute('aria-expanded','false')};
+    const open=()=>{document.querySelectorAll('.mr-student-filter-popover:not([hidden])').forEach(x=>{if(x!==pop)x.hidden=true});document.querySelectorAll('.mr-student-filter-trigger.open').forEach(x=>{if(x!==trigger){x.classList.remove('open');x.setAttribute('aria-expanded','false')}});pop.hidden=false;trigger.classList.add('open');trigger.setAttribute('aria-expanded','true')};
+    trigger.onclick=()=>pop.hidden?open():close();
+    widget.querySelectorAll('[data-student-filter-option]').forEach(b=>b.onclick=()=>{select.value=b.dataset.studentFilterOption;select.dispatchEvent(new Event('change',{bubbles:true}));syncStudentFilterWidget(select);close()});
+    document.addEventListener('pointerdown',function outside(e){if(!document.body.contains(widget)){document.removeEventListener('pointerdown',outside);return}if(!widget.contains(e.target))close()});
+    syncStudentFilterWidget(select);
+  };
+  [gradeFilter,groupFilter,statusFilter].forEach(bindStudentFilterWidget);
+  const syncAllStudentFilters=()=>[gradeFilter,groupFilter,statusFilter].forEach(syncStudentFilterWidget);
 
   const openStudentEditor=(st=null)=>{
     const groupOptions=[...new Set((S.students||[]).map(x=>String(x.group_name||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ru'));
@@ -552,6 +601,7 @@ function renderStudents(){
   };
 
   const paint=()=>{
+    syncAllStudentFilters();
     const q=state.query.trim().toLocaleLowerCase('ru');
     let rows=(S.students||[]).filter(st=>{
       const group=String(st.group_name||'').trim();
@@ -610,7 +660,7 @@ function renderStudents(){
   groupFilter.onchange=()=>{state.group=groupFilter.value;paint()};
   statusFilter.onchange=()=>{state.status=statusFilter.value;paint()};
   sort.onchange=()=>{state.sort=sort.value;paint()};
-  document.getElementById('studentClearFilters').onclick=()=>{state.query='';state.grade='all';state.group='all';state.status='all';state.sort='grade';search.value='';gradeFilter.value='all';groupFilter.value='all';statusFilter.value='all';sort.value='grade';paint()};
+  document.getElementById('studentClearFilters').onclick=()=>{state.query='';state.grade='all';state.group='all';state.status='all';state.sort='grade';search.value='';gradeFilter.value='all';groupFilter.value='all';statusFilter.value='all';sort.value='grade';syncAllStudentFilters();paint()};
   document.getElementById('addStudentDirectory').onclick=()=>openStudentEditor();
   document.addEventListener('keydown',function studentDirectoryShortcut(e){if(S.view!=='students'){document.removeEventListener('keydown',studentDirectoryShortcut);return}if((e.ctrlKey||e.metaKey)&&String(e.key).toLowerCase()==='k'){e.preventDefault();search.focus();search.select()}});
   paint();
