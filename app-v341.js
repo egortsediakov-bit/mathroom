@@ -18,6 +18,25 @@ function authSessionIsFresh(){
   return expiresAt> Date.now();
 }
 
+const TEACHER_VIEW_STORAGE_PREFIX='mathroom.teacherView.';
+const RESTORABLE_TEACHER_VIEWS=new Set(['dashboard','schedule','students','topics','textbooks','bank','assignments','history','scratch','board']);
+function teacherViewStorageKey(){
+  return S.user?.id?`${TEACHER_VIEW_STORAGE_PREFIX}${S.user.id}`:`${TEACHER_VIEW_STORAGE_PREFIX}anonymous`;
+}
+function rememberTeacherView(view=S.view){
+  if(!RESTORABLE_TEACHER_VIEWS.has(view)||!S.user)return;
+  try{sessionStorage.setItem(teacherViewStorageKey(),view)}catch{}
+}
+function restoreTeacherView(){
+  if(!S.user)return false;
+  try{
+    const view=sessionStorage.getItem(teacherViewStorageKey())||'';
+    if(!RESTORABLE_TEACHER_VIEWS.has(view))return false;
+    S.view=view;
+    return true;
+  }catch{return false}
+}
+
 function activeLessonStorageKey(){return S.user?.id?`mathroom.activeLesson.${S.user.id}`:'mathroom.activeLesson'}
 function activeLessonSessionKey(){return S.user?.id?`mathroom.activeLesson.session.${S.user.id}`:'mathroom.activeLesson.session'}
 function lessonIdFromHash(){
@@ -293,7 +312,8 @@ async function boot(){
   try{
     S.teacher=await ensureTeacher();
     await loadTeacher();
-    restoreActiveLesson();
+    const lessonRestored=restoreActiveLesson();
+    if(!lessonRestored)restoreTeacherView();
     renderTeacher();
     syncCurriculumBank();
   }catch(e){
@@ -350,6 +370,7 @@ function bindShell(){
 }
 function renderTeacher(){
   cleanupAll();
+  if(S.view!=='lesson')rememberTeacherView(S.view);
   if(S.view==='students')return renderStudents();
   if(S.view==='profile')return renderStudentProfile(S.selectedStudent);
   if(S.view==='topics')return S.topic?renderTopic():renderTopics();
