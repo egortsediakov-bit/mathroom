@@ -3753,3 +3753,22 @@ input[type="file"]{font-size:11px!important}
     min-width:0!important;
   }
 }
+
+
+/* =========================================================
+   Mathroom 46.0 — teacher helper must never trap page scroll
+   The sticky "Помощь преподавателю" rail is an internal scroll container on
+   desktop. overscroll-behavior:contain stopped wheel/touchpad chaining at the
+   rail boundary, which made the lesson page look frozen whenever the pointer
+   was over the helper. Keep internal scrolling, but let unused wheel delta
+   continue to the document.
+   ========================================================= */
+@media (min-width:761px){
+  .mr-teacher-lesson-content .mr-teacher-workspace>.mr-teacher-rail{
+    overscroll-behavior-y:auto!important;
+  }
+  .mr-teacher-lesson-content .mr-teacher-workspace>.mr-teacher-rail .mr-suggest-task-list,
+  .mr-teacher-lesson-content .mr-teacher-workspace>.mr-teacher-rail .lesson-cloud-material{
+    overscroll-behavior-y:auto!important;
+  }
+}
