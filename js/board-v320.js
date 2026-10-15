@@ -1257,7 +1257,23 @@
     }
     function clearLiveInk(){liveInkNode=null;liveInkId=''}
     function renderInteractive(){if(interactiveFrame)return;interactiveFrame=requestAnimationFrame(()=>{interactiveFrame=0;render()})}
-    function renderTabs(){pageTabs.innerHTML=pages.map(p=>`<button class="btn sm ${p.id===current.id?'primary':''}" data-page="${p.id}" ${!isTeacher&&lessonId&&followTeacher?'disabled':''}>${esc(p.title)}</button>`).join('');pageTabs.querySelectorAll('[data-page]').forEach(b=>b.onclick=()=>switchPage(b.dataset.page))}
+    function renderTabs(){
+      pageTabs.innerHTML=pages.map(p=>{
+        const active=p.id===current.id;
+        const disabled=!isTeacher&&lessonId&&followTeacher;
+        return `<button class="btn sm ${active?'primary':''}" data-page="${p.id}" ${active?'aria-current="page"':''} ${disabled?'disabled':''}>${esc(p.title)}</button>`;
+      }).join('');
+      pageTabs.querySelectorAll('[data-page]').forEach(b=>{
+        /* Clicking the current page is a no-op. Do not expose a hand cursor or
+           interactive hover semantics for it; this also prevents the cursor
+           from visually flickering over a one-page board. */
+        if(b.getAttribute('aria-current')==='page'||b.disabled){
+          b.onclick=null;
+          return;
+        }
+        b.onclick=()=>switchPage(b.dataset.page);
+      });
+    }
     function pagesChanged(){if(localOnly)writeLocal();else pagesChannel?.send({type:'broadcast',event:'pages',payload:{}})}
     async function deletePageRecord(id){if(localOnly)return;const {error}=await sb.from('board_pages').delete().eq('id',id);if(error)throw error}
     function setSyncState(state,text=''){
@@ -2584,7 +2600,13 @@
     root.innerHTML=`<div class="board-card readonly"><div class="board-page-tabs" id="snapTabs"></div><div class="board-toolbar"><span class="pill">Только просмотр</span><span class="board-status">Сохранённая версия</span></div><div class="board-stage"><svg id="snapSvg"></svg><div class="board-floating"><button class="btn sm" id="snapOut">−</button><span class="btn sm" id="snapZoom">100%</span><button class="btn sm" id="snapIn">+</button><button class="btn sm" id="snapHome">⌂</button></div></div></div>`;
     const svg=root.querySelector('#snapSvg'),tabs=root.querySelector('#snapTabs'),zl=root.querySelector('#snapZoom');
     const need=path=>{if(!path||assetCache.has(path)||assetPending.has(path))return;ensureAsset(path).then(()=>render())};const render=()=>drawElements(svg,current.elements||[],camera,null,true,need,true);
-    const renderTabs=()=>{tabs.innerHTML=pages.map(p=>`<button class="btn sm ${p===current?'primary':''}">${esc(p.title||'Лист')}</button>`).join('');[...tabs.children].forEach((b,i)=>b.onclick=()=>{current=pages[i];camera={x:0,y:0,zoom:1};zl.textContent='100%';renderTabs();render()})};
+    const renderTabs=()=>{
+      tabs.innerHTML=pages.map(p=>`<button class="btn sm ${p===current?'primary':''}" ${p===current?'aria-current="page"':''}>${esc(p.title||'Лист')}</button>`).join('');
+      [...tabs.children].forEach((b,i)=>{
+        if(pages[i]===current){b.onclick=null;return}
+        b.onclick=()=>{current=pages[i];camera={x:0,y:0,zoom:1};zl.textContent='100%';renderTabs();render()}
+      });
+    };
     svg.onpointerdown=e=>{svg.setPointerCapture(e.pointerId);pan={x:e.clientX,y:e.clientY,cx:camera.x,cy:camera.y}};svg.onpointermove=e=>{if(!pan)return;camera.x=pan.cx-(e.clientX-pan.x)/camera.zoom;camera.y=pan.cy-(e.clientY-pan.y)/camera.zoom;render()};svg.onpointerup=()=>pan=null;svg.onwheel=e=>{if(!(e.ctrlKey||e.metaKey))return;e.preventDefault();camera.zoom=clamp(camera.zoom*(e.deltaY<0?1.12:.89),.25,3);zl.textContent=Math.round(camera.zoom*100)+'%';render()};
     root.querySelector('#snapIn').onclick=()=>{camera.zoom=clamp(camera.zoom*1.2,.25,3);zl.textContent=Math.round(camera.zoom*100)+'%';render()};root.querySelector('#snapOut').onclick=()=>{camera.zoom=clamp(camera.zoom/1.2,.25,3);zl.textContent=Math.round(camera.zoom*100)+'%';render()};root.querySelector('#snapHome').onclick=()=>{camera={x:0,y:0,zoom:1};zl.textContent='100%';render()};renderTabs();render();
   }
