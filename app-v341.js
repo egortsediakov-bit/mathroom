@@ -77,9 +77,12 @@ function restoreActiveLesson(){
 }
 
 async function ensureTeacher(){
-  const {data:{user}}=await sb.auth.getUser(); if(!user||user.is_anonymous)return null;
-  await sb.from('teachers').upsert({id:user.id},{onConflict:'id'});
-  const {data,error}=await sb.from('teachers').select('*').eq('id',user.id).single(); if(error)throw error; return data;
+  const {data:{user}}=await sb.auth.getUser();
+  if(!user||user.is_anonymous)return null;
+  const {data,error}=await sb.from('teachers').select('*').eq('id',user.id).maybeSingle();
+  if(error)throw error;
+  if(!data)throw new Error('Нет доступа преподавателя. Попроси администратора Mathroom добавить этот аккаунт.');
+  return data;
 }
 async function loadTeacher(){
   const reqs=await Promise.all([
@@ -281,12 +284,44 @@ async function boot(){
     try{await sb.auth.signOut()}catch{}
     return renderAuth();
   }
-  S.user=session.user;try{S.teacher=await ensureTeacher();await loadTeacher();restoreActiveLesson();renderTeacher();syncCurriculumBank()}catch(e){fail(e);renderAuth()}
+  S.user=session.user;
+  try{
+    S.teacher=await ensureTeacher();
+    await loadTeacher();
+    restoreActiveLesson();
+    renderTeacher();
+    syncCurriculumBank();
+  }catch(e){
+    console.error('[Mathroom teacher boot]',e);
+    renderTeacherLoadError(e);
+  }
+}
+function renderTeacherLoadError(error){
+  const message=error?.message||'Не удалось загрузить кабинет.';
+  app.innerHTML=`<div class="center-page"><div class="auth-card"><div class="brand">Mathroom</div><h1>Не удалось открыть кабинет</h1><p>${esc(message)}</p><div class="actions"><button class="btn primary" id="retryTeacherBoot">Повторить</button><button class="btn" id="loadErrorLogout">Выйти</button></div><div class="small muted" style="margin-top:12px">Авторизация сохранена. Повторно вводить пароль из-за ошибки загрузки не нужно.</div></div></div>`;
+  document.getElementById('retryTeacherBoot').onclick=()=>boot().catch(e=>renderTeacherLoadError(e));
+  document.getElementById('loadErrorLogout').onclick=async()=>{clearAuthSession();try{await sb.auth.signOut()}catch{}S.user=S.teacher=null;renderAuth()};
 }
 function renderAuth(){
-  app.innerHTML=`<div class="center-page"><div class="auth-card"><div class="brand">Mathroom</div><h1>Облачный кабинет</h1><p>GitHub Pages + Supabase</p><form id="loginForm"><div class="field"><label>Email</label><input id="email" type="email" required></div><div class="field"><label>Пароль</label><input id="password" type="password" minlength="6" required></div><div class="actions"><button class="btn primary">Войти</button><button type="button" class="btn" id="register">Создать аккаунт</button></div></form><div id="authMsg" class="small muted" style="margin-top:12px"></div></div></div>`;
-  document.getElementById('loginForm').onsubmit=async e=>{e.preventDefault();const email=document.getElementById('email').value,password=document.getElementById('password').value;const {data,error}=await sb.auth.signInWithPassword({email,password});if(error)return document.getElementById('authMsg').textContent=error.message;rememberAuthSession();S.user=data.user;S.teacher=await ensureTeacher();await loadTeacher();restoreActiveLesson();renderTeacher();syncCurriculumBank()};
-  document.getElementById('register').onclick=async()=>{const email=document.getElementById('email').value,password=document.getElementById('password').value;const {data,error}=await sb.auth.signUp({email,password});if(error)return document.getElementById('authMsg').textContent=error.message;if(!data.session){document.getElementById('authMsg').textContent='Аккаунт создан. Подтверди email, затем войди.';return}rememberAuthSession();S.user=data.user;S.teacher=await ensureTeacher();await loadTeacher();restoreActiveLesson();renderTeacher();syncCurriculumBank()};
+  app.innerHTML=`<div class="center-page"><div class="auth-card"><div class="brand">Mathroom</div><h1>Вход для преподавателя</h1><p>Доступ выдаётся администратором Mathroom.</p><form id="loginForm"><div class="field"><label>Email</label><input id="email" type="email" autocomplete="username" required></div><div class="field"><label>Пароль</label><input id="password" type="password" autocomplete="current-password" minlength="6" required></div><div class="actions"><button class="btn primary">Войти</button></div></form><div id="authMsg" class="small muted" style="margin-top:12px"></div></div></div>`;
+  document.getElementById('loginForm').onsubmit=async e=>{
+    e.preventDefault();
+    const email=document.getElementById('email').value,password=document.getElementById('password').value,msg=document.getElementById('authMsg');
+    const {data,error}=await sb.auth.signInWithPassword({email,password});
+    if(error)return msg.textContent=error.message;
+    try{
+      rememberAuthSession();
+      S.user=data.user;
+      S.teacher=await ensureTeacher();
+      await loadTeacher();
+      restoreActiveLesson();
+      renderTeacher();
+      syncCurriculumBank();
+    }catch(err){
+      console.error('[Mathroom teacher login]',err);
+      msg.textContent=err?.message||'Не удалось открыть кабинет';
+    }
+  };
 }
 
 const nav=[['dashboard','Главная'],['schedule','Расписание'],['students','Ученики'],['topics','Темы'],['textbooks','Учебники'],['bank','Банк задач'],['assignments','Задания'],['history','История'],['scratch','Черновик'],['board','Доска']];
