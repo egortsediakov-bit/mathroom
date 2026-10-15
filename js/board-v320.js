@@ -17,6 +17,50 @@
     const prev=pts[pts.length-2],last=pts[pts.length-1];
     return d+` Q ${prev[0]} ${prev[1]} ${last[0]} ${last[1]}`;
   };
+  const stabilizeTouchPoints=(points=[])=>{
+    const pts=(points||[]).filter(p=>Array.isArray(p)&&Number.isFinite(p[0])&&Number.isFinite(p[1]));
+    if(pts.length<3)return pts;
+
+    /* Finger input contains 1–3 px sensor wobble even when the user is moving
+       smoothly. Remove only tiny duplicate jitter first; keep real corners. */
+    const clean=[pts[0]];
+    for(let i=1;i<pts.length;i++){
+      const p=pts[i],last=clean[clean.length-1];
+      const isLast=i===pts.length-1;
+      if(isLast||Math.hypot(p[0]-last[0],p[1]-last[1])>=.45)clean.push(p);
+    }
+    if(clean.length<3)return clean;
+
+    /* Direction-aware 3-point filter. Straight/slightly curved handwriting gets
+       stronger stabilization; sharp corners (7, 4, x, etc.) are preserved. */
+    const out=[clean[0]];
+    for(let i=1;i<clean.length-1;i++){
+      const a=clean[i-1],b=clean[i],c=clean[i+1];
+      const v1x=b[0]-a[0],v1y=b[1]-a[1],v2x=c[0]-b[0],v2y=c[1]-b[1];
+      const l1=Math.hypot(v1x,v1y),l2=Math.hypot(v2x,v2y);
+      let side=.18;
+      if(l1>.001&&l2>.001){
+        const cos=Math.max(-1,Math.min(1,(v1x*v2x+v1y*v2y)/(l1*l2)));
+        const turn=Math.acos(cos)/Math.PI;
+        side=.18*Math.max(.08,1-Math.min(1,turn*1.75));
+      }
+      const center=1-side*2;
+      const pressure=Number.isFinite(Number(b[2]))?Number(b[2]):.5;
+      out.push([
+        a[0]*side+b[0]*center+c[0]*side,
+        a[1]*side+b[1]*center+c[1]*side,
+        pressure
+      ]);
+    }
+    out.push(clean[clean.length-1]);
+    return out;
+  };
+  const freehandPathD=o=>smoothPathD(
+    String(o?.inputType||'')==='touch'
+      ?stabilizeTouchPoints(o?.points||[])
+      :(o?.points||[])
+  );
+
   const pressurePathGroup=o=>{
     const pts=(o.points||[]).filter(p=>Array.isArray(p)&&Number.isFinite(p[0])&&Number.isFinite(p[1]));
     if(pts.length<2||!o.pressureSensitive)return null;
@@ -525,7 +569,7 @@
         if(ob.x+ob.w<viewRect.x0||ob.y+ob.h<viewRect.y0||ob.x>viewRect.x1||ob.y>viewRect.y1)continue;
       }
       let n=null;
-      if(o.type==='path') n=pressurePathGroup(o)||svgEl('path',{d:smoothPathD(o.points||[]),fill:'none',stroke:o.color||'#15171a','stroke-width':o.width||3,'stroke-linecap':'round','stroke-linejoin':'round','shape-rendering':'geometricPrecision',opacity:o.opacity==null?1:o.opacity});
+      if(o.type==='path') n=pressurePathGroup(o)||svgEl('path',{d:freehandPathD(o),fill:'none',stroke:o.color||'#15171a','stroke-width':o.width||3,'stroke-linecap':'round','stroke-linejoin':'round','shape-rendering':'geometricPrecision',opacity:o.opacity==null?1:o.opacity});
       else if(o.type==='line') n=svgEl('line',{x1:o.x1,y1:o.y1,x2:o.x2,y2:o.y2,stroke:o.color||'#15171a','stroke-width':o.width||3,'stroke-linecap':'round'});
       else if(o.type==='rect') n=svgEl('rect',{x:Math.min(o.x1,o.x2),y:Math.min(o.y1,o.y2),width:Math.abs(o.x2-o.x1),height:Math.abs(o.y2-o.y1),fill:o.fill||'none',stroke:o.color||'#15171a','stroke-width':o.width||3});
       else if(o.type==='ellipse') n=svgEl('ellipse',{cx:(o.x1+o.x2)/2,cy:(o.y1+o.y2)/2,rx:Math.abs(o.x2-o.x1)/2,ry:Math.abs(o.y2-o.y1)/2,fill:o.fill||'none',stroke:o.color||'#15171a','stroke-width':o.width||3});
@@ -751,10 +795,11 @@
     const boardScreenLong=Math.max(Number(screen?.width||0),Number(screen?.height||0));
     const boardScreenShort=Math.min(Number(screen?.width||0),Number(screen?.height||0));
     const boardIpadOS=/Macintosh/i.test(boardUA)&&boardTouch;
-    const phoneStudentBoardUI=!isTeacher&&!desktopTeacherReplica&&(
+    const phoneBoardUI=(
       /iPhone|iPod|Android.*Mobile|Mobile/i.test(boardUA)||
       ((boardTouch||boardCoarse)&&boardScreenShort>0&&boardScreenShort<=600)
     );
+    const phoneStudentBoardUI=!isTeacher&&!desktopTeacherReplica&&phoneBoardUI;
     const compactStudentBoardUI=!isTeacher&&!desktopTeacherReplica&&(
       phoneStudentBoardUI||boardIpadOS||/iPad|Tablet/i.test(boardUA)||
       ((boardTouch||boardCoarse)&&boardScreenLong>0&&boardScreenLong<=1366&&boardScreenShort<=1024)
@@ -787,6 +832,8 @@
       <details class="board-tool-group" data-category="more"><summary title="Ещё" aria-label="Ещё"><span class="board-rail-icon">${uiIcon('more')}</span></summary><div class="board-tool-popover board-more-popover"><div class="board-popover-head"><div><div class="board-popover-title">Действия с доской</div><div class="board-popover-subtitle">Объекты, листы и отображение</div></div></div><div class="board-action-grid board-more-grid">${!fullBoardTools?`<button type="button" class="btn sm board-mobile-extra" id="mobilePhotoUpload">${uiIcon('upload')} <span>Фото</span></button><input id="mobilePhotoFile" type="file" accept="image/*" hidden>`:''}<button class="btn sm" id="copySelected" disabled title="Скопировать объект в буфер доски — затем можно вставить одну или несколько копий">${uiIcon('copy')} <span>Копировать</span></button><button class="btn sm" id="pasteSelected" disabled>${uiIcon('paste')} <span>Вставить</span></button><button class="btn sm" id="duplicateSelected" disabled title="Сразу создать рядом копию выбранного объекта">${uiIcon('duplicate')} <span>Дубликат</span></button><button class="btn sm" id="lockSelected" disabled>${uiIcon('pin')} <span>Закрепить</span></button><button class="btn sm" id="bringFront" disabled>${uiIcon('front')} <span>На передний план</span></button><button class="btn sm" id="sendBack" disabled>${uiIcon('back')} <span>На задний план</span></button><button class="btn sm danger" id="deleteSelected" disabled>${uiIcon('trash')} <span>Удалить</span></button><button class="btn sm" id="gridToggle">${uiIcon('grid')} <span>Сетка</span></button><button class="btn sm active" id="snapToggle">${uiIcon('magnet')} <span>Магниты</span></button><button class="btn sm" id="fitView">${uiIcon('fit')} <span>Показать всё</span></button>${fullBoardTools?`<button class="btn sm" id="boardBackground">${uiIcon('background')} <span>Фон</span></button><button class="btn sm" id="duplicatePage">${uiIcon('pageCopy')} <span>Дублировать лист</span></button><button class="btn sm" id="exportPagePng"><span class="board-file-badge">PNG</span> <span>Лист</span></button><button class="btn sm" id="exportAllPdf"><span class="board-file-badge">PDF</span> <span>Доска</span></button><button class="btn sm" id="boardHistory">${uiIcon('history')} <span>История</span></button>${lessonId?`<button class="btn sm" id="resetLessonStart">${uiIcon('reset')} <span>К началу</span></button>`:''}${!localOnly?`<button class="btn sm" id="toScratch">${uiIcon('right')} <span>В черновик</span></button><button class="btn sm" id="fromScratch">${uiIcon('left')} <span>Из черновика</span></button>`:''}<button class="btn sm" id="renamePage">${uiIcon('edit')} <span>Переименовать</span></button>`:''}</div></div></details>
       ${fullBoardTools?`<div class="board-rail-divider board-rail-divider-bottom"></div><button class="btn sm board-icon-btn board-rail-action board-rail-clear danger" id="clearBoard" title="Очистить текущий лист" aria-label="Очистить лист">${uiIcon('trash')}</button>`:''}
     </div>`;
+    root.dataset.phoneBoard=phoneBoardUI?'1':'0';
+    root.dataset.boardRole=isTeacher?'teacher':'student';
     root.innerHTML=`<div class="board-card"><div class="board-head"><div class="board-head-title"><strong>${localOnly?'Черновик':'Доска'}</strong><span class="board-status" id="boardStatus">${localOnly?'Локальный черновик':'Подключение…'}</span></div><div class="board-head-actions">${isTeacher&&lessonId?`<button class="btn sm ${followTeacher?'active':''}" id="followTeacherToggle">${uiIcon('focus')} <span>Ведение</span></button><select class="board-select board-permission-select" id="studentBoardMode" title="Права ученика"><option value="open" ${classroomMode==='open'?'selected':''}>Всё</option><option value="pen" ${classroomMode==='pen'?'selected':''}>Только писать</option><option value="view" ${classroomMode==='view'?'selected':''}>Только читать</option></select>`:desktopTeacherReplica&&lessonId?`<select class="board-select board-permission-select" id="studentBoardMode" disabled title="Права задаёт преподаватель"><option value="open">Всё</option><option value="pen">Только писать</option><option value="view">Только читать</option></select>`:''}<span class="board-head-sep" aria-hidden="true"></span><button class="btn sm board-head-icon" id="undo" title="Отменить · Ctrl+Z">${uiIcon('undo')}<span class="board-head-label">Назад</span></button><button class="btn sm board-head-icon" id="redo" title="Вернуть · Ctrl+Y / Ctrl+Shift+Z">${uiIcon('redo')}<span class="board-head-label">Вперёд</span></button>${fullBoardTools?`<span class="board-head-sep" aria-hidden="true"></span><button class="btn sm board-head-icon" id="bringForward" disabled title="Поднять выбранный объект на один слой">${uiIcon('up')}<span class="board-head-label">Выше</span></button><button class="btn sm board-head-icon" id="sendBackward" disabled title="Опустить выбранный объект на один слой">${uiIcon('down')}<span class="board-head-label">Ниже</span></button><span class="board-head-sep" aria-hidden="true"></span><button class="btn sm board-head-icon" id="addPage" title="Создать новый лист">${uiIcon('plus')}<span class="board-head-label">Новый</span></button><button class="btn sm board-head-icon danger" id="delPage" title="Удалить текущий лист">${uiIcon('trash')}<span class="board-head-label">Удалить лист</span></button>`:''}<span class="board-head-sep" aria-hidden="true"></span><button class="btn sm board-shortcuts-btn" id="quickCommands" title="Показать быстрые команды">⌨ <span>Команды</span></button><button class="btn sm board-fullscreen-btn" id="fullscreen" title="На весь экран" aria-label="На весь экран">${uiIcon('fullscreen')} <span data-fullscreen-label="На весь экран">На весь экран</span></button></div></div><div class="board-page-tabs" id="pageTabs"></div><div class="board-stage" id="stage"><aside class="board-toolbar board-toolbar-side">${toolPanel}</aside><svg id="boardSvg"></svg><div class="board-object-hud" id="objectHud" hidden><button type="button" class="btn sm" data-object-action="duplicate" title="Дублировать">${uiIcon('duplicate')}</button><button type="button" class="btn sm" data-object-action="lock" title="Закрепить">${uiIcon('pin')}</button><button type="button" class="btn sm" data-object-action="front" title="На передний план">${uiIcon('front')}</button><button type="button" class="btn sm" data-object-action="back" title="На задний план">${uiIcon('back')}</button><button type="button" class="btn sm" data-object-action="fill" title="Заливка">${uiIcon('fill')}</button><button type="button" class="btn sm" data-object-action="edit" title="Редактировать">${uiIcon('edit')}</button><button type="button" class="btn sm danger" data-object-action="delete" title="Удалить">${uiIcon('trash')}</button></div><div class="board-follow-badge" id="followBadge" hidden>${uiIcon('focus')} Следуем за преподавателем</div><div class="board-solid-hud" id="solidHud" hidden><button type="button" class="btn sm" data-solid-hud="rotate" title="Вращать 3D">${uiIcon('rotate')}</button><button type="button" class="btn sm" data-solid-hud="point" title="Поставить точку">${uiIcon('point')}</button><button type="button" class="btn sm" data-solid-hud="plane" title="Плоскость по трём точкам">${uiIcon('plane')}</button><span class="board-solid-hud-sep"></span><button type="button" class="btn sm" data-solid-hud="smaller" title="Уменьшить">${uiIcon('minus')}</button><button type="button" class="btn sm" data-solid-hud="larger" title="Увеличить">${uiIcon('plus')}</button><button type="button" class="btn sm" data-solid-hud="reset" title="Стандартный вид">${uiIcon('home')}</button><button type="button" class="btn sm danger" data-solid-hud="clear" title="Удалить точки и плоскости">${uiIcon('trash')}</button></div><div class="board-floating"><button class="btn sm" id="zoomOut" title="Уменьшить">${uiIcon('minus')}</button><span class="btn sm" id="zoomLabel">100%</span><button class="btn sm" id="zoomIn" title="Увеличить">${uiIcon('plus')}</button><button class="btn sm" id="homeView" title="Сбросить вид">${uiIcon('home')}</button></div></div><div class="board-hint">Выбор: рамка · Shift+клик — несколько объектов · Ctrl+Z — отменить · Space + drag — перемещение · планшет: стилус пишет, палец двигает, два пальца масштабируют</div></div>`;
     if(desktopTeacherReplica){
       /* Desktop student uses the teacher board layout, but not teacher-only
@@ -889,11 +936,11 @@
     function drawTransient(){
       const g=svgEl('g',{transform:`scale(${camera.zoom}) translate(${-camera.x} ${-camera.y})`});svg.appendChild(g);const now=Date.now();
       tempMarks=tempMarks.filter(x=>x.expires>now);remoteTempMarks=remoteTempMarks.filter(x=>x.expires>now);
-      for(const m of [...remoteTempMarks,...tempMarks])g.appendChild(svgEl('path',{d:smoothPathD(m.points||[]),fill:'none',stroke:m.color||'#f59e0b','stroke-width':m.width||12,'stroke-linecap':'round','stroke-linejoin':'round','shape-rendering':'geometricPrecision',opacity:.45}));
+      for(const m of [...remoteTempMarks,...tempMarks])g.appendChild(svgEl('path',{d:freehandPathD(m),fill:'none',stroke:m.color||'#f59e0b','stroke-width':m.width||12,'stroke-linecap':'round','stroke-linejoin':'round','shape-rendering':'geometricPrecision',opacity:.45}));
 
       for(const [id,s] of [...remoteLiveStrokes]){
         if((s.expires||0)<=now){remoteLiveStrokes.delete(id);continue}
-        g.appendChild(svgEl('path',{d:smoothPathD(s.points||[]),fill:'none',stroke:s.color||'#15171a','stroke-width':s.width||3,'stroke-linecap':'round','stroke-linejoin':'round','shape-rendering':'geometricPrecision',opacity:s.opacity==null?1:s.opacity,'pointer-events':'none'}));
+        g.appendChild(svgEl('path',{d:freehandPathD(s),fill:'none',stroke:s.color||'#15171a','stroke-width':s.width||3,'stroke-linecap':'round','stroke-linejoin':'round','shape-rendering':'geometricPrecision',opacity:s.opacity==null?1:s.opacity,'pointer-events':'none'}));
       }
 
       if(remoteCursor&&remoteCursor.expires>now){
@@ -1111,14 +1158,16 @@
       try{input?.focus({preventScroll:true})}catch{input?.focus()}
     }
     function appendFreehandPoints(target,e){
-      if(!target?.points)return;
+      if(!target?.points||!e)return;
       const coalesced=typeof e.getCoalescedEvents==='function'?(e.getCoalescedEvents()||[]):[];
-      /* Some browsers return only historical coalesced samples. Always append
-         the dispatched event as the newest sample so handwriting does not lag
-         behind the cursor. */
+      /* Some mobile browsers provide sparse pointermove events, while others
+         provide many noisy coalesced samples. Treat both paths consistently. */
       const events=[...coalesced,e];
-      const minStep=1.05/Math.max(.25,camera.zoom);
+      const type=String(target.inputType||e.pointerType||'mouse');
+      const minStep=(type==='touch'?1.65:type==='pen'?.55:1.0)/Math.max(.25,camera.zoom);
+      const maxStep=(type==='touch'?7.5:type==='pen'?5.5:8.5)/Math.max(.25,camera.zoom);
       let lastStamp=-Infinity,lastClientX=NaN,lastClientY=NaN;
+
       for(const ev of events){
         if(!ev||!Number.isFinite(ev.clientX)||!Number.isFinite(ev.clientY))continue;
         if(e.pointerId!=null&&ev.pointerId!=null&&ev.pointerId!==e.pointerId)continue;
@@ -1126,15 +1175,62 @@
         if(stamp<lastStamp)continue;
         if(stamp===lastStamp&&ev.clientX===lastClientX&&ev.clientY===lastClientY)continue;
         lastStamp=stamp;lastClientX=ev.clientX;lastClientY=ev.clientY;
-        const [px,py]=screenToWorld(ev.clientX,ev.clientY),last=target.points[target.points.length-1];
-        if(!last||Math.hypot(px-last[0],py-last[1])>=minStep){
-          const isPen=ev.pointerType==='pen',pressure=isPen?Math.max(.05,Math.min(1,Number(ev.pressure)||.5)):.5;
-          if(isPen){target.pressureSensitive=true;target.baseWidth=target.baseWidth||target.width||3;penActiveUntil=Date.now()+1200}
+
+        const [px,py]=screenToWorld(ev.clientX,ev.clientY);
+        const last=target.points[target.points.length-1];
+        const isPen=type==='pen';
+        const pressure=isPen?Math.max(.05,Math.min(1,Number(ev.pressure)||.5)):.5;
+
+        if(!last){
           target.points.push([px,py,pressure]);
+          continue;
+        }
+
+        const dist=Math.hypot(px-last[0],py-last[1]);
+        if(dist<minStep)continue;
+
+        /* Fill unusually large sampling gaps. This matters on iOS/Android when
+           a frame is busy: the path remains a curve instead of a sharp chord. */
+        if(dist>maxStep){
+          const count=Math.min(8,Math.floor(dist/maxStep));
+          for(let k=1;k<=count;k++){
+            const t=k/(count+1);
+            target.points.push([
+              last[0]+(px-last[0])*t,
+              last[1]+(py-last[1])*t,
+              pressure
+            ]);
+          }
+        }
+
+        target.points.push([px,py,pressure]);
+        if(isPen){
+          target.pressureSensitive=true;
+          target.baseWidth=target.baseWidth||target.width||3;
+          penActiveUntil=Date.now()+1200;
         }
       }
     }
+
     let interactiveFrame=0;
+    let liveInkNode=null,liveInkId='';
+    function bindLiveInkNode(target){
+      if(!target?.id)return null;
+      if(liveInkId===target.id&&liveInkNode?.isConnected)return liveInkNode;
+      liveInkId=target.id;
+      liveInkNode=[...svg.querySelectorAll('[data-id]')].find(n=>n.dataset?.id===target.id)||null;
+      return liveInkNode;
+    }
+    function updateLiveInk(target){
+      /* Finger/mouse paths are a single SVG path. Updating only its "d"
+         attribute avoids rebuilding every board object at 60 Hz on phones. */
+      if(!target||target.type!=='path'||target.pressureSensitive)return false;
+      const node=bindLiveInkNode(target);
+      if(!node||String(node.tagName).toLowerCase()!=='path')return false;
+      node.setAttribute('d',freehandPathD(target));
+      return true;
+    }
+    function clearLiveInk(){liveInkNode=null;liveInkId=''}
     function renderInteractive(){if(interactiveFrame)return;interactiveFrame=requestAnimationFrame(()=>{interactiveFrame=0;render()})}
     function renderTabs(){pageTabs.innerHTML=pages.map(p=>`<button class="btn sm ${p.id===current.id?'primary':''}" data-page="${p.id}" ${!isTeacher&&lessonId&&followTeacher?'disabled':''}>${esc(p.title)}</button>`).join('');pageTabs.querySelectorAll('[data-page]').forEach(b=>b.onclick=()=>switchPage(b.dataset.page))}
     function pagesChanged(){if(localOnly)writeLocal();else pagesChannel?.send({type:'broadcast',event:'pages',payload:{}})}
@@ -1580,7 +1676,7 @@
       if(!['pen','pencil','marker','laser','eraser','compass','solid-rotate'].includes(tool))[x,y]=geometrySnapPoint(x,y,selectionList());
       if(tool==='hand'){e.preventDefault();document.getSelection?.()?.removeAllRanges?.();panStart={cx:e.clientX,cy:e.clientY,x:camera.x,y:camera.y};svg.style.cursor='grabbing';return}
       if(tool==='laser'){laserPoint={x,y};broadcastTransient('laser',{point:laserPoint});render();return}
-      if(tool==='marker'){drawing={id:uid(),type:'marker-temp',points:[[x,y]],color:'#f59e0b',width:14,expires:Date.now()+5000};tempMarks.push(drawing);render();return}
+      if(tool==='marker'){drawing={id:uid(),type:'marker-temp',points:[[x,y,.5]],inputType:String(e.pointerType||'mouse'),color:'#f59e0b',width:14,expires:Date.now()+5000};tempMarks.push(drawing);render();return}
       if(tool==='focus'){focusDraft={x0:x,y0:y,x1:x,y1:y};focusRect={x,y,w:1,h:1};render();return}
       if(tool==='eraser'){eraserPoint={x,y};eraserTrail=[[x,y]];eraserDown=true;pushElementsHistory();const o=eraserHitAllowed(x,y,18/camera.zoom);if(o&&!o.locked){elements=elements.filter(z=>z.id!==o.id);if(selectionHas(o.id)){const next=selectionList().filter(id=>id!==o.id);setSelection(next)}changed()}else render();return}
       if(tool==='text'){const text=prompt('Текст:');if(text){pushElementsHistory();elements.push({id:uid(),type:'text',x,y,text,color,fontSize:28});changed()}return}
@@ -1633,6 +1729,7 @@
       pushElementsHistory();drawing={id:uid(),type:tool,color,width,_ownerRole:actorRole,_ownerId:actorId};
       if(tool==='pen'||tool==='pencil'){
         drawing.type='path';
+        drawing.inputType=String(e.pointerType||'mouse');
         const isPen=e.pointerType==='pen',pressure=isPen?Math.max(.05,Math.min(1,Number(e.pressure)||.5)):.5;
         if(isPen){drawing.pressureSensitive=true;drawing.baseWidth=width;penActiveUntil=Date.now()+1200}
         drawing.points=[[x,y,pressure]];
@@ -1641,6 +1738,7 @@
       elements.push(drawing);
       if(drawing.type==='path')sendStrokeStart(drawing);
       render();
+      if(drawing?.type==='path')bindLiveInkNode(drawing);
     };
     svg.onpointermove=e=>{
       if(e.pointerType==='pen')penActiveUntil=Date.now()+1200;
@@ -1703,7 +1801,13 @@
       }
       if(moveStart&&selected){let dx=x-moveStart.x,dy=y-moveStart.y;if(Math.abs(dx)>.01||Math.abs(dy)>.01)transformDirty=true;if(snapEnabled){dx=Math.round(dx/10)*10;dy=Math.round(dy/10)*10}if(Array.isArray(moveStart.group)){for(const item of moveStart.group){const idx=elements.findIndex(z=>z.id===item.id);if(idx>=0)elements[idx]=translated(item.orig,dx,dy)}}else{const idx=elements.findIndex(z=>z.id===selected);if(idx<0)return;elements[idx]=translated(moveStart.orig,dx,dy)}render();broadcast();return}
       if(!drawing)return;
-      if(drawing.type==='path'){appendFreehandPoints(drawing,e);renderInteractive();sendStrokeChunk(drawing);return}
+      if(drawing.type==='path'){
+        if(e.pointerType==='touch'||e.pointerType==='pen')e.preventDefault();
+        appendFreehandPoints(drawing,e);
+        if(!updateLiveInk(drawing))renderInteractive();
+        sendStrokeChunk(drawing);
+        return;
+      }
       if(drawing.type==='compass')drawing.r=Math.max(1,Math.hypot(x-drawing.cx,y-drawing.cy));else{let xx=x,yy=y;if(e.shiftKey&&['line','arrow','ruler'].includes(drawing.type)){const dx=x-drawing.x1,dy=y-drawing.y1,a=Math.atan2(dy,dx),step=Math.PI/4,aa=Math.round(a/step)*step,len=Math.hypot(dx,dy);xx=drawing.x1+Math.cos(aa)*len;yy=drawing.y1+Math.sin(aa)*len}drawing.x2=xx;drawing.y2=yy}render();broadcast();
     };
     const finishPointer=e=>{
@@ -1758,13 +1862,19 @@
       }
       if(eraserDown){eraserDown=false;scheduleSave();broadcast();render();setTimeout(()=>{eraserTrail=[];if(tool==='eraser')render()},260)}
       if(tool==='laser'&&laserPoint){laserPoint=null;broadcastTransient('laser',{point:null});render()}
-      if(tool==='marker'&&drawing?.type==='marker-temp'){const mark={...drawing,expires:Date.now()+5000};drawing=null;broadcastTransient('marker',{mark});setTimeout(render,5100)}
+      if(tool==='marker'&&drawing?.type==='marker-temp'){const mark={...drawing,expires:Date.now()+5000};drawing=null;clearLiveInk();broadcastTransient('marker',{mark});setTimeout(render,5100)}
       if(tool==='focus'&&focusDraft){focusDraft=null;if(focusRect?.w<5||focusRect?.h<5)focusRect=null;broadcastTransient('focus',{rect:focusRect});render()}
       const hadTransform=!!(moveStart||resizeStart||rotationStart||solidRotateStart);
       const committedTransform=hadTransform&&transformDirty;
       if(hadTransform&&!transformDirty){const last=undoStack[undoStack.length-1];if(last?.type==='elements'&&last.pageId===current.id&&JSON.stringify(last.elements)===JSON.stringify(elements))undoStack.pop();syncHistoryButtons()}
       if(drawing&&drawing.type!=='marker-temp'||hadTransform){
-        if(drawing?.type==='path')sendStrokeChunk(drawing,true);
+        if(drawing?.type==='path'){
+          /* pointerup can contain the last sample even when no final pointermove
+             was dispatched. Keep the written character connected to the finger. */
+          appendFreehandPoints(drawing,e);
+          sendStrokeChunk(drawing,true);
+        }
+        clearLiveInk();
         drawing=null;moveStart=null;resizeStart=null;rotationStart=null;solidRotateStart=null;
         if(!hadTransform||transformDirty)changed();else render();
         /* Final transform snapshot is authoritative. Live drag ops can be
