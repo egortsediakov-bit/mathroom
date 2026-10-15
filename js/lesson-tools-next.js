@@ -2254,13 +2254,51 @@
                 return false;
               }
 
-              try{this.virtualBgWarmProcessor?.close?.()}catch{}
-              this.virtualBgWarmProcessor=processor;
+              /* The warm-up instance is intentionally sacrificial.
+                 Reusing a SelfieSegmentation instance after feeding it a synthetic
+                 canvas can leave YaBrowser's legacy SolutionWasm pipeline alive
+                 but unable to produce results from a MediaStream frame. That was
+                 the reason the first background often did nothing while the
+                 second camera toggle suddenly worked. Warm the assets/runtime,
+                 then start the live camera with a fresh processor. */
+              try{await Promise.resolve(processor?.close?.())}catch{}
               processor=null;
+              try{this.virtualBgWarmProcessor?.close?.()}catch{}
+              this.virtualBgWarmProcessor=null;
               this.virtualBgSelfieWarm=true;
-              this.virtualBgStage='готово';
-              this.paintAllVirtualBgControls();
-              this.paintAllVirtualBgControls();
+
+              if(!this.virtualBgInitializing){
+                this.virtualBgStage='готово к запуску';
+                this.paintAllVirtualBgControls();
+
+                /* Race-proof hand-off: if the camera became live while warm-up
+                   was still running, start the selected effect automatically.
+                   The normal Camera handler also calls activation; the shared
+                   apply promise makes this idempotent. */
+                const liveRaw=this.localStream?.getVideoTracks?.().find(
+                  t=>t.readyState==='live'&&t.enabled!==false
+                )||null;
+                if(
+                  liveRaw &&
+                  this.cameraEnabled &&
+                  this.virtualBgMode!=='none' &&
+                  !this.virtualBgMaskReady &&
+                  !this.virtualBgApplyPromise
+                ){
+                  queueMicrotask(()=>{
+                    if(
+                      !this.destroyed &&
+                      this.cameraEnabled &&
+                      this.virtualBgMode!=='none' &&
+                      liveRaw.readyState==='live' &&
+                      liveRaw.enabled!==false
+                    ){
+                      this.activateSelectedVirtualBackground(liveRaw)
+                        .catch(e=>console.warn('[Mathroom virtual background] warm hand-off',e));
+                    }
+                  });
+                }
+              }
               return true;
             }catch(e){
               console.warn('[Mathroom virtual background] warm attempt',attempt+1,e);
@@ -2541,12 +2579,14 @@
         await this.virtualBgWarmupPromise.catch(()=>false);
       }
 
+      /* Never reuse the synthetic warm-up processor for live camera frames.
+         A fresh instance is tied to the current raw track for its whole life. */
+      this.virtualBgStage='модель';
+      this.paintAllVirtualBgControls();
       const Seg=await this.ensureVirtualBgLibrary();
-      processor=this.virtualBgWarmProcessor||null;
-      if(processor)this.virtualBgWarmProcessor=null;
-      if(!processor){
-        processor=new Seg({locateFile:selfieAssetUrl});
-      }
+      try{this.virtualBgWarmProcessor?.close?.()}catch{}
+      this.virtualBgWarmProcessor=null;
+      processor=new Seg({locateFile:selfieAssetUrl});
       const configureSegmentationProcessor=p=>p.setOptions({modelSelection:1});
       configureSegmentationProcessor(processor);
       this.virtualBgProcessor=processor;
@@ -3014,45 +3054,74 @@
         const raw=rawTrack||this.localStream?.getVideoTracks?.().find(t=>t.readyState==='live')||null;
         if(!raw||raw.readyState!=='live'||raw.enabled===false)return null;
         const rawId=raw.id||'';
+        let lastError=null;
 
-        try{
-          const processed=await Promise.race([
-            this.startVirtualBackground(),
-            new Promise((_,reject)=>setTimeout(
-              ()=>reject(new Error('Виртуальный фон не запустился за 15 секунд')),
-              15000
-            ))
-          ]);
-
-          /* A slow cold start stays alive in the background. Never emulate the
-             old manual "switch background and back" workaround here: restarting
-             the processor is exactly what made first activation unreliable. */
+        /* Two live starts max. The second one is a fresh MediaPipe instance and
+           replaces the old manual workaround "turn camera off/on". We never
+           start concurrent inference and never change the user's selected
+           background on failure. */
+        for(let attempt=0;attempt<2;attempt++){
           if(
-            !processed ||
-            processed.readyState!=='live' ||
-            !this.cameraEnabled ||
             this.destroyed ||
+            !this.cameraEnabled ||
             this.virtualBgMode==='none' ||
+            raw.readyState!=='live' ||
+            raw.enabled===false ||
             this.localStream?.getVideoTracks?.()[0]?.id!==rawId
           )return null;
 
-          await this.syncOutgoingCameraTrack();
-          this.bindPrejoinPreview();
-          this.paintPrejoin();
-          this.paint();
-          return processed;
-        }catch(e){
-          console.warn('[Mathroom virtual background activation]',e);
-          this.virtualBgInitializing=false;
-          this.virtualBgError=String(e?.message||'Не удалось запустить виртуальный фон');
-          this.virtualBgStage='ошибка';
-          this.stopVirtualBackground();
-          this.paintPrejoin();
-          this.paintAllVirtualBgControls();
-          this.paint();
-          toast(e?.message||'Не удалось включить виртуальный фон');
-          return null;
+          if(attempt>0){
+            this.stopVirtualBackground();
+            this.virtualBgError='';
+            this.virtualBgInitializing=true;
+            this.virtualBgStage='повторный запуск';
+            this.paintPrejoin();
+            this.paintAllVirtualBgControls();
+            await wait(180);
+          }
+
+          try{
+            const processed=await Promise.race([
+              this.startVirtualBackground(),
+              new Promise((_,reject)=>setTimeout(
+                ()=>reject(new Error('Виртуальный фон не запустился за 12 секунд')),
+                12000
+              ))
+            ]);
+
+            if(
+              processed &&
+              processed.readyState==='live' &&
+              this.cameraEnabled &&
+              !this.destroyed &&
+              this.virtualBgMode!=='none' &&
+              raw.readyState==='live' &&
+              raw.enabled!==false &&
+              this.localStream?.getVideoTracks?.()[0]?.id===rawId
+            ){
+              await this.syncOutgoingCameraTrack();
+              this.bindPrejoinPreview();
+              this.paintPrejoin();
+              this.paint();
+              return processed;
+            }
+
+            lastError=new Error('Обработанный видеопоток не стал активным');
+          }catch(e){
+            lastError=e;
+            console.warn('[Mathroom virtual background activation] attempt '+(attempt+1),e);
+          }
         }
+
+        this.virtualBgInitializing=false;
+        this.virtualBgError=String(lastError?.message||'Не удалось запустить виртуальный фон');
+        this.virtualBgStage='ошибка';
+        this.stopVirtualBackground();
+        this.paintPrejoin();
+        this.paintAllVirtualBgControls();
+        this.paint();
+        toast(lastError?.message||'Не удалось включить виртуальный фон');
+        return null;
       })();
 
       this.virtualBgApplyPromise=task;
@@ -3537,7 +3606,7 @@
       const backdrop = document.createElement('div');
       backdrop.className = 'mr-native-prejoin-backdrop';
       backdrop.innerHTML = `<div class="mr-native-prejoin">
-        <div><div class="pill">Встроенная связь Mathroom · 45.4</div><h2>Подключиться к уроку</h2><p class="small muted">Микрофон и камеру можно проверить заранее. Камера необязательна — без неё в урок всё равно можно войти.</p></div>
+        <div><div class="pill">Встроенная связь Mathroom · 45.5</div><h2>Подключиться к уроку</h2><p class="small muted">Микрофон и камеру можно проверить заранее. Камера необязательна — без неё в урок всё равно можно войти.</p></div>
         <div class="mr-native-prejoin-grid">
           <div class="mr-prejoin-media-col">
             <div class="mr-native-preview"><video id="mrPrejoinVideo" autoplay muted playsinline></video><span class="mr-preview-name">Вы</span></div>
