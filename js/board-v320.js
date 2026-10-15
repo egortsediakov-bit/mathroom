@@ -2504,7 +2504,45 @@
     if(recoveredOffline&&!localOnly)setSyncState(boardNetworkOnline?'syncing':'offline',boardNetworkOnline?'Восстановлены локальные изменения · синхронизация…':'Офлайн · локальные изменения восстановлены');
     else if(!boardNetworkOnline)setSyncState('offline');
 
-    const cleanup=()=>{clearTimeout(saveTimer);clearInterval(checkpointTimer);root.removeEventListener('pointerdown',activateBoardShortcuts,true);root.removeEventListener('focusin',deactivateBoardShortcuts,true);document.removeEventListener('pointerdown',outsideBoardPointer,true);window.removeEventListener('keydown',key,true);window.removeEventListener('keyup',keyup,true);window.removeEventListener('blur',onWindowBlur);document.removeEventListener('paste',pasteExternal,true);if(pasteShortcutFallbackTimer){clearTimeout(pasteShortcutFallbackTimer);pasteShortcutFallbackTimer=null};window.removeEventListener('dragend',clearDragOverlay,true);window.removeEventListener('drop',clearDragOverlay,true);window.removeEventListener('online',onBoardOnline);window.removeEventListener('offline',onBoardOffline);window.removeEventListener('pagehide',onBoardPageHide);if(channel)sb.removeChannel(channel);if(pagesChannel)sb.removeChannel(pagesChannel)};S.boardCleanup=cleanup;
+    const cleanup=()=>{
+      clearTimeout(saveTimer);
+      clearInterval(checkpointTimer);
+
+      /* 46.3 audit: route/live-state rerenders can legitimately unmount a board
+         less than 420 ms after the final stroke. The old cleanup cancelled the
+         delayed persistence timer and could therefore lose the last local DB
+         snapshot even though the realtime preview had already been shown.
+         Persist a recovery snapshot first and trigger an immediate merge-save. */
+      try{
+        if(current){
+          const p=pages.find(x=>x.id===current.id);
+          if(p){p.elements=clone(elements);p.updated_at=new Date().toISOString()}
+          if(localOnly){
+            writeLocal();
+          }else{
+            try{localStorage.setItem(offlineSnapshotKey,JSON.stringify({pageId:current.id,elements,at:Date.now()}))}catch{}
+            persistPendingOps();
+            save().catch(e=>console.warn('[Mathroom board cleanup save]',e));
+          }
+        }
+      }catch(e){console.warn('[Mathroom board cleanup persistence]',e)}
+
+      root.removeEventListener('pointerdown',activateBoardShortcuts,true);
+      root.removeEventListener('focusin',deactivateBoardShortcuts,true);
+      document.removeEventListener('pointerdown',outsideBoardPointer,true);
+      window.removeEventListener('keydown',key,true);
+      window.removeEventListener('keyup',keyup,true);
+      window.removeEventListener('blur',onWindowBlur);
+      document.removeEventListener('paste',pasteExternal,true);
+      if(pasteShortcutFallbackTimer){clearTimeout(pasteShortcutFallbackTimer);pasteShortcutFallbackTimer=null}
+      window.removeEventListener('dragend',clearDragOverlay,true);
+      window.removeEventListener('drop',clearDragOverlay,true);
+      window.removeEventListener('online',onBoardOnline);
+      window.removeEventListener('offline',onBoardOffline);
+      window.removeEventListener('pagehide',onBoardPageHide);
+      if(channel)sb.removeChannel(channel);
+      if(pagesChannel)sb.removeChannel(pagesChannel);
+    };S.boardCleanup=cleanup;
     const diagnostics=()=>({
       pageId:current?.id||'',
       objectCount:elements.length,
