@@ -1205,13 +1205,20 @@
     }
     function appendFreehandPoints(target,e){
       if(!target?.points||!e)return;
-      const coalesced=typeof e.getCoalescedEvents==='function'?(e.getCoalescedEvents()||[]):[];
-      /* Some mobile browsers provide sparse pointermove events, while others
-         provide many noisy coalesced samples. Treat both paths consistently. */
-      const events=[...coalesced,e];
       const type=String(target.inputType||e.pointerType||'mouse');
+
+      /* 46.7: do not use Chromium/Yandex coalesced mouse samples.
+         They are useful for touch/stylus, but on some desktop builds a stale
+         coalesced mouse coordinate occasionally appears for one frame. */
+      const coalesced=type!=='mouse'&&typeof e.getCoalescedEvents==='function'
+        ?(e.getCoalescedEvents()||[])
+        :[];
+      const events=type==='mouse'
+        ?[e]
+        :[...coalesced,e].sort((a,b)=>Number(a?.timeStamp||0)-Number(b?.timeStamp||0));
+
       const minStep=(type==='touch'?1.65:type==='pen'?.55:1.35)/Math.max(.25,camera.zoom);
-      const maxStep=(type==='touch'?7.5:type==='pen'?5.5:8.5)/Math.max(.25,camera.zoom);
+      const maxStep=(type==='touch'?7.5:5.5)/Math.max(.25,camera.zoom);
       let lastStamp=-Infinity,lastClientX=NaN,lastClientY=NaN;
 
       for(const ev of events){
@@ -1235,9 +1242,11 @@
         const dist=Math.hypot(px-last[0],py-last[1]);
         if(dist<minStep)continue;
 
-        /* Fill unusually large sampling gaps. This matters on iOS/Android when
-           a frame is busy: the path remains a curve instead of a sharp chord. */
-        if(dist>maxStep){
+        /* Interpolate sparse samples only for touch/stylus.
+           Never interpolate mouse gaps: a single bad desktop coordinate would
+           otherwise become a whole chain of fake points and survive smoothing
+           as a visible V-shaped spike. */
+        if(type!=='mouse'&&dist>maxStep){
           const count=Math.min(8,Math.floor(dist/maxStep));
           for(let k=1;k<=count;k++){
             const t=k/(count+1);
