@@ -80,16 +80,7 @@
   };
   const freehandPoints=(o,live=false)=>{
     const type=String(o?.inputType||'mouse');
-    let pts=stabilizeFreehandPoints(o?.points||[],type);
-
-    /* 46.8: during a live desktop-mouse stroke the newest coordinate has no
-       "future" neighbour yet, so no median filter can validate it. If that one
-       sample is bogus, it briefly appears as a downward spike and disappears
-       on the next pointer event. Render mouse ink one sample behind instead:
-       the previous point has already been validated by the newest sample.
-       The delay is only one pointer event (~8–16 ms), visually imperceptible. */
-    if(live&&type==='mouse'&&pts.length>=4)pts=pts.slice(0,-1);
-    return pts;
+    return stabilizeFreehandPoints(o?.points||[],type);
   };
   const freehandPathD=(o,live=false)=>smoothPathD(freehandPoints(o,live));
 
@@ -810,6 +801,13 @@
     let boardNetworkOnline=navigator.onLine!==false,saveInFlight=false,lastServerSaveAt=0;
     let penActiveUntil=0,touchPointers=new Map(),touchGesture=null;
     let handTapCandidate=null,lastHandTap=null,pasteShortcutFallbackTimer=null;
+
+    /* 47.0 desktop ink input pipeline.
+       Keep one raw mouse coordinate pending until the next event arrives. That
+       lets us reject a one-frame "down and immediately back" pointer glitch
+       BEFORE it reaches SVG, realtime broadcast or persistence. */
+    let mousePendingSample=null;
+    let mouseLastCommittedAt=0;
     try{const q=JSON.parse(localStorage.getItem(collabQueueKey)||'[]');if(Array.isArray(q))pendingOps=q.slice(-800)}catch{}
     const persistPendingOps=()=>{try{if(pendingOps.length)localStorage.setItem(collabQueueKey,JSON.stringify(pendingOps.slice(-800)));else localStorage.removeItem(collabQueueKey)}catch{}};
     const localOwns=o=>!!o&&o._ownerRole===actorRole&&String(o._ownerId||'')===actorId;
@@ -1233,20 +1231,87 @@
       input?.addEventListener('keydown',ev=>{if((ev.ctrlKey||ev.metaKey)&&ev.key==='Enter'){ev.preventDefault();submit()}});
       try{input?.focus({preventScroll:true})}catch{input?.focus()}
     }
+    function mouseSampleIsTransientSpike(target,b,c){
+      const pts=target?.points||[];
+      if(pts.length<2||!b||!c)return false;
+      const a=pts[pts.length-1],p=pts[pts.length-2];
+      const ab=Math.hypot(b.x-a[0],b.y-a[1]);
+      const bc=Math.hypot(c.x-b.x,c.y-b.y);
+      const ac=Math.hypot(c.x-a[0],c.y-a[1]);
+      if(ab<4/camera.zoom||bc<4/camera.zoom)return false;
+
+      const v1x=b.x-a[0],v1y=b.y-a[1],v2x=c.x-b.x,v2y=c.y-b.y;
+      const cos=(v1x*v2x+v1y*v2y)/Math.max(.0001,ab*bc);
+      const detour=(ab+bc)/Math.max(1/camera.zoom,ac);
+
+      /* Compare B and C to the local direction that existed before the suspect
+         point. A browser glitch leaves that direction and immediately returns;
+         a deliberate V/corner continues along a new direction and is kept. */
+      const dx=a[0]-p[0],dy=a[1]-p[1],dl=Math.hypot(dx,dy);
+      let bOff=0,cOff=0;
+      if(dl>.001){
+        bOff=Math.abs((b.x-a[0])*dy-(b.y-a[1])*dx)/dl;
+        cOff=Math.abs((c.x-a[0])*dy-(c.y-a[1])*dx)/dl;
+      }
+
+      const dt=Math.max(0,Number(c.t||0)-Number(b.t||0));
+      const fastReturn=!dt||dt<=42;
+      const returnedToTrajectory=dl<.001
+        ?ac<Math.max(5/camera.zoom,Math.min(ab,bc)*.55)
+        :bOff>5/camera.zoom&&cOff<Math.max(3/camera.zoom,bOff*.38);
+
+      return fastReturn&&cos<-.18&&detour>1.55&&returnedToTrajectory;
+    }
+
+    function commitMousePending(target,nextSample=null){
+      const b=mousePendingSample;
+      if(!b)return;
+      const last=target?.points?.[target.points.length-1];
+      if(!last){target.points.push([b.x,b.y,b.pressure]);mouseLastCommittedAt=b.t||performance.now();mousePendingSample=null;return}
+      if(nextSample&&mouseSampleIsTransientSpike(target,b,nextSample)){
+        mousePendingSample=nextSample;
+        return;
+      }
+      const minStep=1.35/Math.max(.25,camera.zoom);
+      if(Math.hypot(b.x-last[0],b.y-last[1])>=minStep){
+        target.points.push([b.x,b.y,b.pressure]);
+        mouseLastCommittedAt=b.t||performance.now();
+      }
+      mousePendingSample=nextSample;
+    }
+
+    function flushMousePending(target){
+      const b=mousePendingSample;
+      mousePendingSample=null;
+      if(!b||!target?.points)return;
+      const last=target.points[target.points.length-1];
+      const minStep=.75/Math.max(.25,camera.zoom);
+      if(!last||Math.hypot(b.x-last[0],b.y-last[1])>=minStep){
+        target.points.push([b.x,b.y,b.pressure]);
+        mouseLastCommittedAt=b.t||performance.now();
+      }
+    }
+
     function appendFreehandPoints(target,e){
       if(!target?.points||!e)return;
       const type=String(target.inputType||e.pointerType||'mouse');
 
-      /* 46.7: do not use Chromium/Yandex coalesced mouse samples.
-         They are useful for touch/stylus, but on some desktop builds a stale
-         coalesced mouse coordinate occasionally appears for one frame. */
-      const coalesced=type!=='mouse'&&typeof e.getCoalescedEvents==='function'
-        ?(e.getCoalescedEvents()||[])
-        :[];
-      const events=type==='mouse'
-        ?[e]
-        :[...coalesced,e].sort((a,b)=>Number(a?.timeStamp||0)-Number(b?.timeStamp||0));
+      /* Desktop mouse is intentionally single-event and one-sample buffered.
+         Touch/stylus retain coalesced events and sparse-gap interpolation. */
+      if(type==='mouse'&&target.type==='path'){
+        if(!Number.isFinite(e.clientX)||!Number.isFinite(e.clientY))return;
+        const [px,py]=screenToWorld(e.clientX,e.clientY);
+        const sample={x:px,y:py,pressure:.5,t:Number(e.timeStamp||performance.now())};
+        if(!mousePendingSample){
+          mousePendingSample=sample;
+          return;
+        }
+        commitMousePending(target,sample);
+        return;
+      }
 
+      const coalesced=typeof e.getCoalescedEvents==='function'?(e.getCoalescedEvents()||[]):[];
+      const events=[...coalesced,e].sort((a,b)=>Number(a?.timeStamp||0)-Number(b?.timeStamp||0));
       const minStep=(type==='touch'?1.65:type==='pen'?.55:1.35)/Math.max(.25,camera.zoom);
       const maxStep=(type==='touch'?7.5:5.5)/Math.max(.25,camera.zoom);
       let lastStamp=-Infinity,lastClientX=NaN,lastClientY=NaN;
@@ -1263,20 +1328,12 @@
         const last=target.points[target.points.length-1];
         const isPen=type==='pen';
         const pressure=isPen?Math.max(.05,Math.min(1,Number(ev.pressure)||.5)):.5;
-
-        if(!last){
-          target.points.push([px,py,pressure]);
-          continue;
-        }
+        if(!last){target.points.push([px,py,pressure]);continue}
 
         const dist=Math.hypot(px-last[0],py-last[1]);
         if(dist<minStep)continue;
 
-        /* Interpolate sparse samples only for touch/stylus.
-           Never interpolate mouse gaps: a single bad desktop coordinate would
-           otherwise become a whole chain of fake points and survive smoothing
-           as a visible V-shaped spike. */
-        if(type!=='mouse'&&dist>maxStep){
+        if(dist>maxStep){
           const count=Math.min(8,Math.floor(dist/maxStep));
           for(let k=1;k<=count;k++){
             const t=k/(count+1);
@@ -1315,7 +1372,7 @@
       node.setAttribute('d',freehandPathD(target,true));
       return true;
     }
-    function clearLiveInk(){liveInkNode=null;liveInkId=''}
+    function clearLiveInk(){liveInkNode=null;liveInkId='';mousePendingSample=null}
     function renderInteractive(){if(interactiveFrame)return;interactiveFrame=requestAnimationFrame(()=>{interactiveFrame=0;render()})}
     function renderTabs(){
       pageTabs.innerHTML=pages.map(p=>{
@@ -1831,6 +1888,7 @@
       if(tool==='pen'||tool==='pencil'){
         drawing.type='path';
         drawing.inputType=String(e.pointerType||'mouse');
+        if(drawing.inputType==='mouse'){mousePendingSample=null;mouseLastCommittedAt=Number(e.timeStamp||performance.now())}
         const isPen=e.pointerType==='pen',pressure=isPen?Math.max(.05,Math.min(1,Number(e.pressure)||.5)):.5;
         if(isPen){drawing.pressureSensitive=true;drawing.baseWidth=width;penActiveUntil=Date.now()+1200}
         drawing.points=[[x,y,pressure]];
@@ -1970,9 +2028,9 @@
       if(hadTransform&&!transformDirty){const last=undoStack[undoStack.length-1];if(last?.type==='elements'&&last.pageId===current.id&&JSON.stringify(last.elements)===JSON.stringify(elements))undoStack.pop();syncHistoryButtons()}
       if(drawing&&drawing.type!=='marker-temp'||hadTransform){
         if(drawing?.type==='path'){
-          /* pointerup can contain the last sample even when no final pointermove
-             was dispatched. Keep the written character connected to the finger. */
+          /* pointerup is also the final validator for desktop mouse input. */
           appendFreehandPoints(drawing,e);
+          if(String(drawing.inputType||'')==='mouse')flushMousePending(drawing);
           sendStrokeChunk(drawing,true);
           remoteLiveStrokes.delete(drawing.id);
         }
