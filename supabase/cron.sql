@@ -25,3 +25,13 @@ select cron.schedule(
   );
   $$
 );
+
+
+-- Trial CRM lifecycle: mark a scheduled CRM trial as not held when the teacher
+-- has not started it within 30 minutes. This is a database-only job, so it
+-- works even when neither Mathroom nor CRM is open.
+select cron.schedule(
+  'mathroom-mark-missed-crm-trials',
+  '* * * * *',
+  'select public.mathroom_mark_missed_crm_trials();'
+);
