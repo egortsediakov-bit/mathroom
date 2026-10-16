@@ -12,9 +12,9 @@
     if(kind==='calendar')return '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5.5" width="16" height="14" rx="3"/><path d="M8 3.5v4M16 3.5v4M4 10h16"/><path class="accent" d="M8 14h3M13 14h3M8 17h3"/></svg>';
     if(kind==='clock')return '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path class="accent" d="M12 7v5l3 2"/></svg>';
     if(kind==='repeat')return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 8h11l-2.5-2.5"/><path class="accent" d="M19 16H8l2.5 2.5"/><path d="M5 8a7 7 0 0 0 1 8M19 16a7 7 0 0 0-1-8"/></svg>';
-    if(kind==='single')return '<svg class="mr-v3-repeat-mode-svg" viewBox="0 0 24 24" aria-hidden="true"><rect x="5.5" y="5.5" width="13" height="13" rx="3.5"/><path class="accent" d="M12 8.5v7"/><path class="accent" d="M10.2 10.1 12 8.5l1.8 1.6"/></svg>';
-    if(kind==='weekly')return '<svg class="mr-v3-repeat-mode-svg" viewBox="0 0 24 24" aria-hidden="true"><rect x="5.5" y="5.5" width="13" height="13" rx="3.5"/><path class="accent" d="M8.2 12c1.2-2 2.5-3 3.8-3s2.6 1 3.8 3c-1.2 2-2.5 3-3.8 3s-2.6-1-3.8-3Z"/><path d="M8.8 16.7c1 .6 2 .8 3.2.8 3.1 0 5.5-2.5 5.5-5.5"/></svg>';
-    if(kind==='custom')return '<svg class="mr-v3-repeat-mode-svg" viewBox="0 0 24 24" aria-hidden="true"><circle cx="7" cy="12" r="2"/><circle class="accent-fill" cx="17" cy="7" r="2"/><circle cx="17" cy="17" r="2"/><path d="M9 12h3c2.2 0 3-1.6 3-3"/><path class="accent" d="M12 12c2.2 0 3 1.6 3 3"/></svg>';
+    if(kind==='single')return '<svg class="mr-v3-repeat-mode-svg" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="5.5" width="14" height="13" rx="3"/><path class="accent" d="M8.5 10h7"/><path d="M8.5 14h7"/></svg>';
+    if(kind==='weekly')return '<svg class="mr-v3-repeat-mode-svg" viewBox="0 0 24 24" aria-hidden="true"><rect x="7.5" y="3.8" width="11.5" height="11.5" rx="2.6"/><rect x="5.3" y="6" width="11.5" height="11.5" rx="2.6"/><rect x="3.2" y="8.2" width="11.5" height="11.5" rx="2.6"/><path class="accent" d="M6.5 12.6h5"/><path d="M6.5 15.5h5"/></svg>';
+    if(kind==='custom')return '<svg class="mr-v3-repeat-mode-svg" viewBox="0 0 24 24" aria-hidden="true"><rect x="4.5" y="5" width="12.5" height="14" rx="3"/><path d="M8 9.5h5M8 13h3.5"/><circle class="accent-fill" cx="17.2" cy="16.8" r="4.1"/><path class="accent-plus" d="M17.2 14.8v4M15.2 16.8h4"/></svg>';
     return '';
   }
 
