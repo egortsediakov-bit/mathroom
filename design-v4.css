@@ -6070,3 +6070,244 @@ html[data-theme="dark"] .view-topics .mr-topic-create{
   .view-topics .mr-topic-card-icon{display:none}
   .view-topics .mr-topic-card-actions{grid-column:1/-1!important}
 }
+
+
+/* v50.1 — topics orange rebalance */
+/* Route: orange becomes the hero accent, black stays in typography only */
+.view-topics .mr-topic-route-card{
+  border-color:#ffd4c0!important;
+  background:
+    radial-gradient(circle at 86% 18%,rgba(243,90,22,.16) 0 78px,transparent 79px),
+    radial-gradient(circle at 74% -28%,rgba(243,90,22,.10) 0 122px,transparent 123px),
+    linear-gradient(100deg,#fff 0%,#fffaf7 58%,#fff0e7 100%)!important;
+}
+.view-topics .mr-topic-route-card::before{
+  content:"";
+  position:absolute;
+  right:25%;
+  top:24px;
+  width:92px;height:54px;
+  border-top:1px dashed rgba(243,90,22,.55);
+  border-radius:50%;
+  transform:rotate(18deg);
+  pointer-events:none
+}
+.view-topics .mr-topic-route-card::after{
+  right:11%!important;top:-64px!important;
+  width:170px!important;height:170px!important;
+  border-color:rgba(243,90,22,.22)!important
+}
+.view-topics .mr-topic-route-icon{
+  background:linear-gradient(145deg,#ff6a22,#f24f0d)!important;
+  color:#fff!important;
+  border:1px solid #ff7c3e;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.28),0 10px 22px rgba(243,90,22,.19)!important
+}
+.view-topics .mr-topic-route-svg .accent{stroke:#fff!important}
+.view-topics .mr-topic-route-icon::after{
+  content:"";
+  position:absolute;
+  width:7px;height:7px;border-radius:50%;
+  margin:-34px -34px 0 0;
+  background:#fff;
+  box-shadow:0 0 0 3px rgba(255,255,255,.18)
+}
+
+/* Orange section label instead of black */
+.view-topics .mr-topic-track-kicker{
+  min-height:29px!important;
+  padding:0 13px!important;
+  border-radius:999px!important;
+  background:linear-gradient(180deg,#ff6c28,#f35210)!important;
+  color:#fff!important;
+  box-shadow:0 7px 16px rgba(243,90,22,.13)!important
+}
+
+/* Topic counter gets an icon and a stronger orange identity */
+.view-topics .mr-topic-count{
+  min-width:86px!important;
+  height:34px!important;
+  padding:0 11px!important;
+  display:flex!important;
+  align-items:center!important;
+  justify-content:center!important;
+  gap:7px!important;
+  background:#fff7f2!important;
+  color:#f35a16!important;
+  border-color:#ffcdb5!important;
+  border-radius:11px!important
+}
+.view-topics .mr-topic-count b{
+  font-size:9px;font-weight:900;white-space:nowrap
+}
+.view-topics .mr-topic-count-svg{
+  width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round
+}
+.view-topics .mr-topic-count-svg .accent{stroke:#ff7a39}
+
+/* Cards: orange is persistent; black stops behaving as a background color */
+.view-topics .mr-topic-card-v2{
+  border-color:#e3e6e9!important;
+  background:
+    radial-gradient(circle at 67% 116%,rgba(243,90,22,.035) 0 92px,transparent 93px),
+    #fff!important
+}
+.view-topics .mr-topic-card-v2::before{
+  top:8px!important;bottom:8px!important;
+  width:4px!important;
+  background:linear-gradient(180deg,#ff702e,#f24e0c)!important
+}
+.view-topics .mr-topic-card-v2::after{
+  content:"⋮";
+  position:absolute;
+  right:14px;top:8px;
+  color:#f35a16;
+  font-size:18px;font-weight:900;line-height:1;
+  letter-spacing:1px;
+  opacity:.95;
+  pointer-events:none
+}
+.view-topics .mr-topic-card-v2:hover{
+  border-color:#ffc8ae!important;
+  background:
+    radial-gradient(circle at 67% 116%,rgba(243,90,22,.075) 0 100px,transparent 101px),
+    linear-gradient(100deg,#fff8f4 0%,#fff 42%)!important
+}
+
+/* Sequence is now a white badge with orange underline instead of a black tile */
+.view-topics .mr-topic-seq{
+  position:relative;
+  width:40px!important;height:40px!important;
+  border-radius:11px!important;
+  background:#fff!important;
+  color:#17191c!important;
+  border:1px solid #dde2e7!important;
+  box-shadow:0 4px 12px rgba(18,20,24,.035)!important
+}
+.view-topics .mr-topic-seq::after{
+  content:"";
+  position:absolute;left:10px;right:10px;bottom:5px;
+  height:3px;border-radius:999px;
+  background:#f35a16
+}
+
+/* Topic icon remains pale but more saturated */
+.view-topics .mr-topic-card-icon{
+  background:linear-gradient(145deg,#fff4ed,#ffeadf)!important;
+  border-color:#ffd1bb!important
+}
+.view-topics .mr-topic-card-svg .accent{stroke:#f35a16!important}
+
+/* Edit/delete controls match the mockup */
+.view-topics .mr-topic-card-actions{
+  padding-top:15px
+}
+.view-topics .mr-topic-card-actions .btn{
+  display:inline-flex!important;
+  align-items:center!important;
+  justify-content:center!important;
+  gap:6px!important;
+  min-height:38px!important;
+  padding:0 12px!important;
+  font-size:9px!important
+}
+.view-topics .mr-topic-action-svg{
+  width:17px;height:17px;
+  flex:0 0 17px;
+  fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round
+}
+.view-topics .mr-topic-action-svg .accent{stroke:#f35a16}
+.view-topics .mr-topic-edit{
+  background:#fff!important;
+  color:#17191c!important;
+  border-color:#dce1e6!important;
+  box-shadow:0 4px 12px rgba(18,20,24,.025)!important
+}
+.view-topics .mr-topic-edit .mr-topic-action-svg{
+  color:#f35a16
+}
+.view-topics .mr-topic-edit:hover{
+  background:#fff7f2!important;
+  color:#f35a16!important;
+  border-color:#f4b99f!important
+}
+.view-topics .mr-topic-delete{
+  background:#fff7f3!important;
+  color:#ef4f0d!important;
+  border-color:#ffcdb8!important
+}
+.view-topics .mr-topic-delete .mr-topic-action-svg{
+  color:#ef4f0d
+}
+.view-topics .mr-topic-delete:hover{
+  background:#fff0e8!important;
+  color:#e84b08!important;
+  border-color:#f35a16!important
+}
+.view-topics .mr-topic-card-actions .mr-row-arrow{
+  width:40px!important;height:40px!important;
+  border-radius:11px!important;
+  background:linear-gradient(180deg,#ff6a22,#f2510e)!important;
+  color:#fff!important;
+  box-shadow:0 7px 16px rgba(243,90,22,.14)!important
+}
+.view-topics .mr-topic-card-v2:hover .mr-row-arrow{
+  background:linear-gradient(180deg,#ff793b,#f04d0c)!important
+}
+
+/* Small orange metadata dot */
+.view-topics .mr-topic-card-meta span+span::before{
+  width:4px!important;height:4px!important;background:#f35a16!important
+}
+
+/* Grade hover is warmer */
+.view-topics .mr-topic-grade-tab:hover{
+  border-color:#f3a984!important;
+  color:#f35a16!important;
+  background:#fff7f2!important
+}
+.view-topics .mr-topic-grade-tab.active{
+  background:linear-gradient(180deg,#ff6a22,#f1510f)!important;
+  border-color:#f35a16!important
+}
+
+/* Dark theme keeps orange emphasis without making everything black */
+html[data-theme="dark"] .view-topics .mr-topic-route-card{
+  background:
+    radial-gradient(circle at 86% 18%,rgba(255,106,36,.16) 0 78px,transparent 79px),
+    radial-gradient(circle at 74% -28%,rgba(255,106,36,.10) 0 122px,transparent 123px),
+    linear-gradient(100deg,#15181d 0%,#191816 58%,#24160f 100%)!important
+}
+html[data-theme="dark"] .view-topics .mr-topic-route-icon{
+  background:linear-gradient(145deg,#ff7432,#f25813)!important;color:#fff!important;border-color:#ff864c!important
+}
+html[data-theme="dark"] .view-topics .mr-topic-seq{
+  background:#1b1f25!important;
+  color:#f4f6f8!important;
+  border-color:#343b45!important
+}
+html[data-theme="dark"] .view-topics .mr-topic-card-v2{
+  background:
+    radial-gradient(circle at 67% 116%,rgba(255,106,36,.06) 0 92px,transparent 93px),
+    #15181d!important
+}
+html[data-theme="dark"] .view-topics .mr-topic-edit{
+  background:#1b1f25!important;
+  color:#f4f6f8!important;
+  border-color:#343b45!important
+}
+html[data-theme="dark"] .view-topics .mr-topic-edit:hover{
+  background:#25170f!important;
+  color:#ff7a39!important;
+  border-color:#5b301a!important
+}
+html[data-theme="dark"] .view-topics .mr-topic-delete{
+  background:#28180f!important;
+  color:#ff7a39!important;
+  border-color:#5a301a!important
+}
+html[data-theme="dark"] .view-topics .mr-topic-count{
+  background:#28180f!important;
+  color:#ff7a39!important;
+  border-color:#5a301a!important
+}
