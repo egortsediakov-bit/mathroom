@@ -792,7 +792,96 @@ function renderTopic(){
   const examplesHtml=examples.length?examples.map(x=>`<div class="row"><div><h3>${esc(x.title||'Пример')}</h3><div class="prewrap">${nl(x.content)}</div></div><div class="actions"><button class="btn sm" data-edit-material="${x.id}">Редактировать</button><button class="btn sm danger" data-delete-material="${x.id}">Удалить</button></div></div>`).join(''):'<div class="empty">Нет примеров.</div>';
   const tasksHtml=tasks.length?tasks.map(x=>`<div class="row"><div class="row-main"><div class="actions"><span class="pill">${diffLabel(x.difficulty)}</span>${x.category?`<span class="pill">${esc(x.category)}</span>`:''}</div><h3>${esc(x.title||'Задача')}</h3><div class="prewrap">${nl(x.content)}</div><div class="small muted">Ответ: ${esc(x.answer||'—')} · ${exerciseEditableTags(x.tags).map(z=>'#'+esc(z)).join(' ')}</div></div><div class="actions"><button class="btn sm" data-edit-material="${x.id}">Редактировать</button><button class="btn sm danger" data-delete-material="${x.id}">Удалить</button></div></div>`).join(''):'<div class="empty">Задач пока нет.</div>';
   const sourcesHtml=sources.length?sources.map(x=>`<div class="mr-textbook-source"><div><b>${esc(x.textbook.title)}</b>${x.textbook.author?`<span>${esc(x.textbook.author)}</span>`:''}<small>${x.page_from?`стр. ${x.page_from}${x.page_to&&x.page_to!==x.page_from?`–${x.page_to}`:''}`:'страницы не указаны'}${x.note?` · ${esc(x.note)}`:''}</small></div><div class="actions"><button class="btn sm" data-open-source="${x.textbook.id}" data-page="${x.page_from||''}">Открыть PDF</button><button class="btn sm primary" data-board-source="${x.id}">На доску</button><button class="btn sm danger" data-unlink-source="${x.id}">Убрать</button></div></div>`).join(''):'<div class="empty">Учебник к теме пока не привязан.</div>';
-  app.innerHTML=shell(`<div class="actions" style="margin-bottom:14px"><button class="btn" id="backTopics">← Темы</button><button class="btn" id="editCurrentTopic">Редактировать тему</button><button class="btn danger" id="deleteCurrentTopic">Удалить тему</button><button class="btn primary" id="startLesson">Начать урок</button><select id="assignStudent" class="search" style="width:auto">${studentOpts}</select><input id="assignCount" class="search" type="number" min="1" max="20" value="5" style="width:80px"><button class="btn" id="makeHw">+ Домашняя</button><button class="btn" id="makeTest">+ Тест</button></div><div class="card mr-topic-hero"><div class="mr-card-head"><div><span class="pill">${t.grade} класс · ${esc(pos.track)}</span>${pos.index?`<span class="pill">тема ${pos.index} из ${pos.total}</span>`:''}<h2>${esc(t.title)}</h2><p class="muted">${esc(t.section||'')}</p></div>${next?`<div class="mr-next-topic-mini"><small>Дальше по программе</small><b>${esc(next.title)}</b><div class="actions"><button class="btn sm" id="openNextTopic">Открыть</button><button class="btn sm primary" id="scheduleNextTopic">В расписание</button></div></div>`:''}</div></div><div class="card mr-theory-card"><div class="mr-card-head"><div><h2>Теория</h2><p class="small muted">Короткий конспект: смысл → алгоритм → пример → что запомнить.</p>${curriculumSource?`<div class="mr-theory-source"><b>Основа конспекта:</b> ${esc(curriculumSource)}</div>`:''}</div><button class="btn sm" id="theoryBoardTopic">На доску</button></div>${theoryHtml(t.theory)}</div><div class="card mr-topic-sources"><div class="mr-card-head"><div><h2>Учебники и источники</h2><p class="small muted">Можно привязать PDF и конкретные страницы к этой теме.</p></div><button class="btn sm" id="linkTextbookTopic">+ Привязать учебник</button></div>${curriculumSource?`<div class="mr-curriculum-source"><span class="pill">Учебный маршрут</span><div><b>${esc(curriculumSource)}</b><small>Конспект адаптирован для Mathroom, а не скопирован из учебника дословно.</small></div></div>`:''}${sourcesHtml}</div><div class="section-title"><h2>Примеры</h2></div><div class="list">${examplesHtml}</div><div class="form-card"><h2>Добавить материал</h2><form id="itemForm"><div class="grid cols3"><div class="field"><label>Тип</label><select id="itKind"><option value="task">Задача</option><option value="example">Пример</option></select></div><div class="field"><label>Сложность</label><select id="itDiff"><option value="basic">Базовая</option><option value="medium">Средняя</option><option value="advanced">Сложная</option></select></div><div class="field"><label>Категория</label><input id="itCat"></div></div><div class="field"><label>Название</label><input id="itTitle"></div><div class="field"><label>Условие</label><textarea id="itContent" rows="4" required></textarea></div><div class="grid cols2"><div class="field"><label>Ответ</label><input id="itAnswer"></div><div class="field"><label>Теги через запятую</label><input id="itTags"></div></div><button class="btn primary">Добавить</button></form></div><div class="section-title"><h2>Задачи · ${tasks.length}</h2></div><div class="list">${tasksHtml}</div>`,'Тема',`${t.grade} класс · ${pos.track}`);bindShell();
+  const topicUiIcon=kind=>{
+    const common='class="mr-topic-detail-icon" viewBox="0 0 24 24" aria-hidden="true"';
+    if(kind==='edit')return `<svg ${common}><path d="M5 19l3.8-.9L18 8.9 15.1 6 5.9 15.2 5 19Z"/><path class="accent" d="m13.7 7.4 2.9 2.9"/></svg>`;
+    if(kind==='trash')return `<svg ${common}><path d="M5 7h14M9 7V4.8h6V7M7.5 7l.7 12h7.6l.7-12"/><path class="accent" d="M10 11v4M14 11v4"/></svg>`;
+    if(kind==='play')return `<svg ${common}><rect x="4" y="4" width="16" height="16" rx="5"/><path class="accent-fill" d="m10 8.5 6 3.5-6 3.5z"/></svg>`;
+    if(kind==='book')return `<svg ${common}><path d="M4 5.5c3.4-1.3 6.1-.7 8 1v12c-1.9-1.7-4.6-2.3-8-1V5.5Z"/><path class="accent" d="M20 5.5c-3.4-1.3-6.1-.7-8 1v12c1.9-1.7 4.6-2.3 8-1V5.5Z"/></svg>`;
+    if(kind==='task')return `<svg ${common}><rect x="5" y="4" width="14" height="16" rx="3"/><path d="M8 9h8M8 13h5"/><path class="accent" d="m8 16 1.5 1.5L12 15"/></svg>`;
+    if(kind==='example')return `<svg ${common}><path d="M5 8h14M5 16h14"/><path class="accent" d="M8 5v6M16 13v6"/></svg>`;
+    if(kind==='source')return `<svg ${common}><path d="M6 4h9l3 3v13H6z"/><path class="accent" d="M15 4v4h4M9 12h6M9 16h4"/></svg>`;
+    if(kind==='board')return `<svg ${common}><rect x="4" y="5" width="16" height="11" rx="2.5"/><path class="accent" d="M9 20h6M12 16v4"/></svg>`;
+    return '';
+  };
+  app.innerHTML=shell(`
+    <div class="mr-topic-detail-v2">
+      <section class="mr-topic-detail-hero">
+        <div class="mr-topic-detail-hero-top">
+          <button class="mr-topic-detail-back" id="backTopics">← <span>Темы</span></button>
+          <div class="mr-topic-detail-hero-actions">
+            <button class="mr-topic-detail-action" id="editCurrentTopic">${topicUiIcon('edit')}<span>Редактировать</span></button>
+            <button class="mr-topic-detail-action danger" id="deleteCurrentTopic">${topicUiIcon('trash')}<span>Удалить</span></button>
+            <button class="mr-topic-detail-action primary" id="startLesson">${topicUiIcon('play')}<span>Начать урок</span></button>
+          </div>
+        </div>
+        <div class="mr-topic-detail-hero-main">
+          <div class="mr-topic-detail-title">
+            <div class="mr-topic-detail-badges"><span>${t.grade} класс</span><span>${esc(pos.track)}</span>${pos.index?`<span>Тема ${pos.index} из ${pos.total}</span>`:''}</div>
+            <h1>${esc(t.title)}</h1>
+            <p>${esc(t.section||'')}</p>
+          </div>
+          <div class="mr-topic-detail-art"><span>x²</span><i></i><b>${t.grade}</b></div>
+        </div>
+        ${next?`<div class="mr-topic-next-v2"><span class="mr-topic-next-icon">${topicUiIcon('book')}</span><div><small>Дальше по программе</small><b>${esc(next.title)}</b></div><div class="mr-topic-next-actions"><button id="openNextTopic">Открыть</button><button class="primary" id="scheduleNextTopic">В расписание</button><span>→</span></div></div>`:''}
+      </section>
+
+      <section class="mr-topic-detail-toolbar">
+        <div class="mr-topic-detail-tabs">
+          <button class="active" data-topic-scroll="topicTheory">${topicUiIcon('book')}<span>Теория</span></button>
+          <button data-topic-scroll="topicTasks">${topicUiIcon('task')}<span>Задачи</span></button>
+          <button data-topic-scroll="topicExamples">${topicUiIcon('example')}<span>Примеры</span></button>
+          <button data-topic-scroll="topicSources">${topicUiIcon('source')}<span>Учебники</span></button>
+        </div>
+        <button class="mr-topic-board-btn" id="theoryBoardTopic">${topicUiIcon('board')}<span>На доску</span></button>
+      </section>
+
+      <section class="card mr-theory-card mr-topic-theory-v2" id="topicTheory">
+        <div class="mr-topic-section-head">
+          <div><span class="mr-topic-section-kicker">Короткий конспект</span><h2>Теория</h2><p>Смысл → алгоритм → пример → что запомнить.</p></div>
+          ${curriculumSource?`<div class="mr-topic-source-pill">${topicUiIcon('book')}<span><b>Основа конспекта</b><small>${esc(curriculumSource)}</small></span></div>`:''}
+        </div>
+        ${theoryHtml(t.theory)}
+      </section>
+
+      <section class="card mr-topic-sources mr-topic-sources-v2" id="topicSources">
+        <div class="mr-topic-section-head compact">
+          <div><span class="mr-topic-section-kicker">Материалы</span><h2>Учебники и источники</h2><p>PDF и конкретные страницы, связанные с этой темой.</p></div>
+          <button class="mr-topic-secondary-btn" id="linkTextbookTopic">+ Привязать учебник</button>
+        </div>
+        ${curriculumSource?`<div class="mr-curriculum-source"><span class="pill">Учебный маршрут</span><div><b>${esc(curriculumSource)}</b><small>Конспект адаптирован для Mathroom, а не скопирован из учебника дословно.</small></div></div>`:''}
+        ${sourcesHtml}
+      </section>
+
+      <section class="mr-topic-content-section" id="topicExamples">
+        <div class="mr-topic-section-title"><div><span class="mr-topic-section-kicker">Практика</span><h2>Примеры</h2></div><span>${examples.length}</span></div>
+        <div class="list mr-topic-list-v2">${examplesHtml}</div>
+      </section>
+
+      <section class="form-card mr-topic-material-create">
+        <div class="mr-topic-section-head compact"><div><span class="mr-topic-section-kicker">Редактор</span><h2>Добавить материал</h2><p>Добавь задачу или пример к текущей теме.</p></div></div>
+        <form id="itemForm"><div class="grid cols3"><div class="field"><label>Тип</label><select id="itKind"><option value="task">Задача</option><option value="example">Пример</option></select></div><div class="field"><label>Сложность</label><select id="itDiff"><option value="basic">Базовая</option><option value="medium">Средняя</option><option value="advanced">Сложная</option></select></div><div class="field"><label>Категория</label><input id="itCat"></div></div><div class="field"><label>Название</label><input id="itTitle"></div><div class="field"><label>Условие</label><textarea id="itContent" rows="4" required></textarea></div><div class="grid cols2"><div class="field"><label>Ответ</label><input id="itAnswer"></div><div class="field"><label>Теги через запятую</label><input id="itTags"></div></div><button class="btn primary">Добавить</button></form>
+      </section>
+
+      <section class="mr-topic-content-section" id="topicTasks">
+        <div class="mr-topic-section-title"><div><span class="mr-topic-section-kicker">Банк</span><h2>Задачи</h2></div><span>${tasks.length}</span></div>
+        <div class="list mr-topic-list-v2">${tasksHtml}</div>
+      </section>
+
+      <section class="mr-topic-assignment-bar">
+        <div class="mr-topic-assignment-copy"><b>Назначить по теме</b><small>Выбери ученика и количество заданий.</small></div>
+        <select id="assignStudent" class="search">${studentOpts}</select>
+        <input id="assignCount" class="search" type="number" min="1" max="20" value="5">
+        <button class="mr-topic-secondary-btn" id="makeHw">+ Домашняя</button>
+        <button class="mr-topic-secondary-btn" id="makeTest">+ Тест</button>
+      </section>
+    </div>`,'Тема',`${t.grade} класс · ${pos.track}`);bindShell();
+    document.querySelectorAll('[data-topic-scroll]').forEach(b=>b.onclick=()=>{
+      const target=document.getElementById(b.dataset.topicScroll);
+      if(!target)return;
+      document.querySelectorAll('[data-topic-scroll]').forEach(x=>x.classList.toggle('active',x===b));
+      target.scrollIntoView({behavior:'smooth',block:'start'});
+    });
   document.getElementById('backTopics').onclick=()=>{S.topic=null;S.view='topics';S.topicGradeFilter=Number(t.grade);renderTeacher()};
   document.getElementById('editCurrentTopic').onclick=()=>editTopicModal(t,{returnToTopic:true});
   document.getElementById('deleteCurrentTopic').onclick=()=>deleteTopicRow(t,{returnToTopics:true});
