@@ -142,11 +142,13 @@
 }
 .mr-v3-repeat-mode-icon svg .accent{stroke:#f35a16}
 .mr-v3-repeat-mode-icon svg .accent-fill{fill:#f35a16;stroke:none}
+.mr-v3-repeat-mode-icon svg .accent-plus{stroke:#fff;stroke-width:1.8;stroke-linecap:round}
 .mr-v3-repeat-modes button.active .mr-v3-repeat-mode-icon{
   background:#f35a16;border-color:#f35a16;color:#fff
 }
 .mr-v3-repeat-modes button.active .mr-v3-repeat-mode-icon svg .accent{stroke:#fff}
 .mr-v3-repeat-modes button.active .mr-v3-repeat-mode-icon svg .accent-fill{fill:#fff}
+.mr-v3-repeat-modes button.active .mr-v3-repeat-mode-icon svg .accent-plus{stroke:#f35a16}
 .mr-v3-repeat-modes button:hover{border-color:#f4b99f;background:#fff8f4}
 .mr-v3-repeat-modes button.active{background:#fff0e8;border-color:#f35a16;color:#f35a16;box-shadow:inset 0 0 0 1px rgba(243,90,22,.05)}
 .mr-v3-repeat-extra,.mr-v3-interval{
