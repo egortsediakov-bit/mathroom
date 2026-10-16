@@ -752,14 +752,17 @@ function renderTopics(){
     return `<svg ${common}><rect x="5" y="4" width="14" height="16" rx="3"/><path class="accent" d="M8 9h8M8 13h5"/></svg>`;
   };
   const routeIcon=`<svg class="mr-topic-route-svg" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5.5c3.3-1.2 6-.6 8 1.1v12c-2-1.7-4.7-2.3-8-1.1v-12Z"/><path d="M20 5.5c-3.3-1.2-6-.6-8 1.1v12c2-1.7 4.7-2.3 8-1.1v-12Z"/><path class="accent" d="M12 6.6v12"/></svg>`;
+  const editTopicIcon=`<svg class="mr-topic-action-svg" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 19l3.8-.9L18 8.9 15.1 6 5.9 15.2 5 19Z"/><path class="accent" d="m13.7 7.4 2.9 2.9"/></svg>`;
+  const deleteTopicIcon=`<svg class="mr-topic-action-svg" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M9 7V4.8h6V7M7.5 7l.7 12h7.6l.7-12"/><path class="accent" d="M10 11v4M14 11v4"/></svg>`;
+  const countTopicIcon=`<svg class="mr-topic-count-svg" viewBox="0 0 24 24" aria-hidden="true"><path d="m12 4 7 4-7 4-7-4 7-4Z"/><path d="m5 12 7 4 7-4"/><path class="accent" d="m5 16 7 4 7-4"/></svg>`;
   const gradeTabs=Array.from({length:11},(_,i)=>i+1).map(g=>`<button class="mr-topic-grade-tab ${g===grade?'active':''}" data-topic-grade="${g}">${g}</button>`).join('');
   const groupsHtml=[...groups.entries()].map(([track,rows])=>`<section class="mr-curriculum-track mr-topic-track-v2">
-    <div class="mr-curriculum-track-head mr-topic-track-head-v2"><div><span class="mr-topic-track-kicker">${esc(track)}</span><h2>${grade} класс</h2></div><span class="mr-topic-count">${rows.length} тем</span></div>
+    <div class="mr-curriculum-track-head mr-topic-track-head-v2"><div><span class="mr-topic-track-kicker">${esc(track)}</span><h2>${grade} класс</h2></div><span class="mr-topic-count">${countTopicIcon}<b>${rows.length} тем</b></span></div>
     <div class="mr-curriculum-list mr-topic-card-grid">${rows.map((t,i)=>{const count=S.exercises.filter(e=>e.topic_id===t.id&&e.kind==='task').length,meta=topicMeta(t);return `<article class="mr-curriculum-row mr-topic-card-v2 ${meta?'':'custom'}" data-topic="${t.id}">
       <div class="mr-topic-seq">${meta?String(i+1).padStart(2,'0'):'+'}</div>
       <div class="mr-topic-card-icon">${topicCardIcon(t)}</div>
       <div class="mr-curriculum-main mr-topic-card-main"><div class="small muted">${esc(t.section||track)}</div><h3>${esc(t.title)}</h3><div class="small mr-topic-card-meta"><span>${count} задач</span><span>${t.theory?'теория готова':'без теории'}</span>${meta?'':'<span>своя тема</span>'}</div></div>
-      <div class="actions mr-topic-card-actions"><button class="btn sm mr-topic-edit" data-edit-topic="${t.id}">Редактировать</button><button class="btn sm danger mr-topic-delete" data-delete-topic="${t.id}">Удалить</button><span class="mr-row-arrow">→</span></div>
+      <div class="actions mr-topic-card-actions"><button class="btn sm mr-topic-edit" data-edit-topic="${t.id}">${editTopicIcon}<span>Редактировать</span></button><button class="btn sm danger mr-topic-delete" data-delete-topic="${t.id}">${deleteTopicIcon}<span>Удалить</span></button><span class="mr-row-arrow">→</span></div>
     </article>`}).join('')}</div>
   </section>`).join('');
   app.innerHTML=shell(`<div class="card mr-curriculum-head mr-topic-route-card">
