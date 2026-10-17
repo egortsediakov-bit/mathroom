@@ -80,12 +80,15 @@ Deno.serve(async (req) => {
 
   const { data: teacher, error: teacherError } = await supabase
     .from("teachers")
-    .select("id, display_name, crm_teacher_key")
+    .select("id, display_name, crm_teacher_key, access_enabled")
     .eq("crm_teacher_key", teacherKey)
     .maybeSingle();
 
   if (teacherError) return json({ ok: false, error: "Ошибка поиска преподавателя", details: teacherError.message }, 500, origin);
   if (!teacher) return json({ ok: false, error: `Преподаватель «${teacherKey}» ещё не создан в Mathroom` }, 409, origin);
+  if (teacher.access_enabled === false) {
+    return json({ ok: false, error: `У преподавателя «${teacherKey}» отключён доступ Mathroom` }, 409, origin);
+  }
 
   const studentPayload = {
     teacher_id: teacher.id,
@@ -101,12 +104,34 @@ Deno.serve(async (req) => {
   // обязательным условием для обновления уже существующей записи.
   const { data: existingStudent, error: existingStudentError } = await supabase
     .from("students")
-    .select("id")
+    .select("id, teacher_id")
     .eq("crm_lead_id", leadId)
     .maybeSingle();
 
   if (existingStudentError) {
     return json({ ok: false, error: "Не удалось проверить ученика в Mathroom", details: existingStudentError.message }, 500, origin);
+  }
+
+  // If the CRM teacher changed before the trial started, transfer the trial atomically.
+  // We intentionally refuse automatic transfer once learning history exists: silently
+  // moving historical lessons/materials between teacher cabinets would be unsafe.
+  if (existingStudent && existingStudent.teacher_id !== teacher.id) {
+    const { data: transfer, error: transferError } = await supabase.rpc("crm_transfer_unstarted_trial", {
+      p_lead_id: leadId,
+      p_new_teacher: teacher.id,
+    });
+    if (transferError) {
+      const code = String(transferError.message || "");
+      const message = code.includes("trial_already_started")
+        ? "Пробный уже начат или завершён — преподавателя нельзя перенести автоматически"
+        : code.includes("student_has_learning_history")
+          ? "У ученика уже есть учебная история — автоматический перенос преподавателя заблокирован"
+          : code.includes("target_teacher_unavailable")
+            ? "Новый преподаватель недоступен в Mathroom"
+            : "Не удалось безопасно перенести ученика к новому преподавателю";
+      return json({ ok: false, error: message, details: transferError.message || "" }, 409, origin);
+    }
+    console.log("[crm-sync-trial] teacher transferred", { leadId, transfer });
   }
 
   const studentQuery = existingStudent
