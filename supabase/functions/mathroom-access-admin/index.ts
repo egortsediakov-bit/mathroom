@@ -83,6 +83,7 @@ Deno.serve(async (req) => {
     action?: string;
     teacherKey?: string;
     email?: string;
+    enabled?: boolean;
   };
   try {
     input = await req.json();
@@ -112,7 +113,7 @@ Deno.serve(async (req) => {
   if (action === "list") {
     const { data: teachers, error: teachersError } = await supabase
       .from("teachers")
-      .select("id, display_name, crm_teacher_key, created_at")
+      .select("id, display_name, crm_teacher_key, created_at, access_enabled")
       .not("crm_teacher_key", "is", null)
       .order("created_at", { ascending: true });
     if (teachersError) return json({ ok: false, error: "Не удалось загрузить доступы Mathroom", details: teachersError.message }, 500, origin);
@@ -129,6 +130,8 @@ Deno.serve(async (req) => {
           email: user?.email || "",
           createdAt: teacher.created_at,
           lastSignInAt: user?.last_sign_in_at || null,
+          bannedUntil: user?.banned_until || null,
+          accessEnabled: teacher.access_enabled !== false,
         };
       });
       return json({ ok: true, accounts }, 200, origin);
@@ -143,7 +146,7 @@ Deno.serve(async (req) => {
 
   const { data: teacherRows, error: teacherError } = await supabase
     .from("teachers")
-    .select("id, display_name, crm_teacher_key, created_at")
+    .select("id, display_name, crm_teacher_key, created_at, access_enabled")
     .eq("crm_teacher_key", teacherKey)
     .limit(2);
   if (teacherError) return json({ ok: false, error: "Ошибка поиска преподавателя Mathroom", details: teacherError.message }, 500, origin);
@@ -189,6 +192,8 @@ Deno.serve(async (req) => {
           email: data.user.email || email,
           createdAt: teacher.created_at,
           lastSignInAt: data.user.last_sign_in_at || null,
+          bannedUntil: data.user.banned_until || null,
+          accessEnabled: teacher.access_enabled !== false,
         },
       }, 200, origin);
     }
@@ -210,6 +215,7 @@ Deno.serve(async (req) => {
       id: created.user.id,
       display_name: teacherKey,
       crm_teacher_key: teacherKey,
+      access_enabled: true,
     });
     if (insertError) {
       try { await supabase.auth.admin.deleteUser(created.user.id); } catch {}
@@ -227,6 +233,57 @@ Deno.serve(async (req) => {
         email: created.user.email || email,
         createdAt: created.user.created_at,
         lastSignInAt: null,
+        bannedUntil: created.user.banned_until || null,
+        accessEnabled: true,
+      },
+    }, 200, origin);
+  }
+
+  if (action === "toggle_access") {
+    if (!teacher) return json({ ok: false, error: "Сначала создайте доступ Mathroom для преподавателя" }, 404, origin);
+    const enabled = Boolean(input.enabled);
+
+    const { data: authData, error: authError } = await supabase.auth.admin.updateUserById(
+      teacher.id,
+      { ban_duration: enabled ? "none" : "876000h" },
+    );
+    if (authError || !authData.user) {
+      return json({
+        ok: false,
+        error: enabled ? "Не удалось включить доступ Mathroom" : "Не удалось отключить доступ Mathroom",
+        details: authError?.message || "",
+      }, 500, origin);
+    }
+
+    const { error: rowError } = await supabase
+      .from("teachers")
+      .update({ access_enabled: enabled })
+      .eq("id", teacher.id);
+    if (rowError) {
+      try {
+        await supabase.auth.admin.updateUserById(
+          teacher.id,
+          { ban_duration: enabled ? "876000h" : "none" },
+        );
+      } catch {}
+      return json({
+        ok: false,
+        error: "Статус авторизации изменён, но профиль Mathroom обновить не удалось",
+        details: rowError.message,
+      }, 500, origin);
+    }
+
+    return json({
+      ok: true,
+      account: {
+        teacherKey,
+        displayName: teacher.display_name || teacherKey,
+        userId: teacher.id,
+        email: authData.user.email || "",
+        createdAt: teacher.created_at,
+        lastSignInAt: authData.user.last_sign_in_at || null,
+        bannedUntil: authData.user.banned_until || null,
+        accessEnabled: enabled,
       },
     }, 200, origin);
   }
