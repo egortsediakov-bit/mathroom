@@ -933,8 +933,42 @@ function renderTopic(){
       </section>
 
       <section class="form-card mr-topic-material-create">
-        <div class="mr-topic-section-head compact"><div><span class="mr-topic-section-kicker">Редактор</span><h2>Добавить материал</h2><p>Добавь задачу или пример к текущей теме.</p></div></div>
-        <form id="itemForm"><div class="grid cols3"><div class="field"><label>Тип</label><select id="itKind"><option value="task">Задача</option><option value="example">Пример</option></select></div><div class="field"><label>Сложность</label><select id="itDiff"><option value="basic">Базовая</option><option value="medium">Средняя</option><option value="advanced">Сложная</option></select></div><div class="field"><label>Категория</label><input id="itCat"></div></div><div class="field"><label>Название</label><input id="itTitle"></div><div class="field"><label>Условие</label><textarea id="itContent" rows="4" required></textarea></div><div class="grid cols2"><div class="field"><label>Ответ</label><input id="itAnswer"></div><div class="field"><label>Теги через запятую</label><input id="itTags"></div></div><button class="btn primary">Добавить</button></form>
+        <div class="mr-topic-editor-head">
+          <div><span class="mr-topic-section-kicker">Редактор</span><h2>Добавить материал</h2><p>Собери задачу или пример — без системных белых селектов.</p></div>
+          <div class="mr-topic-editor-mark"><span>+</span><small>новый<br>материал</small></div>
+        </div>
+        <form id="itemForm" class="mr-topic-editor-form">
+          <div class="mr-topic-editor-top">
+            <div class="mr-topic-editor-choice">
+              <label>Тип материала</label>
+              <select id="itKind" class="mr-topic-hidden-select" tabindex="-1" aria-hidden="true"><option value="task">Задача</option><option value="example">Пример</option></select>
+              <div class="mr-topic-editor-segments" data-editor-choice="itKind">
+                <button type="button" class="active" data-value="task">${topicMaterialIcon('task')}<span><b>Задача</b><small>Для банка и назначений</small></span></button>
+                <button type="button" data-value="example">${topicMaterialIcon('example')}<span><b>Пример</b><small>Для разбора на уроке</small></span></button>
+              </div>
+            </div>
+            <div class="mr-topic-editor-choice">
+              <label>Сложность</label>
+              <select id="itDiff" class="mr-topic-hidden-select" tabindex="-1" aria-hidden="true"><option value="basic">Базовая</option><option value="medium">Средняя</option><option value="advanced">Сложная</option></select>
+              <div class="mr-topic-difficulty-segments" data-editor-choice="itDiff">
+                <button type="button" class="active" data-value="basic"><i></i><span>Базовая</span></button>
+                <button type="button" data-value="medium"><i></i><span>Средняя</span></button>
+                <button type="button" data-value="advanced"><i></i><span>Сложная</span></button>
+              </div>
+            </div>
+            <div class="mr-topic-editor-field">
+              <label>Категория</label>
+              <div class="mr-topic-input-shell"><span>#</span><input id="itCat" placeholder="Например: Разряды"></div>
+            </div>
+          </div>
+          <div class="mr-topic-editor-field wide"><label>Название</label><input id="itTitle" placeholder="Короткое понятное название"></div>
+          <div class="mr-topic-editor-field wide statement"><label>Условие</label><textarea id="itContent" rows="4" required placeholder="Напиши условие задачи или текст примера..."></textarea><span class="mr-topic-editor-corner">↘</span></div>
+          <div class="mr-topic-editor-bottom">
+            <div class="mr-topic-editor-field"><label>Ответ</label><div class="mr-topic-input-shell answer"><span>=</span><input id="itAnswer" placeholder="Ответ"></div></div>
+            <div class="mr-topic-editor-field"><label>Теги</label><div class="mr-topic-input-shell"><span>#</span><input id="itTags" placeholder="разряды, числа, базовая"></div></div>
+          </div>
+          <div class="mr-topic-editor-footer"><span>Материал сразу появится в текущей теме.</span><button class="mr-topic-editor-submit" type="submit"><b>+</b> Добавить материал</button></div>
+        </form>
       </section>
 
       <section class="mr-topic-content-section" id="topicTasks">
@@ -942,12 +976,22 @@ function renderTopic(){
         <div class="list mr-topic-list-v2">${tasksHtml}</div>
       </section>
 
-      <section class="mr-topic-assignment-bar">
-        <div class="mr-topic-assignment-copy"><b>Назначить по теме</b><small>Выбери ученика и количество заданий.</small></div>
-        <select id="assignStudent" class="search">${studentOpts}</select>
-        <input id="assignCount" class="search" type="number" min="1" max="20" value="5">
-        <button class="mr-topic-secondary-btn" id="makeHw">+ Домашняя</button>
-        <button class="mr-topic-secondary-btn" id="makeTest">+ Тест</button>
+      <section class="mr-topic-assignment-bar mr-topic-assignment-v2">
+        <div class="mr-topic-assignment-copy"><span class="mr-topic-assignment-icon">${topicUiIcon('task')}</span><div><b>Назначить по теме</b><small>Ученик, количество и формат — в одной панели.</small></div></div>
+        <div class="mr-topic-student-picker" data-topic-student-picker>
+          <select id="assignStudent" class="mr-topic-hidden-select" tabindex="-1" aria-hidden="true">${studentOpts}</select>
+          <button type="button" class="mr-topic-student-trigger" data-topic-student-trigger>
+            <span class="avatar">${S.students[0]?esc(String(S.students[0].name||'?').trim().charAt(0).toUpperCase()):'?'}</span>
+            <span class="copy"><b>${S.students[0]?esc(S.students[0].name):'Нет учеников'}</b><small>${S.students[0]?`${S.students[0].grade} класс`:'Добавь ученика'}</small></span><span class="chev">⌄</span>
+          </button>
+          <div class="mr-topic-student-popover" data-topic-student-popover hidden>
+            <label class="mr-topic-student-search"><span>⌕</span><input type="search" placeholder="Поиск ученика или класса..." data-topic-student-search></label>
+            <div class="mr-topic-student-results" data-topic-student-results>${S.students.map((s,i)=>`<button type="button" class="${i===0?'selected':''}" data-student-id="${esc(s.id)}" data-student-name="${esc(s.name)}" data-student-grade="${esc(s.grade)}"><span>${esc(String(s.name||'?').trim().charAt(0).toUpperCase())}</span><div><b>${esc(s.name)}</b><small>${esc(s.grade)} класс</small></div><i>${i===0?'✓':''}</i></button>`).join('')||'<div class="mr-topic-empty-mini">Учеников пока нет</div>'}</div>
+          </div>
+        </div>
+        <div class="mr-topic-count-stepper"><button type="button" data-count-minus>−</button><div><b id="assignCountDisplay">5</b><small>заданий</small></div><button type="button" data-count-plus>+</button><input id="assignCount" type="number" min="1" max="20" value="5" hidden></div>
+        <button class="mr-topic-assign-btn homework" id="makeHw"><span>⌂</span><div><b>Домашняя</b><small>назначить</small></div></button>
+        <button class="mr-topic-assign-btn test" id="makeTest"><span>✓</span><div><b>Тест</b><small>создать</small></div></button>
       </section>
     </div>`,'Тема',`${t.grade} класс · ${pos.track}`);bindShell();
     document.querySelectorAll('[data-topic-scroll]').forEach(b=>b.onclick=()=>{
@@ -956,6 +1000,40 @@ function renderTopic(){
       document.querySelectorAll('[data-topic-scroll]').forEach(x=>x.classList.toggle('active',x===b));
       target.scrollIntoView({behavior:'smooth',block:'start'});
     });
+    document.querySelectorAll('[data-editor-choice]').forEach(group=>{
+      const select=document.getElementById(group.dataset.editorChoice);if(!select)return;
+      group.querySelectorAll('[data-value]').forEach(btn=>btn.onclick=()=>{
+        select.value=btn.dataset.value;
+        select.dispatchEvent(new Event('change',{bubbles:true}));
+        group.querySelectorAll('[data-value]').forEach(x=>x.classList.toggle('active',x===btn));
+      });
+    });
+    const studentPicker=document.querySelector('[data-topic-student-picker]');
+    if(studentPicker){
+      const select=document.getElementById('assignStudent'),trigger=studentPicker.querySelector('[data-topic-student-trigger]'),pop=studentPicker.querySelector('[data-topic-student-popover]'),search=studentPicker.querySelector('[data-topic-student-search]'),results=studentPicker.querySelector('[data-topic-student-results]');
+      const close=()=>{pop.hidden=true;trigger.classList.remove('open')};
+      const applyRow=row=>{
+        select.value=row.dataset.studentId;
+        const av=trigger.querySelector('.avatar'),copy=trigger.querySelector('.copy');
+        av.textContent=String(row.dataset.studentName||'?').trim().charAt(0).toUpperCase();
+        copy.querySelector('b').textContent=row.dataset.studentName||'Ученик';
+        copy.querySelector('small').textContent=`${row.dataset.studentGrade||''} класс`;
+        results.querySelectorAll('[data-student-id]').forEach(x=>{x.classList.toggle('selected',x===row);x.querySelector('i').textContent=x===row?'✓':''});
+        close();
+      };
+      trigger.onclick=()=>{const opening=pop.hidden;if(opening){pop.hidden=false;trigger.classList.add('open');setTimeout(()=>search?.focus(),0)}else close()};
+      results?.addEventListener('click',e=>{const row=e.target.closest('[data-student-id]');if(row)applyRow(row)});
+      search?.addEventListener('input',()=>{
+        const q=search.value.trim().toLocaleLowerCase('ru');
+        results.querySelectorAll('[data-student-id]').forEach(row=>{const hay=(row.dataset.studentName+' '+row.dataset.studentGrade+' класс').toLocaleLowerCase('ru');row.hidden=!!q&&!hay.includes(q)});
+      });
+      document.addEventListener('pointerdown',function outside(e){if(!document.body.contains(studentPicker)){document.removeEventListener('pointerdown',outside);return}if(!studentPicker.contains(e.target))close()});
+    }
+    const countInput=document.getElementById('assignCount'),countDisplay=document.getElementById('assignCountDisplay');
+    const syncCount=()=>{const v=Math.max(1,Math.min(20,Number(countInput.value)||1));countInput.value=String(v);countDisplay.textContent=String(v)};
+    document.querySelector('[data-count-minus]')?.addEventListener('click',()=>{countInput.value=String((Number(countInput.value)||1)-1);syncCount()});
+    document.querySelector('[data-count-plus]')?.addEventListener('click',()=>{countInput.value=String((Number(countInput.value)||1)+1);syncCount()});
+    syncCount();
   document.getElementById('backTopics').onclick=()=>{S.topic=null;S.view='topics';S.topicGradeFilter=Number(t.grade);renderTeacher()};
   document.getElementById('editCurrentTopic').onclick=()=>editTopicModal(t,{returnToTopic:true});
   document.getElementById('deleteCurrentTopic').onclick=()=>deleteTopicRow(t,{returnToTopics:true});
