@@ -834,9 +834,38 @@ async function createAssignment(kind,studentId,topicId,count){
 function renderTopic(){
   const t=S.topic;if(!t)return renderTopics();const items=S.exercises.filter(x=>x.topic_id===t.id),tasks=items.filter(x=>x.kind==='task'),examples=items.filter(x=>x.kind==='example'),next=nextCurriculumTopic(t),pos=topicPosition(t),sources=textbookLinksForTopic(t.id),curriculumSource=topicSourceMeta(t);
   const studentOpts=S.students.map(s=>`<option value="${s.id}">${esc(s.name)} · ${s.grade} кл.</option>`).join('');
-  const examplesHtml=examples.length?examples.map(x=>`<div class="row"><div><h3>${esc(x.title||'Пример')}</h3><div class="prewrap">${nl(x.content)}</div></div><div class="actions"><button class="btn sm" data-edit-material="${x.id}">Редактировать</button><button class="btn sm danger" data-delete-material="${x.id}">Удалить</button></div></div>`).join(''):'<div class="empty">Нет примеров.</div>';
-  const tasksHtml=tasks.length?tasks.map(x=>`<div class="row"><div class="row-main"><div class="actions"><span class="pill">${diffLabel(x.difficulty)}</span>${x.category?`<span class="pill">${esc(x.category)}</span>`:''}</div><h3>${esc(x.title||'Задача')}</h3><div class="prewrap">${nl(x.content)}</div><div class="small muted">Ответ: ${esc(x.answer||'—')} · ${exerciseEditableTags(x.tags).map(z=>'#'+esc(z)).join(' ')}</div></div><div class="actions"><button class="btn sm" data-edit-material="${x.id}">Редактировать</button><button class="btn sm danger" data-delete-material="${x.id}">Удалить</button></div></div>`).join(''):'<div class="empty">Задач пока нет.</div>';
-  const sourcesHtml=sources.length?sources.map(x=>`<div class="mr-textbook-source"><div><b>${esc(x.textbook.title)}</b>${x.textbook.author?`<span>${esc(x.textbook.author)}</span>`:''}<small>${x.page_from?`стр. ${x.page_from}${x.page_to&&x.page_to!==x.page_from?`–${x.page_to}`:''}`:'страницы не указаны'}${x.note?` · ${esc(x.note)}`:''}</small></div><div class="actions"><button class="btn sm" data-open-source="${x.textbook.id}" data-page="${x.page_from||''}">Открыть PDF</button><button class="btn sm primary" data-board-source="${x.id}">На доску</button><button class="btn sm danger" data-unlink-source="${x.id}">Убрать</button></div></div>`).join(''):'<div class="empty">Учебник к теме пока не привязан.</div>';
+  const topicMaterialIcon=kind=>{
+    const common='class="mr-topic-material-svg" viewBox="0 0 24 24" aria-hidden="true"';
+    if(kind==='example')return `<svg ${common}><path d="M5 8h14M5 16h14"/><path class="accent" d="M8 5v6M16 13v6"/></svg>`;
+    if(kind==='task')return `<svg ${common}><rect x="5" y="4" width="14" height="16" rx="3"/><path d="M8 9h8M8 13h5"/><path class="accent" d="m8 16 1.5 1.5L12 15"/></svg>`;
+    if(kind==='book')return `<svg ${common}><path d="M4 5.5c3.4-1.3 6.1-.7 8 1v12c-1.9-1.7-4.6-2.3-8-1V5.5Z"/><path class="accent" d="M20 5.5c-3.4-1.3-6.1-.7-8 1v12c1.9-1.7 4.6-2.3 8-1V5.5Z"/></svg>`;
+    if(kind==='edit')return `<svg ${common}><path d="M5 19l3.8-.9L18 8.9 15.1 6 5.9 15.2 5 19Z"/><path class="accent" d="m13.7 7.4 2.9 2.9"/></svg>`;
+    if(kind==='trash')return `<svg ${common}><path d="M5 7h14M9 7V4.8h6V7M7.5 7l.7 12h7.6l.7-12"/><path class="accent" d="M10 11v4M14 11v4"/></svg>`;
+    if(kind==='board')return `<svg ${common}><rect x="4" y="5" width="16" height="11" rx="2.5"/><path class="accent" d="M9 20h6M12 16v4"/></svg>`;
+    if(kind==='pdf')return `<svg ${common}><path d="M6 4h9l3 3v13H6z"/><path class="accent" d="M15 4v4h4M9 12h6M9 16h4"/></svg>`;
+    return '';
+  };
+  const examplesHtml=examples.length?examples.map((x,i)=>`<article class="mr-topic-practice-card example">
+    <div class="mr-topic-practice-index">${String(i+1).padStart(2,'0')}</div>
+    <div class="mr-topic-practice-icon">${topicMaterialIcon('example')}</div>
+    <div class="mr-topic-practice-main"><span class="mr-topic-practice-kicker">Пример</span><h3>${esc(x.title||`Пример ${i+1}`)}</h3><div class="prewrap">${nl(x.content)}</div></div>
+    <div class="mr-topic-practice-actions"><button type="button" data-edit-material="${x.id}">${topicMaterialIcon('edit')}<span>Редактировать</span></button><button type="button" class="danger" data-delete-material="${x.id}">${topicMaterialIcon('trash')}<span>Удалить</span></button></div>
+  </article>`).join(''):'<div class="mr-topic-empty-state"><span>${topicMaterialIcon('example')}</span><div><b>Примеров пока нет</b><small>Добавь первый пример через редактор ниже.</small></div></div>';
+  const tasksHtml=tasks.length?tasks.map((x,i)=>`<article class="mr-topic-practice-card task">
+    <div class="mr-topic-practice-index">${String(i+1).padStart(2,'0')}</div>
+    <div class="mr-topic-practice-icon">${topicMaterialIcon('task')}</div>
+    <div class="mr-topic-practice-main">
+      <div class="mr-topic-practice-meta"><span>${diffLabel(x.difficulty)}</span>${x.category?`<span>${esc(x.category)}</span>`:''}</div>
+      <h3>${esc(x.title||`Задача ${i+1}`)}</h3><div class="prewrap">${nl(x.content)}</div>
+      <div class="mr-topic-practice-answer"><b>Ответ</b><span>${esc(x.answer||'—')}</span>${exerciseEditableTags(x.tags).length?`<small>${exerciseEditableTags(x.tags).map(z=>'#'+esc(z)).join(' ')}</small>`:''}</div>
+    </div>
+    <div class="mr-topic-practice-actions"><button type="button" data-edit-material="${x.id}">${topicMaterialIcon('edit')}<span>Редактировать</span></button><button type="button" class="danger" data-delete-material="${x.id}">${topicMaterialIcon('trash')}<span>Удалить</span></button></div>
+  </article>`).join(''):'<div class="mr-topic-empty-state"><span>${topicMaterialIcon('task')}</span><div><b>Задач пока нет</b><small>Добавь первую задачу в редакторе материала.</small></div></div>';
+  const sourcesHtml=sources.length?sources.map(x=>`<article class="mr-topic-source-card">
+    <div class="mr-topic-source-cover">${topicMaterialIcon('book')}<small>PDF</small></div>
+    <div class="mr-topic-source-main"><span class="mr-topic-source-kicker">Учебник</span><h3>${esc(x.textbook.title)}</h3>${x.textbook.author?`<p>${esc(x.textbook.author)}</p>`:''}<div class="mr-topic-source-tags"><span>${x.page_from?`стр. ${x.page_from}${x.page_to&&x.page_to!==x.page_from?`–${x.page_to}`:''}`:'страницы не указаны'}</span>${x.note?`<span>${esc(x.note)}</span>`:''}</div></div>
+    <div class="mr-topic-source-actions"><button type="button" data-open-source="${x.textbook.id}" data-page="${x.page_from||''}">${topicMaterialIcon('pdf')}<span>Открыть PDF</span></button><button type="button" class="primary" data-board-source="${x.id}">${topicMaterialIcon('board')}<span>На доску</span></button><button type="button" class="danger" data-unlink-source="${x.id}">${topicMaterialIcon('trash')}<span>Убрать</span></button></div>
+  </article>`).join(''):`<div class="mr-topic-empty-state source"><span>${topicMaterialIcon('book')}</span><div><b>Учебник ещё не привязан</b><small>Привяжи PDF и нужные страницы к этой теме.</small></div></div>`;
   const topicUiIcon=kind=>{
     const common='class="mr-topic-detail-icon" viewBox="0 0 24 24" aria-hidden="true"';
     if(kind==='edit')return `<svg ${common}><path d="M5 19l3.8-.9L18 8.9 15.1 6 5.9 15.2 5 19Z"/><path class="accent" d="m13.7 7.4 2.9 2.9"/></svg>`;
