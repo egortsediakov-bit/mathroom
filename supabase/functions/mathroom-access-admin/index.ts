@@ -110,6 +110,48 @@ Deno.serve(async (req) => {
     return data.users || [];
   }
 
+  async function writeAudit(
+    teacherId: string | null,
+    teacherKey: string,
+    eventAction: string,
+    email: string | null = null,
+    details: Record<string, unknown> = {},
+  ) {
+    const { error } = await supabase.from("teacher_access_audit").insert({
+      teacher_id: teacherId,
+      teacher_key: teacherKey,
+      action: eventAction,
+      email,
+      details,
+    });
+    if (error) console.error("[mathroom-access-admin] audit", eventAction, error.message);
+  }
+
+  async function accountStats(teacherId: string) {
+    const now = new Date().toISOString();
+    const [students, upcoming, nextLesson] = await Promise.all([
+      supabase.from("students").select("*", { count: "exact", head: true })
+        .eq("teacher_id", teacherId).eq("active", true),
+      supabase.from("lessons").select("*", { count: "exact", head: true })
+        .eq("teacher_id", teacherId).eq("status", "assigned").gte("scheduled_at", now),
+      supabase.from("lessons")
+        .select("id, scheduled_at, lesson_type, students(name)")
+        .eq("teacher_id", teacherId)
+        .eq("status", "assigned")
+        .gte("scheduled_at", now)
+        .order("scheduled_at", { ascending: true })
+        .limit(1)
+        .maybeSingle(),
+    ]);
+    return {
+      activeStudentCount: Number(students.count || 0),
+      upcomingLessonCount: Number(upcoming.count || 0),
+      nextLessonAt: nextLesson.data?.scheduled_at || null,
+      nextLessonStudent: nextLesson.data?.students?.name || null,
+      nextLessonType: nextLesson.data?.lesson_type || null,
+    };
+  }
+
   if (action === "list") {
     const { data: teachers, error: teachersError } = await supabase
       .from("teachers")
@@ -121,8 +163,9 @@ Deno.serve(async (req) => {
     try {
       const users = await authUsers();
       const byId = new Map(users.map((u) => [u.id, u]));
-      const accounts = (teachers || []).map((teacher) => {
+      const accounts = await Promise.all((teachers || []).map(async (teacher) => {
         const user = byId.get(teacher.id);
+        const stats = await accountStats(teacher.id);
         return {
           teacherKey: teacher.crm_teacher_key || teacher.display_name,
           displayName: teacher.display_name,
@@ -132,9 +175,16 @@ Deno.serve(async (req) => {
           lastSignInAt: user?.last_sign_in_at || null,
           bannedUntil: user?.banned_until || null,
           accessEnabled: teacher.access_enabled !== false,
+          ...stats,
         };
-      });
-      return json({ ok: true, accounts }, 200, origin);
+      }));
+      const { data: auditRows, error: auditError } = await supabase
+        .from("teacher_access_audit")
+        .select("id, teacher_id, teacher_key, action, email, details, created_at")
+        .order("created_at", { ascending: false })
+        .limit(50);
+      if (auditError) console.error("[mathroom-access-admin] audit list", auditError.message);
+      return json({ ok: true, accounts, audit: auditRows || [] }, 200, origin);
     } catch (error) {
       return json({ ok: false, error: "Не удалось прочитать пользователей Mathroom", details: error instanceof Error ? error.message : String(error) }, 500, origin);
     }
@@ -182,6 +232,10 @@ Deno.serve(async (req) => {
         .eq("id", teacher.id);
       if (rowError) return json({ ok: false, error: "Email изменён, но профиль преподавателя обновить не удалось", details: rowError.message }, 500, origin);
 
+      const previousEmail = normalizeEmail(users.find((u) => u.id === teacher.id)?.email);
+      if (previousEmail !== email) {
+        await writeAudit(teacher.id, teacherKey, "email_changed", email, { previousEmail: previousEmail || null });
+      }
       return json({
         ok: true,
         created: false,
@@ -222,6 +276,7 @@ Deno.serve(async (req) => {
       return json({ ok: false, error: "Не удалось создать профиль преподавателя Mathroom", details: insertError.message }, 500, origin);
     }
 
+    await writeAudit(created.user.id, teacherKey, "access_created", email);
     return json({
       ok: true,
       created: true,
@@ -273,6 +328,12 @@ Deno.serve(async (req) => {
       }, 500, origin);
     }
 
+    await writeAudit(
+      teacher.id,
+      teacherKey,
+      enabled ? "access_enabled" : "access_disabled",
+      authData.user.email || null,
+    );
     return json({
       ok: true,
       account: {
@@ -293,6 +354,7 @@ Deno.serve(async (req) => {
     const password = generatePassword();
     const { data, error } = await supabase.auth.admin.updateUserById(teacher.id, { password });
     if (error || !data.user) return json({ ok: false, error: "Не удалось сменить пароль Mathroom", details: error?.message || "" }, 500, origin);
+    await writeAudit(teacher.id, teacherKey, "password_reset", data.user.email || null);
     return json({ ok: true, password, account: { teacherKey, userId: teacher.id, email: data.user.email || "" } }, 200, origin);
   }
 
