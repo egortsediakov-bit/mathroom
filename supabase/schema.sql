@@ -6,6 +6,8 @@ create extension if not exists pgcrypto;
 create table if not exists public.teachers (
   id uuid primary key references auth.users(id) on delete cascade,
   display_name text not null default 'Преподаватель',
+  crm_teacher_key text,
+  access_enabled boolean not null default true,
   created_at timestamptz not null default now()
 );
 
