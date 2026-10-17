@@ -850,7 +850,7 @@ function renderTopic(){
     <div class="mr-topic-practice-icon">${topicMaterialIcon('example')}</div>
     <div class="mr-topic-practice-main"><span class="mr-topic-practice-kicker">Пример</span><h3>${esc(x.title||`Пример ${i+1}`)}</h3><div class="prewrap">${nl(x.content)}</div></div>
     <div class="mr-topic-practice-actions"><button type="button" data-edit-material="${x.id}">${topicMaterialIcon('edit')}<span>Редактировать</span></button><button type="button" class="danger" data-delete-material="${x.id}">${topicMaterialIcon('trash')}<span>Удалить</span></button></div>
-  </article>`).join(''):'<div class="mr-topic-empty-state"><span>${topicMaterialIcon('example')}</span><div><b>Примеров пока нет</b><small>Добавь первый пример через редактор ниже.</small></div></div>';
+  </article>`).join(''):`<div class="mr-topic-empty-state"><span>${topicMaterialIcon('example')}</span><div><b>Примеров пока нет</b><small>Добавь первый пример через редактор ниже.</small></div></div>`;
   const tasksHtml=tasks.length?tasks.map((x,i)=>`<article class="mr-topic-practice-card task">
     <div class="mr-topic-practice-index">${String(i+1).padStart(2,'0')}</div>
     <div class="mr-topic-practice-icon">${topicMaterialIcon('task')}</div>
@@ -860,7 +860,7 @@ function renderTopic(){
       <div class="mr-topic-practice-answer"><b>Ответ</b><span>${esc(x.answer||'—')}</span>${exerciseEditableTags(x.tags).length?`<small>${exerciseEditableTags(x.tags).map(z=>'#'+esc(z)).join(' ')}</small>`:''}</div>
     </div>
     <div class="mr-topic-practice-actions"><button type="button" data-edit-material="${x.id}">${topicMaterialIcon('edit')}<span>Редактировать</span></button><button type="button" class="danger" data-delete-material="${x.id}">${topicMaterialIcon('trash')}<span>Удалить</span></button></div>
-  </article>`).join(''):'<div class="mr-topic-empty-state"><span>${topicMaterialIcon('task')}</span><div><b>Задач пока нет</b><small>Добавь первую задачу в редакторе материала.</small></div></div>';
+  </article>`).join(''):`<div class="mr-topic-empty-state"><span>${topicMaterialIcon('task')}</span><div><b>Задач пока нет</b><small>Добавь первую задачу в редакторе материала.</small></div></div>`;
   const sourcesHtml=sources.length?sources.map(x=>`<article class="mr-topic-source-card">
     <div class="mr-topic-source-cover">${topicMaterialIcon('book')}<small>PDF</small></div>
     <div class="mr-topic-source-main"><span class="mr-topic-source-kicker">Учебник</span><h3>${esc(x.textbook.title)}</h3>${x.textbook.author?`<p>${esc(x.textbook.author)}</p>`:''}<div class="mr-topic-source-tags"><span>${x.page_from?`стр. ${x.page_from}${x.page_to&&x.page_to!==x.page_from?`–${x.page_to}`:''}`:'страницы не указаны'}</span>${x.note?`<span>${esc(x.note)}</span>`:''}</div></div>
