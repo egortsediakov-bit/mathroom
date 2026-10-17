@@ -18,6 +18,59 @@ async function authSessionIsFresh(){
   return expiresAt>Date.now();
 }
 
+let teacherAccessWatch=null;
+let teacherAccessCheckBusy=false;
+function teacherAccessDisabledError(message='Доступ к Mathroom отключён администратором.'){
+  const e=new Error(message);
+  e.code='MATHROOM_ACCESS_DISABLED';
+  return e;
+}
+function isTeacherAccessDisabledError(error){
+  const text=String(error?.message||error||'').toLocaleLowerCase('ru');
+  return error?.code==='MATHROOM_ACCESS_DISABLED'||/bann|заблок|доступ.*отключ|user.*disabled/.test(text);
+}
+async function clearTeacherLogin(){
+  if(teacherAccessWatch){clearInterval(teacherAccessWatch);teacherAccessWatch=null}
+  try{await clearAuthSession()}catch{}
+  try{await authStorage.removeItem(AUTH_STORAGE_KEY)}catch{}
+  try{await sb.auth.signOut()}catch{}
+  S.user=S.teacher=null;
+}
+function renderTeacherAccessDisabled(){
+  app.innerHTML=`<div class="center-page"><div class="auth-card mr-access-disabled-card"><div class="brand">Mathroom</div><span class="pill warn">Доступ отключён</span><h1>Вход в кабинет приостановлен</h1><p>Администратор временно отключил доступ к Mathroom. Ученики, уроки, доски и история сохранены.</p><div class="actions"><button class="btn primary" id="disabledAccessLogin">Вернуться ко входу</button></div><div class="small muted" style="margin-top:12px">После повторного включения доступа можно войти тем же email и паролем.</div></div></div>`;
+  document.getElementById('disabledAccessLogin').onclick=()=>renderAuth();
+}
+async function verifyTeacherAccess({kick=false}={}){
+  if(S.access||!S.user||teacherAccessCheckBusy)return true;
+  teacherAccessCheckBusy=true;
+  try{
+    const {data,error}=await sb.from('teachers').select('access_enabled').eq('id',S.user.id).maybeSingle();
+    const denied=!data||data.access_enabled===false;
+    const authDenied=!!error&&/jwt|unauthor|bann|session|token/i.test(String(error.message||''));
+    if(denied||authDenied){
+      if(kick){
+        cleanupAll();
+        forgetActiveLesson();
+        await clearTeacherLogin();
+        renderTeacherAccessDisabled();
+      }
+      return false;
+    }
+    return true;
+  }catch{
+    return true;
+  }finally{
+    teacherAccessCheckBusy=false;
+  }
+}
+function startTeacherAccessWatch(){
+  if(teacherAccessWatch)clearInterval(teacherAccessWatch);
+  teacherAccessWatch=setInterval(()=>verifyTeacherAccess({kick:true}),30000);
+}
+document.addEventListener('visibilitychange',()=>{
+  if(!document.hidden&&S.user&&!S.access)verifyTeacherAccess({kick:true});
+});
+
 const TEACHER_VIEW_STORAGE_PREFIX='mathroom.teacherView.';
 const RESTORABLE_TEACHER_VIEWS=new Set(['dashboard','schedule','students','topics','textbooks','bank','assignments','history','scratch','board']);
 function teacherViewStorageKey(){
@@ -96,11 +149,16 @@ function restoreActiveLesson(){
 }
 
 async function ensureTeacher(){
-  const {data:{user}}=await sb.auth.getUser();
+  const {data:{user},error:userError}=await sb.auth.getUser();
+  if(userError){
+    if(isTeacherAccessDisabledError(userError))throw teacherAccessDisabledError();
+    throw userError;
+  }
   if(!user||user.is_anonymous)return null;
   const {data,error}=await sb.from('teachers').select('*').eq('id',user.id).maybeSingle();
   if(error)throw error;
   if(!data)throw new Error('Нет доступа преподавателя. Попроси администратора Mathroom добавить этот аккаунт.');
+  if(data.access_enabled===false)throw teacherAccessDisabledError();
   return data;
 }
 async function loadTeacher(){
@@ -360,9 +418,14 @@ async function boot(){
     const lessonRestored=restoreActiveLesson();
     if(!lessonRestored)restoreTeacherView();
     renderTeacher();
+    startTeacherAccessWatch();
     syncCurriculumBank();
   }catch(e){
     console.error('[Mathroom teacher boot]',e);
+    if(isTeacherAccessDisabledError(e)){
+      await clearTeacherLogin();
+      return renderTeacherAccessDisabled();
+    }
     renderTeacherLoadError(e);
   }
 }
@@ -385,7 +448,10 @@ function renderAuth(){
     msg.textContent='';
     try{
       const {data,error}=await sb.auth.signInWithPassword({email,password});
-      if(error)throw error;
+      if(error){
+        if(isTeacherAccessDisabledError(error))throw teacherAccessDisabledError();
+        throw error;
+      }
       if(!data.session?.access_token||!data.session?.refresh_token)throw new Error('Supabase не вернул сессию входа');
       // signInWithPassword already persists the session when persistSession=true.
       // Calling setSession again here can serialize on the same auth lock and make
@@ -400,9 +466,14 @@ function renderAuth(){
       const lessonRestored=restoreActiveLesson();
       if(!lessonRestored)restoreTeacherView();
       renderTeacher();
+      startTeacherAccessWatch();
       syncCurriculumBank();
     }catch(err){
       console.error('[Mathroom teacher login]',err);
+      if(isTeacherAccessDisabledError(err)){
+        await clearTeacherLogin();
+        return renderTeacherAccessDisabled();
+      }
       msg.textContent=err?.message||'Не удалось открыть кабинет';
       if(submit){submit.disabled=false;submit.textContent='Войти'}
     }
@@ -416,7 +487,7 @@ function shell(content,title,sub=''){
 }
 function bindShell(){
   document.querySelectorAll('[data-nav]').forEach(b=>b.onclick=()=>{cleanupAll();forgetActiveLesson();S.view=b.dataset.nav;S.topic=null;S.activeLesson=null;renderTeacher()});
-  const l=document.getElementById('logout');if(l)l.onclick=async()=>{cleanupAll();forgetActiveLesson();await clearAuthSession();await sb.auth.signOut();S.user=S.teacher=null;renderAuth()};
+  const l=document.getElementById('logout');if(l)l.onclick=async()=>{cleanupAll();forgetActiveLesson();if(teacherAccessWatch){clearInterval(teacherAccessWatch);teacherAccessWatch=null}await clearAuthSession();await sb.auth.signOut();S.user=S.teacher=null;renderAuth()};
 }
 function renderTeacher(){
   cleanupAll();
