@@ -212,11 +212,56 @@ function parseTheoryBlocks(raw=''){
   if(!blocks.length&&text) return [{title:'',body:text}];
   return blocks.filter(b=>b.title||b.body);
 }
+function theoryCardKind(title='',i=0){
+  const q=String(title||'').toLocaleLowerCase('ru');
+  if(/суть|смысл|идея/.test(q))return 'essence';
+  if(/как действовать|алгоритм|шаг/.test(q))return 'steps';
+  if(/пример/.test(q))return 'example';
+  if(/запомни|что запомнить|важно/.test(q))return 'remember';
+  if(/ошиб/.test(q))return 'error';
+  return i===0?'essence':'note';
+}
+function theoryCardIcon(kind){
+  const common='class="mr-theory-v2-svg" viewBox="0 0 24 24" aria-hidden="true"';
+  if(kind==='essence')return `<svg ${common}><circle cx="12" cy="12" r="7.5"/><circle class="accent" cx="12" cy="12" r="3.5"/><path class="accent" d="M12 2.5v3M21.5 12h-3M12 21.5v-3M2.5 12h3"/></svg>`;
+  if(kind==='steps')return `<svg ${common}><circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1"/><path class="accent" d="M10 12h4"/></svg>`;
+  if(kind==='example')return `<svg ${common}><path d="M4.5 8h15M4.5 16h15"/><path class="accent" d="M8 4.5v7M16 12.5v7"/></svg>`;
+  if(kind==='remember')return `<svg ${common}><path d="M7 4h10v16l-5-3-5 3V4Z"/><path class="accent" d="M10 8h4"/></svg>`;
+  if(kind==='error')return `<svg ${common}><path d="m12 3 9 16H3L12 3Z"/><path class="accent" d="M12 9v4M12 16h.01"/></svg>`;
+  return `<svg ${common}><rect x="5" y="4" width="14" height="16" rx="3"/><path class="accent" d="M8 9h8M8 13h5"/></svg>`;
+}
+function theoryCardVisual(kind,body=''){
+  const text=String(body||'');
+  const eq=text.match(/(\d+\s*=\s*\d+\s*[+\-×:·]\s*\d+)/);
+  const two=text.match(/\b(\d{2,3})\b/);
+  if((kind==='example'||kind==='steps')&&eq){
+    const formula=eq[1].replace(/\s+/g,' ');
+    const parts=formula.match(/(\d+)\s*=\s*(\d+)\s*([+\-×:·])\s*(\d+)/);
+    if(parts)return `<div class="mr-theory-v2-formula"><b>${esc(parts[2])}</b><span>${esc(parts[3])}</span><b>${esc(parts[4])}</b><i>= ${esc(parts[1])}</i></div>`;
+    return `<div class="mr-theory-v2-formula single"><strong>${esc(formula)}</strong></div>`;
+  }
+  if(kind==='remember'&&two){
+    const n=two[1],a=n.slice(0,-1),b=n.slice(-1);
+    return `<div class="mr-theory-v2-digits"><b>${esc(a)}</b><b>${esc(b)}</b><small>десятки&nbsp;&nbsp;&nbsp;единицы</small></div>`;
+  }
+  if(kind==='error')return `<div class="mr-theory-v2-warning">!</div>`;
+  if(kind==='essence')return `<div class="mr-theory-v2-orbit"><i></i><i></i><i></i></div>`;
+  return '';
+}
 function theoryHtml(raw=''){
   const blocks=parseTheoryBlocks(raw);
   if(!blocks.length)return '<div class="empty">Теория пока не добавлена.</div>';
   if(blocks.length<=1&&!blocks[0]?.title)return `<div class="prewrap">${nl(blocks[0].body||'')}</div>`;
-  return `<div class="mr-theory-grid">${blocks.map((b,i)=>`<section class="mr-theory-block ${i===0?'lead':''}">${b.title?`<h3>${esc(b.title)}</h3>`:''}<div class="mr-theory-body">${nl(b.body)}</div></section>`).join('')}</div>`;
+  return `<div class="mr-theory-grid">${blocks.map((b,i)=>{
+    const kind=theoryCardKind(b.title,i),visual=theoryCardVisual(kind,b.body);
+    return `<section class="mr-theory-block mr-theory-v2-block kind-${kind} ${i===0?'lead':''}">
+      <div class="mr-theory-v2-copy">
+        <div class="mr-theory-v2-title">${b.title?`<span class="mr-theory-v2-icon">${theoryCardIcon(kind)}</span><h3>${esc(b.title)}</h3>`:''}</div>
+        <div class="mr-theory-body">${nl(b.body)}</div>
+      </div>
+      ${visual?`<div class="mr-theory-v2-art">${visual}</div>`:''}
+    </section>`;
+  }).join('')}</div>`;
 }
 function plainTheory(raw=''){return parseTheoryBlocks(raw).map(b=>[b.title,b.body].filter(Boolean).join('\n')).join('\n\n').trim()}
 function sendTheoryToBoard(ctrl,topic){
