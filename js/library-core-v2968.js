@@ -123,11 +123,12 @@
     return {meta,confidence:score>=6?'high':score>=4?'medium':'low',source:extract?.text_layer_status==='scan'?'scan':'pdf-text'};
   };
 
-  function sourceRow(book,meta,file){
+  function sourceRow(book,meta,file,teacherId){
     const gf=Number(meta.grade_from||book.grade_from||0)||null,gt=Number(meta.grade_to||book.grade_to||gf||0)||null;
     const subject=meta.subject||(/геометр/i.test(book.subject||'')?'geometry':/алгебр/i.test(book.subject||'')?'algebra':'mathematics');
     const layer=meta.text_layer_status==='text'?'text':meta.text_layer_status==='mixed'?'mixed':'unknown';
     return {
+      teacher_id:teacherId,
       external_key:meta.external_key||`textbook-${book.id}`,title:meta.title||book.title||file.name,grade:gf&&gt===gf?gf:null,grade_from:gf,grade_to:gt,
       subject,subject_title:meta.subject_title||SUBJECT_LABEL[subject]||book.subject||'Математика',level:meta.level||'mixed',material_kind:meta.material_kind||'textbook',authors:meta.authors||book.author||null,
       publication_year:Number(meta.publication_year||0)||null,part_no:meta.part_no||null,publisher:meta.publisher||null,source_kind:'pdf',filename:file.name,file_size_bytes:file.size,
@@ -152,11 +153,14 @@
   API.updateNativeBook=updateNativeBook;
 
   async function ensureCanonicalSource(client,book,meta={}){
+    const auth=await client.auth.getUser();
+    const uid=auth?.data?.user?.id;
+    if(!uid)throw new Error('Нет активной сессии преподавателя');
     const fileLike={name:book.file_name||meta.filename||'book.pdf',size:Number(book.file_size||meta.file_size_bytes||0)||0};
     const canonical=meta.external_key||`textbook-${book.id}`;
-    let old=(await client.from('task_bank_sources').select('*').eq('external_key',`textbook-${book.id}`).limit(1)).data?.[0]||null;
-    let current=(await client.from('task_bank_sources').select('*').eq('external_key',canonical).limit(1)).data?.[0]||null;
-    const row=sourceRow(book,meta,fileLike);
+    let old=(await client.from('task_bank_sources').select('*').eq('teacher_id',uid).eq('external_key',`textbook-${book.id}`).limit(1)).data?.[0]||null;
+    let current=(await client.from('task_bank_sources').select('*').eq('teacher_id',uid).eq('external_key',canonical).limit(1)).data?.[0]||null;
+    const row=sourceRow(book,meta,fileLike,uid);
     row.external_key=canonical;
     row.meta={...(old?.meta||current?.meta||{}),textbook_id:book.id,unified_upload:true,recognition_version:'29.6.8',sync_repair:true};
     if(current){
