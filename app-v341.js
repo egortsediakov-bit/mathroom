@@ -903,6 +903,75 @@ async function createAssignment(kind,studentId,topicId,count){
   const rows=tasks.map((x,i)=>({[kind==='homework'?'homework_id':'test_id']:parent.id,prompt:x.content,correct_answer:x.answer,position:i,source_exercise_id:x.id,difficulty:x.difficulty,category:x.category||'',tags:x.tags||[]}));
   const {error:e2}=await sb.from(itemsTable).insert(rows);if(e2)return fail(e2);await loadTeacher();toast(kind==='homework'?'Домашняя назначена':'Тест назначен');
 }
+
+function sharedMaterialForExercise(exerciseId){
+  return (S.sharedMaterials||[]).find(x=>
+    String(x.source_exercise_id||'')===String(exerciseId||'') &&
+    String(x.published_by||'')===String(S.user?.id||'')
+  )||null;
+}
+function sharedMaterialUserTags(tags=[]){
+  return (tags||[]).filter(tag=>{
+    const v=String(tag||'');
+    return v&&!v.startsWith('mathroom-core-bank-v')&&!v.startsWith('mrseed:')&&!v.startsWith('класс-')&&!v.startsWith('тема:');
+  });
+}
+async function publishExerciseToSharedLibrary(exercise,{onDone}={}){
+  if(!exercise||!S.user)return;
+  const topic=(S.topics||[]).find(t=>String(t.id)===String(exercise.topic_id));
+  if(!topic)return toast('Не найдена тема материала');
+  const old=sharedMaterialForExercise(exercise.id);
+  const body={
+    published_by:S.user.id,
+    source_exercise_id:exercise.id,
+    kind:exercise.kind==='example'?'example':'task',
+    title:exercise.title||'',
+    content:exercise.content||'',
+    answer:exercise.answer||'',
+    difficulty:exercise.difficulty||'basic',
+    category:exercise.category||'',
+    tags:sharedMaterialUserTags(exercise.tags),
+    grade:Number(topic.grade)||null,
+    section:topic.section||'',
+    topic_title:topic.title||''
+  };
+  const q=old
+    ? sb.from('shared_materials').update({...body,updated_at:new Date().toISOString()}).eq('id',old.id)
+    : sb.from('shared_materials').insert(body);
+  const {error}=await q;if(error)return fail(error);
+  await loadTeacher();onDone?.();
+  toast(old?'Версия в общей библиотеке обновлена':'Материал добавлен в общую библиотеку');
+}
+async function unpublishExerciseFromSharedLibrary(exercise,{onDone}={}){
+  const old=sharedMaterialForExercise(exercise?.id);if(!old)return;
+  if(!confirm('Убрать этот материал из общей библиотеки? Личные копии других преподавателей останутся у них.'))return;
+  const {error}=await sb.from('shared_materials').delete().eq('id',old.id);if(error)return fail(error);
+  await loadTeacher();onDone?.();toast('Материал убран из общей библиотеки');
+}
+function importSharedMaterial(shared,{onDone}={}){
+  if(!shared)return;
+  const topics=(S.topics||[]).slice().sort(curriculumBank()?.compareTopics||(()=>0));
+  const sameGrade=topics.filter(t=>Number(t.grade)===Number(shared.grade));
+  const ordered=[...sameGrade,...topics.filter(t=>Number(t.grade)!==Number(shared.grade))];
+  if(!ordered.length)return toast('Сначала создай тему, куда добавить материал');
+  const m=modal(`<div class="mr-card-head"><div><span class="pill">Общая библиотека</span><h2>Добавить себе</h2><p class="muted">Создаст независимую копию. Дальнейшие изменения не затронут других преподавателей.</p></div></div>
+    <div class="card mr-library-import-preview"><span class="pill">${shared.kind==='example'?'Пример':'Задача'} · ${shared.grade||'?'} класс</span><h3>${esc(shared.title||'Материал')}</h3><div class="prewrap">${nl(shared.content||'')}</div></div>
+    <div class="field"><label>В какую мою тему добавить</label><select id="sharedImportTopic">${ordered.map(t=>`<option value="${t.id}">${t.grade} кл. · ${esc(t.section||'Математика')} · ${esc(t.title)}</option>`).join('')}</select></div>
+    <div class="actions"><button class="btn primary" id="sharedImportSave">Добавить личную копию</button></div>`,'wide-modal');
+  m.querySelector('#sharedImportSave').onclick=async()=>{
+    const topic=(S.topics||[]).find(t=>String(t.id)===String(m.querySelector('#sharedImportTopic').value));
+    if(!topic)return toast('Выбери тему');
+    const tags=[`класс-${topic.grade}`,`тема:${topic.title}`,...sharedMaterialUserTags(shared.tags)];
+    const body={
+      teacher_id:S.user.id,topic_id:topic.id,kind:shared.kind==='example'?'example':'task',
+      title:shared.title||'',content:shared.content||'',answer:shared.answer||'',
+      difficulty:shared.difficulty||'basic',category:shared.category||'',tags:[...new Set(tags)]
+    };
+    const {error}=await sb.from('exercises').insert(body);if(error)return fail(error);
+    m.remove();await loadTeacher();onDone?.();toast('Личная копия добавлена');
+  };
+}
+
 function renderTopic(){
   const t=S.topic;if(!t)return renderTopics();const items=S.exercises.filter(x=>x.topic_id===t.id),tasks=items.filter(x=>x.kind==='task'),examples=items.filter(x=>x.kind==='example'),next=nextCurriculumTopic(t),pos=topicPosition(t),sources=textbookLinksForTopic(t.id),curriculumSource=topicSourceMeta(t);
   const studentOpts=S.students.map(s=>`<option value="${s.id}">${esc(s.name)} · ${s.grade} кл.</option>`).join('');
@@ -921,7 +990,7 @@ function renderTopic(){
     <div class="mr-topic-practice-index">${String(i+1).padStart(2,'0')}</div>
     <div class="mr-topic-practice-icon">${topicMaterialIcon('example')}</div>
     <div class="mr-topic-practice-main"><span class="mr-topic-practice-kicker">Пример</span><h3>${esc(x.title||`Пример ${i+1}`)}</h3><div class="prewrap">${nl(x.content)}</div></div>
-    <div class="mr-topic-practice-actions"><button type="button" data-edit-material="${x.id}">${topicMaterialIcon('edit')}<span>Редактировать</span></button><button type="button" class="danger" data-delete-material="${x.id}">${topicMaterialIcon('trash')}<span>Удалить</span></button></div>
+    <div class="mr-topic-practice-actions">${sharedMaterialForExercise(x.id)?`<button type="button" class="library" data-share-material="${x.id}"><span>↻</span><span>Обновить общую</span></button><button type="button" class="danger subtle" data-unshare-material="${x.id}"><span>×</span><span>Убрать из общей</span></button>`:`<button type="button" class="library" data-share-material="${x.id}"><span>＋</span><span>В общую</span></button>`}<button type="button" data-edit-material="${x.id}">${topicMaterialIcon('edit')}<span>Редактировать</span></button><button type="button" class="danger" data-delete-material="${x.id}">${topicMaterialIcon('trash')}<span>Удалить</span></button></div>
   </article>`).join(''):`<div class="mr-topic-empty-state"><span>${topicMaterialIcon('example')}</span><div><b>Примеров пока нет</b><small>Добавь первый пример через редактор ниже.</small></div></div>`;
   const tasksHtml=tasks.length?tasks.map((x,i)=>`<article class="mr-topic-practice-card task">
     <div class="mr-topic-practice-index">${String(i+1).padStart(2,'0')}</div>
@@ -931,7 +1000,7 @@ function renderTopic(){
       <h3>${esc(x.title||`Задача ${i+1}`)}</h3><div class="prewrap">${nl(x.content)}</div>
       <div class="mr-topic-practice-answer"><b>Ответ</b><span>${esc(x.answer||'—')}</span>${exerciseEditableTags(x.tags).length?`<small>${exerciseEditableTags(x.tags).map(z=>'#'+esc(z)).join(' ')}</small>`:''}</div>
     </div>
-    <div class="mr-topic-practice-actions"><button type="button" data-edit-material="${x.id}">${topicMaterialIcon('edit')}<span>Редактировать</span></button><button type="button" class="danger" data-delete-material="${x.id}">${topicMaterialIcon('trash')}<span>Удалить</span></button></div>
+    <div class="mr-topic-practice-actions">${sharedMaterialForExercise(x.id)?`<button type="button" class="library" data-share-material="${x.id}"><span>↻</span><span>Обновить общую</span></button><button type="button" class="danger subtle" data-unshare-material="${x.id}"><span>×</span><span>Убрать из общей</span></button>`:`<button type="button" class="library" data-share-material="${x.id}"><span>＋</span><span>В общую</span></button>`}<button type="button" data-edit-material="${x.id}">${topicMaterialIcon('edit')}<span>Редактировать</span></button><button type="button" class="danger" data-delete-material="${x.id}">${topicMaterialIcon('trash')}<span>Удалить</span></button></div>
   </article>`).join(''):`<div class="mr-topic-empty-state"><span>${topicMaterialIcon('task')}</span><div><b>Задач пока нет</b><small>Добавь первую задачу в редакторе материала.</small></div></div>`;
   const sourcesHtml=sources.length?sources.map(x=>`<article class="mr-topic-source-card">
     <div class="mr-topic-source-cover">${topicMaterialIcon('book')}<small>PDF</small></div>
@@ -984,7 +1053,7 @@ function renderTopic(){
 
       <section class="card mr-theory-card mr-topic-theory-v2" id="topicTheory">
         <div class="mr-topic-section-head">
-          <div><span class="mr-topic-section-kicker">Короткий конспект</span><h2>Теория</h2><p>Смысл → алгоритм → пример → что запомнить.</p></div>
+          <div><span class="mr-topic-section-kicker">Короткий конспект</span><h2>Теория <em class="mr-topic-private-label">личная</em></h2><p>Смысл → алгоритм → пример → что запомнить. Изменения видишь только ты.</p></div>
           ${curriculumSource?`<div class="mr-topic-source-pill">${topicUiIcon('book')}<span><b>Основа конспекта</b><small>${esc(curriculumSource)}</small></span></div>`:''}
         </div>
         ${theoryHtml(t.theory)}
@@ -1117,6 +1186,8 @@ function renderTopic(){
   if(next){document.getElementById('openNextTopic').onclick=()=>{S.topic=next;renderTopic()};document.getElementById('scheduleNextTopic').onclick=()=>{S.schedulePrefill={studentId:document.getElementById('assignStudent').value||S.students?.[0]?.id||'',topicId:next.id};S.view='schedule';S.topic=null;renderTeacher()}};
   document.getElementById('itemForm').onsubmit=async e=>{e.preventDefault();const tags=document.getElementById('itTags').value.split(',').map(x=>x.trim()).filter(Boolean);tags.unshift(`тема:${t.title}`);tags.unshift(`класс-${t.grade}`);const {error}=await sb.from('exercises').insert({teacher_id:S.user.id,topic_id:t.id,kind:document.getElementById('itKind').value,title:document.getElementById('itTitle').value.trim(),content:document.getElementById('itContent').value,answer:document.getElementById('itAnswer').value,difficulty:document.getElementById('itDiff').value,category:document.getElementById('itCat').value.trim(),tags:[...new Set(tags)]});if(error)return fail(error);await loadTeacher();S.topic=S.topics.find(x=>x.id===t.id);renderTopic()};
   const rerender=()=>{S.topic=S.topics.find(x=>x.id===t.id)||null;S.topic?renderTopic():renderTopics()};
+  document.querySelectorAll('[data-share-material]').forEach(b=>b.onclick=()=>{const x=S.exercises.find(e=>e.id===b.dataset.shareMaterial);if(x)publishExerciseToSharedLibrary(x,{onDone:rerender})});
+  document.querySelectorAll('[data-unshare-material]').forEach(b=>b.onclick=()=>{const x=S.exercises.find(e=>e.id===b.dataset.unshareMaterial);if(x)unpublishExerciseFromSharedLibrary(x,{onDone:rerender})});
   document.querySelectorAll('[data-edit-material]').forEach(b=>b.onclick=()=>{const x=S.exercises.find(e=>e.id===b.dataset.editMaterial);if(x)editExerciseModal(x,{onDone:rerender})});
   document.querySelectorAll('[data-delete-material]').forEach(b=>b.onclick=()=>{const x=S.exercises.find(e=>e.id===b.dataset.deleteMaterial);if(x)deleteExerciseRow(x,{onDone:rerender})});
   document.getElementById('startLesson').onclick=async()=>{if(!S.students.length)return toast('Сначала добавь ученика');S.selectedStudent=document.getElementById('assignStudent').value||S.students[0].id;await startLesson(null,t.id,S.selectedStudent)};
