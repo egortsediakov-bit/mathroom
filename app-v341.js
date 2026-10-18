@@ -336,7 +336,25 @@ function suggestedTopicForStudent(studentId){
   if(current){const next=nextCurriculumTopic(current);if(next)return {topic:next,after:current}}
   const first=firstCurriculumTopic(st.grade);return first?{topic:first,after:null}:null;
 }
-function textbookLinksForTopic(topicId){return (S.textbookLinks||[]).filter(x=>String(x.topic_id)===String(topicId)).map(l=>({...l,textbook:(S.textbooks||[]).find(t=>String(t.id)===String(l.textbook_id))})).filter(x=>x.textbook)}
+function textbookLinksForTopic(topicId){
+  const topic=(S.topics||[]).find(t=>String(t.id)===String(topicId));if(!topic)return [];
+  const booksById=new Map((S.textbooks||[]).map(b=>[String(b.id),b]));
+  const direct=(S.textbookLinks||[])
+    .filter(x=>String(x.topic_id)===String(topicId))
+    .map(l=>({...l,textbook:booksById.get(String(l.textbook_id)),shared_master:false}))
+    .filter(x=>x.textbook);
+  const directBookIds=new Set(direct.map(x=>String(x.textbook_id)));
+  const inherited=(S.textbookLinks||[])
+    .map(l=>({link:l,book:booksById.get(String(l.textbook_id))}))
+    .filter(({link,book})=>
+      !!book&&book.is_shared&&!textbookIsMine(book)&&
+      String(link.teacher_id)===String(book.teacher_id)&&
+      !directBookIds.has(String(book.id))&&
+      String(localTopicForSharedLink(link)?.id||'')===String(topic.id)
+    )
+    .map(({link,book})=>({...link,textbook:book,shared_master:true}));
+  return [...direct,...inherited];
+}
 function textbookIsMine(book){return String(book?.teacher_id||'')===String(S.user?.id||'')}
 function textbookInPersonalLibrary(book){
   if(!book)return false;
@@ -358,9 +376,9 @@ function localTopicForSharedLink(link){
   if(title){const byTitle=rows.find(t=>topicIdentityValue(t.title)===title);if(byTitle)return byTitle}
   return null;
 }
-async function addSharedTextbookToPersonalLibrary(book){
-  if(!book||textbookIsMine(book)||!book.is_shared)return;
-  if(textbookInPersonalLibrary(book))return toast('Учебник уже в личной библиотеке');
+async function addSharedTextbookToPersonalLibrary(book,{refresh=true,render=true,notify=true}={}){
+  if(!book||textbookIsMine(book)||!book.is_shared)return false;
+  if(textbookInPersonalLibrary(book)){if(notify)toast('Учебник уже в личной библиотеке');return true}
   const master=textbookMasterLinks(book);
   const {error:libError}=await sb.from('teacher_textbook_library').insert({teacher_id:S.user.id,textbook_id:book.id});
   if(libError)return fail(libError);
@@ -383,8 +401,10 @@ async function addSharedTextbookToPersonalLibrary(book){
     await sb.from('teacher_textbook_library').delete().eq('teacher_id',S.user.id).eq('textbook_id',book.id);
     return fail(e);
   }
-  await loadTeacher();renderTextbooks();
-  toast(`Учебник добавлен · перенесено привязок: ${rows.length}${missing.length?` · без совпавшей темы: ${missing.length}`:''}`);
+  if(refresh)await loadTeacher();
+  if(render)renderTextbooks();
+  if(notify)toast(`Учебник добавлен · перенесено привязок: ${rows.length}${missing.length?` · без совпавшей темы: ${missing.length}`:''}`);
+  return true;
 }
 async function removeSharedTextbookFromPersonalLibrary(book){
   if(!book||textbookIsMine(book))return;
@@ -444,13 +464,25 @@ async function textbookPagesToBoardModal(link,{controller=null}={}){
   };
   buttons.forEach(b=>b.onclick=()=>run(b.dataset.tbBoardMode));
 }
-async function linkTextbookModal({topicId='',textbookId=''}={}){
+async function linkTextbookModal({topicId='',textbookId='',sourceLink=null}={}){
   if(!S.textbooksFeatureAvailable)return toast('Сначала подключи библиотеку учебников через SQL v28.2');
-  if(!(S.textbooks||[]).length)return toast('Сначала добавь PDF в разделе «Учебники»');
+  if(!(S.textbooks||[]).length)return toast('В библиотеке пока нет PDF');
   const topics=(S.topics||[]).slice().sort(curriculumBank()?.compareTopics||(()=>0));
-  const books=(S.textbooks||[]).filter(textbookInPersonalLibrary);
-  const m=modal(`<h2>Привязать учебник к теме</h2><div class="grid cols2"><div class="field"><label>Учебник</label><select id="ltBook">${books.map(x=>`<option value="${x.id}" ${String(x.id)===String(textbookId)?'selected':''}>${esc(x.title)}${x.author?` · ${esc(x.author)}`:''}</option>`).join('')}</select></div><div class="field"><label>Тема</label><select id="ltTopic">${topics.map(x=>`<option value="${x.id}" ${String(x.id)===String(topicId)?'selected':''}>${x.grade} кл. · ${esc(topicTrack(x))} · ${esc(x.title)}</option>`).join('')}</select></div></div><div class="grid cols3"><div class="field"><label>Страница от</label><input id="ltFrom" type="number" min="1" placeholder="42"></div><div class="field"><label>Страница до</label><input id="ltTo" type="number" min="1" placeholder="47"></div><div class="field"><label>Комментарий</label><input id="ltNote" placeholder="§ 12, примеры 1–3"></div></div><div class="notice">Укажи страницы, на которых раскрывается эта тема. После этого ссылка на учебник появится прямо в теме.</div><button class="btn primary" id="ltSave">Привязать</button>`,'wide-modal');
-  m.querySelector('#ltSave').onclick=async()=>{const body={teacher_id:S.user.id,textbook_id:m.querySelector('#ltBook').value,topic_id:m.querySelector('#ltTopic').value,page_from:Number(m.querySelector('#ltFrom').value)||null,page_to:Number(m.querySelector('#ltTo').value)||null,note:m.querySelector('#ltNote').value.trim()};const {error}=await sb.from('textbook_topic_links').upsert(body,{onConflict:'textbook_id,topic_id'});if(error)return fail(error);m.remove();await loadTeacher();if(S.topic)S.topic=S.topics.find(x=>x.id===S.topic.id)||S.topic;renderTeacher();toast('Учебник привязан к теме')};
+  const books=(S.textbooks||[]).filter(b=>textbookIsMine(b)||b.is_shared);
+  const bookLabel=b=>`${esc(b.title)}${b.author?` · ${esc(b.author)}`:''}${!textbookIsMine(b)?(textbookInPersonalLibrary(b)?' · из общей / моя копия':' · общая библиотека'):''}`;
+  const initialFrom=Number(sourceLink?.page_from)||'',initialTo=Number(sourceLink?.page_to)||'',initialNote=sourceLink?.note||'';
+  const m=modal(`<h2>Привязать учебник к теме</h2><div class="grid cols2"><div class="field"><label>Учебник</label><select id="ltBook">${books.map(x=>`<option value="${x.id}" ${String(x.id)===String(textbookId)?'selected':''}>${bookLabel(x)}</option>`).join('')}</select></div><div class="field"><label>Тема</label><select id="ltTopic">${topics.map(x=>`<option value="${x.id}" ${String(x.id)===String(topicId)?'selected':''}>${x.grade} кл. · ${esc(topicTrack(x))} · ${esc(x.title)}</option>`).join('')}</select></div></div><div class="grid cols3"><div class="field"><label>Страница от</label><input id="ltFrom" type="number" min="1" placeholder="42" value="${initialFrom}"></div><div class="field"><label>Страница до</label><input id="ltTo" type="number" min="1" placeholder="47" value="${initialTo}"></div><div class="field"><label>Комментарий</label><input id="ltNote" placeholder="§ 12, примеры 1–3" value="${esc(initialNote)}"></div></div><div class="notice">Общий учебник можно использовать сразу. Если сохранить свою привязку, Mathroom автоматически добавит его в личную библиотеку и создаст независимую копию страниц/тем.</div><button class="btn primary" id="ltSave">Сохранить мою привязку</button>`,'wide-modal');
+  m.querySelector('#ltSave').onclick=async()=>{
+    const book=(S.textbooks||[]).find(x=>String(x.id)===String(m.querySelector('#ltBook').value));
+    const topic=(S.topics||[]).find(x=>String(x.id)===String(m.querySelector('#ltTopic').value));
+    if(!book||!topic)return toast('Выбери учебник и тему');
+    if(!textbookIsMine(book)&&book.is_shared&&!textbookInPersonalLibrary(book)){
+      const ok=await addSharedTextbookToPersonalLibrary(book,{refresh:true,render:false,notify:false});if(!ok)return;
+    }
+    const body={teacher_id:S.user.id,textbook_id:book.id,topic_id:topic.id,page_from:Number(m.querySelector('#ltFrom').value)||null,page_to:Number(m.querySelector('#ltTo').value)||null,note:m.querySelector('#ltNote').value.trim(),topic_grade:Number(topic.grade)||null,topic_section:topic.section||'',topic_title:topic.title||''};
+    const {error}=await sb.from('textbook_topic_links').upsert(body,{onConflict:'textbook_id,topic_id'});if(error)return fail(error);
+    m.remove();await loadTeacher();if(S.topic)S.topic=S.topics.find(x=>x.id===S.topic.id)||S.topic;renderTeacher();toast('Личная привязка сохранена');
+  };
 }
 
 async function boot(){
@@ -1064,11 +1096,17 @@ function renderTopic(){
     </div>
     <div class="mr-topic-practice-actions">${sharedMaterialForExercise(x.id)?`<button type="button" class="library" data-share-material="${x.id}"><span>↻</span><span>Обновить общую</span></button><button type="button" class="danger subtle" data-unshare-material="${x.id}"><span>×</span><span>Убрать из общей</span></button>`:`<button type="button" class="library" data-share-material="${x.id}"><span>＋</span><span>В общую</span></button>`}<button type="button" data-edit-material="${x.id}">${topicMaterialIcon('edit')}<span>Редактировать</span></button><button type="button" class="danger" data-delete-material="${x.id}">${topicMaterialIcon('trash')}<span>Удалить</span></button></div>
   </article>`).join(''):`<div class="mr-topic-empty-state"><span>${topicMaterialIcon('task')}</span><div><b>Задач пока нет</b><small>Добавь первую задачу в редакторе материала.</small></div></div>`;
-  const sourcesHtml=sources.length?sources.map(x=>`<article class="mr-topic-source-card">
-    <div class="mr-topic-source-cover">${topicMaterialIcon('book')}<small>PDF</small></div>
-    <div class="mr-topic-source-main"><span class="mr-topic-source-kicker">Учебник</span><h3>${esc(x.textbook.title)}</h3>${x.textbook.author?`<p>${esc(x.textbook.author)}</p>`:''}<div class="mr-topic-source-tags"><span>${x.page_from?`стр. ${x.page_from}${x.page_to&&x.page_to!==x.page_from?`–${x.page_to}`:''}`:'страницы не указаны'}</span>${x.note?`<span>${esc(x.note)}</span>`:''}</div></div>
-    <div class="mr-topic-source-actions"><button type="button" data-open-source="${x.textbook.id}" data-page="${x.page_from||''}">${topicMaterialIcon('pdf')}<span>Открыть PDF</span></button><button type="button" class="primary" data-board-source="${x.id}">${topicMaterialIcon('board')}<span>На доску</span></button><button type="button" class="danger" data-unlink-source="${x.id}">${topicMaterialIcon('trash')}<span>Убрать</span></button></div>
-  </article>`).join(''):`<div class="mr-topic-empty-state source"><span>${topicMaterialIcon('book')}</span><div><b>Учебник ещё не привязан</b><small>Привяжи PDF и нужные страницы к этой теме.</small></div></div>`;
+  const sourcesHtml=sources.length?sources.map(x=>{
+    const inherited=!!x.shared_master,added=textbookInPersonalLibrary(x.textbook);
+    const extraAction=inherited
+      ? (added?`<button type="button" data-personalize-source="${x.id}">${topicMaterialIcon('edit')}<span>Настроить у себя</span></button>`:`<button type="button" class="library" data-add-source-book="${x.textbook.id}"><span>＋</span><span>В мою библиотеку</span></button>`)
+      : `<button type="button" class="danger" data-unlink-source="${x.id}">${topicMaterialIcon('trash')}<span>Убрать</span></button>`;
+    return `<article class="mr-topic-source-card">
+      <div class="mr-topic-source-cover">${topicMaterialIcon('book')}<small>PDF</small></div>
+      <div class="mr-topic-source-main"><span class="mr-topic-source-kicker">${inherited?'Общая библиотека':'Учебник'}</span><h3>${esc(x.textbook.title)}</h3>${x.textbook.author?`<p>${esc(x.textbook.author)}</p>`:''}<div class="mr-topic-source-tags"><span>${x.page_from?`стр. ${x.page_from}${x.page_to&&x.page_to!==x.page_from?`–${x.page_to}`:''}`:'страницы не указаны'}</span>${x.note?`<span>${esc(x.note)}</span>`:''}${inherited?'<span>общая привязка</span>':''}</div></div>
+      <div class="mr-topic-source-actions"><button type="button" data-open-source="${x.textbook.id}" data-page="${x.page_from||''}">${topicMaterialIcon('pdf')}<span>Открыть PDF</span></button><button type="button" class="primary" data-board-source="${x.id}">${topicMaterialIcon('board')}<span>На доску</span></button>${extraAction}</div>
+    </article>`;
+  }).join(''):`<div class="mr-topic-empty-state source"><span>${topicMaterialIcon('book')}</span><div><b>Учебники по теме не найдены</b><small>Можно привязать свой PDF или выбрать учебник из общей библиотеки вручную.</small></div></div>`;
   const topicUiIcon=kind=>{
     const common='class="mr-topic-detail-icon" viewBox="0 0 24 24" aria-hidden="true"';
     if(kind==='edit')return `<svg ${common}><path d="M5 19l3.8-.9L18 8.9 15.1 6 5.9 15.2 5 19Z"/><path class="accent" d="m13.7 7.4 2.9 2.9"/></svg>`;
@@ -1244,6 +1282,8 @@ function renderTopic(){
   document.getElementById('linkTextbookTopic').onclick=()=>linkTextbookModal({topicId:t.id});
   document.querySelectorAll('[data-open-source]').forEach(b=>b.onclick=()=>{const book=S.textbooks.find(x=>String(x.id)===String(b.dataset.openSource));if(book)openTextbook(book,Number(b.dataset.page)||0)});
   document.querySelectorAll('[data-board-source]').forEach(b=>b.onclick=()=>{const link=sources.find(x=>String(x.id)===String(b.dataset.boardSource));if(link)textbookPagesToBoardModal(link)});
+  document.querySelectorAll('[data-add-source-book]').forEach(b=>b.onclick=async()=>{const book=S.textbooks.find(x=>String(x.id)===String(b.dataset.addSourceBook));if(!book)return;await addSharedTextbookToPersonalLibrary(book);S.topic=S.topics.find(x=>x.id===t.id)||t;renderTopic()});
+  document.querySelectorAll('[data-personalize-source]').forEach(b=>b.onclick=()=>{const link=sources.find(x=>String(x.id)===String(b.dataset.personalizeSource));if(link)linkTextbookModal({topicId:t.id,textbookId:link.textbook.id,sourceLink:link})});
   document.querySelectorAll('[data-unlink-source]').forEach(b=>b.onclick=async()=>{if(!confirm('Убрать привязку учебника к этой теме?'))return;const {error}=await sb.from('textbook_topic_links').delete().eq('id',b.dataset.unlinkSource);if(error)return fail(error);await loadTeacher();S.topic=S.topics.find(x=>x.id===t.id)||t;renderTopic()});
   if(next){document.getElementById('openNextTopic').onclick=()=>{S.topic=next;renderTopic()};document.getElementById('scheduleNextTopic').onclick=()=>{S.schedulePrefill={studentId:document.getElementById('assignStudent').value||S.students?.[0]?.id||'',topicId:next.id};S.view='schedule';S.topic=null;renderTeacher()}};
   document.getElementById('itemForm').onsubmit=async e=>{e.preventDefault();const tags=document.getElementById('itTags').value.split(',').map(x=>x.trim()).filter(Boolean);tags.unshift(`тема:${t.title}`);tags.unshift(`класс-${t.grade}`);const {error}=await sb.from('exercises').insert({teacher_id:S.user.id,topic_id:t.id,kind:document.getElementById('itKind').value,title:document.getElementById('itTitle').value.trim(),content:document.getElementById('itContent').value,answer:document.getElementById('itAnswer').value,difficulty:document.getElementById('itDiff').value,category:document.getElementById('itCat').value.trim(),tags:[...new Set(tags)]});if(error)return fail(error);await loadTeacher();S.topic=S.topics.find(x=>x.id===t.id);renderTopic()};
