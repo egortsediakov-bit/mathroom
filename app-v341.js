@@ -169,10 +169,11 @@ async function loadTeacher(){
     sb.from('lessons').select('*,students(name,grade),topics(title)').order('scheduled_at',{ascending:true}),
     sb.from('homeworks').select('*,students(name,grade),topics(title)').order('created_at',{ascending:false}),
     sb.from('tests').select('*,students(name,grade),topics(title)').order('created_at',{ascending:false}),
-    sb.from('lesson_board_versions').select('*').order('created_at',{ascending:false})
+    sb.from('lesson_board_versions').select('*').order('created_at',{ascending:false}),
+    sb.from('shared_materials').select('*').order('created_at',{ascending:false})
   ]);
   const err=reqs.find(x=>x.error)?.error;if(err)throw err;
-  [S.students,S.topics,S.exercises,S.lessons,S.homeworks,S.tests,S.versions]=reqs.map(x=>x.data||[]);
+  [S.students,S.topics,S.exercises,S.lessons,S.homeworks,S.tests,S.versions,S.sharedMaterials]=reqs.map(x=>x.data||[]);
   const bank=window.MathroomCurriculumBank;if(bank?.compareTopics)S.topics.sort(bank.compareTopics);
   try{
     const [tb,tl]=await Promise.all([
@@ -217,7 +218,7 @@ function topicSourceMeta(t){return curriculumBank()?.sourceFor?.(t)||''}
 function textbookAutoSyncPlan({bookIds=null}={}){
   const engine=window.MathroomTextbookSyncV290;if(!engine)return {rows:[],recognized:[],unrecognized:[],exactPages:0};
   const ids=bookIds?new Set(bookIds.map(String)):null;
-  const books=(S.textbooks||[]).filter(b=>!ids||ids.has(String(b.id)));
+  const books=(S.textbooks||[]).filter(b=>String(b.teacher_id)===String(S.user?.id)).filter(b=>!ids||ids.has(String(b.id)));
   return engine.buildCandidates({books,topics:S.topics||[],sourceFor:topicSourceMeta});
 }
 async function syncTextbooksWithTopics({silent=false,bookIds=null}={}){
