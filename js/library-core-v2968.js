@@ -132,7 +132,7 @@
       external_key:meta.external_key||`textbook-${book.id}`,title:meta.title||book.title||file.name,grade:gf&&gt===gf?gf:null,grade_from:gf,grade_to:gt,
       subject,subject_title:meta.subject_title||SUBJECT_LABEL[subject]||book.subject||'Математика',level:meta.level||'mixed',material_kind:meta.material_kind||'textbook',authors:meta.authors||book.author||null,
       publication_year:Number(meta.publication_year||0)||null,part_no:meta.part_no||null,publisher:meta.publisher||null,source_kind:'pdf',filename:file.name,file_size_bytes:file.size,
-      text_layer_status:layer,ocr_status:layer==='text'?'not_needed':'pending',storage_bucket:'textbooks',storage_path:book.file_path,page_count:Number(meta.page_count||0)||null,
+      text_layer_status:layer,ocr_status:'not_needed',storage_bucket:'textbooks',storage_path:book.file_path,page_count:Number(meta.page_count||0)||null,
       meta:{textbook_id:book.id,unified_upload:true,recognition_version:'29.6.8'},is_active:true
     };
   }
