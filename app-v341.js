@@ -176,12 +176,13 @@ async function loadTeacher(){
   [S.students,S.topics,S.exercises,S.lessons,S.homeworks,S.tests,S.versions,S.sharedMaterials]=reqs.map(x=>x.data||[]);
   const bank=window.MathroomCurriculumBank;if(bank?.compareTopics)S.topics.sort(bank.compareTopics);
   try{
-    const [tb,tl]=await Promise.all([
+    const [tb,tl,lib]=await Promise.all([
       sb.from('textbooks').select('*').order('created_at',{ascending:false}),
-      sb.from('textbook_topic_links').select('*')
+      sb.from('textbook_topic_links').select('*'),
+      sb.from('teacher_textbook_library').select('*')
     ]);
-    S.textbooksFeatureAvailable=!tb.error&&!tl.error;S.textbooks=tb.data||[];S.textbookLinks=tl.data||[];
-  }catch{S.textbooksFeatureAvailable=false;S.textbooks=[];S.textbookLinks=[]}
+    S.textbooksFeatureAvailable=!tb.error&&!tl.error&&!lib.error;S.textbooks=tb.data||[];S.textbookLinks=tl.data||[];S.teacherTextbookLibrary=lib.data||[];
+  }catch{S.textbooksFeatureAvailable=false;S.textbooks=[];S.textbookLinks=[];S.teacherTextbookLibrary=[]}
   if(!S.selectedStudent&&S.students[0])S.selectedStudent=S.students[0].id;
 }
 let curriculumSyncPromise=null;
@@ -336,6 +337,67 @@ function suggestedTopicForStudent(studentId){
   const first=firstCurriculumTopic(st.grade);return first?{topic:first,after:null}:null;
 }
 function textbookLinksForTopic(topicId){return (S.textbookLinks||[]).filter(x=>String(x.topic_id)===String(topicId)).map(l=>({...l,textbook:(S.textbooks||[]).find(t=>String(t.id)===String(l.textbook_id))})).filter(x=>x.textbook)}
+function textbookIsMine(book){return String(book?.teacher_id||'')===String(S.user?.id||'')}
+function textbookInPersonalLibrary(book){
+  if(!book)return false;
+  return textbookIsMine(book)||(S.teacherTextbookLibrary||[]).some(x=>String(x.textbook_id)===String(book.id)&&String(x.teacher_id)===String(S.user?.id));
+}
+function textbookMasterLinks(book){
+  if(!book?.is_shared)return [];
+  return (S.textbookLinks||[]).filter(x=>String(x.textbook_id)===String(book.id)&&String(x.teacher_id)===String(book.teacher_id));
+}
+function textbookPersonalLinks(book){
+  if(!book)return [];
+  return (S.textbookLinks||[]).filter(x=>String(x.textbook_id)===String(book.id)&&String(x.teacher_id)===String(S.user?.id));
+}
+function topicIdentityValue(v){return String(v||'').trim().toLocaleLowerCase('ru').replace(/ё/g,'е').replace(/\s+/g,' ')}
+function localTopicForSharedLink(link){
+  const grade=Number(link?.topic_grade)||0,title=topicIdentityValue(link?.topic_title),section=topicIdentityValue(link?.topic_section);
+  let rows=(S.topics||[]).filter(t=>!grade||Number(t.grade)===grade);
+  if(title){const exact=rows.find(t=>topicIdentityValue(t.title)===title&&(!section||topicIdentityValue(t.section)===section));if(exact)return exact}
+  if(title){const byTitle=rows.find(t=>topicIdentityValue(t.title)===title);if(byTitle)return byTitle}
+  return null;
+}
+async function addSharedTextbookToPersonalLibrary(book){
+  if(!book||textbookIsMine(book)||!book.is_shared)return;
+  if(textbookInPersonalLibrary(book))return toast('Учебник уже в личной библиотеке');
+  const master=textbookMasterLinks(book);
+  const {error:libError}=await sb.from('teacher_textbook_library').insert({teacher_id:S.user.id,textbook_id:book.id});
+  if(libError)return fail(libError);
+  const rows=[],missing=[];
+  for(const link of master){
+    const topic=localTopicForSharedLink(link);
+    if(!topic){missing.push(link);continue}
+    rows.push({
+      teacher_id:S.user.id,textbook_id:book.id,topic_id:topic.id,
+      page_from:link.page_from||null,page_to:link.page_to||null,note:link.note||'',
+      topic_grade:Number(topic.grade)||null,topic_section:topic.section||'',topic_title:topic.title||''
+    });
+  }
+  try{
+    for(let i=0;i<rows.length;i+=150){
+      const {error}=await sb.from('textbook_topic_links').upsert(rows.slice(i,i+150),{onConflict:'textbook_id,topic_id'});
+      if(error)throw error;
+    }
+  }catch(e){
+    await sb.from('teacher_textbook_library').delete().eq('teacher_id',S.user.id).eq('textbook_id',book.id);
+    return fail(e);
+  }
+  await loadTeacher();renderTextbooks();
+  toast(`Учебник добавлен · перенесено привязок: ${rows.length}${missing.length?` · без совпавшей темы: ${missing.length}`:''}`);
+}
+async function removeSharedTextbookFromPersonalLibrary(book){
+  if(!book||textbookIsMine(book))return;
+  if(!confirm(`Убрать «${book.title}» из моей библиотеки? Личные изменения страниц и тем для этого учебника будут удалены.`))return;
+  const personalIds=textbookPersonalLinks(book).map(x=>x.id).filter(Boolean);
+  for(let i=0;i<personalIds.length;i+=100){
+    const {error}=await sb.from('textbook_topic_links').delete().in('id',personalIds.slice(i,i+100));
+    if(error)return fail(error);
+  }
+  const {error}=await sb.from('teacher_textbook_library').delete().eq('teacher_id',S.user.id).eq('textbook_id',book.id);
+  if(error)return fail(error);
+  await loadTeacher();renderTextbooks();toast('Учебник убран из личной библиотеки');
+}
 async function signedTextbookUrl(book,page=0){
   const {data,error}=await sb.storage.from('textbooks').createSignedUrl(book.file_path,3600);if(error)throw error;
   return data.signedUrl+(page?`#page=${Number(page)}`:'');
@@ -386,7 +448,7 @@ async function linkTextbookModal({topicId='',textbookId=''}={}){
   if(!S.textbooksFeatureAvailable)return toast('Сначала подключи библиотеку учебников через SQL v28.2');
   if(!(S.textbooks||[]).length)return toast('Сначала добавь PDF в разделе «Учебники»');
   const topics=(S.topics||[]).slice().sort(curriculumBank()?.compareTopics||(()=>0));
-  const books=(S.textbooks||[]);
+  const books=(S.textbooks||[]).filter(textbookInPersonalLibrary);
   const m=modal(`<h2>Привязать учебник к теме</h2><div class="grid cols2"><div class="field"><label>Учебник</label><select id="ltBook">${books.map(x=>`<option value="${x.id}" ${String(x.id)===String(textbookId)?'selected':''}>${esc(x.title)}${x.author?` · ${esc(x.author)}`:''}</option>`).join('')}</select></div><div class="field"><label>Тема</label><select id="ltTopic">${topics.map(x=>`<option value="${x.id}" ${String(x.id)===String(topicId)?'selected':''}>${x.grade} кл. · ${esc(topicTrack(x))} · ${esc(x.title)}</option>`).join('')}</select></div></div><div class="grid cols3"><div class="field"><label>Страница от</label><input id="ltFrom" type="number" min="1" placeholder="42"></div><div class="field"><label>Страница до</label><input id="ltTo" type="number" min="1" placeholder="47"></div><div class="field"><label>Комментарий</label><input id="ltNote" placeholder="§ 12, примеры 1–3"></div></div><div class="notice">Укажи страницы, на которых раскрывается эта тема. После этого ссылка на учебник появится прямо в теме.</div><button class="btn primary" id="ltSave">Привязать</button>`,'wide-modal');
   m.querySelector('#ltSave').onclick=async()=>{const body={teacher_id:S.user.id,textbook_id:m.querySelector('#ltBook').value,topic_id:m.querySelector('#ltTopic').value,page_from:Number(m.querySelector('#ltFrom').value)||null,page_to:Number(m.querySelector('#ltTo').value)||null,note:m.querySelector('#ltNote').value.trim()};const {error}=await sb.from('textbook_topic_links').upsert(body,{onConflict:'textbook_id,topic_id'});if(error)return fail(error);m.remove();await loadTeacher();if(S.topic)S.topic=S.topics.find(x=>x.id===S.topic.id)||S.topic;renderTeacher();toast('Учебник привязан к теме')};
 }
@@ -1251,15 +1313,27 @@ async function uploadTextbookPdf(file,{onProgress=()=>{},onState=()=>{},onContro
 
 function renderTextbooks(){
   if(!S.textbooksFeatureAvailable){app.innerHTML=shell(`<div class="card mr-textbook-setup"><span class="pill warn">Нужна настройка Supabase</span><h2>Библиотека учебников готова в интерфейсе</h2><p>Чтобы PDF хранились в облаке и открывались на любом устройстве, один раз выполни файл <b>supabase/upgrade-v28.2-textbooks.sql</b> в Supabase SQL Editor.</p><div class="notice">После этого обнови страницу — появится загрузка PDF, привязка к темам и страницы-источники.</div></div>`,'Учебники','PDF-библиотека преподавателя');bindShell();return}
-  const allBooks=(S.textbooks||[]),books=allBooks.filter(b=>String(b.teacher_id)===String(S.user?.id)),sharedBooks=allBooks.filter(b=>b.is_shared&&String(b.teacher_id)!==String(S.user?.id)),links=S.textbookLinks||[],syncPlan=textbookAutoSyncPlan();
-  const syncSummary=books.length?`<div class="card mr-textbook-sync-card"><div><span class="pill">Автопривязка</span><h2>Синхронизировать учебники с темами</h2><p class="muted">Mathroom распознаёт уже загруженные PDF по автору, классу, части и названию, затем связывает их с темами и известными страницами.</p><div class="actions"><span class="pill">Распознано ${syncPlan.recognized.length}/${books.length}</span><span class="pill">Совпадений ${syncPlan.rows.length}</span><span class="pill">Точные страницы ${syncPlan.exactPages}</span><span class="pill">Без страниц ${Math.max(0,syncPlan.rows.length-syncPlan.exactPages)}</span></div></div><div class="actions"><button class="btn primary" id="syncTextbooksTopics">Синхронизировать с темами</button></div></div>`:'';
-  const list=books.length?books.map(book=>{const ls=links.filter(x=>String(x.textbook_id)===String(book.id)),meta=window.MathroomTextbookSyncV290?.detectBook?.(book),linked=ls.slice(0,5).map(l=>{const t=S.topics.find(x=>String(x.id)===String(l.topic_id));return t?`<span class="pill">${t.grade} кл. · ${esc(t.title)}${l.page_from?` · с.${l.page_from}${l.page_to&&l.page_to!==l.page_from?`–${l.page_to}`:''}`:''}</span>`:''}).join('');return `<article class="card mr-textbook-card"><div class="mr-card-head"><div><span class="pill">PDF</span>${meta?.recognized?`<span class="pill good">${esc(meta.label)} · ${meta.grade} кл.${meta.part?` · ч.${meta.part}`:''}</span>`:'<span class="pill warn">Нужно уточнить данные</span>'}<h3>${esc(book.title)}</h3><p class="muted">${book.author?esc(book.author)+' · ':''}${esc(book.subject||'Математика')}${book.grade_from?` · ${book.grade_from}${book.grade_to&&book.grade_to!==book.grade_from?`–${book.grade_to}`:''} класс`:''}</p></div><div class="actions"><button class="btn sm primary" data-book-open="${book.id}">Открыть</button><button class="btn sm" data-book-link="${book.id}">Привязать вручную</button><button class="btn sm library" data-book-share="${book.id}">${book.is_shared?'Убрать из общей':'＋ В общую библиотеку'}</button><button class="btn sm danger" data-book-delete="${book.id}">Удалить</button></div></div><div class="mr-textbook-links">${linked||'<span class="small muted">Пока не привязан ни к одной теме.</span>'}${ls.length>5?`<span class="small muted">+ ещё ${ls.length-5}</span>`:''}</div></article>`}).join(''):'<div class="empty">Учебников пока нет. Добавь первый PDF выше.</div>';
-  const sharedList=sharedBooks.length?sharedBooks.map(book=>`<article class="card mr-textbook-card mr-shared-textbook-card">
-    <div class="mr-card-head"><div><span class="pill library">Общая библиотека</span><span class="pill">PDF</span><h3>${esc(book.title)}</h3><p class="muted">${book.author?esc(book.author)+' · ':''}${esc(book.subject||'Математика')}${book.grade_from?` · ${book.grade_from}${book.grade_to&&book.grade_to!==book.grade_from?`–${book.grade_to}`:''} класс`:''}</p></div>
-    <div class="actions"><button class="btn sm primary" data-book-open="${book.id}">Открыть</button><button class="btn sm" data-book-link="${book.id}">Привязать к моей теме</button></div></div>
-    <div class="mr-textbook-links"><span class="small muted">Сам PDF общий, а страницы, заметки и привязки к темам сохраняются отдельно в твоём кабинете.</span></div>
-  </article>`).join(''):'<div class="empty">Другие преподаватели пока не добавили учебники в общую библиотеку.</div>';
-  app.innerHTML=shell(`${syncSummary}<div class="form-card mr-textbook-upload"><h2>Добавить учебник</h2><form id="textbookForm"><div class="grid cols3"><div class="field"><label>Название</label><input id="tbTitle" required placeholder="Математика. 6 класс"></div><div class="field"><label>Автор</label><input id="tbAuthor" placeholder="Автор / издательство"></div><div class="field"><label>Предмет</label><select id="tbSubject"><option>Математика</option><option>Алгебра</option><option>Геометрия</option></select></div></div><div class="grid cols3"><div class="field"><label>С класса</label><select id="tbFrom">${Array.from({length:11},(_,i)=>`<option>${i+1}</option>`).join('')}</select></div><div class="field"><label>По класс</label><select id="tbTo">${Array.from({length:11},(_,i)=>`<option>${i+1}</option>`).join('')}</select></div><div class="field"><label>PDF</label><input id="tbFile" type="file" accept="application/pdf,.pdf" required></div></div><div class="small muted">PDF хранится в закрытом Supabase Storage. Файлы больше 6 МБ загружаются частями и могут продолжиться после обрыва связи. OCR страниц отключён: PDF используется напрямую, без лишней фоновой обработки.</div><div class="mr-upload-progress" id="tbUploadProgress" hidden><div class="mr-upload-progress-head"><b id="tbUploadState">Подготовка…</b><span id="tbUploadPercent">0%</span></div><div class="mr-upload-track"><i id="tbUploadBar"></i></div><div class="mr-upload-meta"><span id="tbUploadBytes">0 МБ</span><span id="tbUploadSpeed">—</span><span id="tbUploadEta">осталось —</span></div><div class="actions"><button class="btn sm" type="button" id="tbUploadPause" hidden>Пауза</button></div></div><button class="btn primary" id="tbUploadSubmit">Загрузить PDF</button></form></div><div class="section-title"><h2>Моя библиотека · ${books.length}</h2><span class="small muted">Личные учебники и ваши настройки</span></div><div class="grid cols2">${list}</div><section class="mr-shared-books-section"><div class="section-title"><div><span class="mr-topic-section-kicker">Для команды</span><h2>Общая библиотека · ${sharedBooks.length}</h2></div></div><div class="notice mr-library-note"><b>Общий PDF, личные настройки.</b> Привязки к темам, диапазоны страниц и заметки у каждого преподавателя свои.</div><div class="grid cols2">${sharedList}</div></section>`,'Учебники','PDF автоматически связываются с темами и страницами; ручная привязка остаётся доступна');bindShell();
+  const allBooks=(S.textbooks||[]),ownedBooks=allBooks.filter(textbookIsMine),addedSharedBooks=allBooks.filter(b=>!textbookIsMine(b)&&textbookInPersonalLibrary(b)),books=[...ownedBooks,...addedSharedBooks],sharedBooks=allBooks.filter(b=>b.is_shared&&!textbookIsMine(b)),links=S.textbookLinks||[],syncPlan=textbookAutoSyncPlan();
+  const syncSummary=ownedBooks.length?`<div class="card mr-textbook-sync-card"><div><span class="pill">Автопривязка</span><h2>Синхронизировать мои учебники с темами</h2><p class="muted">Mathroom распознаёт загруженные вами PDF по автору, классу, части и названию, затем связывает их с темами и известными страницами.</p><div class="actions"><span class="pill">Распознано ${syncPlan.recognized.length}/${ownedBooks.length}</span><span class="pill">Совпадений ${syncPlan.rows.length}</span><span class="pill">Точные страницы ${syncPlan.exactPages}</span><span class="pill">Без страниц ${Math.max(0,syncPlan.rows.length-syncPlan.exactPages)}</span></div></div><div class="actions"><button class="btn primary" id="syncTextbooksTopics">Синхронизировать с темами</button></div></div>`:'';
+  const list=books.length?books.map(book=>{
+    const mine=textbookIsMine(book),ls=textbookPersonalLinks(book),meta=window.MathroomTextbookSyncV290?.detectBook?.(book);
+    const linked=ls.slice(0,5).map(l=>{const t=S.topics.find(x=>String(x.id)===String(l.topic_id));return t?`<span class="pill">${t.grade} кл. · ${esc(t.title)}${l.page_from?` · с.${l.page_from}${l.page_to&&l.page_to!==l.page_from?`–${l.page_to}`:''}`:''}</span>`:''}).join('');
+    const actions=mine
+      ? `<button class="btn sm primary" data-book-open="${book.id}">Открыть</button><button class="btn sm" data-book-link="${book.id}">Привязать вручную</button><button class="btn sm library" data-book-share="${book.id}">${book.is_shared?'Убрать из общей':'＋ В общую библиотеку'}</button><button class="btn sm danger" data-book-delete="${book.id}">Удалить</button>`
+      : `<button class="btn sm primary" data-book-open="${book.id}">Открыть</button><button class="btn sm" data-book-link="${book.id}">Изменить мои темы/страницы</button><button class="btn sm danger" data-book-remove-personal="${book.id}">Убрать из моей</button>`;
+    return `<article class="card mr-textbook-card"><div class="mr-card-head"><div><span class="pill">${mine?'Мой PDF':'Из общей'}</span>${meta?.recognized?`<span class="pill good">${esc(meta.label)} · ${meta.grade} кл.${meta.part?` · ч.${meta.part}`:''}</span>`:'<span class="pill warn">Нужно уточнить данные</span>'}<h3>${esc(book.title)}</h3><p class="muted">${book.author?esc(book.author)+' · ':''}${esc(book.subject||'Математика')}${book.grade_from?` · ${book.grade_from}${book.grade_to&&book.grade_to!==book.grade_from?`–${book.grade_to}`:''} класс`:''}</p></div><div class="actions">${actions}</div></div><div class="mr-textbook-links">${linked||'<span class="small muted">Пока не привязан ни к одной моей теме.</span>'}${ls.length>5?`<span class="small muted">+ ещё ${ls.length-5}</span>`:''}</div></article>`;
+  }).join(''):'<div class="empty">Учебников пока нет. Добавь свой PDF или возьми учебник из общей библиотеки.</div>';
+  const sharedList=sharedBooks.length?sharedBooks.map(book=>{
+    const master=textbookMasterLinks(book),added=textbookInPersonalLibrary(book);
+    const shown=master.slice(0,7).map(l=>`<span class="pill">${l.topic_grade||'?'} кл. · ${esc(l.topic_title||'Тема')}${l.page_from?` · с.${l.page_from}${l.page_to&&l.page_to!==l.page_from?`–${l.page_to}`:''}`:''}</span>`).join('');
+    return `<article class="card mr-textbook-card mr-shared-textbook-card">
+      <div class="mr-card-head"><div><span class="pill library">Общая библиотека</span><span class="pill">PDF</span>${added?'<span class="pill good">Добавлен мне</span>':''}<h3>${esc(book.title)}</h3><p class="muted">${book.author?esc(book.author)+' · ':''}${esc(book.subject||'Математика')}${book.grade_from?` · ${book.grade_from}${book.grade_to&&book.grade_to!==book.grade_from?`–${book.grade_to}`:''} класс`:''}</p></div>
+      <div class="actions"><button class="btn sm primary" data-book-open="${book.id}">Открыть</button>${added?`<button class="btn sm" data-book-link="${book.id}">Мои настройки</button><button class="btn sm danger" data-book-remove-personal="${book.id}">Убрать из моей</button>`:`<button class="btn sm library" data-book-add-personal="${book.id}">＋ Добавить в мою библиотеку</button>`}</div></div>
+      <div class="mr-textbook-links">${shown||'<span class="small muted">У общего учебника пока нет привязанных тем.</span>'}${master.length>7?`<span class="small muted">+ ещё ${master.length-7}</span>`:''}</div>
+      <div class="small muted" style="margin-top:10px">${added?'Эти связи уже скопированы в вашу личную версию: их можно менять независимо.':'Показаны общие темы и страницы автора библиотеки. При добавлении они скопируются в вашу личную версию.'}</div>
+    </article>`;
+  }).join(''):'<div class="empty">Другие преподаватели пока не добавили учебники в общую библиотеку.</div>';
+  app.innerHTML=shell(`${syncSummary}<div class="form-card mr-textbook-upload"><h2>Добавить учебник</h2><form id="textbookForm"><div class="grid cols3"><div class="field"><label>Название</label><input id="tbTitle" required placeholder="Математика. 6 класс"></div><div class="field"><label>Автор</label><input id="tbAuthor" placeholder="Автор / издательство"></div><div class="field"><label>Предмет</label><select id="tbSubject"><option>Математика</option><option>Алгебра</option><option>Геометрия</option></select></div></div><div class="grid cols3"><div class="field"><label>С класса</label><select id="tbFrom">${Array.from({length:11},(_,i)=>`<option>${i+1}</option>`).join('')}</select></div><div class="field"><label>По класс</label><select id="tbTo">${Array.from({length:11},(_,i)=>`<option>${i+1}</option>`).join('')}</select></div><div class="field"><label>PDF</label><input id="tbFile" type="file" accept="application/pdf,.pdf" required></div></div><div class="small muted">PDF хранится в закрытом Supabase Storage. Файлы больше 6 МБ загружаются частями и могут продолжиться после обрыва связи. OCR страниц отключён: PDF используется напрямую, без лишней фоновой обработки.</div><div class="mr-upload-progress" id="tbUploadProgress" hidden><div class="mr-upload-progress-head"><b id="tbUploadState">Подготовка…</b><span id="tbUploadPercent">0%</span></div><div class="mr-upload-track"><i id="tbUploadBar"></i></div><div class="mr-upload-meta"><span id="tbUploadBytes">0 МБ</span><span id="tbUploadSpeed">—</span><span id="tbUploadEta">осталось —</span></div><div class="actions"><button class="btn sm" type="button" id="tbUploadPause" hidden>Пауза</button></div></div><button class="btn primary" id="tbUploadSubmit">Загрузить PDF</button></form></div><div class="section-title"><h2>Моя библиотека · ${books.length}</h2><span class="small muted">Личные учебники и ваши настройки</span></div><div class="grid cols2">${list}</div><section class="mr-shared-books-section"><div class="section-title"><div><span class="mr-topic-section-kicker">Для команды</span><h2>Общая библиотека · ${sharedBooks.length}</h2></div></div><div class="notice mr-library-note"><b>Общий PDF + общая эталонная карта тем.</b> До добавления вы видите те же темы и страницы, что задал автор. После «Добавить в мою библиотеку» карта копируется вам и дальше редактируется независимо.</div><div class="grid cols2">${sharedList}</div></section>`,'Учебники','PDF автоматически связываются с темами и страницами; ручная привязка остаётся доступна');bindShell();
   document.getElementById('syncTextbooksTopics')?.addEventListener('click',async()=>{
     const btn=document.getElementById('syncTextbooksTopics');btn.disabled=true;btn.textContent='Синхронизируем…';
     try{await syncTextbooksWithTopics();renderTextbooks()}catch(e){fail(e);btn.disabled=false;btn.textContent='Синхронизировать с темами'}
@@ -1318,14 +1392,16 @@ function renderTextbooks(){
   };
   document.querySelectorAll('[data-book-open]').forEach(b=>b.onclick=()=>{const book=allBooks.find(x=>String(x.id)===String(b.dataset.bookOpen));if(book)openTextbook(book)});
   document.querySelectorAll('[data-book-link]').forEach(b=>b.onclick=()=>linkTextbookModal({textbookId:b.dataset.bookLink}));
+  document.querySelectorAll('[data-book-add-personal]').forEach(b=>b.onclick=()=>{const book=allBooks.find(x=>String(x.id)===String(b.dataset.bookAddPersonal));if(book)addSharedTextbookToPersonalLibrary(book)});
+  document.querySelectorAll('[data-book-remove-personal]').forEach(b=>b.onclick=()=>{const book=allBooks.find(x=>String(x.id)===String(b.dataset.bookRemovePersonal));if(book)removeSharedTextbookFromPersonalLibrary(book)});
   document.querySelectorAll('[data-book-share]').forEach(b=>b.onclick=async()=>{
-    const book=books.find(x=>String(x.id)===String(b.dataset.bookShare));if(!book)return;
+    const book=ownedBooks.find(x=>String(x.id)===String(b.dataset.bookShare));if(!book)return;
     const next=!book.is_shared;
     if(!next&&!confirm('Убрать учебник из общей библиотеки? Привязки других преподавателей к этому общему учебнику будут удалены.'))return;
     const {error}=await sb.from('textbooks').update({is_shared:next,shared_at:next?new Date().toISOString():null}).eq('id',book.id);
     if(error)return fail(error);await loadTeacher();renderTextbooks();toast(next?'Учебник добавлен в общую библиотеку':'Учебник убран из общей библиотеки');
   });
-  document.querySelectorAll('[data-book-delete]').forEach(b=>b.onclick=async()=>{const book=books.find(x=>String(x.id)===String(b.dataset.bookDelete));if(!book)return;if(book.is_shared)return toast('Сначала убери учебник из общей библиотеки');if(!confirm(`Удалить учебник «${book.title}»?`))return;try{await sb.storage.from('textbooks').remove([book.file_path]);const {error}=await sb.from('textbooks').delete().eq('id',book.id);if(error)throw error;await loadTeacher();renderTextbooks();toast('Учебник удалён')}catch(err){fail(err)}});
+  document.querySelectorAll('[data-book-delete]').forEach(b=>b.onclick=async()=>{const book=ownedBooks.find(x=>String(x.id)===String(b.dataset.bookDelete));if(!book)return;if(book.is_shared)return toast('Сначала убери учебник из общей библиотеки');if(!confirm(`Удалить учебник «${book.title}»?`))return;try{await sb.storage.from('textbooks').remove([book.file_path]);const {error}=await sb.from('textbooks').delete().eq('id',book.id);if(error)throw error;await loadTeacher();renderTextbooks();toast('Учебник удалён')}catch(err){fail(err)}});
 }
 
 
