@@ -1318,14 +1318,98 @@ function renderTextbooks(){
 
 
 function renderBank(){
-  const bank=window.MathroomCurriculumBank,bankTag=bank?.BANK_TAG;
+  const bank=window.MathroomCurriculumBank;
   const isSystemBankTag=z=>String(z).startsWith('mathroom-core-bank-v')||String(z).startsWith('mrseed:');
-  const cats=[...new Set(S.exercises.filter(x=>x.kind==='task').map(x=>x.category).filter(Boolean))].sort(),tags=[...new Set(S.exercises.filter(x=>x.kind==='task').flatMap(x=>x.tags||[]).filter(x=>!isSystemBankTag(x)&&!String(x).startsWith('класс-')&&!String(x).startsWith('тема:')))].sort();
-  const grades=[...new Set(S.topics.map(x=>Number(x.grade)).filter(Boolean))].sort((a,b)=>a-b),builtIn=(S.exercises||[]).filter(x=>x.kind==='task'&&(x.tags||[]).some(t=>String(t).startsWith('mathroom-core-bank-v'))).length;
-  app.innerHTML=shell(`<div class="actions bank-summary" style="margin-bottom:12px"><span class="pill">${S.exercises.filter(x=>x.kind==='task').length} задач</span><span class="pill">${builtIn} из готовой базы</span><button class="btn sm" id="syncCurriculumBank">Обновить базу 1–11</button></div><div class="form-card"><div class="grid cols4"><div class="field"><label>Поиск</label><input id="bankSearch" placeholder="условие, тег, тема..."></div><div class="field"><label>Класс</label><select id="bankGrade"><option value="">Все</option>${grades.map(x=>`<option value="${x}">${x}</option>`).join('')}</select></div><div class="field"><label>Сложность</label><select id="bankDiff"><option value="">Все</option><option value="basic">Базовые</option><option value="medium">Средние</option><option value="advanced">Сложные</option></select></div><div class="field"><label>Категория</label><select id="bankCat"><option value="">Все</option>${cats.map(x=>`<option>${esc(x)}</option>`).join('')}</select></div></div><div class="field" style="margin-top:10px"><label>Тег</label><select id="bankTag"><option value="">Все</option>${tags.map(x=>`<option>${esc(x)}</option>`).join('')}</select></div></div><div id="bankList"></div>`,'Банк задач','Задачи можно редактировать и удалять');bindShell();
+  const own=S.exercises||[],shared=S.sharedMaterials||[];
+  const mode=S.bankLibraryMode==='shared'?'shared':'mine';
+  const builtIn=own.filter(x=>x.kind==='task'&&(x.tags||[]).some(t=>String(t).startsWith('mathroom-core-bank-v'))).length;
+  const categories=[...new Set([...own.map(x=>x.category),...shared.map(x=>x.category)].filter(Boolean))].sort((a,b)=>String(a).localeCompare(String(b),'ru'));
+  const tags=[...new Set([...own.flatMap(x=>x.tags||[]),...shared.flatMap(x=>x.tags||[])].filter(x=>x&&!isSystemBankTag(x)&&!String(x).startsWith('класс-')&&!String(x).startsWith('тема:')))].sort((a,b)=>String(a).localeCompare(String(b),'ru'));
+  const grades=[...new Set([...(S.topics||[]).map(x=>Number(x.grade)),...shared.map(x=>Number(x.grade))].filter(Boolean))].sort((a,b)=>a-b);
+  const publishedByMe=shared.filter(x=>String(x.published_by)===String(S.user?.id)).length;
+  app.innerHTML=shell(`
+    <section class="mr-library-hero">
+      <div><span>МАТЕРИАЛЫ</span><h1>Личная и общая библиотека</h1><p>Личные материалы редактируешь только ты. В общую библиотеку публикуется отдельная версия — чужие изменения твою копию не затрагивают.</p></div>
+      <div class="mr-library-hero-stats"><div><b>${own.length}</b><small>личных</small></div><div><b>${shared.length}</b><small>в общей</small></div><div><b>${publishedByMe}</b><small>опубликовано вами</small></div></div>
+    </section>
+    <div class="mr-library-tabs">
+      <button class="${mode==='mine'?'active':''}" data-library-mode="mine"><span>Мои материалы</span><b>${own.length}</b></button>
+      <button class="${mode==='shared'?'active':''}" data-library-mode="shared"><span>Общая библиотека</span><b>${shared.length}</b></button>
+    </div>
+    <div class="actions bank-summary mr-library-summary">
+      <span class="pill">${own.filter(x=>x.kind==='task').length} задач</span>
+      <span class="pill">${own.filter(x=>x.kind==='example').length} примеров</span>
+      <span class="pill">${builtIn} из готовой базы</span>
+      <button class="btn sm" id="syncCurriculumBank">Обновить базу 1–11</button>
+    </div>
+    <div class="form-card mr-library-filters">
+      <div class="grid cols4">
+        <div class="field"><label>Поиск</label><input id="bankSearch" placeholder="условие, тег, тема..."></div>
+        <div class="field"><label>Тип</label><select id="bankKind"><option value="">Все</option><option value="task">Задачи</option><option value="example">Примеры</option></select></div>
+        <div class="field"><label>Класс</label><select id="bankGrade"><option value="">Все</option>${grades.map(x=>`<option value="${x}">${x}</option>`).join('')}</select></div>
+        <div class="field"><label>Сложность</label><select id="bankDiff"><option value="">Все</option><option value="basic">Базовые</option><option value="medium">Средние</option><option value="advanced">Сложные</option></select></div>
+      </div>
+      <div class="grid cols2" style="margin-top:10px">
+        <div class="field"><label>Категория</label><select id="bankCat"><option value="">Все</option>${categories.map(x=>`<option>${esc(x)}</option>`).join('')}</select></div>
+        <div class="field"><label>Тег</label><select id="bankTag"><option value="">Все</option>${tags.map(x=>`<option>${esc(x)}</option>`).join('')}</select></div>
+      </div>
+    </div>
+    <div id="bankList"></div>`,'Библиотека материалов','Задачи и примеры: личные копии + общая библиотека преподавателей');
+  bindShell();
   document.getElementById('syncCurriculumBank').onclick=()=>syncCurriculumBank({manual:true});
-  const draw=()=>{const qv=document.getElementById('bankSearch').value.toLowerCase(),g=document.getElementById('bankGrade').value,d=document.getElementById('bankDiff').value,c=document.getElementById('bankCat').value,tag=document.getElementById('bankTag').value;const arr=S.exercises.filter(x=>x.kind==='task').filter(x=>{const t=S.topics.find(z=>z.id===x.topic_id);return(!g||String(t?.grade)===g)&&(!d||x.difficulty===d)&&(!c||x.category===c)&&(!tag||(x.tags||[]).includes(tag))&&(!qv||[x.title,x.content,x.category,t?.title,t?.section,...(x.tags||[])].join(' ').toLowerCase().includes(qv))});document.getElementById('bankList').innerHTML=`<div class="list">${arr.length?arr.map(x=>{const t=S.topics.find(z=>z.id===x.topic_id);const visibleTags=exerciseEditableTags(x.tags);return `<div class="row"><div><div class="actions"><span class="pill">${t?.grade||'?'} кл.</span><span class="pill">${diffLabel(x.difficulty)}</span>${x.category?`<span class="pill">${esc(x.category)}</span>`:''}</div><h3>${esc(x.title||'Задача')}</h3><div class="prewrap">${nl(x.content)}</div><p>${esc(t?.section||'')} · ${esc(t?.title||'')} ${visibleTags.map(z=>'#'+esc(z)).join(' ')} · использована ${x.use_count||0} раз</p></div><div class="actions"><button class="btn sm" data-answer="${x.id}">Ответ</button><button class="btn sm" data-bank-edit="${x.id}">Редактировать</button><button class="btn sm danger" data-bank-delete="${x.id}">Удалить</button></div></div>`}).join(''):'<div class="empty">Ничего не найдено.</div>'}</div>`;document.querySelectorAll('[data-answer]').forEach(b=>b.onclick=()=>{const e=S.exercises.find(x=>x.id===b.dataset.answer);modal(`<h2>${esc(e.title||'Ответ')}</h2><div class="notice mono">${esc(e.answer||'Ответ не заполнен')}</div>`)});document.querySelectorAll('[data-bank-edit]').forEach(b=>b.onclick=()=>{const e=S.exercises.find(x=>x.id===b.dataset.bankEdit);if(e)editExerciseModal(e,{onDone:renderBank})});document.querySelectorAll('[data-bank-delete]').forEach(b=>b.onclick=()=>{const e=S.exercises.find(x=>x.id===b.dataset.bankDelete);if(e)deleteExerciseRow(e,{onDone:renderBank})})};
-  ['bankSearch','bankGrade','bankDiff','bankCat','bankTag'].forEach(id=>document.getElementById(id).oninput=draw);draw();
+  document.querySelectorAll('[data-library-mode]').forEach(b=>b.onclick=()=>{S.bankLibraryMode=b.dataset.libraryMode;renderBank()});
+
+  const readFilters=()=>({
+    q:document.getElementById('bankSearch').value.trim().toLocaleLowerCase('ru'),
+    kind:document.getElementById('bankKind').value,
+    grade:document.getElementById('bankGrade').value,
+    diff:document.getElementById('bankDiff').value,
+    cat:document.getElementById('bankCat').value,
+    tag:document.getElementById('bankTag').value
+  });
+  const match=(row,f,isShared=false)=>{
+    const topic=isShared?null:(S.topics||[]).find(z=>String(z.id)===String(row.topic_id));
+    const grade=isShared?row.grade:topic?.grade;
+    const section=isShared?row.section:topic?.section;
+    const topicTitle=isShared?row.topic_title:topic?.title;
+    return (!f.kind||row.kind===f.kind)&&(!f.grade||String(grade)===f.grade)&&(!f.diff||row.difficulty===f.diff)&&(!f.cat||row.category===f.cat)&&(!f.tag||(row.tags||[]).includes(f.tag))&&(!f.q||[row.title,row.content,row.category,section,topicTitle,...(row.tags||[])].join(' ').toLocaleLowerCase('ru').includes(f.q));
+  };
+
+  const draw=()=>{
+    const f=readFilters(),host=document.getElementById('bankList');
+    if(S.bankLibraryMode==='shared'){
+      const arr=shared.filter(x=>match(x,f,true));
+      host.innerHTML=`<div class="mr-shared-library-grid">${arr.length?arr.map(x=>{
+        const mine=String(x.published_by)===String(S.user?.id);
+        const visibleTags=sharedMaterialUserTags(x.tags);
+        return `<article class="mr-shared-material-card">
+          <div class="mr-shared-material-top"><span class="mr-shared-kind ${x.kind}">${x.kind==='example'?'Пример':'Задача'}</span><span class="pill">${x.grade||'?'} класс</span>${mine?'<span class="pill good">Опубликовано вами</span>':''}</div>
+          <h3>${esc(x.title|| (x.kind==='example'?'Пример':'Задача'))}</h3>
+          <div class="prewrap">${nl(x.content)}</div>
+          <div class="mr-shared-material-meta"><span>${esc(x.section||'Математика')}</span><b>→</b><span>${esc(x.topic_title||'Без темы')}</span></div>
+          ${visibleTags.length?`<div class="mr-library-tags">${visibleTags.slice(0,8).map(z=>`<span>#${esc(z)}</span>`).join('')}</div>`:''}
+          <div class="mr-shared-material-actions"><button class="btn sm" data-shared-answer="${x.id}">Ответ</button><button class="btn sm primary" data-shared-import="${x.id}">${mine?'Добавить ещё одну личную копию':'Добавить себе'}</button></div>
+        </article>`;
+      }).join(''):'<div class="empty">По этим фильтрам в общей библиотеке пока ничего нет.</div>'}</div>`;
+      host.querySelectorAll('[data-shared-answer]').forEach(b=>b.onclick=()=>{const x=shared.find(v=>String(v.id)===String(b.dataset.sharedAnswer));if(x)modal(`<h2>${esc(x.title||'Ответ')}</h2><div class="notice mono">${esc(x.answer||'Ответ не заполнен')}</div>`)});
+      host.querySelectorAll('[data-shared-import]').forEach(b=>b.onclick=()=>{const x=shared.find(v=>String(v.id)===String(b.dataset.sharedImport));if(x)importSharedMaterial(x,{onDone:renderBank})});
+      return;
+    }
+
+    const arr=own.filter(x=>match(x,f,false));
+    host.innerHTML=`<div class="list mr-personal-library-list">${arr.length?arr.map(x=>{
+      const t=(S.topics||[]).find(z=>String(z.id)===String(x.topic_id));
+      const visibleTags=exerciseEditableTags(x.tags),published=sharedMaterialForExercise(x.id);
+      return `<div class="row mr-library-own-row"><div><div class="actions"><span class="pill">${x.kind==='example'?'Пример':'Задача'}</span><span class="pill">${t?.grade||'?'} кл.</span><span class="pill">${diffLabel(x.difficulty)}</span>${x.category?`<span class="pill">${esc(x.category)}</span>`:''}${published?'<span class="pill good">в общей библиотеке</span>':''}</div><h3>${esc(x.title||(x.kind==='example'?'Пример':'Задача'))}</h3><div class="prewrap">${nl(x.content)}</div><p>${esc(t?.section||'')} · ${esc(t?.title||'')} ${visibleTags.map(z=>'#'+esc(z)).join(' ')} · использован ${x.use_count||0} раз</p></div><div class="actions mr-library-own-actions"><button class="btn sm" data-answer="${x.id}">Ответ</button>${published?`<button class="btn sm library" data-bank-share="${x.id}">Обновить общую</button><button class="btn sm danger" data-bank-unshare="${x.id}">Убрать из общей</button>`:`<button class="btn sm library" data-bank-share="${x.id}">＋ В общую</button>`}<button class="btn sm" data-bank-edit="${x.id}">Редактировать</button><button class="btn sm danger" data-bank-delete="${x.id}">Удалить</button></div></div>`;
+    }).join(''):'<div class="empty">Ничего не найдено.</div>'}</div>`;
+    host.querySelectorAll('[data-answer]').forEach(b=>b.onclick=()=>{const e=own.find(x=>String(x.id)===String(b.dataset.answer));if(e)modal(`<h2>${esc(e.title||'Ответ')}</h2><div class="notice mono">${esc(e.answer||'Ответ не заполнен')}</div>`)});
+    host.querySelectorAll('[data-bank-share]').forEach(b=>b.onclick=()=>{const e=own.find(x=>String(x.id)===String(b.dataset.bankShare));if(e)publishExerciseToSharedLibrary(e,{onDone:renderBank})});
+    host.querySelectorAll('[data-bank-unshare]').forEach(b=>b.onclick=()=>{const e=own.find(x=>String(x.id)===String(b.dataset.bankUnshare));if(e)unpublishExerciseFromSharedLibrary(e,{onDone:renderBank})});
+    host.querySelectorAll('[data-bank-edit]').forEach(b=>b.onclick=()=>{const e=own.find(x=>String(x.id)===String(b.dataset.bankEdit));if(e)editExerciseModal(e,{onDone:renderBank})});
+    host.querySelectorAll('[data-bank-delete]').forEach(b=>b.onclick=()=>{const e=own.find(x=>String(x.id)===String(b.dataset.bankDelete));if(e)deleteExerciseRow(e,{onDone:renderBank})});
+  };
+  ['bankSearch','bankKind','bankGrade','bankDiff','bankCat','bankTag'].forEach(id=>document.getElementById(id).oninput=draw);
+  draw();
 }
 
 function renderSchedule(){
