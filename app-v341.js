@@ -591,7 +591,7 @@ function renderAuth(){
   };
 }
 
-const nav=[['dashboard','Главная'],['schedule','Расписание'],['students','Ученики'],['topics','Темы'],['textbooks','Учебники'],['bank','Банк задач'],['assignments','Задания'],['history','История'],['scratch','Черновик']];
+const nav=[['dashboard','Главная'],['schedule','Расписание'],['students','Ученики'],['topics','Темы'],['textbooks','Библиотека'],['bank','Банк задач'],['assignments','Задания'],['history','История'],['scratch','Черновик']];
 function shell(content,title,sub=''){
   const workspace=['scratch','board','lesson'].includes(S.view);
   return `<div class="layout auto-sidebar ${workspace?'workspace-mode':''} view-${S.view}"><aside class="sidebar" aria-label="Главное меню"><div class="brand">Mathroom <span class="cloud-badge">☁ cloud</span></div><nav class="nav">${nav.map(([id,n])=>`<button data-nav="${id}" class="${S.view===id?'active':''}">${n}</button>`).join('')}</nav><div class="sidebar-footer"><button class="btn ghost sm sidebar-help" id="sidebarHelp" type="button">? Справка</button><button class="btn ghost sm" id="logout">Выйти</button></div></aside><main class="content"><div class="topbar"><div><h1>${esc(title)}</h1>${sub?`<p>${esc(sub)}</p>`:''}</div></div>${content}</main></div>`;
