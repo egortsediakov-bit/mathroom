@@ -471,7 +471,23 @@ async function linkTextbookModal({topicId='',textbookId='',sourceLink=null}={}){
   const books=(S.textbooks||[]).filter(b=>textbookIsMine(b)||b.is_shared);
   const bookLabel=b=>`${esc(b.title)}${b.author?` · ${esc(b.author)}`:''}${!textbookIsMine(b)?(textbookInPersonalLibrary(b)?' · из общей / моя копия':' · общая библиотека'):''}`;
   const initialFrom=Number(sourceLink?.page_from)||'',initialTo=Number(sourceLink?.page_to)||'',initialNote=sourceLink?.note||'';
-  const m=modal(`<h2>Привязать учебник к теме</h2><div class="grid cols2"><div class="field"><label>Учебник</label><select id="ltBook">${books.map(x=>`<option value="${x.id}" ${String(x.id)===String(textbookId)?'selected':''}>${bookLabel(x)}</option>`).join('')}</select></div><div class="field"><label>Тема</label><select id="ltTopic">${topics.map(x=>`<option value="${x.id}" ${String(x.id)===String(topicId)?'selected':''}>${x.grade} кл. · ${esc(topicTrack(x))} · ${esc(x.title)}</option>`).join('')}</select></div></div><div class="grid cols3"><div class="field"><label>Страница от</label><input id="ltFrom" type="number" min="1" placeholder="42" value="${initialFrom}"></div><div class="field"><label>Страница до</label><input id="ltTo" type="number" min="1" placeholder="47" value="${initialTo}"></div><div class="field"><label>Комментарий</label><input id="ltNote" placeholder="§ 12, примеры 1–3" value="${esc(initialNote)}"></div></div><div class="notice">Общий учебник можно использовать сразу. Если сохранить свою привязку, Mathroom автоматически добавит его в личную библиотеку и создаст независимую копию страниц/тем.</div><button class="btn primary" id="ltSave">Сохранить мою привязку</button>`,'wide-modal');
+  const m=modal(`<h2>Привязать учебник к теме</h2><div class="grid cols2"><div class="field"><label>Учебник</label><select id="ltBook">${books.map(x=>`<option value="${x.id}" ${String(x.id)===String(textbookId)?'selected':''}>${bookLabel(x)}</option>`).join('')}</select></div><div class="field"><label>Тема</label><select id="ltTopic">${topics.map(x=>`<option value="${x.id}" ${String(x.id)===String(topicId)?'selected':''}>${x.grade} кл. · ${esc(topicTrack(x))} · ${esc(x.title)}</option>`).join('')}</select></div></div><div class="grid cols3"><div class="field"><label>Страница от</label><input id="ltFrom" type="number" min="1" placeholder="42" value="${initialFrom}"></div><div class="field"><label>Страница до</label><input id="ltTo" type="number" min="1" placeholder="47" value="${initialTo}"></div><div class="field"><label>Комментарий</label><input id="ltNote" placeholder="§ 12, примеры 1–3" value="${esc(initialNote)}"></div></div><div class="notice" id="ltMappingHint">Общий учебник можно использовать сразу. Если для темы уже есть общая привязка, страницы подставятся автоматически. Сохранение создаёт вашу независимую копию.</div><button class="btn primary" id="ltSave">Сохранить мою привязку</button>`,'wide-modal');
+  const fillFromSharedMapping=({force=false}={})=>{
+    if(sourceLink&&!force)return;
+    const book=(S.textbooks||[]).find(x=>String(x.id)===String(m.querySelector('#ltBook').value));
+    const topic=(S.topics||[]).find(x=>String(x.id)===String(m.querySelector('#ltTopic').value));
+    const from=m.querySelector('#ltFrom'),to=m.querySelector('#ltTo'),note=m.querySelector('#ltNote'),hint=m.querySelector('#ltMappingHint');
+    if(!book||!topic||!book.is_shared){if(hint)hint.textContent='Укажи страницы, на которых раскрывается эта тема.';return}
+    const master=textbookMasterLinks(book).find(link=>String(localTopicForSharedLink(link)?.id||'')===String(topic.id));
+    if(!master){if(hint)hint.textContent='В общей карте для этой темы страницы не указаны — можно задать свою привязку вручную.';return}
+    if(force||!from.value)from.value=master.page_from||'';
+    if(force||!to.value)to.value=master.page_to||master.page_from||'';
+    if(force||!note.value)note.value=master.note||'';
+    if(hint)hint.innerHTML=`Найдена общая привязка: <b>${master.page_from?`стр. ${master.page_from}${master.page_to&&master.page_to!==master.page_from?`–${master.page_to}`:''}`:'страницы не указаны'}</b>. Можно использовать её как есть или изменить в личной копии.`;
+  };
+  m.querySelector('#ltBook').addEventListener('change',()=>fillFromSharedMapping({force:true}));
+  m.querySelector('#ltTopic').addEventListener('change',()=>fillFromSharedMapping({force:true}));
+  fillFromSharedMapping();
   m.querySelector('#ltSave').onclick=async()=>{
     const book=(S.textbooks||[]).find(x=>String(x.id)===String(m.querySelector('#ltBook').value));
     const topic=(S.topics||[]).find(x=>String(x.id)===String(m.querySelector('#ltTopic').value));
@@ -1282,7 +1298,7 @@ function renderTopic(){
   document.getElementById('linkTextbookTopic').onclick=()=>linkTextbookModal({topicId:t.id});
   document.querySelectorAll('[data-open-source]').forEach(b=>b.onclick=()=>{const book=S.textbooks.find(x=>String(x.id)===String(b.dataset.openSource));if(book)openTextbook(book,Number(b.dataset.page)||0)});
   document.querySelectorAll('[data-board-source]').forEach(b=>b.onclick=()=>{const link=sources.find(x=>String(x.id)===String(b.dataset.boardSource));if(link)textbookPagesToBoardModal(link)});
-  document.querySelectorAll('[data-add-source-book]').forEach(b=>b.onclick=async()=>{const book=S.textbooks.find(x=>String(x.id)===String(b.dataset.addSourceBook));if(!book)return;await addSharedTextbookToPersonalLibrary(book);S.topic=S.topics.find(x=>x.id===t.id)||t;renderTopic()});
+  document.querySelectorAll('[data-add-source-book]').forEach(b=>b.onclick=async()=>{const book=S.textbooks.find(x=>String(x.id)===String(b.dataset.addSourceBook));if(!book)return;const ok=await addSharedTextbookToPersonalLibrary(book,{refresh:true,render:false,notify:true});if(!ok)return;S.topic=S.topics.find(x=>x.id===t.id)||t;renderTopic()});
   document.querySelectorAll('[data-personalize-source]').forEach(b=>b.onclick=()=>{const link=sources.find(x=>String(x.id)===String(b.dataset.personalizeSource));if(link)linkTextbookModal({topicId:t.id,textbookId:link.textbook.id,sourceLink:link})});
   document.querySelectorAll('[data-unlink-source]').forEach(b=>b.onclick=async()=>{if(!confirm('Убрать привязку учебника к этой теме?'))return;const {error}=await sb.from('textbook_topic_links').delete().eq('id',b.dataset.unlinkSource);if(error)return fail(error);await loadTeacher();S.topic=S.topics.find(x=>x.id===t.id)||t;renderTopic()});
   if(next){document.getElementById('openNextTopic').onclick=()=>{S.topic=next;renderTopic()};document.getElementById('scheduleNextTopic').onclick=()=>{S.schedulePrefill={studentId:document.getElementById('assignStudent').value||S.students?.[0]?.id||'',topicId:next.id};S.view='schedule';S.topic=null;renderTeacher()}};
