@@ -90,6 +90,56 @@ Deno.serve(async (req) => {
     return json({ ok: false, error: `У преподавателя «${teacherKey}» отключён доступ Mathroom` }, 409, origin);
   }
 
+  const eventKey = `crm-trial:${leadId}`;
+  const trialStartMs = trialAt.getTime();
+  const trialEndMs = trialStartMs + 60 * 60 * 1000;
+
+  // CRM may not put a trial on top of a lesson created by the teacher in Mathroom.
+  // The same CRM trial is excluded so ordinary rescheduling remains idempotent.
+  const { data: occupiedLessons, error: occupiedError } = await supabase
+    .from("lessons")
+    .select("id, scheduled_at, started_at, duration_minutes, status, crm_event_key, students(name)")
+    .eq("teacher_id", teacher.id)
+    .in("status", ["assigned", "in_progress"])
+    .limit(1000);
+
+  if (occupiedError) {
+    return json({ ok: false, error: "Не удалось проверить занятость преподавателя", details: occupiedError.message }, 500, origin);
+  }
+
+  const conflict = (occupiedLessons || []).find((lesson: any) => {
+    if (String(lesson.crm_event_key || "") === eventKey) return false;
+    const rawStart = lesson.scheduled_at || lesson.started_at;
+    if (!rawStart) return false;
+    const start = new Date(rawStart).getTime();
+    if (!Number.isFinite(start)) return false;
+    const minutes = Math.max(15, Number(lesson.duration_minutes || 60));
+    const end = start + minutes * 60 * 1000;
+    return start < trialEndMs && end > trialStartMs;
+  });
+
+  if (conflict) {
+    const rawStart = conflict.scheduled_at || conflict.started_at;
+    const startDate = new Date(rawStart);
+    const endDate = new Date(startDate.getTime() + Math.max(15, Number(conflict.duration_minutes || 60)) * 60 * 1000);
+    const time = (d: Date) => d.toLocaleTimeString("ru-RU", {
+      timeZone: "Europe/Moscow",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+    const relation = Array.isArray(conflict.students) ? conflict.students[0] : conflict.students;
+    const busyStudent = String(relation?.name || "своим учеником");
+    return json({
+      ok: false,
+      code: "teacher_schedule_conflict",
+      error: `У преподавателя «${teacher.display_name || teacherKey}» в это время уже есть урок с учеником «${busyStudent}» (${time(startDate)}–${time(endDate)}). Выберите другое время пробного.`,
+      conflictLessonId: conflict.id,
+      conflictStudent: busyStudent,
+      conflictStartsAt: rawStart,
+      conflictDurationMinutes: Math.max(15, Number(conflict.duration_minutes || 60)),
+    }, 409, origin);
+  }
+
   const studentPayload = {
     teacher_id: teacher.id,
     name: studentName,
@@ -151,7 +201,6 @@ Deno.serve(async (req) => {
     }, 500, origin);
   }
 
-  const eventKey = `crm-trial:${leadId}`;
   const lessonPayload = {
     teacher_id: teacher.id,
     student_id: student.id,
