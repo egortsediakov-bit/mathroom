@@ -883,7 +883,7 @@
     </div>`;
     root.dataset.phoneBoard=phoneBoardUI?'1':'0';
     root.dataset.boardRole=isTeacher?'teacher':'student';
-    root.innerHTML=`<div class="board-card"><div class="board-head"><div class="board-head-title"><strong>${localOnly?'Черновик':'Доска'}</strong><span class="board-status" id="boardStatus">${localOnly?'Локальный черновик':'Подключение…'}</span></div><div class="board-head-actions">${isTeacher&&lessonId?`<button class="btn sm ${followTeacher?'active':''}" id="followTeacherToggle">${uiIcon('focus')} <span>Ведение</span></button><select class="board-select board-permission-select" id="studentBoardMode" title="Права ученика"><option value="open" ${classroomMode==='open'?'selected':''}>Всё</option><option value="pen" ${classroomMode==='pen'?'selected':''}>Только писать</option><option value="view" ${classroomMode==='view'?'selected':''}>Только читать</option></select>`:desktopTeacherReplica&&lessonId?`<select class="board-select board-permission-select" id="studentBoardMode" disabled title="Права задаёт преподаватель"><option value="open">Всё</option><option value="pen">Только писать</option><option value="view">Только читать</option></select>`:''}<span class="board-head-sep" aria-hidden="true"></span><button class="btn sm board-head-icon" id="undo" title="Отменить · Ctrl+Z">${uiIcon('undo')}<span class="board-head-label">Назад</span></button><button class="btn sm board-head-icon" id="redo" title="Вернуть · Ctrl+Y / Ctrl+Shift+Z">${uiIcon('redo')}<span class="board-head-label">Вперёд</span></button>${fullBoardTools?`<span class="board-head-sep" aria-hidden="true"></span><button class="btn sm board-head-icon" id="bringForward" disabled title="Поднять выбранный объект на один слой">${uiIcon('up')}<span class="board-head-label">Выше</span></button><button class="btn sm board-head-icon" id="sendBackward" disabled title="Опустить выбранный объект на один слой">${uiIcon('down')}<span class="board-head-label">Ниже</span></button><span class="board-head-sep" aria-hidden="true"></span><button class="btn sm board-head-icon" id="addPage" title="Создать новый лист">${uiIcon('plus')}<span class="board-head-label">Новый</span></button><button class="btn sm board-head-icon danger" id="delPage" title="Удалить текущий лист">${uiIcon('trash')}<span class="board-head-label">Удалить лист</span></button>`:''}<span class="board-head-sep" aria-hidden="true"></span><button class="btn sm board-shortcuts-btn" id="quickCommands" title="Показать быстрые команды">⌨ <span>Команды</span></button><button class="btn sm board-fullscreen-btn" id="fullscreen" title="На весь экран" aria-label="На весь экран">${uiIcon('fullscreen')} <span data-fullscreen-label="На весь экран">На весь экран</span></button></div></div><div class="board-page-tabs" id="pageTabs"></div><div class="board-stage" id="stage"><aside class="board-toolbar board-toolbar-side">${toolPanel}</aside><svg id="boardSvg"></svg><div class="board-object-hud" id="objectHud" hidden><button type="button" class="btn sm" data-object-action="duplicate" title="Дублировать">${uiIcon('duplicate')}</button><button type="button" class="btn sm" data-object-action="lock" title="Закрепить">${uiIcon('pin')}</button><button type="button" class="btn sm" data-object-action="front" title="На передний план">${uiIcon('front')}</button><button type="button" class="btn sm" data-object-action="back" title="На задний план">${uiIcon('back')}</button><button type="button" class="btn sm" data-object-action="fill" title="Заливка">${uiIcon('fill')}</button><button type="button" class="btn sm" data-object-action="edit" title="Редактировать">${uiIcon('edit')}</button><button type="button" class="btn sm danger" data-object-action="delete" title="Удалить">${uiIcon('trash')}</button></div><div class="board-follow-badge" id="followBadge" hidden>${uiIcon('focus')} Следуем за преподавателем</div><div class="board-solid-hud" id="solidHud" hidden><button type="button" class="btn sm" data-solid-hud="rotate" title="Вращать 3D">${uiIcon('rotate')}</button><button type="button" class="btn sm" data-solid-hud="point" title="Поставить точку">${uiIcon('point')}</button><button type="button" class="btn sm" data-solid-hud="plane" title="Плоскость по трём точкам">${uiIcon('plane')}</button><span class="board-solid-hud-sep"></span><button type="button" class="btn sm" data-solid-hud="smaller" title="Уменьшить">${uiIcon('minus')}</button><button type="button" class="btn sm" data-solid-hud="larger" title="Увеличить">${uiIcon('plus')}</button><button type="button" class="btn sm" data-solid-hud="reset" title="Стандартный вид">${uiIcon('home')}</button><button type="button" class="btn sm danger" data-solid-hud="clear" title="Удалить точки и плоскости">${uiIcon('trash')}</button></div><div class="board-floating"><button class="btn sm" id="zoomOut" title="Уменьшить">${uiIcon('minus')}</button><span class="btn sm" id="zoomLabel">100%</span><button class="btn sm" id="zoomIn" title="Увеличить">${uiIcon('plus')}</button><button class="btn sm" id="homeView" title="Сбросить вид">${uiIcon('home')}</button></div></div><div class="board-hint">Выбор: рамка · Shift+клик — несколько объектов · Ctrl+Z — отменить · Space + drag — перемещение · Ctrl/⌘ + колесо — масштаб · планшет: стилус пишет, палец двигает, два пальца масштабируют</div></div>`;
+    root.innerHTML=`<div class="board-card"><div class="board-head"><div class="board-head-title"><strong>${localOnly?'Черновик':'Доска'}</strong><span class="board-status" id="boardStatus">${localOnly?'Локальный черновик':'Подключение…'}</span></div><div class="board-head-actions">${isTeacher&&lessonId?`<button class="btn sm ${followTeacher?'active':''}" id="followTeacherToggle">${uiIcon('focus')} <span>Ведение</span></button><select class="board-select board-permission-select" id="studentBoardMode" title="Права ученика"><option value="open" ${classroomMode==='open'?'selected':''}>Всё</option><option value="pen" ${classroomMode==='pen'?'selected':''}>Только писать</option><option value="view" ${classroomMode==='view'?'selected':''}>Только читать</option></select>`:desktopTeacherReplica&&lessonId?`<select class="board-select board-permission-select" id="studentBoardMode" disabled title="Права задаёт преподаватель"><option value="open">Всё</option><option value="pen">Только писать</option><option value="view">Только читать</option></select>`:''}<span class="board-head-sep" aria-hidden="true"></span><button class="btn sm board-head-icon" id="undo" title="Отменить · Ctrl+Z">${uiIcon('undo')}<span class="board-head-label">Назад</span></button><button class="btn sm board-head-icon" id="redo" title="Вернуть · Ctrl+Y / Ctrl+Shift+Z">${uiIcon('redo')}<span class="board-head-label">Вперёд</span></button>${fullBoardTools?`<span class="board-head-sep" aria-hidden="true"></span><button class="btn sm board-head-icon" id="bringForward" disabled title="Поднять выбранный объект на один слой">${uiIcon('up')}<span class="board-head-label">Выше</span></button><button class="btn sm board-head-icon" id="sendBackward" disabled title="Опустить выбранный объект на один слой">${uiIcon('down')}<span class="board-head-label">Ниже</span></button><span class="board-head-sep" aria-hidden="true"></span><button class="btn sm board-head-icon" id="addPage" title="Создать новый лист">${uiIcon('plus')}<span class="board-head-label">Новый</span></button><button class="btn sm board-head-icon danger" id="delPage" title="Удалить текущий лист">${uiIcon('trash')}<span class="board-head-label">Удалить лист</span></button>`:''}<span class="board-head-sep" aria-hidden="true"></span><button class="btn sm board-shortcuts-btn" id="quickCommands" title="Показать быстрые команды">⌨ <span>Команды</span></button><button class="btn sm board-fullscreen-btn" id="fullscreen" title="На весь экран" aria-label="На весь экран">${uiIcon('fullscreen')} <span data-fullscreen-label="На весь экран">На весь экран</span></button></div></div><div class="board-page-tabs" id="pageTabs"></div><div class="board-stage" id="stage"><aside class="board-toolbar board-toolbar-side">${toolPanel}</aside><svg id="boardSvg"></svg><div class="board-object-hud" id="objectHud" hidden><button type="button" class="btn sm" data-object-action="duplicate" title="Дублировать">${uiIcon('duplicate')}</button><button type="button" class="btn sm" data-object-action="lock" title="Закрепить">${uiIcon('pin')}</button><button type="button" class="btn sm" data-object-action="front" title="На передний план">${uiIcon('front')}</button><button type="button" class="btn sm" data-object-action="back" title="На задний план">${uiIcon('back')}</button><button type="button" class="btn sm" data-object-action="fill" title="Заливка">${uiIcon('fill')}</button><button type="button" class="btn sm" data-object-action="edit" title="Редактировать">${uiIcon('edit')}</button><button type="button" class="btn sm" data-object-action="crop" title="Обрезать изображение · Ctrl+Shift+C">${uiIcon('crop')}</button><button type="button" class="btn sm danger" data-object-action="delete" title="Удалить">${uiIcon('trash')}</button></div><div class="board-follow-badge" id="followBadge" hidden>${uiIcon('focus')} Следуем за преподавателем</div><div class="board-solid-hud" id="solidHud" hidden><button type="button" class="btn sm" data-solid-hud="rotate" title="Вращать 3D">${uiIcon('rotate')}</button><button type="button" class="btn sm" data-solid-hud="point" title="Поставить точку">${uiIcon('point')}</button><button type="button" class="btn sm" data-solid-hud="plane" title="Плоскость по трём точкам">${uiIcon('plane')}</button><span class="board-solid-hud-sep"></span><button type="button" class="btn sm" data-solid-hud="smaller" title="Уменьшить">${uiIcon('minus')}</button><button type="button" class="btn sm" data-solid-hud="larger" title="Увеличить">${uiIcon('plus')}</button><button type="button" class="btn sm" data-solid-hud="reset" title="Стандартный вид">${uiIcon('home')}</button><button type="button" class="btn sm danger" data-solid-hud="clear" title="Удалить точки и плоскости">${uiIcon('trash')}</button></div><div class="board-floating"><button class="btn sm" id="zoomOut" title="Уменьшить">${uiIcon('minus')}</button><span class="btn sm" id="zoomLabel">100%</span><button class="btn sm" id="zoomIn" title="Увеличить">${uiIcon('plus')}</button><button class="btn sm" id="homeView" title="Сбросить вид">${uiIcon('home')}</button></div></div><div class="board-hint">Выбор: рамка · Ctrl/Shift+клик — несколько объектов · Ctrl+Shift+C — обрезать фото · Ctrl+Z — отменить · Space + drag — перемещение · Ctrl/⌘ + колесо — масштаб · планшет: стилус пишет, палец двигает, два пальца масштабируют</div></div>`;
     if(desktopTeacherReplica){
       /* Desktop student uses the teacher board layout, but not teacher-only
          lesson/admin actions. Keep object clipboard actions available. */
@@ -950,9 +950,11 @@
         ['H','Рука / перемещение'],
         ['G','Включить или выключить сетку'],
         ['Space + drag','Временно перемещать доску рукой'],
+        ['Ctrl/⌘ + клик','Добавить или убрать объект из выделения','Работает даже если сейчас включена «Рука»'],
         ['Shift + клик','Добавить или убрать объект из выделения'],
         ['Delete / Backspace','Удалить выбранный объект'],
         ['Ctrl/⌘ + C','Скопировать выбранное'],
+        ['Ctrl/⌘ + Shift + C','Обрезать выбранную картинку'],
         ['Ctrl/⌘ + V','Вставить из системного буфера','Текст или изображение']
       ];
       const teacher=[
@@ -1083,7 +1085,7 @@
       if(!objectHud||!stage||selectionCount()!==1){if(objectHud)objectHud.hidden=true;return}const o=elements.find(x=>x.id===selected&&x.type!=='board-bg');if(!o){objectHud.hidden=true;return}
       const editable=['text','formula','graph','note'].includes(o.type),b=bounds(o),r=stage.getBoundingClientRect(),w=Math.max(190,objectHud.offsetWidth||190),h=Math.max(40,objectHud.offsetHeight||40);
       objectHud.hidden=false;objectHud.classList.toggle('locked',!!o.locked);objectHud.style.left=`${Math.max(72,Math.min(Math.max(72,r.width-w-8),(b.x-camera.x)*camera.zoom))}px`;objectHud.style.top=`${Math.max(8,Math.min(Math.max(8,r.height-h-8),(b.y-camera.y)*camera.zoom-h-10))}px`;
-      const lock=objectHud.querySelector('[data-object-action="lock"]'),edit=objectHud.querySelector('[data-object-action="edit"]'),fill=objectHud.querySelector('[data-object-action="fill"]');if(lock){lock.textContent=o.locked?'🔓':'🔒';lock.title=o.locked?'Разблокировать':'Закрепить объект';lock.hidden=!fullBoardTools}if(edit)edit.hidden=!editable||o.locked;if(fill)fill.hidden=o.locked||!['rect','ellipse','polygon','note'].includes(o.type);
+      const lock=objectHud.querySelector('[data-object-action="lock"]'),edit=objectHud.querySelector('[data-object-action="edit"]'),fill=objectHud.querySelector('[data-object-action="fill"]'),crop=objectHud.querySelector('[data-object-action="crop"]');if(lock){lock.textContent=o.locked?'🔓':'🔒';lock.title=o.locked?'Разблокировать':'Закрепить объект';lock.hidden=!fullBoardTools}if(edit)edit.hidden=!editable||o.locked;if(fill)fill.hidden=o.locked||!['rect','ellipse','polygon','note'].includes(o.type);if(crop)crop.hidden=o.locked||o.type!=='image';
       objectHud.querySelectorAll('[data-object-action]').forEach(b=>{if(!fullBoardTools&&['lock','front','back','delete','duplicate'].includes(b.dataset.objectAction))b.hidden=true});
     }
     function setBackground(kind='blank',color='#ffffff'){
@@ -1571,6 +1573,15 @@
     function pushElementsHistory(){if(busyHistory)return;undoStack.push({type:'elements',pageId:current.id,elements:clone(elements),actor:actorKey});if(undoStack.length>140)undoStack.shift();redoStack.length=0;syncHistoryButtons()}
     async function switchPage(id,{skipSave=false,fromLeader=false}={}){if(current?.id===id)return;if(!skipSave)await save();const p=pages.find(x=>x.id===id);if(!p)return;current=p;elements=clone(p.elements||[]).map(normalizeElement).filter(Boolean);collabBaseline=clone(elements);clearSelection();camera={x:0,y:0,zoom:1};zoomLabel.textContent='100%';renderTabs();render();joinChannel();if(isTeacher&&followTeacher&&!fromLeader)pagesChannel?.send({type:'broadcast',event:'navigate',payload:{pageId:id}}).catch(()=>{});sendViewport(true)}
     function hit(x,y){for(let i=elements.length-1;i>=0;i--){const o=elements[i];if(o.type==='board-bg')continue;if(o.teacherOnly&&!isTeacher)continue;const b=bounds(o);if(x>=b.x-20&&x<=b.x+b.w+20&&y>=b.y-20&&y<=b.y+b.h+20)return o}return null}
+    function selectionHit(x,y){
+      const radius=Math.max(3,6/camera.zoom);
+      for(let i=elements.length-1;i>=0;i--){
+        const o=elements[i];
+        if(!o||o.type==='board-bg'||(o.teacherOnly&&!isTeacher))continue;
+        if(eraserHitsObject(o,x,y,radius))return o;
+      }
+      return null;
+    }
     async function restorePage(p){let data;if(localOnly){data={...clone(p),updated_at:new Date().toISOString()}}else{const row={id:p.id,teacher_id:p.teacher_id,student_id:p.student_id,lesson_id:p.lesson_id||lessonId||null,title:p.title,sort_order:p.sort_order,elements:p.elements||[],created_at:p.created_at,updated_at:new Date().toISOString()};const res=await sb.from('board_pages').insert(row).select().single();if(res.error)throw res.error;data=res.data}pages.push(data);pages.sort((a,b)=>a.sort_order-b.sort_order);pagesChanged();await switchPage(data.id,{skipSave:true})}
     async function createPage(title,initialElements=[]){let data;if(localOnly){data={id:uid(),teacher_id:S.user?.id||'',student_id:null,title,sort_order:pages.length,elements:clone(initialElements),created_at:new Date().toISOString(),updated_at:new Date().toISOString()}}else{const owner=options.teacherId||current?.teacher_id||pages[0]?.teacher_id||S.user?.id||'';const row={teacher_id:owner,student_id:studentId,lesson_id:lessonId||null,title,sort_order:pages.length,elements:initialElements};const res=await sb.from('board_pages').insert(row).select().single();if(res.error)throw res.error;data=res.data}undoStack.push({type:'createPage',page:clone(data)});redoStack.length=0;pages.push(data);renderTabs();pagesChanged();return data}
     async function undo(){const action=undoStack.pop();if(!action){syncHistoryButtons();return}busyHistory=true;try{if(action.type==='elements'){const p=pages.find(x=>x.id===action.pageId);if(!p)return;if(current.id!==p.id)await switchPage(p.id);const redo={type:'elements',pageId:p.id,elements:clone(elements),actor:actorKey};if(applySafeSnapshot(action.elements)){redoStack.push(redo);changed()}}else if(action.type==='deletePage'){redoStack.push({type:'deletePage',page:clone(action.page)});await restorePage(action.page)}else if(action.type==='createPage'){const p=pages.find(x=>x.id===action.page.id);if(p){redoStack.push({type:'createPage',page:clone(p)});await deletePageRecord(p.id);pages=pages.filter(x=>x.id!==p.id);current=pages[0];elements=clone(current.elements||[]).map(normalizeElement).filter(Boolean);collabBaseline=clone(elements);renderTabs();render();joinChannel();pagesChanged()}}}catch(e){fail(e)}finally{busyHistory=false;syncHistoryButtons()}}
@@ -1679,7 +1690,118 @@
       const text=e.clipboardData?.getData('text/plain');if(text){e.preventDefault();preferInternalClipboard=false;if(S.boardClipboard)S.boardClipboard.preferInternal=false;addText(text,{fontSize:26});toast('Текст вставлен на доску');return}
       if(clipboardElement){e.preventDefault();pasteSelected()}
     }
-    async function cropSelectedImage(){const o=elements.find(x=>x.id===selected);if(!o||o.type!=='image')return;try{const url=await ensureAsset(o.assetPath);if(!url)throw new Error('Не удалось загрузить изображение');const m=modal(`<h2>Обрезать изображение</h2><p class="muted">Укажи, сколько процентов убрать с каждой стороны.</p><div class="board-crop-preview"><img src="${url}"></div><div class="grid cols4"><div class="field"><label>Слева %</label><input id="cropL" type="number" min="0" max="45" value="0"></div><div class="field"><label>Сверху %</label><input id="cropT" type="number" min="0" max="45" value="0"></div><div class="field"><label>Справа %</label><input id="cropR" type="number" min="0" max="45" value="0"></div><div class="field"><label>Снизу %</label><input id="cropB" type="number" min="0" max="45" value="0"></div></div><button class="btn primary" id="cropApply">Применить</button>`,'wide-modal');m.querySelector('#cropApply').onclick=async()=>{try{const vals=['L','T','R','B'].map(k=>clamp(Number(m.querySelector('#crop'+k).value||0),0,45)),[l,t,r,b]=vals;if(l+r>=90||t+b>=90)return toast('Слишком сильная обрезка');const blob=await fetch(url).then(x=>x.blob()),img=await createImageBitmap(blob),sx=Math.round(img.width*l/100),sy=Math.round(img.height*t/100),sw=Math.max(1,Math.round(img.width*(1-(l+r)/100))),sh=Math.max(1,Math.round(img.height*(1-(t+b)/100))),c=document.createElement('canvas');c.width=sw;c.height=sh;c.getContext('2d').drawImage(img,sx,sy,sw,sh,0,0,sw,sh);const out=await new Promise((res,rej)=>c.toBlob(x=>x?res(x):rej(new Error('Не удалось обрезать')),'image/png',.94)),path=await uploadBlob(out,'image/png','png');pushElementsHistory();const idx=elements.findIndex(x=>x.id===o.id);elements[idx]={...o,assetPath:path,w:o.w*(sw/img.width),h:o.h*(sh/img.height)};m.remove();changed();ensureAsset(path).then(render);toast('Изображение обрезано')}catch(e){fail(e)}}}catch(e){fail(e)}}
+    let activeImageCropCleanup=null;
+    async function cropSelectedImage(){
+      const o=elements.find(x=>x.id===selected);
+      if(!o||o.type!=='image'||selectionCount()!==1)return toast('Сначала выбери одну картинку');
+      if(o.locked)return toast('Картинка закреплена · сначала разблокируй её');
+      if(!canTransformObject(o))return toast('Редактирование этой картинки ограничено');
+      try{
+        const url=await ensureAsset(o.assetPath);
+        if(!url)throw new Error('Не удалось загрузить изображение');
+        activeImageCropCleanup?.();
+
+        const overlay=document.createElement('div');
+        overlay.className='board-inline-crop';
+        overlay.innerHTML='<img draggable="false"><div class="board-inline-crop-box"><i data-crop-handle="nw"></i><i data-crop-handle="n"></i><i data-crop-handle="ne"></i><i data-crop-handle="e"></i><i data-crop-handle="se"></i><i data-crop-handle="s"></i><i data-crop-handle="sw"></i><i data-crop-handle="w"></i></div><div class="board-inline-crop-toolbar"><b>Обрезка</b><button type="button" data-crop-reset>Сбросить</button><button type="button" data-crop-cancel>Отмена</button><button type="button" class="primary" data-crop-apply>Применить</button></div>';
+        const preview=overlay.querySelector('img'),box=overlay.querySelector('.board-inline-crop-box'),toolbar=overlay.querySelector('.board-inline-crop-toolbar');
+        preview.src=url;
+        stage.appendChild(overlay);
+
+        let crop={x0:.04,y0:.04,x1:.96,y1:.96},drag=null,closed=false;
+        const min=.04;
+        const positionOverlay=()=>{
+          if(closed)return;
+          const sr=stage.getBoundingClientRect(),vr=svg.getBoundingClientRect(),vb=svg.viewBox?.baseVal;
+          const vw=Math.max(1,vb?.width||vr.width),vh=Math.max(1,vb?.height||vr.height),sx=vr.width/vw,sy=vr.height/vh;
+          const left=vr.left-sr.left+(((o.x-camera.x)*camera.zoom)-(vb?.x||0))*sx;
+          const top=vr.top-sr.top+(((o.y-camera.y)*camera.zoom)-(vb?.y||0))*sy;
+          overlay.style.left=left+'px';overlay.style.top=top+'px';
+          overlay.style.width=Math.max(40,o.w*camera.zoom*sx)+'px';
+          overlay.style.height=Math.max(40,o.h*camera.zoom*sy)+'px';
+          renderCrop();
+        };
+        const renderCrop=()=>{
+          box.style.left=(crop.x0*100)+'%';box.style.top=(crop.y0*100)+'%';
+          box.style.width=((crop.x1-crop.x0)*100)+'%';box.style.height=((crop.y1-crop.y0)*100)+'%';
+        };
+        const normalizedPoint=e=>{
+          const r=overlay.getBoundingClientRect();
+          return {x:clamp((e.clientX-r.left)/Math.max(1,r.width),0,1),y:clamp((e.clientY-r.top)/Math.max(1,r.height),0,1)};
+        };
+        const begin=e=>{
+          if(e.target.closest('.board-inline-crop-toolbar'))return;
+          e.preventDefault();e.stopPropagation();
+          const p=normalizedPoint(e),handle=e.target.dataset.cropHandle||'move';
+          drag={id:e.pointerId,handle,start:p,base:{...crop}};
+          try{overlay.setPointerCapture(e.pointerId)}catch{}
+        };
+        const move=e=>{
+          if(!drag||drag.id!==e.pointerId)return;
+          e.preventDefault();e.stopPropagation();
+          const p=normalizedPoint(e),dx=p.x-drag.start.x,dy=p.y-drag.start.y,b=drag.base,h=drag.handle;
+          if(h==='move'){
+            const w=b.x1-b.x0,hh=b.y1-b.y0;
+            let x0=clamp(b.x0+dx,0,1-w),y0=clamp(b.y0+dy,0,1-hh);
+            crop={x0,y0,x1:x0+w,y1:y0+hh};
+          }else{
+            let {x0,y0,x1,y1}=b;
+            if(h.includes('w'))x0=clamp(b.x0+dx,0,x1-min);
+            if(h.includes('e'))x1=clamp(b.x1+dx,x0+min,1);
+            if(h.includes('n'))y0=clamp(b.y0+dy,0,y1-min);
+            if(h.includes('s'))y1=clamp(b.y1+dy,y0+min,1);
+            crop={x0,y0,x1,y1};
+          }
+          renderCrop();
+        };
+        const end=e=>{
+          if(!drag||drag.id!==e.pointerId)return;
+          drag=null;
+          try{overlay.releasePointerCapture(e.pointerId)}catch{}
+        };
+        const cancel=()=>{
+          if(closed)return;closed=true;
+          overlay.remove();
+          window.removeEventListener('resize',positionOverlay);
+          window.removeEventListener('scroll',positionOverlay,true);
+          document.removeEventListener('keydown',cropKey,true);
+          if(activeImageCropCleanup===cancel)activeImageCropCleanup=null;
+          render();
+        };
+        const cropKey=e=>{if(e.key==='Escape'){e.preventDefault();cancel()}};
+        overlay.addEventListener('pointerdown',begin);
+        overlay.addEventListener('pointermove',move);
+        overlay.addEventListener('pointerup',end);
+        overlay.addEventListener('pointercancel',end);
+        toolbar.addEventListener('pointerdown',e=>e.stopPropagation());
+        overlay.querySelector('[data-crop-reset]').onclick=()=>{crop={x0:.04,y0:.04,x1:.96,y1:.96};renderCrop()};
+        overlay.querySelector('[data-crop-cancel]').onclick=cancel;
+        overlay.querySelector('[data-crop-apply]').onclick=async()=>{
+          try{
+            const blob=await fetch(url).then(x=>x.blob()),img=await createImageBitmap(blob);
+            const sx=Math.round(img.width*crop.x0),sy=Math.round(img.height*crop.y0);
+            const sw=Math.max(1,Math.round(img.width*(crop.x1-crop.x0))),sh=Math.max(1,Math.round(img.height*(crop.y1-crop.y0)));
+            const c=document.createElement('canvas');c.width=sw;c.height=sh;
+            c.getContext('2d').drawImage(img,sx,sy,sw,sh,0,0,sw,sh);
+            const out=await new Promise((res,rej)=>c.toBlob(x=>x?res(x):rej(new Error('Не удалось обрезать изображение')),'image/png',.95));
+            const path=await uploadBlob(out,'image/png','png');
+            pushElementsHistory();
+            const idx=elements.findIndex(x=>x.id===o.id);
+            if(idx<0)return cancel();
+            const nw=o.w*(crop.x1-crop.x0),nh=o.h*(crop.y1-crop.y0);
+            const nx=o.x+o.w*crop.x0,ny=o.y+o.h*crop.y0;
+            elements[idx]={...o,assetPath:path,x:nx,y:ny,w:nw,h:nh};
+            cancel();changed();ensureAsset(path).then(render);toast('Изображение обрезано');
+          }catch(e){fail(e)}
+        };
+        window.addEventListener('resize',positionOverlay);
+        window.addEventListener('scroll',positionOverlay,true);
+        document.addEventListener('keydown',cropKey,true);
+        activeImageCropCleanup=cancel;
+        preview.onload=positionOverlay;
+        requestAnimationFrame(positionOverlay);
+      }catch(e){fail(e)}
+    }
     async function captureBoardFallback(){
       try{
         const r=svg.getBoundingClientRect(),w=Math.max(640,Math.round(r.width||1280)),h=Math.max(420,Math.round(r.height||720));
@@ -1714,6 +1836,7 @@
       const canvas=m.querySelector('#mrCropCanvas'),stage=m.querySelector('#mrCropStage'),selection=m.querySelector('#mrCropSelection'),size=m.querySelector('#mrCropSize');
       const ctx=canvas.getContext('2d');
       canvas.width=sourceCanvas.width;canvas.height=sourceCanvas.height;
+      canvas.draggable=false;canvas.style.touchAction='none';canvas.ondragstart=()=>false;
       ctx.drawImage(sourceCanvas,0,0);
       let crop={x:0,y:0,w:canvas.width,h:canvas.height},drag=null;
       const clampCrop=function(c){
@@ -1738,7 +1861,7 @@
         e.preventDefault();
         const p=clientToImage(e.clientX,e.clientY);
         drag={x:p.x,y:p.y,id:e.pointerId};
-        try{stage.setPointerCapture(e.pointerId)}catch{}
+        try{canvas.setPointerCapture(e.pointerId)}catch{}
         crop={x:p.x,y:p.y,w:1,h:1};renderCrop();
       };
       const pointerMove=function(e){
@@ -1753,12 +1876,12 @@
         e.preventDefault();
         if(crop.w<8||crop.h<8)useFull();
         drag=null;
-        try{stage.releasePointerCapture(e.pointerId)}catch{}
+        try{canvas.releasePointerCapture(e.pointerId)}catch{}
       };
-      stage.addEventListener('pointerdown',pointerDown);
-      stage.addEventListener('pointermove',pointerMove);
-      stage.addEventListener('pointerup',pointerUp);
-      stage.addEventListener('pointercancel',pointerUp);
+      canvas.addEventListener('pointerdown',pointerDown);
+      canvas.addEventListener('pointermove',pointerMove);
+      canvas.addEventListener('pointerup',pointerUp);
+      canvas.addEventListener('pointercancel',pointerUp);
       m.querySelector('#mrCropFull').onclick=useFull;
       m.querySelector('#mrCropReset').onclick=function(){
         crop={x:canvas.width*.15,y:canvas.height*.15,w:canvas.width*.7,h:canvas.height*.7};
@@ -1958,7 +2081,18 @@
 
       svg.setPointerCapture(e.pointerId);
       let[x,y]=screenToWorld(e.clientX,e.clientY);sendCursor(x,y);
-      if(!['pen','pencil','marker','laser','eraser','compass','solid-rotate'].includes(tool))[x,y]=geometrySnapPoint(x,y,selectionList());
+      if(!['pen','pencil','marker','laser','eraser','compass','solid-rotate','select'].includes(tool))[x,y]=geometrySnapPoint(x,y,selectionList());
+      if((e.ctrlKey||e.metaKey)&&e.button===0&&e.pointerType!=='touch'&&!e.target?.dataset?.resizeHandle&&!e.target?.dataset?.rotateHandle){
+        const ctrlObject=selectionHit(x,y);
+        if(ctrlObject){
+          e.preventDefault();
+          toggleSelection(ctrlObject.id);
+          setTool('select');
+          render();
+          toast(selectionCount()>1?selectionCount()+' объектов выбрано':'Объект выбран');
+          return;
+        }
+      }
       if(tool==='hand'){e.preventDefault();document.getSelection?.()?.removeAllRanges?.();panStart={cx:e.clientX,cy:e.clientY,x:camera.x,y:camera.y};svg.style.cursor='grabbing';return}
       if(tool==='laser'){laserPoint={x,y};broadcastTransient('laser',{point:laserPoint});render();return}
       if(tool==='marker'){drawing={id:uid(),type:'marker-temp',points:[[x,y,.5]],inputType:String(e.pointerType||'mouse'),color:'#f59e0b',width:14,expires:Date.now()+5000};tempMarks.push(drawing);render();return}
@@ -1980,7 +2114,7 @@
         const chosen=selectionCount()===1?elements.find(z=>z.id===selected):null;
         if(rot&&chosen){if(!canTransformObject(chosen))return toast(chosen.locked?'Объект закреплён':'Редактирование ограничено');pushElementsHistory();const c=objectCenter(chosen);rotationStart={orig:clone(chosen),cx:c.x,cy:c.y,start:Math.atan2(y-c.y,x-c.x),base:Number(chosen.rotation||0)};return}
         if(handle&&chosen){if(!canTransformObject(chosen))return toast(chosen.locked?'Объект закреплён':'Редактирование ограничено');pushElementsHistory();resizeStart={handle,orig:clone(chosen),b:bounds(chosen)};return}
-        const o=hit(x,y);
+        const o=selectionHit(x,y);
         if(o){
           if(additive){toggleSelection(o.id);render();return}
           if(!selectionHas(o.id))selectOnly(o.id);
@@ -2058,8 +2192,8 @@
         return;
       }
       let[x,y]=screenToWorld(e.clientX,e.clientY);sendCursor(x,y);
-      if(!['pen','pencil','marker','laser','eraser','compass','solid-rotate'].includes(tool))[x,y]=geometrySnapPoint(x,y,selectionList());
       if(marqueeSelect&&tool==='select'){marqueeSelect.x1=x;marqueeSelect.y1=y;renderInteractive();return}
+      if(!['pen','pencil','marker','laser','eraser','compass','solid-rotate','select'].includes(tool))[x,y]=geometrySnapPoint(x,y,selectionList());
       if(tool==='eraser'){eraserPoint={x,y};if(eraserDown){const last=eraserTrail[eraserTrail.length-1];if(!last||Math.hypot(x-last[0],y-last[1])>2/camera.zoom)eraserTrail.push([x,y]);const o=eraserHitAllowed(x,y,18/camera.zoom);if(o&&!o.locked){elements=elements.filter(z=>z.id!==o.id);if(selectionHas(o.id)){const next=selectionList().filter(id=>id!==o.id);setSelection(next)}changed()}else renderInteractive()}else renderInteractive();return}
       if(tool==='laser'&&laserPoint){laserPoint={x,y};broadcastTransient('laser',{point:laserPoint});renderInteractive();return}
       if(tool==='marker'&&drawing?.type==='marker-temp'){appendFreehandPoints(drawing,e);renderInteractive();broadcastTransient('marker',{mark:{...drawing,expires:Date.now()+5000}});return}
@@ -2450,7 +2584,7 @@
     syncBoardFullscreenButton();
 
     bind('#zoomIn','click',()=>{camera.zoom=clamp(camera.zoom*1.2,.25,3);zoomLabel.textContent=Math.round(camera.zoom*100)+'%';render();sendViewport(true)});bind('#zoomOut','click',()=>{camera.zoom=clamp(camera.zoom/1.2,.25,3);zoomLabel.textContent=Math.round(camera.zoom*100)+'%';render();sendViewport(true)});bind('#homeView','click',()=>{camera={x:0,y:0,zoom:1};zoomLabel.textContent='100%';render();sendViewport(true)});bind('#quickCommands','click',openQuickCommands);bind('#fullscreen','click',()=>{toggleBoardFullscreen().catch(fail)});
-    root.querySelectorAll('[data-object-action]').forEach(b=>b.onclick=()=>{const a=b.dataset.objectAction;if(a==='duplicate')duplicateSelected();else if(a==='lock')toggleLockSelected();else if(a==='front')reorderSelected('front');else if(a==='back')reorderSelected('back');else if(a==='fill')fillSelected();else if(a==='edit')editSelected();else if(a==='delete')deleteSelected()});
+    root.querySelectorAll('[data-object-action]').forEach(b=>b.onclick=()=>{const a=b.dataset.objectAction;if(a==='duplicate')duplicateSelected();else if(a==='lock')toggleLockSelected();else if(a==='front')reorderSelected('front');else if(a==='back')reorderSelected('back');else if(a==='fill')fillSelected();else if(a==='edit')editSelected();else if(a==='crop')cropSelectedImage();else if(a==='delete')deleteSelected()});
     const isMathroomTaskDrag=e=>[...(e.dataTransfer?.types||[])].includes('application/x-mathroom-task');
     stage.addEventListener('dragenter',e=>{if(!fullBoardTools||(!isTeacher&&classroomMode!=='open')||(!isFileDrag(e)&&!isMathroomTaskDrag(e)))return;e.preventDefault();fileDragDepth++;stage.classList.add('drag-active')});
     stage.addEventListener('dragover',e=>{if(!fullBoardTools||(!isTeacher&&classroomMode!=='open')||(!isFileDrag(e)&&!isMathroomTaskDrag(e)))return;e.preventDefault();if(e.dataTransfer)e.dataTransfer.dropEffect='copy';stage.classList.add('drag-active')});
@@ -2765,6 +2899,7 @@
         return;
       }
       if(!boardFocused||isEditing)return;
+      if(cmd&&e.shiftKey&&(k==='c'||code==='KeyC')&&selectionCount()===1&&elements.find(x=>x.id===selected)?.type==='image'){e.preventDefault();e.stopImmediatePropagation?.();cropSelectedImage();return}
       if(cmd&&(k==='c'||code==='KeyC')&&selected){e.preventDefault();copySelected()}
       else if((e.key==='Delete'||e.key==='Backspace')&&selected){e.preventDefault();deleteSelected()}
       else if(!cmd&&!e.altKey&&!e.shiftKey){
@@ -2820,6 +2955,7 @@
     const cleanup=()=>{
       clearTimeout(saveTimer);
       clearInterval(checkpointTimer);
+      activeImageCropCleanup?.();
 
       /* 46.3 audit: route/live-state rerenders can legitimately unmount a board
          less than 420 ms after the final stroke. The old cleanup cancelled the
