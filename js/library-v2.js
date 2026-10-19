@@ -480,8 +480,13 @@
       upgradeNativeSelect("tbFrom","grade");
       upgradeNativeSelect("tbTo","grade");
 
-      function extraIcon(kind){
-        if(kind==="level")return '<svg viewBox="0 0 24 24"><path d="M5 18V9m7 9V5m7 13v-7"/><path d="M3 20h18"/></svg>';
+      function extraIcon(kind,value){
+        if(kind==="level"){
+          if(value==="advanced")return '<svg viewBox="0 0 24 24"><path d="M12 3 19 7v8l-7 4-7-4V7l7-4Z"/><path d="m8.5 13 3.5-4 3.5 4"/><path d="m9.5 15 2.5-2.8 2.5 2.8"/></svg>';
+          if(value==="profile")return '<svg viewBox="0 0 24 24"><path d="M12 3 19 7v8l-7 4-7-4V7l7-4Z"/><path d="m12 7 1.2 2.4 2.8.4-2 1.9.5 2.8-2.5-1.3-2.5 1.3.5-2.8-2-1.9 2.8-.4L12 7Z"/></svg>';
+          if(value==="mixed")return '<svg viewBox="0 0 24 24"><path d="m12 4 8 4-8 4-8-4 8-4Z"/><path d="m4 12 8 4 8-4M4 16l8 4 8-4"/></svg>';
+          return '<svg viewBox="0 0 24 24"><path d="M12 3 19 7v8l-7 4-7-4V7l7-4Z"/><path d="m8.5 12 2.3 2.3 4.8-5.1"/></svg>';
+        }
         return '<svg viewBox="0 0 24 24"><path d="M4 6h16v14H4z"/><path d="M8 6V4h8v2M8 11h8M8 15h5"/></svg>';
       }
       function upgradeExtraSelect(select,kind){
@@ -490,14 +495,16 @@
         select.classList.add("mr-lib2-native-select","mr-lib2-extra-native");
         var box=document.createElement("div");
         box.className="mr-lib2-upload-select mr-lib2-extra-select";
-        box.innerHTML='<button type="button" class="mr-lib2-upload-select-trigger"><span class="mr-lib2-upload-select-icon">'+extraIcon(kind)+'</span><b></b><span class="mr-lib2-upload-chevron">⌄</span></button><div class="mr-lib2-upload-select-menu"></div>';
+        box.innerHTML='<button type="button" class="mr-lib2-upload-select-trigger"><span class="mr-lib2-upload-select-icon">'+extraIcon(kind,select.value)+'</span><b></b><span class="mr-lib2-upload-chevron">⌄</span></button><div class="mr-lib2-upload-select-menu"></div>';
         select.after(box);
         var trigger=box.querySelector(".mr-lib2-upload-select-trigger");
         var textEl=trigger.querySelector("b");
+        var triggerIcon=trigger.querySelector(".mr-lib2-upload-select-icon");
         var menu=box.querySelector(".mr-lib2-upload-select-menu");
         function sync(){
           var opt=select.options[select.selectedIndex];
           textEl.textContent=opt?opt.textContent:"—";
+          if(triggerIcon)triggerIcon.innerHTML=extraIcon(kind,select.value);
           menu.querySelectorAll("button[data-value]").forEach(function(btn){
             btn.classList.toggle("active",String(btn.dataset.value)===String(select.value));
           });
@@ -505,7 +512,7 @@
         Array.from(select.options).forEach(function(opt){
           var btn=document.createElement("button");
           btn.type="button";btn.dataset.value=opt.value;
-          btn.innerHTML='<span class="mr-lib2-upload-option-icon">'+extraIcon(kind)+'</span><b>'+esc2(opt.textContent)+'</b><i>✓</i>';
+          btn.innerHTML='<span class="mr-lib2-upload-option-icon">'+extraIcon(kind,opt.value)+'</span><b>'+esc2(opt.textContent)+'</b><i>✓</i>';
           btn.onclick=function(e){
             e.stopPropagation();
             select.value=opt.value;
@@ -548,7 +555,7 @@
         var drop=document.createElement("label");
         drop.className="mr-lib2-file-drop";
         drop.setAttribute("for","tbFile");
-        drop.innerHTML='<span class="mr-lib2-file-icon"><svg viewBox="0 0 24 24"><path d="M7 3h7l4 4v14H7z"/><path d="M14 3v5h5M12 17v-6m0 0-2.5 2.5M12 11l2.5 2.5"/></svg></span><span class="mr-lib2-file-copy"><b data-file-title>Выберите PDF</b><small data-file-note>Нажмите или перетащите файл сюда · до 100 МБ</small></span><span class="mr-lib2-file-action">Выбрать файл</span>';
+        drop.innerHTML='<span class="mr-lib2-file-icon"><svg viewBox="0 0 24 24"><path d="M7 3h7l4 4v14H7z"/><path d="M14 3v5h5M12 17v-6m0 0-2.5 2.5M12 11l2.5 2.5"/></svg></span><span class="mr-lib2-file-copy"><b data-file-title>Выберите PDF</b><small data-file-note>Нажмите или перетащите файл сюда · до 50 МБ</small></span><span class="mr-lib2-file-action">Выбрать файл</span>';
         file.after(drop);
         var updateFile=function(){
           var f=file.files&&file.files[0];
@@ -556,10 +563,13 @@
           drop.classList.toggle("has-file",!!f);
           if(f){
             title.textContent=f.name;
-            note.textContent=fmtBytes(f.size)+" · PDF готов к загрузке";
+            var tooLarge=f.size>50*1024*1024;
+            drop.classList.toggle("oversize",tooLarge);
+            note.textContent=tooLarge?"Файл больше 50 МБ · сожми PDF перед загрузкой":fmtBytes(f.size)+" · PDF готов к загрузке";
           }else{
+            drop.classList.remove("oversize");
             title.textContent="Выберите PDF";
-            note.textContent="Нажмите или перетащите файл сюда · до 100 МБ";
+            note.textContent="Нажмите или перетащите файл сюда · до 50 МБ";
           }
         };
         file.addEventListener("change",updateFile);
@@ -576,7 +586,7 @@
       var helper=form.querySelector(":scope > .small.muted");
       if(helper){
         helper.classList.add("mr-lib2-upload-helper");
-        helper.innerHTML='<span><b>PDF</b> хранится в закрытом Storage</span><span><b>100 МБ</b> максимальный размер</span><span><b>OCR</b> отключён</span><span><b>Автосвязь</b> тем после загрузки</span>';
+        helper.innerHTML='<span><b>PDF</b> хранится в закрытом Storage</span><span><b>50 МБ</b> максимальный размер</span><span><b>OCR</b> отключён</span><span><b>Автосвязь</b> тем после загрузки</span>';
       }
 
       var submit=upload.querySelector("#tbUploadSubmit");

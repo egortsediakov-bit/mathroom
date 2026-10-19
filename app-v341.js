@@ -1425,7 +1425,7 @@ function renderTextbooks(){
     e.preventDefault();
     const file=document.getElementById('tbFile').files?.[0];if(!file)return toast('Выбери PDF');
     if(file.type&&file.type!=='application/pdf'&&!file.name.toLowerCase().endsWith('.pdf'))return toast('Нужен файл PDF');
-    if(file.size>100*1024*1024)return toast('PDF больше 100 МБ. Лучше сжать файл.');
+    if(file.size>50*1024*1024)return toast('PDF больше 50 МБ. Сожми файл перед загрузкой.');
     const form=e.currentTarget,submit=document.getElementById('tbUploadSubmit'),box=document.getElementById('tbUploadProgress'),bar=document.getElementById('tbUploadBar'),percent=document.getElementById('tbUploadPercent'),bytesEl=document.getElementById('tbUploadBytes'),speedEl=document.getElementById('tbUploadSpeed'),etaEl=document.getElementById('tbUploadEta'),stateEl=document.getElementById('tbUploadState'),pauseBtn=document.getElementById('tbUploadPause');
     box.hidden=false;submit.disabled=true;submit.textContent='Загружаем…';
     let controller=null,lastBytes=null,lastAt=null,speed=0;
