@@ -768,15 +768,28 @@ function renderStudents(){
   const found=document.getElementById('studentFoundCount');
 
   const closeStudentMoreMenus=(except=null)=>{
-    results?.querySelectorAll('details.mr-student-more[open]').forEach(d=>{if(d!==except)d.open=false});
+    document.querySelectorAll('details.mr-student-more[open]').forEach(d=>{if(d!==except)d.open=false});
   };
-  document.addEventListener('pointerdown',function studentMoreOutside(e){
-    if(S.view!=='students'||!document.body.contains(results)){
-      document.removeEventListener('pointerdown',studentMoreOutside,true);return;
-    }
-    const inside=e.target?.closest?.('details.mr-student-more')||null;
-    closeStudentMoreMenus(inside);
-  },true);
+  if(window.__mrStudentMoreOutsideHandler){
+    document.removeEventListener('pointerdown',window.__mrStudentMoreOutsideHandler,true);
+    document.removeEventListener('focusin',window.__mrStudentMoreOutsideHandler,true);
+  }
+  if(window.__mrStudentMoreEscapeHandler){
+    document.removeEventListener('keydown',window.__mrStudentMoreEscapeHandler,true);
+  }
+  window.__mrStudentMoreOutsideHandler=function studentMoreOutside(e){
+    if(S.view!=='students')return;
+    const detail=e.target?.closest?.('details.mr-student-more')||null;
+    const summary=e.target?.closest?.('summary')||null;
+    const keepOpen=detail&&summary&&detail.querySelector(':scope > summary')===summary;
+    closeStudentMoreMenus(keepOpen?detail:null);
+  };
+  window.__mrStudentMoreEscapeHandler=function studentMoreEscape(e){
+    if(S.view==='students'&&e.key==='Escape')closeStudentMoreMenus();
+  };
+  document.addEventListener('pointerdown',window.__mrStudentMoreOutsideHandler,true);
+  document.addEventListener('focusin',window.__mrStudentMoreOutsideHandler,true);
+  document.addEventListener('keydown',window.__mrStudentMoreEscapeHandler,true);
 
   const filterRowsByKind={grade:classFilterRows,group:groupFilterRows,status:statusFilterRows};
   const syncStudentFilterWidget=(select)=>{
