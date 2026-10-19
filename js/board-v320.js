@@ -1700,22 +1700,149 @@
         }finally{URL.revokeObjectURL(url)}
       }catch(e){fail(e)}
     }
+
+    function displaySurfaceLabel(value){
+      return {window:'Окно приложения',monitor:'Весь экран',browser:'Вкладка браузера'}[String(value||'')]||'Выбранный источник';
+    }
+    function stopScreenStream(stream){
+      try{stream&&stream.getTracks&&stream.getTracks().forEach(function(t){t.stop()})}catch{}
+    }
+    function openScreenCropEditor(sourceCanvas){
+      if(!sourceCanvas||!sourceCanvas.width||!sourceCanvas.height){fail(new Error('Не удалось подготовить снимок'));return}
+      const html='<div class="mr-screen-crop-head"><div><span>ШАГ 2 · ОБРЕЗКА</span><h2>Выдели нужную область</h2><p>Протяни рамку мышью по снимку. Можно выделить область заново сколько угодно раз.</p></div><div class="mr-screen-crop-size" id="mrCropSize"></div></div><div class="mr-screen-crop-workspace"><div class="mr-screen-crop-stage" id="mrCropStage"><canvas id="mrCropCanvas"></canvas><div class="mr-screen-crop-selection" id="mrCropSelection"><i></i><i></i><i></i><i></i></div></div></div><div class="mr-screen-crop-actions"><button class="btn" id="mrCropFull">Весь снимок</button><button class="btn" id="mrCropReset">Выделить заново</button><span></span><button class="btn primary" id="mrCropInsert">Вставить выделенное на доску</button></div>';
+      const m=modal(html,'wide-modal mr-screen-crop-modal');
+      const canvas=m.querySelector('#mrCropCanvas'),stage=m.querySelector('#mrCropStage'),selection=m.querySelector('#mrCropSelection'),size=m.querySelector('#mrCropSize');
+      const ctx=canvas.getContext('2d');
+      canvas.width=sourceCanvas.width;canvas.height=sourceCanvas.height;
+      ctx.drawImage(sourceCanvas,0,0);
+      let crop={x:0,y:0,w:canvas.width,h:canvas.height},drag=null;
+      const clampCrop=function(c){
+        const x=Math.max(0,Math.min(canvas.width,c.x)),y=Math.max(0,Math.min(canvas.height,c.y));
+        return {x:x,y:y,w:Math.max(1,Math.min(canvas.width-x,c.w)),h:Math.max(1,Math.min(canvas.height-y,c.h))};
+      };
+      const clientToImage=function(cx,cy){
+        const r=canvas.getBoundingClientRect();
+        return {x:Math.max(0,Math.min(canvas.width,(cx-r.left)*canvas.width/Math.max(1,r.width))),y:Math.max(0,Math.min(canvas.height,(cy-r.top)*canvas.height/Math.max(1,r.height)))};
+      };
+      const renderCrop=function(){
+        const r=canvas.getBoundingClientRect(),sx=r.width/canvas.width,sy=r.height/canvas.height;
+        selection.style.left=(crop.x*sx)+'px';
+        selection.style.top=(crop.y*sy)+'px';
+        selection.style.width=(crop.w*sx)+'px';
+        selection.style.height=(crop.h*sy)+'px';
+        size.textContent=Math.round(crop.w)+' × '+Math.round(crop.h)+' px';
+      };
+      const useFull=function(){crop={x:0,y:0,w:canvas.width,h:canvas.height};renderCrop()};
+      const pointerDown=function(e){
+        if(e.button!==0&&e.pointerType!=='touch')return;
+        e.preventDefault();
+        const p=clientToImage(e.clientX,e.clientY);
+        drag={x:p.x,y:p.y,id:e.pointerId};
+        try{stage.setPointerCapture(e.pointerId)}catch{}
+        crop={x:p.x,y:p.y,w:1,h:1};renderCrop();
+      };
+      const pointerMove=function(e){
+        if(!drag||drag.id!==e.pointerId)return;
+        e.preventDefault();
+        const p=clientToImage(e.clientX,e.clientY),x=Math.min(drag.x,p.x),y=Math.min(drag.y,p.y);
+        crop=clampCrop({x:x,y:y,w:Math.abs(p.x-drag.x),h:Math.abs(p.y-drag.y)});
+        renderCrop();
+      };
+      const pointerUp=function(e){
+        if(!drag||drag.id!==e.pointerId)return;
+        e.preventDefault();
+        if(crop.w<8||crop.h<8)useFull();
+        drag=null;
+        try{stage.releasePointerCapture(e.pointerId)}catch{}
+      };
+      stage.addEventListener('pointerdown',pointerDown);
+      stage.addEventListener('pointermove',pointerMove);
+      stage.addEventListener('pointerup',pointerUp);
+      stage.addEventListener('pointercancel',pointerUp);
+      m.querySelector('#mrCropFull').onclick=useFull;
+      m.querySelector('#mrCropReset').onclick=function(){
+        crop={x:canvas.width*.15,y:canvas.height*.15,w:canvas.width*.7,h:canvas.height*.7};
+        renderCrop();
+      };
+      m.querySelector('#mrCropInsert').onclick=async function(){
+        try{
+          const c=clampCrop(crop),out=document.createElement('canvas');
+          out.width=Math.max(1,Math.round(c.w));out.height=Math.max(1,Math.round(c.h));
+          out.getContext('2d').drawImage(canvas,c.x,c.y,c.w,c.h,0,0,out.width,out.height);
+          const blob=await new Promise(function(res,rej){out.toBlob(function(x){x?res(x):rej(new Error('Не удалось обрезать снимок'))},'image/png',.96)});
+          m.remove();
+          await importClipboardBlob(blob,'screenshot-'+Date.now()+'.png');
+          toast('Снимок добавлен на доску');
+        }catch(e){fail(e)}
+      };
+      const ro=typeof ResizeObserver!=='undefined'?new ResizeObserver(renderCrop):null;
+      if(ro)ro.observe(canvas);
+      const mo=new MutationObserver(function(){if(!document.body.contains(m)){if(ro)ro.disconnect();mo.disconnect()}});
+      mo.observe(document.body,{childList:true});
+      requestAnimationFrame(function(){useFull();renderCrop()});
+    }
+    async function requestScreenStream(){
+      const preferred={video:{frameRate:{ideal:10,max:15}},audio:false,preferCurrentTab:false,surfaceSwitching:'include',selfBrowserSurface:'include'};
+      try{return await navigator.mediaDevices.getDisplayMedia(preferred)}
+      catch(e){
+        if(e&&e.name==='TypeError')return await navigator.mediaDevices.getDisplayMedia({video:true,audio:false});
+        throw e;
+      }
+    }
     async function captureScreen(){
-      if(!navigator.mediaDevices?.getDisplayMedia){await captureBoardFallback();return}
-      let stream=null;
-      try{
-        stream=await navigator.mediaDevices.getDisplayMedia({video:true,audio:false});
-        const v=document.createElement('video');v.srcObject=stream;v.muted=true;await v.play();await new Promise(r=>setTimeout(r,180));
-        const track=stream.getVideoTracks()[0],settings=track.getSettings(),w=settings.width||v.videoWidth||1280,h=settings.height||v.videoHeight||720,c=document.createElement('canvas');
-        c.width=w;c.height=h;c.getContext('2d').drawImage(v,0,0,w,h);
-        const blob=await new Promise((res,rej)=>c.toBlob(x=>x?res(x):rej(new Error('Не удалось сделать снимок')),'image/png',.94));
-        await importClipboardBlob(blob,'screenshot.png');
-        if(confirm('Обрезать снимок до нужной области?'))await cropSelectedImage();
-      }catch(e){
-        if(e?.name==='NotAllowedError'||e?.name==='AbortError')return;
-        if(e?.name==='NotSupportedError'||e?.name==='SecurityError'){await captureBoardFallback();return}
-        fail(e)
-      }finally{stream?.getTracks().forEach(t=>t.stop())}
+      if(!navigator.mediaDevices||!navigator.mediaDevices.getDisplayMedia){
+        fail(new Error('Этот браузер не поддерживает выбор окна или экрана для снимка'));
+        return;
+      }
+      let stream=null,busy=false;
+      const html='<div class="mr-screen-capture-head"><div><span>СНИМОК ЭКРАНА</span><h2>Сначала выбери источник</h2><p>Mathroom откроет системное окно браузера. Там можно выбрать вкладку, окно другого приложения или весь экран.</p></div><span class="mr-screen-capture-step">1 / 2</span></div><div class="mr-screen-source-card"><div class="mr-screen-source-preview" id="mrScreenPreview"><video id="mrScreenVideo" autoplay muted playsinline></video><div class="mr-screen-source-empty" id="mrScreenEmpty"><b>Выбери окно или экран</b><span>Снимок не будет сделан сразу — сначала появится живое превью.</span></div></div><div class="mr-screen-source-info"><div><small>ИСТОЧНИК</small><b id="mrScreenSourceName">Не выбран</b></div><span id="mrScreenSourceState">Ожидание</span></div></div><div class="mr-screen-capture-tip"><b>Как это работает</b><span>1. Нажми «Выбрать окно / экран». 2. В системном окне выбери нужное приложение. 3. Подготовь его содержимое. 4. Вернись сюда и нажми «Сделать снимок».</span></div><div class="mr-screen-capture-actions"><button class="btn" id="mrScreenChoose">Выбрать окно / экран</button><button class="btn" id="mrScreenChange" hidden>Сменить источник</button><span></span><button class="btn primary" id="mrScreenTake" disabled>Сделать снимок</button></div>';
+      const m=modal(html,'wide-modal mr-screen-capture-modal');
+      const video=m.querySelector('#mrScreenVideo'),empty=m.querySelector('#mrScreenEmpty'),name=m.querySelector('#mrScreenSourceName'),state=m.querySelector('#mrScreenSourceState'),choose=m.querySelector('#mrScreenChoose'),change=m.querySelector('#mrScreenChange'),take=m.querySelector('#mrScreenTake');
+      const resetUi=function(){
+        try{video.srcObject=null}catch{}
+        video.classList.remove('ready');empty.hidden=false;
+        name.textContent='Не выбран';state.textContent='Ожидание';state.className='';
+        choose.hidden=false;change.hidden=true;take.disabled=true;
+      };
+      const selectSource=async function(){
+        if(busy)return;busy=true;
+        stopScreenStream(stream);stream=null;
+        state.textContent='Открываем выбор…';state.className='loading';
+        try{
+          stream=await requestScreenStream();
+          const track=stream.getVideoTracks()[0];
+          if(!track)throw new Error('Источник экрана не выбран');
+          video.srcObject=stream;
+          await video.play();
+          const settings=track.getSettings?track.getSettings():{};
+          empty.hidden=true;video.classList.add('ready');
+          name.textContent=displaySurfaceLabel(settings.displaySurface);
+          state.textContent='Готово';state.className='ready';
+          choose.hidden=true;change.hidden=false;take.disabled=false;
+          track.addEventListener('ended',function(){if(stream){stream=null;resetUi()}},{once:true});
+        }catch(e){
+          resetUi();
+          if(!e||!(e.name==='NotAllowedError'||e.name==='AbortError'))fail(e);
+        }finally{busy=false}
+      };
+      choose.onclick=selectSource;change.onclick=selectSource;
+      take.onclick=async function(){
+        if(!stream||busy)return;
+        busy=true;take.disabled=true;state.textContent='Снимаем…';state.className='loading';
+        try{
+          const track=stream.getVideoTracks()[0],settings=track&&track.getSettings?track.getSettings():{};
+          await new Promise(function(r){requestAnimationFrame(function(){requestAnimationFrame(r)})});
+          const w=Math.max(1,settings.width||video.videoWidth||1280),h=Math.max(1,settings.height||video.videoHeight||720),c=document.createElement('canvas');
+          c.width=w;c.height=h;c.getContext('2d').drawImage(video,0,0,w,h);
+          stopScreenStream(stream);stream=null;
+          m.remove();
+          openScreenCropEditor(c);
+        }catch(e){
+          take.disabled=false;state.textContent='Ошибка';state.className='error';fail(e);
+        }finally{busy=false}
+      };
+      const mo=new MutationObserver(function(){if(!document.body.contains(m)){stopScreenStream(stream);stream=null;mo.disconnect()}});
+      mo.observe(document.body,{childList:true});
     }
     function boardTemplates(){try{return JSON.parse(localStorage.getItem(templatesKey)||'[]')||[]}catch{return[]}}
     function saveBoardTemplates(list){localStorage.setItem(templatesKey,JSON.stringify(list.slice(0,40)))}
