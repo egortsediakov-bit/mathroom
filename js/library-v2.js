@@ -2,8 +2,6 @@
    This layer keeps the proven textbook/upload logic from app-v341.js and only
    enhances the library presentation and selection workflow. */
 (function(){
-  if(typeof renderTextbooks!=="function")return;
-  var legacyRenderTextbooks=renderTextbooks;
 
   function esc2(value){
     return String(value==null?"":value).replace(/[&<>"']/g,function(ch){
@@ -207,7 +205,9 @@
       card.onclick=function(e){
         if(e.target.closest("button"))return;
         S.libraryV2SelectedBook=id;
-        renderTextbooks();
+        root.querySelectorAll(".mr-lib2-card").forEach(function(x){x.classList.toggle("selected",String(x.getAttribute("data-lib2-book"))===String(id))});
+        detail.innerHTML=detailHtml(book);
+        bindDetail(root,detail);
       };
     });
 
@@ -272,8 +272,8 @@
     setTab(currentTab());
   }
 
-  renderTextbooks=function(){
-    legacyRenderTextbooks();
-    try{enhance()}catch(e){console.error("[Mathroom library v2]",e)}
-  };
+  window.MathroomLibraryV2={enhance:enhance};
+  var run=function(){try{enhance()}catch(e){console.error("[Mathroom library v2]",e)}};
+  if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",run,{once:true});
+  else setTimeout(run,0);
 })();

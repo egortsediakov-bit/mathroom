@@ -1458,6 +1458,7 @@ function renderTextbooks(){
     if(error)return fail(error);await loadTeacher();renderTextbooks();toast(next?'Учебник добавлен в общую библиотеку':'Учебник убран из общей библиотеки');
   });
   document.querySelectorAll('[data-book-delete]').forEach(b=>b.onclick=async()=>{const book=ownedBooks.find(x=>String(x.id)===String(b.dataset.bookDelete));if(!book)return;if(book.is_shared)return toast('Сначала убери учебник из общей библиотеки');if(!confirm(`Удалить учебник «${book.title}»?`))return;try{await sb.storage.from('textbooks').remove([book.file_path]);const {error}=await sb.from('textbooks').delete().eq('id',book.id);if(error)throw error;await loadTeacher();renderTextbooks();toast('Учебник удалён')}catch(err){fail(err)}});
+  try{window.MathroomLibraryV2?.enhance?.()}catch(err){console.error('[Mathroom library v2 hook]',err)}
 }
 
 
