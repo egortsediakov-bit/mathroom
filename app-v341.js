@@ -767,6 +767,17 @@ function renderStudents(){
   const classCards=document.getElementById('studentClassCards');
   const found=document.getElementById('studentFoundCount');
 
+  const closeStudentMoreMenus=(except=null)=>{
+    results?.querySelectorAll('details.mr-student-more[open]').forEach(d=>{if(d!==except)d.open=false});
+  };
+  document.addEventListener('pointerdown',function studentMoreOutside(e){
+    if(S.view!=='students'||!document.body.contains(results)){
+      document.removeEventListener('pointerdown',studentMoreOutside,true);return;
+    }
+    const inside=e.target?.closest?.('details.mr-student-more')||null;
+    closeStudentMoreMenus(inside);
+  },true);
+
   const filterRowsByKind={grade:classFilterRows,group:groupFilterRows,status:statusFilterRows};
   const syncStudentFilterWidget=(select)=>{
     const widget=select?.closest('.mr-student-segment-filter');if(!widget)return;
@@ -819,9 +830,10 @@ function renderStudents(){
   };
 
   const bindRowActions=()=>{
-    results.querySelectorAll('[data-profile]').forEach(b=>b.onclick=()=>{S.selectedStudent=b.dataset.profile;S.view='profile';renderTeacher()});
-    results.querySelectorAll('[data-copy]').forEach(b=>b.onclick=async()=>{const st=S.students.find(x=>x.id===b.dataset.copy);if(!st)return;await copyText(studentLink(st));toast('Ссылка скопирована')});
-    results.querySelectorAll('[data-edit-student]').forEach(b=>b.onclick=()=>{const st=S.students.find(x=>x.id===b.dataset.editStudent);if(st)openStudentEditor(st)});
+    results.querySelectorAll('.mr-student-more').forEach(d=>d.addEventListener('toggle',()=>{if(d.open)closeStudentMoreMenus(d)}));
+    results.querySelectorAll('[data-profile]').forEach(b=>b.onclick=()=>{closeStudentMoreMenus();S.selectedStudent=b.dataset.profile;S.view='profile';renderTeacher()});
+    results.querySelectorAll('[data-copy]').forEach(b=>b.onclick=async()=>{closeStudentMoreMenus();const st=S.students.find(x=>x.id===b.dataset.copy);if(!st)return;await copyText(studentLink(st));toast('Ссылка скопирована')});
+    results.querySelectorAll('[data-edit-student]').forEach(b=>b.onclick=()=>{closeStudentMoreMenus();const st=S.students.find(x=>x.id===b.dataset.editStudent);if(st)openStudentEditor(st)});
     results.querySelectorAll('[data-rotate]').forEach(b=>b.onclick=async()=>{if(!confirm('Старая ссылка перестанет работать. Продолжить?'))return;const {error}=await sb.rpc('rotate_student_access',{p_student_id:b.dataset.rotate});if(error)return fail(error);await loadTeacher();renderStudents();toast('Новая ссылка создана')});
     results.querySelectorAll('[data-delete]').forEach(b=>b.onclick=async()=>{if(!confirm('Удалить ученика и его данные?'))return;const {error}=await sb.from('students').delete().eq('id',b.dataset.delete);if(error)return fail(error);await loadTeacher();renderStudents();toast('Ученик удалён')});
     results.querySelectorAll('[data-class-toggle]').forEach(b=>b.onclick=()=>{const g=String(b.dataset.classToggle);if(state.collapsed.has(g))state.collapsed.delete(g);else state.collapsed.add(g);paint()});
