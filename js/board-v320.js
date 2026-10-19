@@ -1769,7 +1769,6 @@
           if(activeImageCropCleanup===cancel)activeImageCropCleanup=null;
           render();
         };
-        const cropKey=e=>{if(e.key==='Escape'){e.preventDefault();cancel()}};
         overlay.addEventListener('pointerdown',begin);
         overlay.addEventListener('pointermove',move);
         overlay.addEventListener('pointerup',end);
@@ -1777,7 +1776,7 @@
         toolbar.addEventListener('pointerdown',e=>e.stopPropagation());
         overlay.querySelector('[data-crop-reset]').onclick=()=>{crop={x0:.04,y0:.04,x1:.96,y1:.96};renderCrop()};
         overlay.querySelector('[data-crop-cancel]').onclick=cancel;
-        overlay.querySelector('[data-crop-apply]').onclick=async()=>{
+        const applyCrop=async()=>{
           try{
             const blob=await fetch(url).then(x=>x.blob()),img=await createImageBitmap(blob);
             const sx=Math.round(img.width*crop.x0),sy=Math.round(img.height*crop.y0);
@@ -1792,8 +1791,13 @@
             const nw=o.w*(crop.x1-crop.x0),nh=o.h*(crop.y1-crop.y0);
             const nx=o.x+o.w*crop.x0,ny=o.y+o.h*crop.y0;
             elements[idx]={...o,assetPath:path,x:nx,y:ny,w:nw,h:nh};
-            cancel();changed();ensureAsset(path).then(render);toast('Изображение обрезано');
+            cancel();changed();ensureAsset(path).then(render);toast('Обрезка применена');
           }catch(e){fail(e)}
+        };
+        overlay.querySelector('[data-crop-apply]').onclick=applyCrop;
+        const cropKey=e=>{
+          if(e.key==='Escape'){e.preventDefault();cancel();return}
+          if(e.key==='Enter'){e.preventDefault();applyCrop()}
         };
         window.addEventListener('resize',positionOverlay);
         window.addEventListener('scroll',positionOverlay,true);
