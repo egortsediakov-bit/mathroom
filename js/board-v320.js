@@ -2174,14 +2174,16 @@
       });
     };
 
-    root.querySelectorAll('.board-tool-group').forEach(d=>{
+    const boardToolGroups=[...root.querySelectorAll('.board-tool-group')];
+    boardToolGroups.forEach(d=>{
       const pop=d.querySelector('.board-tool-popover');
+      d.__mrBoardToolPopover=pop||null;
       d.addEventListener('toggle',()=>{
         if(!d.open){
           restoreToolPopover(d,pop);
           return;
         }
-        root.querySelectorAll('.board-tool-group').forEach(x=>{
+        boardToolGroups.forEach(x=>{
           if(x!==d)x.removeAttribute('open');
         });
         positionPopover(d,pop);
@@ -2192,6 +2194,36 @@
         setTimeout(()=>d.removeAttribute('open'),0);
       });
     });
+
+    const closeBoardToolPopovers=(except=null)=>{
+      boardToolGroups.forEach(d=>{
+        if(d!==except&&d.open)d.removeAttribute('open');
+      });
+    };
+    const boardToolOutsidePointer=e=>{
+      const target=e?.target;
+      if(!target)return;
+      /* Let native <summary> toggle its own group. The group's toggle handler
+         will close every other palette. Closing it on pointerdown first would
+         make a click on an already-open summary reopen it instead. */
+      const summary=target.closest?.('.board-tool-group > summary');
+      if(summary&&root.contains(summary))return;
+
+      const opened=boardToolGroups.filter(d=>d.open);
+      if(!opened.length)return;
+
+      const inside=opened.find(d=>{
+        const pop=d.__mrBoardToolPopover;
+        return d.contains(target)||(pop?.isConnected&&pop.contains(target));
+      });
+      if(inside)return;
+      closeBoardToolPopovers();
+    };
+    const boardToolEscape=e=>{
+      if(e.key==='Escape')closeBoardToolPopovers();
+    };
+    document.addEventListener('pointerdown',boardToolOutsidePointer,true);
+    window.addEventListener('keydown',boardToolEscape,true);
 
     const boardToolRail=root.querySelector('.board-toolbar-side');
     if(boardToolRail){
@@ -2684,6 +2716,8 @@
       root.removeEventListener('pointerdown',activateBoardShortcuts,true);
       root.removeEventListener('focusin',deactivateBoardShortcuts,true);
       document.removeEventListener('pointerdown',outsideBoardPointer,true);
+      document.removeEventListener('pointerdown',boardToolOutsidePointer,true);
+      window.removeEventListener('keydown',boardToolEscape,true);
       window.removeEventListener('keydown',key,true);
       window.removeEventListener('keyup',keyup,true);
       window.removeEventListener('blur',onWindowBlur);

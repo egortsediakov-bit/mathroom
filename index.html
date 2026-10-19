@@ -8,7 +8,7 @@
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
   <script>
-    window.__MATHROOM_BUILD__='54.7-attendance-on-finish-only';
+    window.__MATHROOM_BUILD__='54.8-board-popover-autoclose';
     (() => {
       /* GitHub Pages and Chromium forks may keep index.html longer than the
          versioned JS files. A tiny no-store build probe makes the shell
@@ -37,13 +37,13 @@
   </script>
   <title>Mathroom</title>
   <link rel="icon" type="image/svg+xml" href="./favicon.svg?v=29.11.0" />
-  <link rel="stylesheet" href="./styles.css?v=54.7-attendance-on-finish-only" />
-  <link rel="stylesheet" href="./design-v4.css?v=54.7-attendance-on-finish-only" />
+  <link rel="stylesheet" href="./styles.css?v=54.8-board-popover-autoclose" />
+  <link rel="stylesheet" href="./design-v4.css?v=54.8-board-popover-autoclose" />
   <link rel="stylesheet" href="./css/library-v2968.css?v=29.11.0" />
-  <link rel="stylesheet" href="./css/theme-v1.css?v=54.7-attendance-on-finish-only" />
-  <link rel="stylesheet" href="./css/schedule-v48-creator-v3.css?v=54.7-attendance-on-finish-only" />
-  <link rel="stylesheet" href="./css/library-v2.css?v=54.7-attendance-on-finish-only" />
-  <link rel="stylesheet" href="./css/history-v3.css?v=54.7-attendance-on-finish-only" />
+  <link rel="stylesheet" href="./css/theme-v1.css?v=54.8-board-popover-autoclose" />
+  <link rel="stylesheet" href="./css/schedule-v48-creator-v3.css?v=54.8-board-popover-autoclose" />
+  <link rel="stylesheet" href="./css/library-v2.css?v=54.8-board-popover-autoclose" />
+  <link rel="stylesheet" href="./css/history-v3.css?v=54.8-board-popover-autoclose" />
   <!-- Virtual background assets start downloading with the page. Yandex gets
        the non-SIMD MediaPipe runtime because its Chromium fork can select the
        SIMD build but then stall inside the legacy SolutionWasm runtime. -->
@@ -85,7 +85,7 @@
   <div id="app"><div class="center-page"><div class="auth-card"><div class="brand">Mathroom</div><h1>Загрузка…</h1><p class="muted">Запускаем кабинет.</p></div></div></div><div id="toast" class="toast"></div>
   <script>
     (()=>{
-      const build=window.__MATHROOM_BUILD__||'54.7-attendance-on-finish-only';
+      const build=window.__MATHROOM_BUILD__||'54.8-board-popover-autoclose';
       let lastError='',resourceError='';
       const clean=v=>String(v||'').replace(/https?:\/\/[^\s]+/g,'[url]').slice(0,500);
       const escBoot=v=>String(v||'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
@@ -132,7 +132,7 @@
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation@0.1.1675465747/selfie_segmentation.js" crossorigin="anonymous" data-mr-selfie-segmentation="1"></script>
   <script src="./config.js"></script>
   <script src="./js/core.js?v=40.8.0-auth-indexeddb"></script>
-  <script src="./js/board-v320.js?v=54.7-attendance-on-finish-only"></script>
+  <script src="./js/board-v320.js?v=54.8-board-popover-autoclose"></script>
 
   <script src="./js/peterson-primary-v285.js?v=29.9.3"></script>
   <script src="./js/peterson-grade2-v287.js?v=29.9.3"></script>
@@ -149,24 +149,24 @@
   <script src="./js/textbook-sync-corrector-v2975.js?v=29.9.3"></script>
 
   <script src="./js/library-sync-preflight-v2972.js?v=29.9.3"></script>
-  <script src="./app-v341.js?v=54.7-attendance-on-finish-only"></script>
-  <script src="./js/history-v3.js?v=54.7-attendance-on-finish-only"></script>
-  <script src="./js/lesson-tools-next.js?v=54.7-attendance-on-finish-only"></script>
-  <script src="./js/schedule-v48.js?v=54.7-attendance-on-finish-only"></script>
-  <script src="./js/schedule-v48-creator-v3.js?v=54.7-attendance-on-finish-only"></script>
+  <script src="./app-v341.js?v=54.8-board-popover-autoclose"></script>
+  <script src="./js/history-v3.js?v=54.8-board-popover-autoclose"></script>
+  <script src="./js/lesson-tools-next.js?v=54.8-board-popover-autoclose"></script>
+  <script src="./js/schedule-v48.js?v=54.8-board-popover-autoclose"></script>
+  <script src="./js/schedule-v48-creator-v3.js?v=54.8-board-popover-autoclose"></script>
   <script src="./js/lesson-pro-suite.js?v=31.2-lesson-workspace"></script>
   <script src="./js/ux-v234.js?v=35.0-student-ui-kit"></script>
 
-  <script src="./js/library-core-v2968.js?v=54.7-attendance-on-finish-only"></script>
+  <script src="./js/library-core-v2968.js?v=54.8-board-popover-autoclose"></script>
   <script src="./js/library-autorec-v2968.js?v=29.9.3"></script>
-  <script src="./js/library-ui-v2968.js?v=54.7-attendance-on-finish-only"></script>
-  <script src="./js/library-v2.js?v=54.7-attendance-on-finish-only"></script>
+  <script src="./js/library-ui-v2968.js?v=54.8-board-popover-autoclose"></script>
+  <script src="./js/library-v2.js?v=54.8-board-popover-autoclose"></script>
   <!-- v30.3: legacy PDF task extraction/review modules intentionally disabled.
        Textbooks remain available as learning materials; task bank import is XLSX-only. -->
   <script src="./js/bank-all-exercises-v2982.js?v=30.3.1"></script>
   <script src="./js/bank-performance-v2983.js?v=30.2"></script>
   <script src="./js/task-bank-xlsx-import-v300.js?v=30.3"></script>
   <script src="./design-v4.js?v=3.3-board-native-icon-fix"></script>
-  <script src="./js/theme-v1.js?v=54.7-attendance-on-finish-only"></script>
+  <script src="./js/theme-v1.js?v=54.8-board-popover-autoclose"></script>
 </body>
 </html>
