@@ -637,3 +637,149 @@ html[data-theme="dark"] .mr-lib2-upload-helper b{color:#eef1f4}
   .mr-lib2-file-action{grid-column:1/-1;justify-self:stretch;justify-content:center}
   .mr-lib2-upload-submit{width:100%!important}
 }
+
+
+/* v53.1 — finish textbook metadata controls */
+.mr-lib2-upload-pro{
+  position:relative!important;
+  border-left:1px solid #e3e7eb!important;
+  box-shadow:0 12px 36px rgba(28,32,38,.055)!important
+}
+.mr-lib2-upload-pro:before{
+  content:"";position:absolute;left:0;top:82px;bottom:24px;width:4px;
+  border-radius:0 6px 6px 0;background:linear-gradient(180deg,#ff641a,#ff9a63 55%,#20242a 55%,#20242a);
+  opacity:.95
+}
+.mr-lib2-upload-intro{
+  position:relative;padding-left:15px!important
+}
+.mr-lib2-upload-intro:before{
+  content:"";position:absolute;left:0;top:2px;width:5px;height:36px;
+  border-radius:999px;background:var(--mr-lib-orange)
+}
+.mr-lib2-upload-pro .mr-lib2-upload-grid.primary,
+.mr-lib2-upload-pro .mr-lib2-upload-grid.secondary{
+  padding:14px;border:1px solid #e7eaee;border-radius:12px;background:#fbfcfd
+}
+.mr-lib2-upload-pro .mr-lib2-upload-grid.primary{
+  border-top:3px solid var(--mr-lib-orange)
+}
+.mr-lib2-upload-pro .mr-lib2-upload-grid.secondary{
+  border-top:3px solid #272b30
+}
+
+.mr-lib2-upload-pro .m2968-extra-grid{
+  position:relative!important;
+  display:grid!important;
+  grid-template-columns:minmax(190px,1.05fr) minmax(190px,1.05fr) minmax(135px,.72fr) minmax(115px,.58fr) minmax(230px,1.25fr)!important;
+  gap:12px!important;
+  align-items:end!important;
+  width:100%!important;
+  margin:2px 0 0!important;
+  padding:16px!important;
+  border:1px solid #e1e5e9!important;
+  border-top:3px solid #272b30!important;
+  border-radius:12px!important;
+  background:
+    linear-gradient(90deg,rgba(255,100,26,.045),transparent 28%),
+    #f8f9fa!important;
+  box-sizing:border-box!important
+}
+.mr-lib2-upload-pro .m2968-extra-grid:before{
+  content:"Дополнительные данные";
+  position:absolute;left:16px;top:-10px;padding:2px 8px;
+  border-radius:999px;background:#272b30;color:#fff;
+  font-size:8.5px;font-weight:950;letter-spacing:.075em;text-transform:uppercase
+}
+.mr-lib2-upload-pro .m2968-extra-grid>label{
+  min-width:0!important;display:block!important;margin:0!important;
+  color:#59616b!important;font-size:10.5px!important;font-weight:950!important;
+  line-height:1.2!important;letter-spacing:.045em!important;text-transform:uppercase!important
+}
+.mr-lib2-upload-pro .m2968-extra-grid>label>select{
+  position:absolute!important;width:1px!important;height:1px!important;
+  opacity:0!important;pointer-events:none!important
+}
+.mr-lib2-upload-pro .m2968-extra-grid .mr-lib2-upload-select{
+  margin-top:7px!important
+}
+.mr-lib2-upload-pro .m2968-extra-grid .mr-lib2-upload-select-trigger{
+  height:50px!important;background:#fff!important
+}
+.mr-lib2-upload-pro .m2968-extra-grid .mr-lib2-upload-select-icon{
+  background:#272b30!important;color:#fff!important
+}
+.mr-lib2-upload-pro .m2968-extra-grid>label:nth-child(2) .mr-lib2-upload-select-icon{
+  background:var(--mr-lib-orange)!important
+}
+.mr-lib2-upload-pro .m2968-extra-grid .mr-lib2-meta-input{
+  width:100%!important;height:50px!important;margin-top:7px!important;
+  padding:0 13px!important;border:1px solid #d2d8df!important;border-radius:10px!important;
+  background:#fff!important;color:#1c2025!important;
+  font-size:13.5px!important;font-weight:750!important;
+  box-sizing:border-box!important;outline:0!important
+}
+.mr-lib2-upload-pro .m2968-extra-grid .mr-lib2-meta-input:focus{
+  border-color:#ff8c50!important;
+  box-shadow:0 0 0 3px rgba(255,100,26,.10)!important
+}
+.mr-lib2-upload-pro .m2968-extra-grid .mr-lib2-meta-input::placeholder{
+  color:#a5acb5!important;font-weight:650!important
+}
+.mr-lib2-upload-pro .m2968-publisher{grid-column:auto!important}
+
+.mr-lib2-upload-pro .m2968-status{
+  margin:0!important;padding:10px 12px!important;
+  border-radius:9px!important;border:1px solid #e2e6ea!important;
+  background:#f7f8f9!important;color:#646d77!important;
+  font-size:10.5px!important;font-weight:750!important
+}
+.mr-lib2-upload-pro .m2968-ok{
+  border-color:#ffd1b8!important;background:#fff5ef!important;color:#a94b1f!important
+}
+.mr-lib2-upload-pro .m2968-warn{
+  border-color:#f0d7a3!important;background:#fff9e9!important;color:#82641f!important
+}
+
+.mr-lib2-upload-helper{
+  padding-top:3px!important;border-top:1px dashed #dfe3e7!important
+}
+.mr-lib2-upload-helper span:nth-child(1),
+.mr-lib2-upload-helper span:nth-child(4){
+  border-color:#ffd0b7!important;background:#fff5ef!important;color:#a5522b!important
+}
+.mr-lib2-upload-helper span:nth-child(1) b,
+.mr-lib2-upload-helper span:nth-child(4) b{color:#eb5913!important}
+.mr-lib2-upload-submit{
+  box-shadow:0 8px 20px rgba(255,100,26,.17)!important
+}
+
+html[data-theme="dark"] .mr-lib2-upload-pro .mr-lib2-upload-grid.primary,
+html[data-theme="dark"] .mr-lib2-upload-pro .mr-lib2-upload-grid.secondary,
+html[data-theme="dark"] .mr-lib2-upload-pro .m2968-extra-grid{
+  background:#1d2025!important;border-color:#343a42!important
+}
+html[data-theme="dark"] .mr-lib2-upload-pro .m2968-extra-grid .mr-lib2-upload-select-trigger,
+html[data-theme="dark"] .mr-lib2-upload-pro .m2968-extra-grid .mr-lib2-meta-input{
+  background:#24282e!important;border-color:#3a414a!important;color:#f0f2f4!important
+}
+html[data-theme="dark"] .mr-lib2-upload-pro .m2968-extra-grid>label{color:#aeb5be!important}
+
+@media(max-width:1300px){
+  .mr-lib2-upload-pro .m2968-extra-grid{
+    grid-template-columns:1fr 1fr 1fr!important
+  }
+  .mr-lib2-upload-pro .m2968-publisher{grid-column:2 / 4!important}
+}
+@media(max-width:850px){
+  .mr-lib2-upload-pro .m2968-extra-grid{
+    grid-template-columns:1fr 1fr!important
+  }
+  .mr-lib2-upload-pro .m2968-publisher{grid-column:1 / -1!important}
+}
+@media(max-width:560px){
+  .mr-lib2-upload-pro .m2968-extra-grid{
+    grid-template-columns:1fr!important
+  }
+  .mr-lib2-upload-pro .m2968-publisher{grid-column:auto!important}
+}

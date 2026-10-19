@@ -480,6 +480,67 @@
       upgradeNativeSelect("tbFrom","grade");
       upgradeNativeSelect("tbTo","grade");
 
+      function extraIcon(kind){
+        if(kind==="level")return '<svg viewBox="0 0 24 24"><path d="M5 18V9m7 9V5m7 13v-7"/><path d="M3 20h18"/></svg>';
+        return '<svg viewBox="0 0 24 24"><path d="M4 6h16v14H4z"/><path d="M8 6V4h8v2M8 11h8M8 15h5"/></svg>';
+      }
+      function upgradeExtraSelect(select,kind){
+        if(!select||select.dataset.lib2ExtraCustom==="1")return;
+        select.dataset.lib2ExtraCustom="1";
+        select.classList.add("mr-lib2-native-select","mr-lib2-extra-native");
+        var box=document.createElement("div");
+        box.className="mr-lib2-upload-select mr-lib2-extra-select";
+        box.innerHTML='<button type="button" class="mr-lib2-upload-select-trigger"><span class="mr-lib2-upload-select-icon">'+extraIcon(kind)+'</span><b></b><span class="mr-lib2-upload-chevron">⌄</span></button><div class="mr-lib2-upload-select-menu"></div>';
+        select.after(box);
+        var trigger=box.querySelector(".mr-lib2-upload-select-trigger");
+        var textEl=trigger.querySelector("b");
+        var menu=box.querySelector(".mr-lib2-upload-select-menu");
+        function sync(){
+          var opt=select.options[select.selectedIndex];
+          textEl.textContent=opt?opt.textContent:"—";
+          menu.querySelectorAll("button[data-value]").forEach(function(btn){
+            btn.classList.toggle("active",String(btn.dataset.value)===String(select.value));
+          });
+        }
+        Array.from(select.options).forEach(function(opt){
+          var btn=document.createElement("button");
+          btn.type="button";btn.dataset.value=opt.value;
+          btn.innerHTML='<span class="mr-lib2-upload-option-icon">'+extraIcon(kind)+'</span><b>'+esc2(opt.textContent)+'</b><i>✓</i>';
+          btn.onclick=function(e){
+            e.stopPropagation();
+            select.value=opt.value;
+            select.dispatchEvent(new Event("input",{bubbles:true}));
+            select.dispatchEvent(new Event("change",{bubbles:true}));
+            box.classList.remove("open");sync();
+          };
+          menu.appendChild(btn);
+        });
+        trigger.onclick=function(e){
+          e.stopPropagation();
+          upload.querySelectorAll(".mr-lib2-upload-select.open").forEach(function(x){if(x!==box)x.classList.remove("open")});
+          box.classList.toggle("open");
+        };
+        select.addEventListener("change",sync);
+        sync();
+      }
+      function upgradeMetaExtras(){
+        var extras=upload.querySelector("[data-m2968-extra]");
+        if(!extras)return false;
+        extras.classList.add("mr-lib2-meta-extra");
+        var level=extras.querySelector('[data-m2968="level"]');
+        var kind=extras.querySelector('[data-m2968="kind"]');
+        upgradeExtraSelect(level,"level");
+        upgradeExtraSelect(kind,"kind");
+        ["year","part","publisher"].forEach(function(name){
+          var input=extras.querySelector('[data-m2968="'+name+'"]');
+          if(input)input.classList.add("mr-lib2-meta-input");
+        });
+        return true;
+      }
+      upgradeMetaExtras();
+      var extrasObserver=new MutationObserver(function(){upgradeMetaExtras()});
+      extrasObserver.observe(form,{childList:true,subtree:true});
+
       var file=upload.querySelector("#tbFile");
       if(file&&!file.dataset.lib2Custom){
         file.dataset.lib2Custom="1";
