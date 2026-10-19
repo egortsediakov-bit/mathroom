@@ -1,6 +1,7 @@
 /* Mathroom v52.5 — textbook library, approved visual direction #2 */
 
 .view-textbooks .content{background:#f5f6f8!important}
+.view-textbooks .content>.topbar,
 .view-textbooks .content>.page-head,
 .view-textbooks .content>.content-head{display:none!important}
 .mr-lib2-root{
