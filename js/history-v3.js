@@ -63,7 +63,7 @@
       return '<div class="mr-history-lesson-row" data-history-row data-student="'+esc(String(studentId))+'" data-grade="'+esc(String(st.grade||l.students&&l.students.grade||""))+'" data-ts="'+(dt(when)?dt(when).getTime():0)+'" data-q="'+esc(lessonSearchText(l))+'">'+
         '<span class="mr-history-row-date"><b>'+esc(dateCompact(when))+'</b><small>'+esc(timeCompact(when))+'</small></span>'+
         '<span class="mr-history-row-topic"><b>'+esc(l.topics&&l.topics.title||"Без темы")+'</b><small>'+(versions?versions+" верс. доски":"Итог урока сохранён")+'</small></span>'+
-        '<span class="mr-history-row-status"><i></i>Завершён</span>'+
+        '<span class="mr-history-row-status '+attendanceClass(l.attendance_status)+'"><i></i>Завершён'+(attendanceLabel(l.attendance_status)?' · '+esc(attendanceLabel(l.attendance_status)):'')+'</span>'+
         '<span class="mr-history-row-actions"><button type="button" data-history-open="'+esc(String(l.id))+'">Открыть</button><button type="button" class="mr-history-more-trigger" data-history-more="'+esc(String(l.id))+'" aria-label="Ещё">'+icon("more")+'</button></span>'+
       '</div>';
     }).join("");
@@ -218,6 +218,12 @@
   function statusLabel(status){
     return {solved:"Решено",hard:"Сложно",later:"Вернуться позже",pending:"В очереди"}[status]||"В очереди";
   }
+  function attendanceLabel(status){
+    return {present:"Был",late:"Опоздал",absent:"Не был"}[status]||"";
+  }
+  function attendanceClass(status){
+    return ["present","late","absent"].includes(status)?status:"";
+  }
   function statusClass(status){
     return ["solved","hard","later","pending"].includes(status)?status:"pending";
   }
@@ -231,12 +237,62 @@
       return '<div><time>'+esc(timeCompact(e.at))+'</time><span class="mr-history-timeline-dot '+esc(e.type)+'">'+icon(e.type)+'</span><section><b>'+esc(e.title)+'</b>'+(e.sub?'<small>'+esc(e.sub)+'</small>':"")+'</section></div>';
     }).join("")+'</div>';
   }
+  function versionHasContent(v){
+    return Array.isArray(v&&v.pages)&&v.pages.some(function(p){return Array.isArray(p&&p.elements)&&p.elements.some(function(x){return x&&x.type!=="board-bg"})});
+  }
   function boardHtml(versions){
     if(!versions.length)return '<div class="mr-history-panel-empty">'+icon("board")+'<b>Сохранённых версий доски нет</b><span>Версии появляются при сохранении и завершении урока.</span></div>';
     return '<div class="mr-history-board-grid">'+versions.map(function(v,i){
-      var pages=Array.isArray(v.pages)?v.pages.length:0;
-      return '<button type="button" data-history-version="'+esc(String(v.id))+'"><span class="mr-history-board-preview"><i></i><i></i><i></i><em>'+String(i+1).padStart(2,"0")+'</em></span><b>'+esc(v.title||"Версия доски")+'</b><small>'+esc(dateCompact(v.created_at))+' · '+esc(timeCompact(v.created_at))+(pages?" · "+pages+" стр.":"")+'</small></button>';
+      var pages=Array.isArray(v.pages)?v.pages.length:0,hasContent=versionHasContent(v);
+      return '<button type="button" data-history-version="'+esc(String(v.id))+'"><span class="mr-history-board-preview '+(hasContent?"":"empty")+'" data-history-preview="'+esc(String(v.id))+'">'+
+        (hasContent?'<span class="mr-history-preview-loading">Загрузка доски…</span>':'<span class="mr-history-preview-empty">'+icon("board")+'<b>Доска пустая</b></span>')+
+        '<em>'+String(i+1).padStart(2,"0")+'</em></span><b>'+esc(v.title||"Версия доски")+'</b><small>'+esc(dateCompact(v.created_at))+' · '+esc(timeCompact(v.created_at))+(pages?" · "+pages+" стр.":"")+'</small></button>';
     }).join("")+'</div>';
+  }
+  function hydrateBoardPreviews(scope,versions,ctx){
+    var mount=ctx&&ctx.mountSnapshot||window.MathroomBoard&&window.MathroomBoard.mountSnapshot;
+    if(!scope||!mount)return;
+    scope.querySelectorAll("[data-history-preview]").forEach(function(root){
+      var id=root.dataset.historyPreview;
+      var v=(versions||[]).find(function(x){return String(x.id)===String(id)});
+      if(!v||!versionHasContent(v)||root.dataset.previewReady==="1")return;
+      root.dataset.previewReady="1";
+      var pages=(v.pages||[]).slice();
+      pages.sort(function(a,b){
+        var ac=Array.isArray(a&&a.elements)&&a.elements.some(function(x){return x&&x.type!=="board-bg"})?1:0;
+        var bc=Array.isArray(b&&b.elements)&&b.elements.some(function(x){return x&&x.type!=="board-bg"})?1:0;
+        return bc-ac;
+      });
+      root.innerHTML='<span class="mr-history-preview-mount"></span><em>'+String(Math.max(1,(versions||[]).indexOf(v)+1)).padStart(2,"0")+'</em>';
+      var host=root.querySelector(".mr-history-preview-mount");
+      try{
+        mount(host,pages);
+        root.classList.add("real");
+        var fit=function(){
+          var svg=host.querySelector("svg");if(!svg)return;
+          var groups=svg.querySelectorAll(":scope > g"),g=groups.length?groups[groups.length-1]:null;
+          if(!g)return;
+          try{
+            var b=g.getBBox();
+            if(!(b.width>0&&b.height>0))return;
+            var pad=Math.max(18,Math.max(b.width,b.height)*.08);
+            svg.setAttribute("viewBox",(b.x-pad)+" "+(b.y-pad)+" "+(b.width+pad*2)+" "+(b.height+pad*2));
+            svg.setAttribute("preserveAspectRatio","xMidYMid meet");
+          }catch(e){}
+        };
+        requestAnimationFrame(function(){requestAnimationFrame(fit)});
+        var svg=host.querySelector("svg");
+        if(svg){
+          var observer=new MutationObserver(function(){requestAnimationFrame(fit)});
+          observer.observe(svg,{childList:true,subtree:true});
+          setTimeout(function(){observer.disconnect();fit()},4500);
+        }
+      }catch(e){
+        console.warn("[Mathroom history preview]",e);
+        root.classList.add("empty");
+        root.innerHTML='<span class="mr-history-preview-empty">'+icon("board")+'<b>Не удалось показать превью</b></span><em>'+String(Math.max(1,(versions||[]).indexOf(v)+1)).padStart(2,"0")+'</em>';
+      }
+    });
   }
   function tasksHtml(report,queue){
     var cards=report?'<div class="mr-history-metrics">'+
@@ -255,9 +311,9 @@
     var focus=report&&report.public_focus||l.homework_plan||"—";
     var privateText=report&&report.private_summary||l.private_notes||"—";
     return '<div class="mr-history-notes-grid">'+
-      '<article><span>Итоги ученику</span><div>'+nl(highlights)+'</div></article>'+
-      '<article><span>К следующему уроку</span><div>'+nl(focus)+'</div></article>'+
-      '<article class="wide"><span>Приватные заметки</span><div>'+nl(privateText)+'</div></article>'+
+      '<article class="mr-history-note-card result"><header><span>01</span><div><small>УЧЕНИКУ</small><b>Итоги урока</b></div></header><div class="mr-history-note-body">'+nl(highlights)+'</div></article>'+
+      '<article class="mr-history-note-card next"><header><span>02</span><div><small>СЛЕДУЮЩИЙ ШАГ</small><b>К следующему уроку</b></div></header><div class="mr-history-note-body">'+nl(focus)+'</div></article>'+
+      '<article class="mr-history-note-card private wide"><header><span>03</span><div><small>ТОЛЬКО ПРЕПОДАВАТЕЛЮ</small><b>Приватные заметки</b></div></header><div class="mr-history-note-body">'+nl(privateText)+'</div></article>'+
     '</div>';
   }
 
@@ -277,7 +333,7 @@
     var st=(S.students||[]).find(function(x){return String(x.id)===String(l.student_id)})||l.students||{};
     var html='<div class="mr-history-modal-head">'+
       '<div class="mr-history-modal-person"><span class="mr-history-avatar large">'+esc(initials(st.name||l.students&&l.students.name))+'</span><div><span class="mr-history-modal-kicker">ЗАВЕРШЁННЫЙ УРОК</span><h2>'+esc(st.name||l.students&&l.students.name||"Ученик")+' · '+esc(l.topics&&l.topics.title||"Без темы")+'</h2><p>'+esc(dateLong(when))+(l.started_at?' · '+esc(timeCompact(l.started_at)):"")+(mins?" · "+mins+" мин":"")+'</p></div></div>'+
-      '<div class="mr-history-modal-head-right"><span class="mr-history-completed">Завершён</span><button type="button" id="historyModalClose" aria-label="Закрыть">×</button></div>'+
+      '<div class="mr-history-modal-head-right">'+(attendanceLabel(l.attendance_status)?'<span class="mr-history-attendance '+attendanceClass(l.attendance_status)+'">'+esc(attendanceLabel(l.attendance_status))+'</span>':'')+'<span class="mr-history-completed">Завершён</span><button type="button" id="historyModalClose" aria-label="Закрыть">×</button></div>'+
     '</div>'+
     '<div class="mr-history-modal-layout">'+
       '<nav class="mr-history-modal-nav">'+
@@ -302,7 +358,9 @@
     function setTab(name){
       m.querySelectorAll("[data-history-tab]").forEach(function(b){b.classList.toggle("active",b.dataset.historyTab===name)});
       m.querySelectorAll("[data-history-panel]").forEach(function(p){p.classList.toggle("active",p.dataset.historyPanel===name)});
+      if(name==="timeline"||name==="board")requestAnimationFrame(function(){hydrateBoardPreviews(m,versions,ctx)});
     }
+    requestAnimationFrame(function(){hydrateBoardPreviews(m,versions,ctx)});
     m.querySelectorAll("[data-history-tab]").forEach(function(b){b.onclick=function(){setTab(b.dataset.historyTab)}});
     m.querySelectorAll("[data-jump-tab]").forEach(function(b){b.onclick=function(){setTab(b.dataset.jumpTab)}});
     m.querySelectorAll("[data-history-version]").forEach(function(b){b.onclick=function(){

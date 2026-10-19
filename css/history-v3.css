@@ -182,3 +182,116 @@ html[data-theme="dark"] .modal-backdrop.mr-history-backdrop-v3{
 @media(max-width:800px){
   .mr-history-select-shell{min-width:0;flex:1 1 145px}
 }
+
+
+/* v54.4 — larger history typography, real board previews, stronger notes */
+.mr-history-modal-person h2{font-size:22px!important;line-height:1.18!important}
+.mr-history-modal-person p{font-size:11.5px!important}
+.mr-history-modal-kicker{font-size:9.5px!important}
+.mr-history-modal-nav button{font-size:11.5px!important;min-height:47px!important}
+.mr-history-panel-title span{font-size:9.5px!important}
+.mr-history-panel-title h3{font-size:21px!important}
+.mr-history-panel-title>b{font-size:11.5px!important}
+.mr-history-timeline>div{min-height:62px!important;grid-template-columns:66px 31px 1fr!important}
+.mr-history-timeline:before{left:85px!important}
+.mr-history-timeline time{font-size:10.5px!important}
+.mr-history-timeline section{padding:11px 13px!important}
+.mr-history-timeline section b{font-size:12.5px!important}
+.mr-history-timeline section small{font-size:10px!important}
+.mr-history-board-strip-head h3{font-size:14px!important}
+.mr-history-board-strip-head button{font-size:10.5px!important}
+
+.mr-history-board-grid{grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:11px!important}
+.mr-history-board-grid>button{padding:9px!important;border-radius:10px!important}
+.mr-history-board-grid>button>b{font-size:11.5px!important;margin-top:8px!important}
+.mr-history-board-grid>button>small{font-size:9px!important;margin-top:3px!important}
+.mr-history-board-preview{
+  height:132px!important;
+  border-radius:7px!important;
+  background:#fff!important;
+  border:1px solid #e3e8ee!important;
+  overflow:hidden!important
+}
+.mr-history-board-preview>i{display:none!important}
+.mr-history-board-preview .mr-history-preview-loading{
+  position:absolute;inset:0;display:grid;place-items:center;
+  color:#9aa2ac;font-size:9px;font-weight:750
+}
+.mr-history-board-preview.empty{
+  display:grid!important;place-items:center!important;background:#f8f9fa!important
+}
+.mr-history-preview-empty{
+  display:grid;place-items:center;gap:5px;color:#8a929c;text-align:center
+}
+.mr-history-preview-empty svg{width:24px;height:24px;fill:none;stroke:#ff641a;stroke-width:1.7}
+.mr-history-preview-empty b{font-size:9px;color:#69727d}
+.mr-history-preview-mount{position:absolute;inset:0;display:block}
+.mr-history-preview-mount .board-card{height:100%!important;min-height:0!important;border:0!important;border-radius:0!important;padding:0!important;background:#fff!important;box-shadow:none!important}
+.mr-history-preview-mount .board-page-tabs,
+.mr-history-preview-mount .board-toolbar,
+.mr-history-preview-mount .board-floating{display:none!important}
+.mr-history-preview-mount .board-stage{height:100%!important;min-height:0!important;border:0!important;border-radius:0!important;background:#fff!important;overflow:hidden!important}
+.mr-history-preview-mount svg{width:100%!important;height:100%!important;display:block!important;pointer-events:none!important}
+.mr-history-board-preview>em{z-index:4!important;font-size:8.5px!important;padding:3px 5px!important}
+
+.mr-history-notes-grid{gap:12px!important}
+.mr-history-note-card{
+  position:relative;overflow:hidden;padding:0!important;
+  border:1px solid #e3e7eb!important;border-radius:12px!important;
+  background:#fff!important;box-shadow:0 7px 20px rgba(25,29,34,.035)
+}
+.mr-history-note-card:before{content:"";position:absolute;left:0;top:0;right:0;height:4px;background:#ff641a}
+.mr-history-note-card.next:before{background:#1b1e22}
+.mr-history-note-card.private:before{background:linear-gradient(90deg,#ff641a 0 36%,#1b1e22 36% 100%)}
+.mr-history-note-card header{
+  display:grid;grid-template-columns:42px minmax(0,1fr);gap:10px;align-items:center;
+  padding:15px 16px 10px!important
+}
+.mr-history-note-card header>span{
+  width:42px;height:42px;display:grid;place-items:center;border-radius:10px;
+  background:#fff0e7;color:#ef5a12;font-size:11px;font-weight:950
+}
+.mr-history-note-card.next header>span{background:#1b1e22;color:#fff}
+.mr-history-note-card.private header>span{background:#fff0e7;color:#ef5a12}
+.mr-history-note-card header small{
+  display:block;margin:0 0 3px;color:#8a929d;font-size:8.5px;font-weight:950;letter-spacing:.075em
+}
+.mr-history-note-card header b{display:block;color:#20242a;font-size:14px;font-weight:950}
+.mr-history-note-body{
+  min-height:74px;padding:2px 16px 17px!important;
+  color:#373d45!important;font-size:13px!important;line-height:1.65!important
+}
+.mr-history-note-card.private .mr-history-note-body{min-height:92px}
+
+.mr-history-modal-head-right{flex-wrap:wrap;justify-content:flex-end}
+.mr-history-attendance{
+  display:inline-flex;align-items:center;min-height:29px;padding:0 9px;border-radius:7px;
+  font-size:10px;font-weight:900
+}
+.mr-history-attendance.present{background:#eaf8ee;color:#258244}
+.mr-history-attendance.late{background:#fff4e5;color:#b46d15}
+.mr-history-attendance.absent{background:#fff0f0;color:#c94a4a}
+.mr-history-row-status.late{background:#fff4e5;color:#a96616}
+.mr-history-row-status.late i{background:#e9952e}
+.mr-history-row-status.absent{background:#fff0f0;color:#c94a4a}
+.mr-history-row-status.absent i{background:#d95a5a}
+
+#deleteHistoryLesson{
+  min-height:40px!important;padding:0 15px!important;
+  border:1px solid #171a1f!important;border-radius:9px!important;
+  background:#171a1f!important;color:#fff!important;
+  font-size:11.5px!important;font-weight:900!important
+}
+#deleteHistoryLesson:hover{background:#2b3036!important;border-color:#2b3036!important;color:#fff!important}
+.mr-history-modal-footer button{font-size:10.5px!important}
+.mr-history-modal-footer .primary{font-size:11px!important}
+
+html[data-theme="dark"] .mr-history-note-card{background:#1d2025!important;border-color:#333941!important}
+html[data-theme="dark"] .mr-history-note-card header b{color:#f1f3f5!important}
+html[data-theme="dark"] .mr-history-note-body{color:#cbd1d8!important}
+html[data-theme="dark"] .mr-history-board-preview,
+html[data-theme="dark"] .mr-history-preview-mount .board-card,
+html[data-theme="dark"] .mr-history-preview-mount .board-stage{background:#fff!important}
+
+@media(max-width:900px){.mr-history-board-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important}}
+@media(max-width:560px){.mr-history-board-grid{grid-template-columns:1fr!important}.mr-history-notes-grid{grid-template-columns:1fr!important}}
