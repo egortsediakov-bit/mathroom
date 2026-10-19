@@ -768,7 +768,14 @@ function renderStudents(){
   const found=document.getElementById('studentFoundCount');
 
   const closeStudentMoreMenus=(except=null)=>{
-    document.querySelectorAll('details.mr-student-more[open]').forEach(d=>{if(d!==except)d.open=false});
+    document.querySelectorAll('.mr-student-more.is-open').forEach(menu=>{
+      if(menu===except)return;
+      menu.classList.remove('is-open');
+      const trigger=menu.querySelector('[data-student-more-trigger]');
+      const panel=menu.querySelector('[data-student-more-panel]');
+      if(trigger)trigger.setAttribute('aria-expanded','false');
+      if(panel)panel.hidden=true;
+    });
   };
   if(window.__mrStudentMoreOutsideHandler){
     document.removeEventListener('pointerdown',window.__mrStudentMoreOutsideHandler,true);
@@ -779,10 +786,9 @@ function renderStudents(){
   }
   window.__mrStudentMoreOutsideHandler=function studentMoreOutside(e){
     if(S.view!=='students')return;
-    const detail=e.target?.closest?.('details.mr-student-more')||null;
-    const summary=e.target?.closest?.('summary')||null;
-    const keepOpen=detail&&summary&&detail.querySelector(':scope > summary')===summary;
-    closeStudentMoreMenus(keepOpen?detail:null);
+    if(e.target?.closest?.('[data-student-more-trigger]'))return;
+    if(e.target?.closest?.('[data-student-more-panel]'))return;
+    closeStudentMoreMenus();
   };
   window.__mrStudentMoreEscapeHandler=function studentMoreEscape(e){
     if(S.view==='students'&&e.key==='Escape')closeStudentMoreMenus();
@@ -843,7 +849,21 @@ function renderStudents(){
   };
 
   const bindRowActions=()=>{
-    results.querySelectorAll('.mr-student-more').forEach(d=>d.addEventListener('toggle',()=>{if(d.open)closeStudentMoreMenus(d)}));
+    results.querySelectorAll('.mr-student-more').forEach(menu=>{
+      const trigger=menu.querySelector('[data-student-more-trigger]');
+      const panel=menu.querySelector('[data-student-more-panel]');
+      if(!trigger||!panel)return;
+      trigger.onclick=e=>{
+        e.preventDefault();e.stopPropagation();
+        const wasOpen=menu.classList.contains('is-open');
+        closeStudentMoreMenus();
+        if(!wasOpen){
+          menu.classList.add('is-open');
+          trigger.setAttribute('aria-expanded','true');
+          panel.hidden=false;
+        }
+      };
+    });
     results.querySelectorAll('[data-profile]').forEach(b=>b.onclick=()=>{closeStudentMoreMenus();S.selectedStudent=b.dataset.profile;S.view='profile';renderTeacher()});
     results.querySelectorAll('[data-copy]').forEach(b=>b.onclick=async()=>{closeStudentMoreMenus();const st=S.students.find(x=>x.id===b.dataset.copy);if(!st)return;await copyText(studentLink(st));toast('Ссылка скопирована')});
     results.querySelectorAll('[data-edit-student]').forEach(b=>b.onclick=()=>{closeStudentMoreMenus();const st=S.students.find(x=>x.id===b.dataset.editStudent);if(st)openStudentEditor(st)});
@@ -898,7 +918,7 @@ function renderStudents(){
               <div class="mr-student-progress-cell"><b>${meta.completed} завершено</b><div><i style="width:${meta.progress}%"></i></div><small>${meta.total?meta.progress+'%':'нет уроков'}</small></div>
               <div class="mr-student-activity-cell"><span class="${st.active===false?'off':'on'}"></span><div><b>${esc(ago(meta.last))}</b><small>${meta.last?meta.last.toLocaleDateString('ru-RU',{day:'2-digit',month:'short'}):'—'}</small></div></div>
               <div class="mr-student-link-cell"><button type="button" data-copy="${st.id}" title="Скопировать персональную ссылку" aria-label="Скопировать персональную ссылку">${studentUiIcon('link')}</button></div>
-              <div class="mr-student-row-actions"><button class="btn sm primary mr-student-profile-action" data-profile="${st.id}">${studentUiIcon('profile')}<span>Профиль</span></button><button class="btn sm mr-student-refresh-action" data-rotate="${st.id}">${studentUiIcon('refresh')}<span>Новая ссылка</span></button><details class="mr-student-more"><summary title="Ещё" aria-label="Ещё действия">${studentUiIcon('more')}</summary><div><button type="button" data-edit-student="${st.id}">Редактировать</button><button type="button" data-copy="${st.id}">Копировать ссылку</button><button type="button" class="danger" data-delete="${st.id}">Удалить ученика</button></div></details></div>
+              <div class="mr-student-row-actions"><button class="btn sm primary mr-student-profile-action" data-profile="${st.id}">${studentUiIcon('profile')}<span>Профиль</span></button><button class="btn sm mr-student-refresh-action" data-rotate="${st.id}">${studentUiIcon('refresh')}<span>Новая ссылка</span></button><div class="mr-student-more"><button type="button" class="mr-student-more-trigger" data-student-more-trigger aria-haspopup="menu" aria-expanded="false" title="Ещё" aria-label="Ещё действия">${studentUiIcon('more')}</button><div class="mr-student-more-popover" data-student-more-panel role="menu" hidden><button type="button" data-edit-student="${st.id}" role="menuitem">Редактировать</button><button type="button" data-copy="${st.id}" role="menuitem">Копировать ссылку</button><button type="button" class="danger" data-delete="${st.id}" role="menuitem">Удалить ученика</button></div></div></div>
             </article>`;
           }).join('')}
         </div>

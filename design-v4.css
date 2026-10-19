@@ -8455,3 +8455,72 @@ html[data-theme="dark"] .view-topics .mr-topic-student-results>button.selected>s
   .mr-library-tabs button{min-width:0}
   .mr-library-own-actions{max-width:none}
 }
+
+/* v54.2 — controlled student actions popover (no native <details>) */
+.mr-student-more{position:relative}
+.mr-student-more-trigger{
+  width:40px!important;
+  height:39px!important;
+  display:grid!important;
+  place-items:center!important;
+  padding:0!important;
+  border:1px solid #ffd7c4!important;
+  border-radius:10px!important;
+  background:#fff7f2!important;
+  color:#f35a16!important;
+  cursor:pointer!important;
+}
+.mr-student-more-trigger:hover,
+.mr-student-more.is-open .mr-student-more-trigger{
+  background:#f35a16!important;
+  border-color:#f35a16!important;
+  color:#fff!important;
+}
+.mr-student-more-trigger .mr-student-ui-icon{width:20px!important;height:20px!important}
+.mr-student-more-popover{
+  position:absolute;
+  right:0;
+  top:44px;
+  z-index:160;
+  width:190px;
+  padding:7px;
+  border:1px solid #dfe4e9;
+  border-radius:12px;
+  background:#fff;
+  box-shadow:0 18px 42px rgba(30,38,50,.18);
+}
+.mr-student-more-popover[hidden]{display:none!important}
+.mr-student-more-popover button{
+  width:100%;
+  min-height:38px;
+  padding:0 11px;
+  border:0;
+  border-radius:8px;
+  background:transparent;
+  color:#333a45;
+  text-align:left;
+  font-size:11px;
+  font-weight:750;
+  cursor:pointer;
+}
+.mr-student-more-popover button:hover{background:#fff3ec;color:#d84b0b}
+.mr-student-more-popover button.danger{color:#d9414f}
+.mr-student-more-popover button.danger:hover{background:#fff0f1;color:#c93343}
+html[data-theme="dark"] .mr-student-more-trigger{
+  background:#28170f!important;
+  border-color:#5b2d17!important;
+  color:#ff7a39!important;
+}
+html[data-theme="dark"] .mr-student-more-trigger:hover,
+html[data-theme="dark"] .mr-student-more.is-open .mr-student-more-trigger{
+  background:#ff6a24!important;
+  border-color:#ff6a24!important;
+  color:#fff!important;
+}
+html[data-theme="dark"] .mr-student-more-popover{
+  background:#171b20;
+  border-color:#343b45;
+}
+html[data-theme="dark"] .mr-student-more-popover button{color:#f0f2f4}
+html[data-theme="dark"] .mr-student-more-popover button:hover{background:#2b211b;color:#ff8a4f}
+@media(max-width:650px){.mr-student-more-trigger{width:40px!important}}
