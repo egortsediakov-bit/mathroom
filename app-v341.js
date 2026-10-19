@@ -1440,7 +1440,15 @@ function renderTextbooks(){
     try{
       const uploaded=await uploadTextbookPdf(file,{onProgress:setProgress,onState:setState,onController:setController});path=uploaded.path;
       setState('PDF загружен · сохраняем учебник…');if(pauseBtn)pauseBtn.hidden=true;
-      const body={teacher_id:S.user.id,title:document.getElementById('tbTitle').value.trim(),author:document.getElementById('tbAuthor').value.trim(),subject:document.getElementById('tbSubject').value,grade_from:Number(document.getElementById('tbFrom').value),grade_to:Number(document.getElementById('tbTo').value),file_path:path,file_name:file.name,file_size:file.size};
+      const titleValue=document.getElementById('tbTitle').value.trim();
+      let gradeFrom=Number(document.getElementById('tbFrom').value),gradeTo=Number(document.getElementById('tbTo').value);
+      const explicitGrade=titleValue.match(/(?:^|[^0-9])(10|11|[1-9])\s*(?:класс(?:а|ы|ов)?|кл\.?)(?:[^0-9]|$)/i);
+      if(explicitGrade&&gradeFrom===gradeTo&&gradeFrom!==Number(explicitGrade[1])){
+        gradeFrom=gradeTo=Number(explicitGrade[1]);
+        const fromEl=document.getElementById('tbFrom'),toEl=document.getElementById('tbTo');
+        if(fromEl)fromEl.value=String(gradeFrom);if(toEl)toEl.value=String(gradeTo);
+      }
+      const body={teacher_id:S.user.id,title:titleValue,author:document.getElementById('tbAuthor').value.trim(),subject:document.getElementById('tbSubject').value,grade_from:gradeFrom,grade_to:gradeTo,file_path:path,file_name:file.name,file_size:file.size};
       const {data:createdBook,error}=await sb.from('textbooks').insert(body).select('*').single();if(error){await sb.storage.from('textbooks').remove([path]);throw error}
       setState('PDF загружен · связываем с темами…');await loadTeacher();let autoResult=null;try{autoResult=await syncTextbooksWithTopics({silent:true,bookIds:[createdBook.id]})}catch(syncErr){console.warn('textbook auto sync',syncErr)}
       setState('Готово');if(bar)bar.style.width='100%';if(percent)percent.textContent='100%';renderTextbooks();const linked=autoResult?.created||0;toast(`${uploaded.resumed?'Учебник загружен · загрузка успешно продолжена':'Учебник загружен'}${linked?` · автоматически привязано тем: ${linked}`:''}`);
