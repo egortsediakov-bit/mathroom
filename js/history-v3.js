@@ -183,6 +183,9 @@
     ctx.bindShell();
 
     var search=document.getElementById("historyV3Search"),student=document.getElementById("historyV3Student"),grade=document.getElementById("historyV3Grade"),period=document.getElementById("historyV3Period");
+    if(S.historyStudentFilter&&Array.from(student.options).some(function(o){return String(o.value)===String(S.historyStudentFilter)})){
+      student.value=String(S.historyStudentFilter);
+    }
     [student,grade,period].forEach(upgradeHistorySelect);
     if(window.__mrHistorySelectOutside)document.removeEventListener("pointerdown",window.__mrHistorySelectOutside,true);
     window.__mrHistorySelectOutside=function(e){
@@ -204,11 +207,32 @@
       });
       document.getElementById("historyV3Empty").classList.toggle("hidden",total>0);
     }
-    [search,student,grade,period].forEach(function(el){el.addEventListener(el===search?"input":"change",apply)});
+    [search,student,grade,period].forEach(function(el){el.addEventListener(el===search?"input":"change",function(){if(el===student)S.historyStudentFilter=student.value==="all"?"":student.value;apply()})});
+    apply();
     var expand=document.getElementById("historyV3Expand"),expanded=false;
     expand.onclick=function(){expanded=!expanded;document.querySelectorAll("[data-history-group]:not([hidden])").forEach(function(g){g.open=expanded});expand.textContent=expanded?"Свернуть все":"Развернуть все"};
-    document.querySelectorAll("[data-history-open]").forEach(function(b){b.onclick=function(){API.open(b.dataset.historyOpen,API.ctx)}});
-    document.querySelectorAll("[data-history-more]").forEach(function(b){b.onclick=function(e){e.preventDefault();e.stopPropagation();openHistoryFloatingMenu(b,b.dataset.historyMore,API.ctx)}});
+    var journal=document.getElementById("historyV3Journal");
+    if(journal){
+      journal.onclick=function(e){
+        var openBtn=e.target.closest("[data-history-open]");
+        if(openBtn){
+          e.preventDefault();e.stopPropagation();
+          if(openBtn.dataset.opening==="1")return;
+          openBtn.dataset.opening="1";
+          var oldText=openBtn.textContent;
+          openBtn.textContent="Открываем…";
+          Promise.resolve(API.open(openBtn.dataset.historyOpen,API.ctx)).catch(function(err){fail(err)}).finally(function(){
+            if(openBtn.isConnected){openBtn.dataset.opening="";openBtn.textContent=oldText}
+          });
+          return;
+        }
+        var moreBtn=e.target.closest("[data-history-more]");
+        if(moreBtn){
+          e.preventDefault();e.stopPropagation();
+          openHistoryFloatingMenu(moreBtn,moreBtn.dataset.historyMore,API.ctx);
+        }
+      };
+    }
     document.getElementById("clearLessonHistory").onclick=function(){closeHistoryFloatingMenu();API.ctx.clearCompletedLessonHistory()};
     if(window.__mrHistoryReposition)window.removeEventListener("resize",window.__mrHistoryReposition);
     window.__mrHistoryReposition=function(){closeHistoryFloatingMenu();closeHistorySelects()};
@@ -319,7 +343,8 @@
 
   API.open=async function(id,ctx){
     ctx=ctx||API.ctx||{};API.ctx=ctx;
-    var l=(S.lessons||[]).find(function(x){return String(x.id)===String(id)});
+    id=String(id||"");
+    var l=(S.lessons||[]).find(function(x){return String(x.id)===id});
     if(!l)return toast("Урок уже удалён");
     var versions=(S.versions||[]).filter(function(x){return String(x.lesson_id)===String(id)}).slice().sort(function(a,b){return String(a.created_at).localeCompare(String(b.created_at))});
     var pair=await Promise.all([

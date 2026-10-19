@@ -121,7 +121,7 @@
           </div>
         </div>
       </div>
-      <div class="mr-sch48-hint"><b>Неделя</b><span>Перетащи одиночный урок на другой день — время сохранится. Серии переносим через режим «День».</span></div>
+      <div class="mr-sch48-hint"><b>Неделя</b><span>Перетаскивай урок по дням и по высоте: время округляется до 15 минут. Серии переносим через режим «День».</span></div>
     </section>`;
   }
 
@@ -130,14 +130,72 @@
     const top=Math.max(0,Math.min(14*56,(start-base)*56/60));
     const h=Math.max(42,Math.min(Number(l.duration_minutes||60),120)*56/60-4);
     const recurring=!!l.recurrence_series_id;
-    return `<article class="mr-sch48-week-card ${l.status==='completed'?'completed':''}" style="top:${top}px;height:${h}px" data-v48-lesson="${esc(l.id)}" draggable="${l.status==='assigned'&&!recurring?'true':'false'}">
-      <div><b>${clock(l.scheduled_at)}</b><small>${Number(l.duration_minutes||60)} мин</small></div>
-      <strong>${esc(studentName(l))}</strong>
-      <span>${esc(topicName(l))}</span>
-      ${recurring?'<i>серия</i>':''}
-    </article>`;
+    return `<div class="mr-sch48-week-item" style="top:${top}px;height:${h}px" data-v48-week-item="${esc(l.id)}">
+      <article class="mr-sch48-week-card ${l.status==='completed'?'completed':''}" data-v48-lesson="${esc(l.id)}" draggable="${l.status==='assigned'&&!recurring?'true':'false'}">
+        <div><b>${clock(l.scheduled_at)}</b><small>${Number(l.duration_minutes||60)} мин</small></div>
+        <strong>${esc(studentName(l))}</strong>
+        <span>${esc(topicName(l))}</span>
+        ${recurring?'<i>серия</i>':''}
+      </article>
+      <div class="mr-sch48-week-actions">
+        <button type="button" class="open" data-v48-open="${esc(l.id)}">Открыть</button>
+        <button type="button" class="delete" data-v48-delete="${esc(l.id)}">Удалить</button>
+      </div>
+    </div>`;
   }
 
+  function dropTimeForDay(day,e){
+    const rect=day.getBoundingClientRect();
+    const rawY=Math.max(0,Math.min(rect.height,e.clientY-rect.top));
+    const minutesFromEight=Math.round((rawY*60/56)/15)*15;
+    return Math.max(0,Math.min(14*60,minutesFromEight));
+  }
+  function targetDateForDrop(day,e){
+    const target=parseDateKey(day.dataset.v48Dropday);if(!target)return null;
+    const offset=dropTimeForDay(day,e);
+    target.setHours(8+Math.floor(offset/60),offset%60,0,0);
+    return target;
+  }
+  function showDropTime(day,e){
+    let marker=day.querySelector(".mr-sch48-drop-time");
+    if(!marker){marker=document.createElement("div");marker.className="mr-sch48-drop-time";day.appendChild(marker)}
+    const offset=dropTimeForDay(day,e),top=offset*56/60;
+    const h=8+Math.floor(offset/60),m=offset%60;
+    marker.style.top=top+"px";
+    marker.innerHTML='<span>'+String(h).padStart(2,"0")+':'+String(m).padStart(2,"0")+'</span>';
+  }
+  function clearDropTime(shell){
+    shell.querySelectorAll(".mr-sch48-drop-time").forEach(function(x){x.remove()});
+  }
+  function openWeekLesson(root,lesson){
+    if(!lesson)return;
+    if(lesson.status==="completed"&&typeof window.MathroomOpenHistoryLesson==="function"){
+      window.MathroomOpenHistoryLesson(lesson.id);return;
+    }
+    const engine=legacyEngine(root);
+    const id=String(lesson.id),oldCard=engine?.querySelector(`[data-cal-lesson="${CSS.escape(id)}"]`);
+    const canStart=!!oldCard?.querySelector("[data-cal-start]");
+    const canMove=!!oldCard?.querySelector("[data-cal-move]");
+    const canAttendance=!!oldCard?.querySelector("[data-cal-attendance]");
+    const html=`<div class="mr-sch48-open-modal">
+      <span class="mr-sch48-open-kicker">УРОК</span>
+      <h2>${esc(studentName(lesson))}</h2>
+      <p>${esc(topicName(lesson))}</p>
+      <div class="mr-sch48-open-meta"><span><b>${clock(lesson.scheduled_at)}</b>Время</span><span><b>${Number(lesson.duration_minutes||60)} мин</b>Длительность</span><span><b>${lesson.recurrence_series_id?'Серия':'Одиночный'}</b>Тип</span></div>
+      <div class="actions">
+        ${canMove?`<button class="btn" data-v48-modal-proxy="[data-cal-move='${esc(id)}']">Перенести</button>`:''}
+        ${canAttendance?`<button class="btn" data-v48-modal-proxy="[data-cal-attendance='${esc(id)}']">Посещение</button>`:''}
+        ${canStart?`<button class="btn primary" data-v48-modal-proxy="[data-cal-start='${esc(id)}']">${lesson.status==='in_progress'?'Продолжить урок':'Начать урок'}</button>`:''}
+      </div>
+    </div>`;
+    const modalFn=MR.modal;
+    if(typeof modalFn!=="function"){
+      if(canStart)proxyClick(root,`[data-cal-start='${id}']`);
+      return;
+    }
+    const m=modalFn(html,"wide-modal");
+    m.querySelectorAll("[data-v48-modal-proxy]").forEach(function(b){b.onclick=function(){const sel=b.dataset.v48ModalProxy;m.remove();proxyClick(root,sel)}});
+  }
   function dayHtml(root,engine,days,lessons){
     const selected=normalizeSelectedDay(days);
     const items=lessons.filter(l=>sameDay(new Date(l.scheduled_at),selected));
@@ -183,26 +241,82 @@
     shell.querySelectorAll('[data-v48-add]').forEach(b=>b.onclick=()=>openCreate(root,true));
 
     let dragged='';
+    shell.querySelectorAll('[data-v48-week-item]').forEach(item=>{
+      const card=item.querySelector('[data-v48-lesson]');
+      if(card){
+        card.addEventListener('click',e=>{
+          if(e.target.closest('button'))return;
+          shell.querySelectorAll('.mr-sch48-week-item.actions-open').forEach(x=>{if(x!==item)x.classList.remove('actions-open')});
+          item.classList.toggle('actions-open');
+        });
+      }
+    });
+    shell.querySelectorAll('[data-v48-open]').forEach(b=>b.onclick=e=>{
+      e.preventDefault();e.stopPropagation();
+      const lesson=(S.lessons||[]).find(x=>String(x.id)===String(b.dataset.v48Open));
+      openWeekLesson(root,lesson);
+    });
+    shell.querySelectorAll('[data-v48-delete]').forEach(b=>b.onclick=e=>{
+      e.preventDefault();e.stopPropagation();
+      const id=String(b.dataset.v48Delete||'');
+      const oldCard=engine.querySelector(`[data-cal-lesson="${CSS.escape(id)}"]`);
+      const del=oldCard?.querySelector('[data-cal-delete]');
+      if(del){del.click();return}
+      const lesson=(S.lessons||[]).find(x=>String(x.id)===id);
+      if(!lesson)return;
+      if(!confirm(`Удалить урок ${studentName(lesson)} · ${clock(lesson.scheduled_at)}?`))return;
+      sb.from('lessons').delete().eq('id',id).then(async({error})=>{
+        if(error)return fail(error);
+        await window.MathroomReloadTeacherData?.();
+        const at=(S.lessons||[]).findIndex(x=>String(x.id)===id);if(at>=0)S.lessons.splice(at,1);
+        toast('Урок удалён');renderView(root);
+      });
+    });
     shell.querySelectorAll('[data-v48-lesson][draggable="true"]').forEach(card=>{
-      card.addEventListener('dragstart',e=>{dragged=card.dataset.v48Lesson;card.classList.add('dragging');try{e.dataTransfer.setData('text/plain',dragged)}catch{}});
-      card.addEventListener('dragend',()=>{dragged='';card.classList.remove('dragging');shell.querySelectorAll('[data-v48-dropday]').forEach(x=>x.classList.remove('drop-target'))});
+      card.addEventListener('dragstart',e=>{
+        dragged=card.dataset.v48Lesson;
+        card.closest('.mr-sch48-week-item')?.classList.add('dragging');
+        shell.querySelectorAll('.mr-sch48-week-item.actions-open').forEach(x=>x.classList.remove('actions-open'));
+        try{e.dataTransfer.effectAllowed='move';e.dataTransfer.setData('text/plain',dragged)}catch{}
+      });
+      card.addEventListener('dragend',()=>{
+        dragged='';
+        card.closest('.mr-sch48-week-item')?.classList.remove('dragging');
+        shell.querySelectorAll('[data-v48-dropday]').forEach(x=>x.classList.remove('drop-target'));
+        clearDropTime(shell);
+      });
     });
     shell.querySelectorAll('[data-v48-dropday]').forEach(day=>{
-      day.addEventListener('dragover',e=>{if(!dragged)return;e.preventDefault();day.classList.add('drop-target')});
-      day.addEventListener('dragleave',()=>day.classList.remove('drop-target'));
+      day.addEventListener('dragover',e=>{
+        if(!dragged)return;
+        e.preventDefault();
+        try{e.dataTransfer.dropEffect='move'}catch{}
+        day.classList.add('drop-target');
+        showDropTime(day,e);
+      });
+      day.addEventListener('dragleave',e=>{
+        if(e.relatedTarget&&day.contains(e.relatedTarget))return;
+        day.classList.remove('drop-target');
+        day.querySelector('.mr-sch48-drop-time')?.remove();
+      });
       day.addEventListener('drop',async e=>{
-        e.preventDefault();day.classList.remove('drop-target');
+        e.preventDefault();
+        day.classList.remove('drop-target');
         const id=dragged||e.dataTransfer?.getData('text/plain'),lesson=(S.lessons||[]).find(x=>String(x.id)===String(id));
+        clearDropTime(shell);
         if(!lesson||lesson.status!=='assigned'||lesson.recurrence_series_id)return;
-        const target=parseDateKey(day.dataset.v48Dropday),old=new Date(lesson.scheduled_at);if(!target)return;
-        target.setHours(old.getHours(),old.getMinutes(),0,0);if(sameDay(target,old))return;
-        if(!confirm(`Перенести ${studentName(lesson)} на ${target.toLocaleDateString('ru-RU')} в ${clock(target)}?`))return;
+        const target=targetDateForDrop(day,e),old=new Date(lesson.scheduled_at);if(!target)return;
+        if(Math.abs(target.getTime()-old.getTime())<60000)return;
+        const dayText=target.toLocaleDateString('ru-RU',{weekday:'long',day:'numeric',month:'long'});
+        if(!confirm(`Перенести ${studentName(lesson)} на ${dayText} в ${clock(target)}?`))return;
         try{
           const oldIso=lesson.scheduled_at,newIso=target.toISOString();
           const {error}=await sb.from('lessons').update({scheduled_at:newIso,rescheduled_from:lesson.rescheduled_from||oldIso,schedule_updated_at:new Date().toISOString()}).eq('id',lesson.id);
           if(error)throw error;
-          lesson.rescheduled_from=lesson.rescheduled_from||oldIso;lesson.scheduled_at=newIso;
-          toast('Урок перенесён');renderView(root);
+          lesson.rescheduled_from=lesson.rescheduled_from||oldIso;
+          lesson.scheduled_at=newIso;
+          toast(`Урок перенесён на ${clock(target)}`);
+          renderView(root);
         }catch(err){fail(err)}
       });
     });

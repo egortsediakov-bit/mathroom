@@ -8579,3 +8579,88 @@ html[data-theme="dark"] .mr-finish-attendance-options button{background:#24282e;
 html[data-theme="dark"] .mr-finish-attendance-options button.active{background:#352119;border-color:#ff6a24}
 html[data-theme="dark"] .mr-finish-attendance-note{background:#241d19;color:#d8c6bc}
 @media(max-width:650px){.mr-finish-attendance-options{grid-template-columns:1fr}.mr-finish-submit{width:100%!important}}
+
+
+/* v54.6 — weekly drag by time + week card actions */
+.mr-sch48-week-item{
+  position:absolute;left:7px;right:7px;z-index:4;
+  overflow:visible
+}
+.mr-sch48-week-item>.mr-sch48-week-card{
+  position:absolute!important;inset:0!important;
+  height:100%!important;left:0!important;right:0!important;
+}
+.mr-sch48-week-item.dragging{z-index:20}
+.mr-sch48-week-item.dragging>.mr-sch48-week-card{opacity:.45}
+.mr-sch48-week-actions{
+  position:absolute;left:1px;right:1px;top:calc(100% + 4px);z-index:25;
+  display:flex;gap:4px;padding:4px;
+  border:1px solid #e2e6ea;border-top:2px solid #f35a16;border-radius:8px;
+  background:#fff;box-shadow:0 12px 26px rgba(22,27,33,.16);
+  opacity:0;visibility:hidden;transform:translateY(-3px);pointer-events:none;
+  transition:opacity .12s ease,transform .12s ease,visibility .12s ease
+}
+.mr-sch48-week-item:hover,
+.mr-sch48-week-item.actions-open{z-index:30}
+.mr-sch48-week-item:hover .mr-sch48-week-actions,
+.mr-sch48-week-item.actions-open .mr-sch48-week-actions,
+.mr-sch48-week-item:focus-within .mr-sch48-week-actions{
+  opacity:1;visibility:visible;transform:none;pointer-events:auto
+}
+.mr-sch48-week-actions button{
+  flex:1;min-width:0;height:28px;padding:0 6px;
+  border:1px solid #dce1e6;border-radius:6px;background:#fff;
+  color:#343a42;font-size:8.5px;font-weight:850;cursor:pointer
+}
+.mr-sch48-week-actions button.open{
+  border-color:#ffb38d;background:#fff4ed;color:#e9520e
+}
+.mr-sch48-week-actions button.delete:hover{
+  border-color:#24282d;background:#24282d;color:#fff
+}
+.mr-sch48-week-actions button.open:hover{
+  background:#f35a16;border-color:#f35a16;color:#fff
+}
+.mr-sch48-drop-time{
+  position:absolute;left:0;right:0;z-index:40;height:0;
+  border-top:2px solid #f35a16;pointer-events:none
+}
+.mr-sch48-drop-time:before{
+  content:"";position:absolute;left:-4px;top:-5px;width:8px;height:8px;
+  border-radius:50%;background:#f35a16
+}
+.mr-sch48-drop-time span{
+  position:absolute;right:5px;top:-13px;padding:3px 6px;
+  border-radius:6px;background:#17191c;color:#fff;
+  font-size:8px;font-weight:900;box-shadow:0 4px 10px rgba(20,23,27,.18)
+}
+.mr-sch48-open-modal{padding:3px 2px}
+.mr-sch48-open-kicker{
+  display:block;margin-bottom:5px;color:#f35a16;
+  font-size:9px;font-weight:950;letter-spacing:.08em
+}
+.mr-sch48-open-modal h2{margin:0!important;font-size:24px!important}
+.mr-sch48-open-modal>p{margin:5px 0 14px;color:#737c87;font-size:11px}
+.mr-sch48-open-meta{
+  display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px
+}
+.mr-sch48-open-meta span{
+  padding:10px;border:1px solid #e3e7eb;border-radius:9px;
+  background:#f8f9fa;color:#858d97;font-size:8.5px
+}
+.mr-sch48-open-meta b{display:block;margin-bottom:3px;color:#20242a;font-size:12px}
+html[data-theme="dark"] .mr-sch48-week-actions{
+  background:#191d22;border-color:#353b43;border-top-color:#ff6a24
+}
+html[data-theme="dark"] .mr-sch48-week-actions button{
+  background:#22272d;border-color:#3a414a;color:#e9edf1
+}
+html[data-theme="dark"] .mr-sch48-week-actions button.open{
+  background:#302018;border-color:#5f321d;color:#ff884b
+}
+html[data-theme="dark"] .mr-sch48-open-meta span{background:#20242a;border-color:#353b43}
+html[data-theme="dark"] .mr-sch48-open-meta b{color:#f1f3f5}
+@media(max-width:760px){
+  .mr-sch48-week-actions{opacity:1;visibility:visible;transform:none;pointer-events:auto}
+  .mr-sch48-open-meta{grid-template-columns:1fr}
+}
