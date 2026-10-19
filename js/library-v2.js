@@ -412,6 +412,125 @@
       var title=upload.querySelector("#tbTitle");if(title)setTimeout(function(){title.focus()},250);
     };
 
+    function upgradeUploadForm(){
+      var form=upload.querySelector("#textbookForm");
+      if(!form||form.dataset.lib2Ready==="1")return;
+      form.dataset.lib2Ready="1";
+      upload.classList.add("mr-lib2-upload-pro");
+
+      var titleEl=upload.querySelector(":scope > h2");
+      if(titleEl){
+        var intro=document.createElement("div");
+        intro.className="mr-lib2-upload-intro";
+        intro.innerHTML='<span class="mr-lib2-upload-kicker">НОВЫЙ МАТЕРИАЛ</span><p>Добавьте PDF — Mathroom распознает учебник, класс и попробует сразу связать его с темами.</p>';
+        titleEl.after(intro);
+      }
+
+      var grids=Array.from(form.querySelectorAll(":scope > .grid.cols3"));
+      if(grids[0])grids[0].classList.add("mr-lib2-upload-grid","primary");
+      if(grids[1])grids[1].classList.add("mr-lib2-upload-grid","secondary");
+
+      function uploadIcon(kind){
+        if(kind==="subject")return '<svg viewBox="0 0 24 24"><path d="M4 5.5c3.4-1.3 6.1-.7 8 1v12c-1.9-1.7-4.6-2.3-8-1V5.5Zm16 0c-3.4-1.3-6.1-.7-8 1v12c1.9-1.7 4.6-2.3 8-1V5.5Z"/></svg>';
+        return '<svg viewBox="0 0 24 24"><path d="m3 10 9-5 9 5-9 5-9-5Z"/><path d="M7 13v4c3 2 7 2 10 0v-4"/></svg>';
+      }
+      function upgradeNativeSelect(id,kind){
+        var select=upload.querySelector("#"+id);
+        if(!select||select.dataset.lib2Custom==="1")return;
+        select.dataset.lib2Custom="1";
+        select.classList.add("mr-lib2-native-select");
+        var wrap=document.createElement("div");
+        wrap.className="mr-lib2-upload-select";
+        wrap.innerHTML='<button type="button" class="mr-lib2-upload-select-trigger"><span class="mr-lib2-upload-select-icon">'+uploadIcon(kind)+'</span><b></b><span class="mr-lib2-upload-chevron">⌄</span></button><div class="mr-lib2-upload-select-menu"></div>';
+        select.after(wrap);
+        var trigger=wrap.querySelector(".mr-lib2-upload-select-trigger");
+        var textEl=trigger.querySelector("b");
+        var menu=wrap.querySelector(".mr-lib2-upload-select-menu");
+
+        function sync(){
+          var opt=select.options[select.selectedIndex];
+          textEl.textContent=opt?opt.textContent:"—";
+          menu.querySelectorAll("button[data-value]").forEach(function(btn){
+            btn.classList.toggle("active",String(btn.dataset.value)===String(select.value));
+          });
+        }
+        Array.from(select.options).forEach(function(opt){
+          var btn=document.createElement("button");
+          btn.type="button";
+          btn.dataset.value=opt.value;
+          btn.innerHTML='<span class="mr-lib2-upload-option-icon">'+uploadIcon(kind)+'</span><b>'+esc2(opt.textContent)+'</b><i>✓</i>';
+          btn.onclick=function(e){
+            e.stopPropagation();
+            select.value=opt.value;
+            select.dispatchEvent(new Event("change",{bubbles:true}));
+            wrap.classList.remove("open");
+            sync();
+          };
+          menu.appendChild(btn);
+        });
+        trigger.onclick=function(e){
+          e.stopPropagation();
+          upload.querySelectorAll(".mr-lib2-upload-select.open").forEach(function(x){if(x!==wrap)x.classList.remove("open")});
+          wrap.classList.toggle("open");
+        };
+        select.addEventListener("change",sync);
+        sync();
+      }
+      upgradeNativeSelect("tbSubject","subject");
+      upgradeNativeSelect("tbFrom","grade");
+      upgradeNativeSelect("tbTo","grade");
+
+      var file=upload.querySelector("#tbFile");
+      if(file&&!file.dataset.lib2Custom){
+        file.dataset.lib2Custom="1";
+        file.classList.add("mr-lib2-native-file");
+        var drop=document.createElement("label");
+        drop.className="mr-lib2-file-drop";
+        drop.setAttribute("for","tbFile");
+        drop.innerHTML='<span class="mr-lib2-file-icon"><svg viewBox="0 0 24 24"><path d="M7 3h7l4 4v14H7z"/><path d="M14 3v5h5M12 17v-6m0 0-2.5 2.5M12 11l2.5 2.5"/></svg></span><span class="mr-lib2-file-copy"><b data-file-title>Выберите PDF</b><small data-file-note>Нажмите или перетащите файл сюда · до 100 МБ</small></span><span class="mr-lib2-file-action">Выбрать файл</span>';
+        file.after(drop);
+        var updateFile=function(){
+          var f=file.files&&file.files[0];
+          var title=drop.querySelector("[data-file-title]"),note=drop.querySelector("[data-file-note]");
+          drop.classList.toggle("has-file",!!f);
+          if(f){
+            title.textContent=f.name;
+            note.textContent=fmtBytes(f.size)+" · PDF готов к загрузке";
+          }else{
+            title.textContent="Выберите PDF";
+            note.textContent="Нажмите или перетащите файл сюда · до 100 МБ";
+          }
+        };
+        file.addEventListener("change",updateFile);
+        ["dragenter","dragover"].forEach(function(name){drop.addEventListener(name,function(e){e.preventDefault();drop.classList.add("drag")})});
+        ["dragleave","drop"].forEach(function(name){drop.addEventListener(name,function(e){e.preventDefault();drop.classList.remove("drag")})});
+        drop.addEventListener("drop",function(e){
+          var f=e.dataTransfer&&e.dataTransfer.files&&e.dataTransfer.files[0];
+          if(!f)return;
+          var dt=new DataTransfer();dt.items.add(f);file.files=dt.files;
+          file.dispatchEvent(new Event("change",{bubbles:true}));
+        });
+      }
+
+      var helper=form.querySelector(":scope > .small.muted");
+      if(helper){
+        helper.classList.add("mr-lib2-upload-helper");
+        helper.innerHTML='<span><b>PDF</b> хранится в закрытом Storage</span><span><b>100 МБ</b> максимальный размер</span><span><b>OCR</b> отключён</span><span><b>Автосвязь</b> тем после загрузки</span>';
+      }
+
+      var submit=upload.querySelector("#tbUploadSubmit");
+      if(submit){
+        submit.innerHTML='<span class="mr-lib2-submit-icon">↑</span><span>Загрузить PDF</span>';
+        submit.classList.add("mr-lib2-upload-submit");
+      }
+
+      document.addEventListener("click",function(){
+        upload.querySelectorAll(".mr-lib2-upload-select.open").forEach(function(x){x.classList.remove("open")});
+      });
+    }
+
+    upgradeUploadForm();
+
     upload.classList.add("mr-lib2-upload");
     var close=document.createElement("button");
     close.type="button";close.className="mr-lib2-upload-close";close.textContent="×";
