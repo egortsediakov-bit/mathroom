@@ -64,13 +64,86 @@
         '<span class="mr-history-row-date"><b>'+esc(dateCompact(when))+'</b><small>'+esc(timeCompact(when))+'</small></span>'+
         '<span class="mr-history-row-topic"><b>'+esc(l.topics&&l.topics.title||"Без темы")+'</b><small>'+(versions?versions+" верс. доски":"Итог урока сохранён")+'</small></span>'+
         '<span class="mr-history-row-status"><i></i>Завершён</span>'+
-        '<span class="mr-history-row-actions"><button type="button" data-history-open="'+esc(String(l.id))+'">Открыть</button><details class="mr-history-row-more"><summary aria-label="Ещё">'+icon("more")+'</summary><div><button type="button" class="danger" data-history-delete="'+esc(String(l.id))+'">Удалить из истории</button></div></details></span>'+
+        '<span class="mr-history-row-actions"><button type="button" data-history-open="'+esc(String(l.id))+'">Открыть</button><button type="button" class="mr-history-more-trigger" data-history-more="'+esc(String(l.id))+'" aria-label="Ещё">'+icon("more")+'</button></span>'+
       '</div>';
     }).join("");
     return '<details class="mr-history-student-group" data-history-group '+(index===0?"open":"")+'>'+
       '<summary><span class="mr-history-avatar">'+esc(initials(st.name||first.students&&first.students.name))+'</span><span class="mr-history-student-copy"><b>'+esc(st.name||first.students&&first.students.name||"Ученик")+' <em>· '+esc(String(st.grade||first.students&&first.students.grade||"—"))+' класс</em></b><small>'+lessonCountLabel(lessons.length)+' · '+topicCount+' '+(topicCount===1?"тема":"тем")+' · последний '+esc(dateCompact(latest))+'</small></span><span class="mr-history-group-arrow">'+icon("chevron")+'</span></summary>'+
       '<div class="mr-history-group-table"><div class="mr-history-table-head"><span>Дата</span><span>Тема / программа</span><span>Статус</span><span>Действия</span></div>'+rows+'</div>'+
     '</details>';
+  }
+
+
+  function closeHistorySelects(except){
+    document.querySelectorAll(".mr-history-select.open").forEach(function(x){if(x!==except)x.classList.remove("open")});
+  }
+  function upgradeHistorySelect(select){
+    if(!select||select.dataset.historyStyled==="1")return;
+    select.dataset.historyStyled="1";
+    var shell=select.parentElement;
+    if(!shell)return;
+    shell.classList.add("mr-history-select-shell");
+    select.classList.add("mr-history-native-select");
+    var ui=document.createElement("div");
+    ui.className="mr-history-select";
+    ui.innerHTML='<button type="button" class="mr-history-select-trigger" aria-haspopup="listbox"><b></b><span>⌄</span></button><div class="mr-history-select-menu" role="listbox"></div>';
+    select.after(ui);
+    var trigger=ui.querySelector(".mr-history-select-trigger"),label=trigger.querySelector("b"),menu=ui.querySelector(".mr-history-select-menu");
+    function renderOptions(){
+      menu.innerHTML="";
+      Array.from(select.options).forEach(function(opt){
+        var b=document.createElement("button");
+        b.type="button";b.dataset.value=opt.value;b.setAttribute("role","option");
+        b.innerHTML='<span>'+esc(opt.textContent)+'</span><i>✓</i>';
+        b.onclick=function(e){
+          e.preventDefault();e.stopPropagation();
+          select.value=opt.value;
+          select.dispatchEvent(new Event("change",{bubbles:true}));
+          ui.classList.remove("open");
+          sync();
+        };
+        menu.appendChild(b);
+      });
+    }
+    function sync(){
+      var opt=select.options[select.selectedIndex];
+      label.textContent=opt?opt.textContent:"—";
+      menu.querySelectorAll("button").forEach(function(b){b.classList.toggle("active",String(b.dataset.value)===String(select.value))});
+    }
+    trigger.onclick=function(e){
+      e.preventDefault();e.stopPropagation();
+      var open=!ui.classList.contains("open");
+      closeHistorySelects(ui);
+      ui.classList.toggle("open",open);
+    };
+    select.addEventListener("change",sync);
+    renderOptions();sync();
+  }
+
+  function closeHistoryFloatingMenu(){
+    document.querySelector(".mr-history-floating-menu")?.remove();
+  }
+  function openHistoryFloatingMenu(trigger,id,ctx){
+    closeHistoryFloatingMenu();
+    var menu=document.createElement("div");
+    menu.className="mr-history-floating-menu";
+    menu.innerHTML='<button type="button" class="danger">Удалить из истории</button>';
+    document.body.appendChild(menu);
+    var r=trigger.getBoundingClientRect();
+    var menuWidth=190, gap=7;
+    var left=Math.min(window.innerWidth-menuWidth-10,Math.max(10,r.right-menuWidth));
+    var top=r.bottom+gap;
+    if(top+56>window.innerHeight)top=Math.max(10,r.top-56-gap);
+    menu.style.left=left+"px";menu.style.top=top+"px";
+    menu.querySelector("button").onclick=async function(){
+      try{
+        closeHistoryFloatingMenu();
+        await ctx.deleteCompletedLessonHistory(id);
+        await ctx.loadTeacher();
+        API.render(ctx);
+        toast("Занятие удалено из истории");
+      }catch(e){fail(e)}
+    };
   }
 
   API.render=function(ctx){
@@ -110,6 +183,14 @@
     ctx.bindShell();
 
     var search=document.getElementById("historyV3Search"),student=document.getElementById("historyV3Student"),grade=document.getElementById("historyV3Grade"),period=document.getElementById("historyV3Period");
+    [student,grade,period].forEach(upgradeHistorySelect);
+    if(window.__mrHistorySelectOutside)document.removeEventListener("pointerdown",window.__mrHistorySelectOutside,true);
+    window.__mrHistorySelectOutside=function(e){
+      if(!e.target?.closest?.(".mr-history-select"))closeHistorySelects();
+      if(!e.target?.closest?.(".mr-history-more-trigger")&&!e.target?.closest?.(".mr-history-floating-menu"))closeHistoryFloatingMenu();
+    };
+    document.addEventListener("pointerdown",window.__mrHistorySelectOutside,true);
+
     function apply(){
       var q=String(search.value||"").trim().toLocaleLowerCase("ru"),studentValue=student.value,gradeValue=grade.value,days=period.value==="all"?0:Number(period.value),minTs=days?Date.now()-days*86400000:0,total=0;
       document.querySelectorAll("[data-history-group]").forEach(function(group){
@@ -127,13 +208,11 @@
     var expand=document.getElementById("historyV3Expand"),expanded=false;
     expand.onclick=function(){expanded=!expanded;document.querySelectorAll("[data-history-group]:not([hidden])").forEach(function(g){g.open=expanded});expand.textContent=expanded?"Свернуть все":"Развернуть все"};
     document.querySelectorAll("[data-history-open]").forEach(function(b){b.onclick=function(){API.open(b.dataset.historyOpen,API.ctx)}});
-    document.querySelectorAll("[data-history-delete]").forEach(function(b){b.onclick=async function(){try{await API.ctx.deleteCompletedLessonHistory(b.dataset.historyDelete);await API.ctx.loadTeacher();API.render(API.ctx);toast("Занятие удалено из истории")}catch(e){fail(e)}}});
-    document.getElementById("clearLessonHistory").onclick=function(){API.ctx.clearCompletedLessonHistory()};
-    if(window.__mrHistoryOutside)document.removeEventListener("pointerdown",window.__mrHistoryOutside,true);
-    window.__mrHistoryOutside=function(e){
-      document.querySelectorAll(".mr-history-row-more[open]").forEach(function(d){if(!d.contains(e.target))d.open=false});
-    };
-    document.addEventListener("pointerdown",window.__mrHistoryOutside,true);
+    document.querySelectorAll("[data-history-more]").forEach(function(b){b.onclick=function(e){e.preventDefault();e.stopPropagation();openHistoryFloatingMenu(b,b.dataset.historyMore,API.ctx)}});
+    document.getElementById("clearLessonHistory").onclick=function(){closeHistoryFloatingMenu();API.ctx.clearCompletedLessonHistory()};
+    if(window.__mrHistoryReposition)window.removeEventListener("resize",window.__mrHistoryReposition);
+    window.__mrHistoryReposition=function(){closeHistoryFloatingMenu();closeHistorySelects()};
+    window.addEventListener("resize",window.__mrHistoryReposition);
   };
 
   function statusLabel(status){
@@ -215,7 +294,10 @@
       '</main>'+
     '</div>'+
     '<footer class="mr-history-modal-footer"><button type="button" class="danger ghost" id="deleteHistoryLesson">Удалить из истории</button><span></span><button type="button" id="historyParentReport">'+icon("copy")+'Отчёт родителю</button><button type="button" class="primary" id="historyExpandModal">Открыть полностью</button><button type="button" id="historyCloseBottom">Закрыть</button></footer>';
-    var m=modal(html,"wide-modal");
+    var backdrop=modal(html,"wide-modal");
+    backdrop.classList.add("mr-history-backdrop-v3");
+    var m=backdrop.querySelector(".modal");
+    if(!m)return;
     m.classList.add("mr-history-modal-v3");
     function setTab(name){
       m.querySelectorAll("[data-history-tab]").forEach(function(b){b.classList.toggle("active",b.dataset.historyTab===name)});
@@ -228,7 +310,7 @@
       var x=modal('<div class="mr-card-head"><div><span class="koto-eyebrow">ВЕРСИЯ ДОСКИ</span><h2>'+esc(v.title||"Доска")+'</h2><p class="muted">'+esc(dateLong(v.created_at))+(v.note?" · "+esc(v.note):"")+'</p></div></div><div id="snapshotRoot"></div>',"snapshot-modal");
       (ctx.mountSnapshot||window.MathroomBoard&&window.MathroomBoard.mountSnapshot)(x.querySelector("#snapshotRoot"),v.pages||[]);
     }});
-    var close=function(){m.remove()};
+    var close=function(){backdrop.remove()};
     m.querySelector("#historyModalClose").onclick=close;
     m.querySelector("#historyCloseBottom").onclick=close;
     m.querySelector("#historyExpandModal").onclick=function(){
@@ -242,7 +324,7 @@
       await copyText(text);toast("Отчёт родителю скопирован");
     };
     m.querySelector("#deleteHistoryLesson").onclick=async function(){
-      try{await ctx.deleteCompletedLessonHistory(id);m.remove();await ctx.loadTeacher();ctx.renderHistory();toast("Занятие удалено из истории")}catch(e){fail(e)}
+      try{await ctx.deleteCompletedLessonHistory(id);backdrop.remove();await ctx.loadTeacher();ctx.renderHistory();toast("Занятие удалено из истории")}catch(e){fail(e)}
     };
   };
 
