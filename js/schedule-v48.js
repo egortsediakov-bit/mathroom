@@ -176,7 +176,6 @@
     const id=String(lesson.id),oldCard=engine?.querySelector(`[data-cal-lesson="${CSS.escape(id)}"]`);
     const canStart=!!oldCard?.querySelector("[data-cal-start]");
     const canMove=!!oldCard?.querySelector("[data-cal-move]");
-    const canAttendance=!!oldCard?.querySelector("[data-cal-attendance]");
     const html=`<div class="mr-sch48-open-modal">
       <span class="mr-sch48-open-kicker">УРОК</span>
       <h2>${esc(studentName(lesson))}</h2>
@@ -184,7 +183,6 @@
       <div class="mr-sch48-open-meta"><span><b>${clock(lesson.scheduled_at)}</b>Время</span><span><b>${Number(lesson.duration_minutes||60)} мин</b>Длительность</span><span><b>${lesson.recurrence_series_id?'Серия':'Одиночный'}</b>Тип</span></div>
       <div class="actions">
         ${canMove?`<button class="btn" data-v48-modal-proxy="[data-cal-move='${esc(id)}']">Перенести</button>`:''}
-        ${canAttendance?`<button class="btn" data-v48-modal-proxy="[data-cal-attendance='${esc(id)}']">Посещение</button>`:''}
         ${canStart?`<button class="btn primary" data-v48-modal-proxy="[data-cal-start='${esc(id)}']">${lesson.status==='in_progress'?'Продолжить урок':'Начать урок'}</button>`:''}
       </div>
     </div>`;
@@ -212,13 +210,12 @@
     const canStart=!!oldCard?.querySelector('[data-cal-start]');
     const canMove=!!oldCard?.querySelector('[data-cal-move]');
     const canDelete=!!oldCard?.querySelector('[data-cal-delete]');
-    const canAttendance=!!oldCard?.querySelector('[data-cal-attendance]');
     return `<article class="mr-sch48-day-row ${status}" data-v48-row="${esc(id)}">
       <div class="mr-sch48-row-time"><b>${clock(l.scheduled_at)}</b><span>${Number(l.duration_minutes||60)} мин</span></div>
       <div class="mr-sch48-row-line"><i></i></div>
       <div class="mr-sch48-row-main"><span class="mr-sch48-row-icon">${icon(st?.group_name?'people':'book')}</span><div><strong>${esc(studentName(l))}</strong><small>${esc(topicName(l))}</small><em class="mr-sch48-status ${status}">${esc(label)}</em></div></div>
       <div class="mr-sch48-row-meta"><b>${st?.grade?esc(st.grade)+' класс':'Индивидуально'}</b><small>${l.recurrence_series_id?'Повторяющееся занятие':'Индивидуальный урок'}</small></div>
-      <div class="mr-sch48-row-actions">${canAttendance?`<button class="ghost" data-v48-proxy="[data-cal-attendance='${esc(id)}']">Посещение</button>`:''}${canMove?`<button class="ghost" data-v48-proxy="[data-cal-move='${esc(id)}']">Перенести</button>`:''}${canStart?`<button class="primary" data-v48-proxy="[data-cal-start='${esc(id)}']">${l.status==='in_progress'?'Продолжить':'Начать'}</button>`:''}${canDelete?`<button class="more" data-v48-proxy="[data-cal-delete='${esc(id)}']" title="Удалить">•••</button>`:''}</div>
+      <div class="mr-sch48-row-actions">${canMove?`<button class="ghost" data-v48-proxy="[data-cal-move='${esc(id)}']">Перенести</button>`:''}${canStart?`<button class="primary" data-v48-proxy="[data-cal-start='${esc(id)}']">${l.status==='in_progress'?'Продолжить':'Начать'}</button>`:''}${canDelete?`<button class="more" data-v48-proxy="[data-cal-delete='${esc(id)}']" title="Удалить">•••</button>`:''}</div>
     </article>`;
   }
 
