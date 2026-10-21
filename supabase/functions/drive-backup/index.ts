@@ -337,7 +337,7 @@ async function runBackup(runId: string) {
 
     const manifestPayload = {
       format: 'mathroom-backup-manifest',
-      version: 2,
+      version: 3,
       run_id: runId,
       created_at: startedAt.toISOString(),
       database: {
@@ -361,7 +361,7 @@ async function runBackup(runId: string) {
 
     const success = {
       format: 'mathroom-backup-success',
-      version: 2,
+      version: 3,
       status: 'complete',
       run_id: runId,
       created_at: startedAt.toISOString(),
