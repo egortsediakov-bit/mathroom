@@ -169,7 +169,7 @@ async function loadTeacher(){
     sb.from('lessons').select('*,students(name,grade),topics(title)').order('scheduled_at',{ascending:true}),
     sb.from('homeworks').select('*,students(name,grade),topics(title)').order('created_at',{ascending:false}),
     sb.from('tests').select('*,students(name,grade),topics(title)').order('created_at',{ascending:false}),
-    sb.from('lesson_board_versions').select('*').order('created_at',{ascending:false}),
+    Promise.resolve({data:[]}),
     sb.from('shared_materials').select('*').order('created_at',{ascending:false})
   ]);
   const err=reqs.find(x=>x.error)?.error;if(err)throw err;
@@ -379,31 +379,11 @@ function localTopicForSharedLink(link){
 async function addSharedTextbookToPersonalLibrary(book,{refresh=true,render=true,notify=true}={}){
   if(!book||textbookIsMine(book)||!book.is_shared)return false;
   if(textbookInPersonalLibrary(book)){if(notify)toast('Учебник уже в личной библиотеке');return true}
-  const master=textbookMasterLinks(book);
-  const {error:libError}=await sb.from('teacher_textbook_library').insert({teacher_id:S.user.id,textbook_id:book.id});
-  if(libError)return fail(libError);
-  const rows=[],missing=[];
-  for(const link of master){
-    const topic=localTopicForSharedLink(link);
-    if(!topic){missing.push(link);continue}
-    rows.push({
-      teacher_id:S.user.id,textbook_id:book.id,topic_id:topic.id,
-      page_from:link.page_from||null,page_to:link.page_to||null,note:link.note||'',
-      topic_grade:Number(topic.grade)||null,topic_section:topic.section||'',topic_title:topic.title||''
-    });
-  }
-  try{
-    for(let i=0;i<rows.length;i+=150){
-      const {error}=await sb.from('textbook_topic_links').upsert(rows.slice(i,i+150),{onConflict:'textbook_id,topic_id'});
-      if(error)throw error;
-    }
-  }catch(e){
-    await sb.from('teacher_textbook_library').delete().eq('teacher_id',S.user.id).eq('textbook_id',book.id);
-    return fail(e);
-  }
+  const {error}=await sb.from('teacher_textbook_library').insert({teacher_id:S.user.id,textbook_id:book.id});
+  if(error)return fail(error);
   if(refresh)await loadTeacher();
   if(render)renderTextbooks();
-  if(notify)toast(`Учебник добавлен · перенесено привязок: ${rows.length}${missing.length?` · без совпавшей темы: ${missing.length}`:''}`);
+  if(notify)toast('Учебник добавлен · используется общий PDF и общая карта страниц');
   return true;
 }
 async function removeSharedTextbookFromPersonalLibrary(book){
@@ -431,7 +411,7 @@ async function downloadTextbookBlob(book){
 async function waitForBoardController(timeout=10000){
   const started=Date.now();
   while(Date.now()-started<timeout){
-    if(S.boardController?.importPdfBlob)return S.boardController;
+    if(S.boardController?.importTextbookPages||S.boardController?.importPdfBlob)return S.boardController;
     await new Promise(r=>setTimeout(r,120));
   }
   throw new Error('Доска не успела загрузиться. Попробуй ещё раз.');
@@ -440,25 +420,24 @@ async function textbookPagesToBoardModal(link,{controller=null}={}){
   const book=link?.textbook||(S.textbooks||[]).find(x=>String(x.id)===String(link?.textbook_id));
   if(!book)return toast('Учебник не найден');
   const initialFrom=Math.max(1,Number(link?.page_from)||1),initialTo=Math.max(initialFrom,Number(link?.page_to)||initialFrom);
-  const m=modal(`<div class="mr-card-head"><div><span class="pill">PDF → доска</span><h2>${esc(book.title)}</h2><p class="muted">Выбери, какие страницы добавить. На доске они станут изображениями — поверх можно писать, выделять и рисовать.</p></div></div><div class="grid cols2"><div class="field"><label>Страница от</label><input id="tbBoardFrom" type="number" min="1" value="${initialFrom}"></div><div class="field"><label>Страница до</label><input id="tbBoardTo" type="number" min="1" value="${initialTo}"></div></div><div class="notice">До 20 страниц за одну вставку. Во время урока страницы попадут на текущую онлайн-доску. Из раздела «Темы» — в Черновик. «На новый лист» создаст отдельный лист и разместит выбранные страницы вертикально.</div><div class="actions mr-textbook-board-actions"><button class="btn" data-tb-board-mode="single">Эта страница</button><button class="btn primary" data-tb-board-mode="range">Страницы темы</button><button class="btn" data-tb-board-mode="new">На новый лист</button></div><div class="small muted" id="tbBoardState"></div>`,'wide-modal');
+  const m=modal(`<div class="mr-card-head"><div><span class="pill">PDF → доска</span><h2>${esc(book.title)}</h2><p class="muted">Выбери, какие страницы добавить. На доске страницы будут отображаться как изображения, но без создания лишних копий в хранилище — поверх можно писать, выделять и рисовать.</p></div></div><div class="grid cols2"><div class="field"><label>Страница от</label><input id="tbBoardFrom" type="number" min="1" value="${initialFrom}"></div><div class="field"><label>Страница до</label><input id="tbBoardTo" type="number" min="1" value="${initialTo}"></div></div><div class="notice">До 20 страниц за одну вставку. Во время урока страницы попадут на текущую онлайн-доску. Из раздела «Темы» — в Черновик. «На новый лист» создаст отдельный лист и разместит выбранные страницы вертикально.</div><div class="actions mr-textbook-board-actions"><button class="btn" data-tb-board-mode="single">Эта страница</button><button class="btn primary" data-tb-board-mode="range">Страницы темы</button><button class="btn" data-tb-board-mode="new">На новый лист</button></div><div class="small muted" id="tbBoardState"></div>`,'wide-modal');
   const state=m.querySelector('#tbBoardState'),buttons=[...m.querySelectorAll('[data-tb-board-mode]')];
   const run=async mode=>{
     const from=Math.max(1,Number(m.querySelector('#tbBoardFrom').value)||1);
     let to=Math.max(from,Number(m.querySelector('#tbBoardTo').value)||from);
     if(mode==='single')to=from;
     if(to-from+1>20)return toast('Выбери не больше 20 страниц за одну вставку');
-    buttons.forEach(b=>b.disabled=true);state.textContent='Скачиваем PDF из библиотеки…';
+    buttons.forEach(b=>b.disabled=true);state.textContent='Подготавливаем страницы учебника…';
     try{
-      const blob=await downloadTextbookBlob(book);
       let ctrl=controller;
-      if(!ctrl?.importPdfBlob){
+      if(!ctrl?.importTextbookPages){
         state.textContent='Открываем доску…';
         m.remove();S.boardController=null;S.selectedStudent='__scratch__';S.view='scratch';renderTeacher();
         ctrl=await waitForBoardController();
       }
-      if(!ctrl?.importPdfBlob)throw new Error('Обнови страницу: модуль вставки PDF на доску не загрузился');
+      if(!ctrl?.importTextbookPages)throw new Error('Обнови страницу: новый модуль учебников на доске не загрузился');
       state.textContent='Добавляем страницы на доску…';
-      await ctrl.importPdfBlob(blob,{name:`${book.title}.pdf`,pageFrom:from,pageTo:to,newSheet:mode==='new',maxPages:20,sheetTitle:`${book.title} · стр. ${from}${to!==from?`–${to}`:''}`});
+      await ctrl.importTextbookPages(book,{pageFrom:from,pageTo:to,newSheet:mode==='new',maxPages:20,sheetTitle:`${book.title} · стр. ${from}${to!==from?`–${to}`:''}`});
       if(m.isConnected)m.remove();
     }catch(e){buttons.forEach(b=>b.disabled=false);state.textContent='';fail(e)}
   };
@@ -1652,19 +1631,17 @@ function renderAssignments(){
 
 async function saveSnapshot(lesson,title='Итог урока',note=''){
   if(S.boardController?.save) await S.boardController.save();
-  const {data:pages,error}=await sb.from('board_pages').select('id,title,sort_order,elements').eq('student_id',lesson.student_id).eq('lesson_id',lesson.id).order('sort_order');if(error)throw error;
-  const {error:e2}=await sb.from('lesson_board_versions').insert({teacher_id:S.user.id,lesson_id:lesson.id,title,note,pages:pages||[]});if(e2)throw e2;
+  toast('Доска уже сохраняется автоматически во время урока');
 }
 async function deleteCompletedLessonHistory(id,{ask=true}={}){
   const lesson=S.lessons.find(x=>x.id===id&&x.status==='completed');if(!lesson)return;
   if(ask&&!confirm(`Удалить занятие «${lesson.topics?.title||'Без темы'}» из истории?\n\nБудут удалены запись завершённого урока и сохранённые версии его доски. Это действие нельзя отменить.`))return;
-  const vr=await sb.from('lesson_board_versions').delete().eq('lesson_id',id);if(vr.error)throw vr.error;
   const lr=await sb.from('lessons').delete().eq('id',id);if(lr.error)throw lr.error;
 }
 async function clearCompletedLessonHistory(){
   const ids=S.lessons.filter(x=>x.status==='completed').map(x=>x.id);if(!ids.length)return toast('История уже пустая');
   if(!confirm(`Очистить всю историю занятий (${ids.length})?\n\nЗавершённые уроки и их сохранённые версии доски будут удалены без возможности восстановления.`))return;
-  try{const vr=await sb.from('lesson_board_versions').delete().in('lesson_id',ids);if(vr.error)throw vr.error;const lr=await sb.from('lessons').delete().in('id',ids);if(lr.error)throw lr.error;await loadTeacher();renderHistory();toast('История занятий очищена')}catch(e){fail(e)}
+  try{const lr=await sb.from('lessons').delete().in('id',ids);if(lr.error)throw lr.error;await loadTeacher();renderHistory();toast('История занятий очищена')}catch(e){fail(e)}
 }
 function renderHistory(){
   if(window.MathroomHistoryV3?.render)return window.MathroomHistoryV3.render({shell,bindShell,deleteCompletedLessonHistory,clearCompletedLessonHistory,loadTeacher});
@@ -1819,14 +1796,8 @@ async function completeLesson(lesson,queue,live){
         pages=data||[];
       }
 
-      const {error:versionError}=await sb.from('lesson_board_versions').insert({
-        teacher_id:S.user.id,
-        lesson_id:lesson.id,
-        title:'Итог урока',
-        note:'Автоматически сохранено при завершении',
-        pages
-      });
-      if(versionError)throw versionError;
+      /* v56 load cleanup: board_pages remain the short-lived working copy.
+         We no longer duplicate the entire board into lesson_board_versions. */
 
       const completedAt=new Date().toISOString();
       const lessonCompletionPatch={
@@ -1958,15 +1929,7 @@ async function bootStudent(){
 async function getStudentData(){
   const [{data:lessons},{data:homeworks},{data:tests},{data:reports}]=await Promise.all([sb.rpc('get_my_lessons'),sb.from('homeworks').select('id,title,status,score,comment,created_at,submitted_at,due_at,source,attempt_count,last_attempt_at,reviewed_at,revision_requested_at,revision_message,topics(title)').eq('student_id',S.student.id).order('created_at',{ascending:false}),sb.from('tests').select('id,title,status,score,source,created_at,submitted_at,topics(title)').eq('student_id',S.student.id).order('created_at',{ascending:false}),sb.rpc('get_my_lesson_reports')]);
   const lessonRows=Array.isArray(lessons)?lessons:[];
-  let versions=[];
-  try{
-    const ids=lessonRows.filter(x=>x.status==='completed').map(x=>x.id);
-    if(ids.length){
-      const vr=await sb.from('lesson_board_versions').select('id,lesson_id,title,note,pages,created_at').in('lesson_id',ids).order('created_at',{ascending:false});
-      if(!vr.error)versions=vr.data||[];
-    }
-  }catch(e){console.info('[Mathroom student board archive] unavailable',e)}
-  return {lessons:lessonRows,homeworks:homeworks||[],tests:tests||[],reports:Array.isArray(reports)?reports:[],versions};
+  return {lessons:lessonRows,homeworks:homeworks||[],tests:tests||[],reports:Array.isArray(reports)?reports:[],versions:[]};
 }
 function studentPreLessonGate(lessons){
   const now=Date.now();
