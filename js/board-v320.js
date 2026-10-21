@@ -101,7 +101,56 @@
   };
   const assetCache=new Map(), assetPending=new Map();
   const LOCAL_ASSET_PREFIX='mr-local-asset:';
+  const TEXTBOOK_PAGE_PREFIX='mr-textbook-page:';
+  const textbookPdfCache=new Map(),textbookPdfPending=new Map(),textbookAssetMeta=new Map();
   let localAssetDbPromise=null;
+
+  function textbookPageAssetPath(filePath,page,signedUrl=''){
+    return TEXTBOOK_PAGE_PREFIX+encodeURIComponent(JSON.stringify({p:String(filePath||''),n:Math.max(1,Number(page)||1),u:String(signedUrl||'')}));
+  }
+  function parseTextbookPageAsset(path){
+    if(!String(path||'').startsWith(TEXTBOOK_PAGE_PREFIX))return null;
+    try{
+      const d=JSON.parse(decodeURIComponent(String(path).slice(TEXTBOOK_PAGE_PREFIX.length)));
+      if(!d?.p||!Number(d?.n))return null;
+      return {p:String(d.p),n:Math.max(1,Number(d.n)||1),u:String(d.u||'')};
+    }catch{return null}
+  }
+  async function loadTextbookPdf(desc){
+    if(!window.pdfjsLib)throw new Error('PDF.js не загрузился');
+    const key=desc.p;
+    if(textbookPdfCache.has(key))return textbookPdfCache.get(key);
+    if(textbookPdfPending.has(key))return textbookPdfPending.get(key);
+    const p=(async()=>{
+      let url=desc.u;
+      if(!url){
+        const {data,error}=await sb.storage.from('textbooks').createSignedUrl(desc.p,43200);
+        if(error)throw error;
+        url=data.signedUrl;
+      }
+      try{
+        const doc=await window.pdfjsLib.getDocument({url,rangeChunkSize:262144,disableRange:false,disableStream:false,disableAutoFetch:false}).promise;
+        textbookPdfCache.set(key,doc);return doc;
+      }catch(first){
+        const {data,error}=await sb.storage.from('textbooks').createSignedUrl(desc.p,43200);
+        if(error)throw first;
+        const doc=await window.pdfjsLib.getDocument({url:data.signedUrl,rangeChunkSize:262144,disableRange:false,disableStream:false,disableAutoFetch:false}).promise;
+        textbookPdfCache.set(key,doc);return doc;
+      }
+    })().finally(()=>textbookPdfPending.delete(key));
+    textbookPdfPending.set(key,p);return p;
+  }
+  async function renderTextbookPageAsset(path){
+    const desc=parseTextbookPageAsset(path);if(!desc)throw new Error('Некорректная ссылка на страницу учебника');
+    const doc=await loadTextbookPdf(desc);
+    const page=await doc.getPage(Math.min(doc.numPages,desc.n));
+    const vp=page.getViewport({scale:1.55}),canvas=document.createElement('canvas'),ctx=canvas.getContext('2d',{alpha:false});
+    canvas.width=Math.ceil(vp.width);canvas.height=Math.ceil(vp.height);ctx.fillStyle='#fff';ctx.fillRect(0,0,canvas.width,canvas.height);
+    await page.render({canvasContext:ctx,viewport:vp}).promise;
+    const blob=await new Promise((res,rej)=>canvas.toBlob(b=>b?res(b):rej(new Error('Не удалось отрисовать страницу учебника')),'image/jpeg',.88));
+    textbookAssetMeta.set(path,{width:canvas.width,height:canvas.height,page:desc.n,filePath:desc.p});
+    return blob;
+  }
 
   function openLocalAssetDb(){
     if(localAssetDbPromise)return localAssetDbPromise;
@@ -153,7 +202,9 @@
     if(assetPending.has(path)) return assetPending.get(path);
     const p=(async()=>{
       let blob=null;
-      if(String(path).startsWith(LOCAL_ASSET_PREFIX)){
+      if(String(path).startsWith(TEXTBOOK_PAGE_PREFIX)){
+        blob=await renderTextbookPageAsset(path);
+      }else if(String(path).startsWith(LOCAL_ASSET_PREFIX)){
         const row=await getLocalAsset(path);
         blob=row?.blob||null;
         if(!blob)throw new Error('Локальный материал не найден');
@@ -1482,7 +1533,7 @@
       }catch(error){console.error('[Mathroom board save]',error);try{localStorage.setItem(offlineSnapshotKey,JSON.stringify({pageId,elements:localSnapshot,at:Date.now()}))}catch{}setSyncState('error')}
       finally{saveInFlight=false}
     }
-    function scheduleSave(){clearTimeout(saveTimer);saveTimer=setTimeout(save,420)}
+    function scheduleSave(){clearTimeout(saveTimer);saveTimer=setTimeout(save,1800)}
     function broadcast(){const ops=diffLocalOps();if(ops.length)sendOpBatch(ops)}
     function broadcastState(force=false){
       if(localOnly||!channel||!channelSubscribed)return;
@@ -1604,6 +1655,36 @@
     function rememberAsset(meta){try{const list=assetLibrary().filter(x=>x.assetPath!==meta.assetPath);list.unshift({...meta,id:meta.id||uid(),createdAt:new Date().toISOString()});localStorage.setItem(assetLibraryKey,JSON.stringify(list.slice(0,60)))}catch{}}
     function openAssetLibrary(){const list=assetLibrary(),m=modal(`<div class="mr-card-head"><div><h2>Материалы</h2><p class="muted">Недавно загруженные изображения и файлы. Их можно повторно вставлять на любую доску.</p></div></div><div class="list">${list.length?list.map(a=>`<div class="row"><div><b>${esc(a.name||'Материал')}</b><div class="small muted">${esc(a.mime||a.type||'файл')} · ${a.createdAt?new Date(a.createdAt).toLocaleDateString('ru-RU'):''}</div></div><div class="actions"><button class="btn sm primary" data-asset-use="${a.id}">Вставить</button><button class="btn sm danger" data-asset-remove="${a.id}">Убрать</button></div></div>`).join(''):'<div class="empty">Материалов пока нет. Перетащите файл на доску или нажмите «Файл».</div>'}</div>`,'wide-modal');m.querySelectorAll('[data-asset-use]').forEach(b=>b.onclick=()=>{const a=list.find(x=>x.id===b.dataset.assetUse);if(!a)return;pushElementsHistory();let obj;if(a.type==='image')obj={id:uid(),type:'image',assetPath:a.assetPath,x:camera.x+180/camera.zoom,y:camera.y+70/camera.zoom,w:a.w||640,h:a.h||420,name:a.name};else obj={id:uid(),type:'attachment',assetPath:a.assetPath,x:camera.x+190/camera.zoom,y:camera.y+100/camera.zoom,w:380,h:100,name:a.name,mime:a.mime};elements.push(obj);selectOnly(obj.id);m.remove();setTool('select');changed();ensureAsset(a.assetPath).then(render)});m.querySelectorAll('[data-asset-remove]').forEach(b=>b.onclick=()=>{const next=list.filter(x=>x.id!==b.dataset.assetRemove);localStorage.setItem(assetLibraryKey,JSON.stringify(next));b.closest('.row')?.remove()})}
     async function importAttachment(file){if(file.size>60*1024*1024)throw new Error('Файл больше 60 МБ');const ext=(file.name.split('.').pop()||'bin').replace(/[^a-z0-9]/gi,'').toLowerCase()||'bin',path=await uploadBlob(file,file.type||'application/octet-stream',ext);rememberAsset({assetPath:path,name:file.name,mime:file.type||'application/octet-stream',type:'attachment'});pushElementsHistory();const obj={id:uid(),type:'attachment',assetPath:path,x:camera.x+190/camera.zoom,y:camera.y+100/camera.zoom,w:380,h:100,name:file.name,mime:file.type||'application/octet-stream'};elements.push(obj);selectOnly(obj.id);setTool('select');changed();toast('Файл добавлен на доску · двойной клик откроет его')}
+    async function importTextbookPages(book,opts={}){
+      if(!book?.file_path)throw new Error('У учебника нет файла');
+      if(!window.pdfjsLib)throw new Error('PDF.js не загрузился');
+      let pageFrom=Math.max(1,Number(opts.pageFrom)||1),pageTo=Math.max(pageFrom,Number(opts.pageTo)||pageFrom);
+      if(opts.maxPages&&pageTo-pageFrom+1>opts.maxPages)throw new Error(`За один раз можно добавить не больше ${opts.maxPages} страниц.`);
+      const {data,error}=await sb.storage.from('textbooks').createSignedUrl(book.file_path,43200);
+      if(error)throw error;
+      const desc={p:book.file_path,n:pageFrom,u:data.signedUrl},doc=await loadTextbookPdf(desc);
+      pageFrom=Math.min(doc.numPages,pageFrom);pageTo=Math.min(doc.numPages,pageTo);
+      if(opts.newSheet){
+        await save();
+        const title=opts.sheetTitle||`${book.title||'Учебник'} · стр. ${pageFrom}${pageTo!==pageFrom?`–${pageTo}`:''}`;
+        const p=await createPage(title,[]);
+        await switchPage(p.id,{skipSave:true});
+      }
+      pushElementsHistory();
+      let y=camera.y+60/camera.zoom,first=null;const x=camera.x+110/camera.zoom,gap=30;
+      for(let i=pageFrom;i<=pageTo;i++){
+        status.textContent=`Учебник: страница ${i} · ${i-pageFrom+1}/${pageTo-pageFrom+1}`;
+        const page=await doc.getPage(i),vp=page.getViewport({scale:1.55}),scale=Math.min(1,980/vp.width),w=Math.round(vp.width*scale),h=Math.round(vp.height*scale);
+        const assetPath=textbookPageAssetPath(book.file_path,i,data.signedUrl);
+        const obj={id:uid(),type:'image',assetPath,x,y,w,h,name:`${book.title||'Учебник'} · стр. ${i}`,sourceKind:'textbook-page',textbookId:book.id||null,textbookPage:i,textbookPath:book.file_path};
+        elements.push(obj);if(!first)first=obj;y+=h+gap;
+      }
+      if(first){selectOnly(first.id);setTool('select');changed();ensureAsset(first.assetPath).then(()=>render())}
+      status.textContent=`Учебник на доске · стр. ${pageFrom}${pageTo!==pageFrom?`–${pageTo}`:''}`;
+      toast(pageFrom===pageTo?`Страница ${pageFrom} добавлена на доску`:`Страницы ${pageFrom}–${pageTo} добавлены на доску`);
+      return {count:pageTo-pageFrom+1,pageFrom,pageTo};
+    }
+
     async function importPdfBlob(blob,opts={}){
       if(!window.pdfjsLib)throw new Error('PDF.js не загрузился');
       const size=Number(blob?.size||0);
@@ -3022,7 +3103,7 @@
       remoteLiveStrokeCount:remoteLiveStrokes.size,
       invalidObjects:elements.filter(o=>!o?.id||!o?.type).length
     });
-    return {addText,addTheoryCards,importPdfBlob,undo,redo,save,fitAll,exportPage:exportCurrentPng,exportAll:exportAllPdf,getPages:()=>pages.map(p=>({...p,elements:p.id===current.id?clone(elements):clone(p.elements||[])})),checkpoint:saveCheckpoint,restoreStart:resetToLessonStart,copyToScratch,copyFromScratch,setTool,readClipboard:readSystemClipboard,diagnostics,clearFocus:()=>{focusRect=null;broadcastTransient('focus',{rect:null});render()}};
+    return {addText,addTheoryCards,importPdfBlob,importTextbookPages,undo,redo,save,fitAll,exportPage:exportCurrentPng,exportAll:exportAllPdf,getPages:()=>pages.map(p=>({...p,elements:p.id===current.id?clone(elements):clone(p.elements||[])})),checkpoint:saveCheckpoint,restoreStart:resetToLessonStart,copyToScratch,copyFromScratch,setTool,readClipboard:readSystemClipboard,diagnostics,clearFocus:()=>{focusRect=null;broadcastTransient('focus',{rect:null});render()}};
   }
 
   function mountSnapshot(root,pages){
