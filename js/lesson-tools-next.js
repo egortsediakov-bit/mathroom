@@ -953,11 +953,16 @@
           .on('broadcast', { event: 'signal' }, ({ payload }) => this.onSignal(payload))
           .subscribe(status => {
             this.fastSubscribed = status === 'SUBSCRIBED';
+            if (this.fastSubscribed) {
+              clearTimeout(this.pollTimer);
+              this.send('hello', { online: true }, this.otherRole()).catch(() => {});
+            } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+              this.schedulePoll(180);
+            }
             this.paint();
-            if (this.fastSubscribed) this.send('hello', { online: true }, this.otherRole()).catch(() => {});
           });
       } catch (e) { console.warn('[Mathroom media] realtime unavailable', e); }
-      this.schedulePoll(150);
+      setTimeout(() => { if (!this.fastSubscribed) this.schedulePoll(150); }, 1200);
     }
 
     otherRole() { return this.role === 'teacher' ? 'student' : 'teacher'; }
@@ -995,11 +1000,12 @@
 
     schedulePoll(delay = 800) {
       clearTimeout(this.pollTimer);
-      if (this.destroyed || this.pc?.connectionState === 'connected') return;
-      this.pollTimer = setTimeout(() => this.pollSignals().finally(() => this.schedulePoll(850)), delay);
+      if (this.destroyed || this.fastSubscribed || this.pc?.connectionState === 'connected') return;
+      this.pollTimer = setTimeout(() => this.pollSignals().finally(() => this.schedulePoll(1200)), delay);
     }
 
     async pollSignals() {
+      if (this.fastSubscribed || this.destroyed) return;
       try {
         const since = new Date(Date.now() - 30000).toISOString();
         let data, error;
@@ -1039,29 +1045,40 @@
       const mid = data.__mid || `${this.peerId}:${Date.now()}:${++this.signalSeq}`;
       const body = { ...data, __mid: mid };
       const payload = { kind, data: body, from: this.role, to, peerId: this.peerId, msgId: mid, at: Date.now() };
-      const jobs = [];
-      if (this.fastChannel && this.fastSubscribed) jobs.push(this.fastChannel.send({ type:'broadcast', event:'signal', payload }));
+
+      if (this.fastChannel && this.fastSubscribed) {
+        try {
+          const result = await this.fastChannel.send({ type:'broadcast', event:'signal', payload });
+          if (result === 'ok' || result === undefined) return true;
+          console.warn('[Mathroom media] realtime signal fallback', result);
+        } catch (e) {
+          console.warn('[Mathroom media] realtime signal failed; using DB fallback', e);
+        }
+        this.fastSubscribed = false;
+        this.schedulePoll(180);
+      }
+
+      let response;
       if (this.role === 'student') {
-        jobs.push(sb.rpc('webrtc_student_send_signal', {
+        response = await sb.rpc('webrtc_student_send_signal', {
           p_lesson_id: this.lessonId,
           p_access_token: String(S.access || ''),
           p_to: to || 'teacher',
           p_kind: kind,
           p_payload: body,
           p_peer_id: this.peerId
-        }));
+        });
       } else {
-        jobs.push(sb.rpc('webrtc_send_signal', {
+        response = await sb.rpc('webrtc_send_signal', {
           p_lesson_id: this.lessonId,
           p_from: 'teacher',
           p_to: to || 'student',
           p_kind: kind,
           p_payload: body,
           p_peer_id: this.peerId
-        }));
+        });
       }
-      const settled = await Promise.allSettled(jobs);
-      return settled.some(x => x.status === 'fulfilled' && !x.value?.error);
+      return !response?.error;
     }
 
     async onSignal(msg) {
