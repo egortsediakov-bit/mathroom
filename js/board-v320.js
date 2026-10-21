@@ -105,16 +105,26 @@
   const textbookPdfCache=new Map(),textbookPdfPending=new Map(),textbookAssetMeta=new Map();
   let localAssetDbPromise=null;
 
-  function textbookPageAssetPath(filePath,page,signedUrl=''){
-    return TEXTBOOK_PAGE_PREFIX+encodeURIComponent(JSON.stringify({p:String(filePath||''),n:Math.max(1,Number(page)||1),u:String(signedUrl||'')}));
+  function textbookPageAssetPath(filePath,page){
+    return TEXTBOOK_PAGE_PREFIX+encodeURIComponent(JSON.stringify({p:String(filePath||''),n:Math.max(1,Number(page)||1)}));
   }
   function parseTextbookPageAsset(path){
     if(!String(path||'').startsWith(TEXTBOOK_PAGE_PREFIX))return null;
     try{
       const d=JSON.parse(decodeURIComponent(String(path).slice(TEXTBOOK_PAGE_PREFIX.length)));
       if(!d?.p||!Number(d?.n))return null;
-      return {p:String(d.p),n:Math.max(1,Number(d.n)||1),u:String(d.u||'')};
+      return {p:String(d.p),n:Math.max(1,Number(d.n)||1)};
     }catch{return null}
+  }
+  async function textbookSignedUrl(filePath){
+    const {data,error}=await sb.functions.invoke('textbook-access',{body:{
+      file_path:filePath,
+      lesson_id:lessonId||'',
+      access_token:!isTeacher?String(S.access||''):''
+    }});
+    if(error)throw error;
+    if(!data?.signed_url)throw new Error(data?.error||'Не удалось открыть учебник');
+    return data.signed_url;
   }
   async function loadTextbookPdf(desc){
     if(!window.pdfjsLib)throw new Error('PDF.js не загрузился');
@@ -122,20 +132,15 @@
     if(textbookPdfCache.has(key))return textbookPdfCache.get(key);
     if(textbookPdfPending.has(key))return textbookPdfPending.get(key);
     const p=(async()=>{
-      let url=desc.u;
-      if(!url){
-        const {data,error}=await sb.storage.from('textbooks').createSignedUrl(desc.p,43200);
-        if(error)throw error;
-        url=data.signedUrl;
-      }
+      const open=async()=>{
+        const url=await textbookSignedUrl(desc.p);
+        return await window.pdfjsLib.getDocument({url,rangeChunkSize:262144,disableRange:false,disableStream:false,disableAutoFetch:false}).promise;
+      };
       try{
-        const doc=await window.pdfjsLib.getDocument({url,rangeChunkSize:262144,disableRange:false,disableStream:false,disableAutoFetch:false}).promise;
-        textbookPdfCache.set(key,doc);return doc;
+        const doc=await open();textbookPdfCache.set(key,doc);return doc;
       }catch(first){
-        const {data,error}=await sb.storage.from('textbooks').createSignedUrl(desc.p,43200);
-        if(error)throw first;
-        const doc=await window.pdfjsLib.getDocument({url:data.signedUrl,rangeChunkSize:262144,disableRange:false,disableStream:false,disableAutoFetch:false}).promise;
-        textbookPdfCache.set(key,doc);return doc;
+        await new Promise(r=>setTimeout(r,180));
+        try{const doc=await open();textbookPdfCache.set(key,doc);return doc}catch{throw first}
       }
     })().finally(()=>textbookPdfPending.delete(key));
     textbookPdfPending.set(key,p);return p;
@@ -1660,9 +1665,7 @@
       if(!window.pdfjsLib)throw new Error('PDF.js не загрузился');
       let pageFrom=Math.max(1,Number(opts.pageFrom)||1),pageTo=Math.max(pageFrom,Number(opts.pageTo)||pageFrom);
       if(opts.maxPages&&pageTo-pageFrom+1>opts.maxPages)throw new Error(`За один раз можно добавить не больше ${opts.maxPages} страниц.`);
-      const {data,error}=await sb.storage.from('textbooks').createSignedUrl(book.file_path,43200);
-      if(error)throw error;
-      const desc={p:book.file_path,n:pageFrom,u:data.signedUrl},doc=await loadTextbookPdf(desc);
+      const desc={p:book.file_path,n:pageFrom},doc=await loadTextbookPdf(desc);
       pageFrom=Math.min(doc.numPages,pageFrom);pageTo=Math.min(doc.numPages,pageTo);
       if(opts.newSheet){
         await save();
@@ -1675,7 +1678,7 @@
       for(let i=pageFrom;i<=pageTo;i++){
         status.textContent=`Учебник: страница ${i} · ${i-pageFrom+1}/${pageTo-pageFrom+1}`;
         const page=await doc.getPage(i),vp=page.getViewport({scale:1.55}),scale=Math.min(1,980/vp.width),w=Math.round(vp.width*scale),h=Math.round(vp.height*scale);
-        const assetPath=textbookPageAssetPath(book.file_path,i,data.signedUrl);
+        const assetPath=textbookPageAssetPath(book.file_path,i);
         const obj={id:uid(),type:'image',assetPath,x,y,w,h,name:`${book.title||'Учебник'} · стр. ${i}`,sourceKind:'textbook-page',textbookId:book.id||null,textbookPage:i,textbookPath:book.file_path};
         elements.push(obj);if(!first)first=obj;y+=h+gap;
       }
