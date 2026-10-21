@@ -1,10 +1,10 @@
-/* Mathroom 54.0 — Lesson History v3: student journal + detailed lesson workspace */
+/* Mathroom 56.0 — Lesson History v3: lightweight reports without archived boards */
 (function(){
   "use strict";
   var MR=window.MR||{};
   var S=MR.S, app=MR.app, sb=MR.sb, esc=MR.esc, nl=MR.nl, dateLong=MR.dateLong, modal=MR.modal, copyText=MR.copyText, toast=MR.toast, fail=MR.fail;
   if(!S||!app)return;
-  var API={version:"54.0"};
+  var API={version:"56.0"};
 
   function initials(name){
     return String(name||"?").trim().split(/\s+/).filter(Boolean).slice(0,2).map(function(x){return x.charAt(0).toUpperCase()}).join("")||"?";
@@ -59,10 +59,9 @@
     var latest=first.completed_at||first.started_at||first.scheduled_at;
     var rows=lessons.map(function(l){
       var when=l.completed_at||l.started_at||l.scheduled_at;
-      var versions=(S.versions||[]).filter(function(v){return String(v.lesson_id)===String(l.id)}).length;
       return '<div class="mr-history-lesson-row" data-history-row data-student="'+esc(String(studentId))+'" data-grade="'+esc(String(st.grade||l.students&&l.students.grade||""))+'" data-ts="'+(dt(when)?dt(when).getTime():0)+'" data-q="'+esc(lessonSearchText(l))+'">'+
         '<span class="mr-history-row-date"><b>'+esc(dateCompact(when))+'</b><small>'+esc(timeCompact(when))+'</small></span>'+
-        '<span class="mr-history-row-topic"><b>'+esc(l.topics&&l.topics.title||"Без темы")+'</b><small>'+(versions?versions+" верс. доски":"Итог урока сохранён")+'</small></span>'+
+        '<span class="mr-history-row-topic"><b>'+esc(l.topics&&l.topics.title||"Без темы")+'</b><small>Итог урока сохранён</small></span>'+
         '<span class="mr-history-row-status '+attendanceClass(l.attendance_status)+'"><i></i>Завершён'+(attendanceLabel(l.attendance_status)?' · '+esc(attendanceLabel(l.attendance_status)):'')+'</span>'+
         '<span class="mr-history-row-actions"><button type="button" data-history-open="'+esc(String(l.id))+'">Открыть</button><button type="button" class="mr-history-more-trigger" data-history-more="'+esc(String(l.id))+'" aria-label="Ещё">'+icon("more")+'</button></span>'+
       '</div>';
@@ -152,7 +151,7 @@
       return String(b.completed_at||b.created_at||"").localeCompare(String(a.completed_at||a.created_at||""));
     });
     if(!all.length){
-      app.innerHTML=ctx.shell('<section class="mr-history-empty-v3"><span>'+icon("timeline")+'</span><h2>История пока пустая</h2><p>Завершённые занятия, заметки и версии доски появятся здесь автоматически.</p></section>',"История уроков","Итоги, заметки и сохранённые версии доски");
+      app.innerHTML=ctx.shell('<section class="mr-history-empty-v3"><span>'+icon("timeline")+'</span><h2>История пока пустая</h2><p>Завершённые занятия, отчёты и заметки появятся здесь автоматически.</p></section>',"История уроков","Итоги, задачи и заметки");
       ctx.bindShell();return;
     }
     var byStudent=new Map();
@@ -251,10 +250,9 @@
   function statusClass(status){
     return ["solved","hard","later","pending"].includes(status)?status:"pending";
   }
-  function timelineHtml(l,versions){
+  function timelineHtml(l){
     var events=[];
     var start=l.started_at||l.scheduled_at;if(start)events.push({at:start,type:"play",title:"Урок начался"});
-    (versions||[]).forEach(function(v){events.push({at:v.created_at,type:"save",title:"Сохранена версия доски",sub:v.title||""})});
     var end=l.completed_at||l.created_at;if(end)events.push({at:end,type:"finish",title:"Урок завершён"});
     events.sort(function(a,b){return (dt(a.at)||0)-(dt(b.at)||0)});
     return '<div class="mr-history-timeline">'+events.map(function(e){
@@ -346,7 +344,7 @@
     id=String(id||"");
     var l=(S.lessons||[]).find(function(x){return String(x.id)===id});
     if(!l)return toast("Урок уже удалён");
-    var versions=(S.versions||[]).filter(function(x){return String(x.lesson_id)===String(id)}).slice().sort(function(a,b){return String(a.created_at).localeCompare(String(b.created_at))});
+    var versions=[];
     var pair=await Promise.all([
       sb.from("lesson_reports").select("*").eq("lesson_id",id).maybeSingle(),
       sb.from("lesson_queue_items").select("*").eq("lesson_id",id).order("position")
@@ -363,13 +361,11 @@
     '<div class="mr-history-modal-layout">'+
       '<nav class="mr-history-modal-nav">'+
         '<button class="active" data-history-tab="timeline">'+icon("timeline")+'<span>Хронология</span></button>'+
-        '<button data-history-tab="board">'+icon("board")+'<span>Доска</span><em>'+versions.length+'</em></button>'+
         '<button data-history-tab="tasks">'+icon("tasks")+'<span>Задачи</span><em>'+queue.length+'</em></button>'+
         '<button data-history-tab="notes">'+icon("notes")+'<span>Заметки</span></button>'+
       '</nav>'+
       '<main class="mr-history-modal-main">'+
-        '<section class="active" data-history-panel="timeline"><div class="mr-history-panel-title"><div><span>Хронология занятия</span><h3>Что сохранилось за урок</h3></div>'+(mins?'<b>'+mins+' мин</b>':"")+'</div>'+timelineHtml(l,versions)+'<div class="mr-history-board-strip-head"><h3>Сохранённые версии доски</h3><button type="button" data-jump-tab="board">Все версии →</button></div>'+boardHtml(versions)+'</section>'+
-        '<section data-history-panel="board"><div class="mr-history-panel-title"><div><span>Доска</span><h3>Сохранённые состояния</h3></div><b>'+versions.length+'</b></div>'+boardHtml(versions)+'</section>'+
+        '<section class="active" data-history-panel="timeline"><div class="mr-history-panel-title"><div><span>Хронология занятия</span><h3>Что сохранилось за урок</h3></div>'+(mins?'<b>'+mins+' мин</b>':"")+'</div>'+timelineHtml(l)+'</section>'+
         '<section data-history-panel="tasks"><div class="mr-history-panel-title"><div><span>Задачи</span><h3>Работа на уроке</h3></div>'+(report&&report.solved_percent!=null?'<b>'+Math.round(Number(report.solved_percent))+'%</b>':"")+'</div>'+tasksHtml(report,queue)+'</section>'+
         '<section data-history-panel="notes"><div class="mr-history-panel-title"><div><span>Заметки</span><h3>Итоги и следующий шаг</h3></div></div>'+notesHtml(l,report)+'</section>'+
       '</main>'+
@@ -383,16 +379,10 @@
     function setTab(name){
       m.querySelectorAll("[data-history-tab]").forEach(function(b){b.classList.toggle("active",b.dataset.historyTab===name)});
       m.querySelectorAll("[data-history-panel]").forEach(function(p){p.classList.toggle("active",p.dataset.historyPanel===name)});
-      if(name==="timeline"||name==="board")requestAnimationFrame(function(){hydrateBoardPreviews(m,versions,ctx)});
+
     }
-    requestAnimationFrame(function(){hydrateBoardPreviews(m,versions,ctx)});
     m.querySelectorAll("[data-history-tab]").forEach(function(b){b.onclick=function(){setTab(b.dataset.historyTab)}});
     m.querySelectorAll("[data-jump-tab]").forEach(function(b){b.onclick=function(){setTab(b.dataset.jumpTab)}});
-    m.querySelectorAll("[data-history-version]").forEach(function(b){b.onclick=function(){
-      var v=versions.find(function(x){return String(x.id)===String(b.dataset.historyVersion)});if(!v)return;
-      var x=modal('<div class="mr-card-head"><div><span class="koto-eyebrow">ВЕРСИЯ ДОСКИ</span><h2>'+esc(v.title||"Доска")+'</h2><p class="muted">'+esc(dateLong(v.created_at))+(v.note?" · "+esc(v.note):"")+'</p></div></div><div id="snapshotRoot"></div>',"snapshot-modal");
-      (ctx.mountSnapshot||window.MathroomBoard&&window.MathroomBoard.mountSnapshot)(x.querySelector("#snapshotRoot"),v.pages||[]);
-    }});
     var close=function(){backdrop.remove()};
     m.querySelector("#historyModalClose").onclick=close;
     m.querySelector("#historyCloseBottom").onclick=close;
