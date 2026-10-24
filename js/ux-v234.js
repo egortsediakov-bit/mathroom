@@ -53,13 +53,6 @@
     b.dataset.guideBound='1';b.onclick=openGuide;
   }
 
-  function teacherWelcome(){
-    // v57.2: teacher dashboard is intentionally minimal.
-    // Keep the full guide available from the explicit Instruction button,
-    // but never inject the old onboarding card on the dashboard.
-    document.getElementById('mrFirstMinutes')?.remove();
-  }
-
   function studentWelcome(){
     if (!S.access || S.studentTab !== 'today' || safeStoreGet(key('welcome')) === 'done') return;
     const root = document.querySelector('#studentContent') || document.querySelector('.student-home');
@@ -105,7 +98,7 @@ function ensureVideoCoach(){
   }
 
   function sync(){
-    ensureHelpButton(); bindSidebarHelp(); teacherWelcome(); studentWelcome(); ensureVideoCoach(); improveAccessibility();
+    ensureHelpButton(); bindSidebarHelp(); studentWelcome(); ensureVideoCoach(); improveAccessibility();
   }
 
   // Unified tactile feedback for every real button. This is visual only and never
