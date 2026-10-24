@@ -571,9 +571,9 @@ function renderAuth(){
 }
 
 const nav=[['dashboard','Главная'],['schedule','Расписание'],['students','Ученики'],['topics','Темы'],['textbooks','Библиотека'],['bank','Банк задач'],['assignments','Задания'],['history','История'],['scratch','Черновик']];
-function shell(content,title,sub=''){
+function shell(content,title,sub='',topActions=''){
   const workspace=['scratch','board','lesson'].includes(S.view);
-  return `<div class="layout auto-sidebar ${workspace?'workspace-mode':''} view-${S.view}"><aside class="sidebar" aria-label="Главное меню"><div class="brand">Mathroom <span class="cloud-badge">☁ cloud</span></div><nav class="nav">${nav.map(([id,n])=>`<button data-nav="${id}" class="${S.view===id?'active':''}">${n}</button>`).join('')}</nav><div class="sidebar-footer"><button class="btn ghost sm sidebar-help" id="sidebarHelp" type="button">? Справка</button><button class="btn ghost sm" id="logout">Выйти</button></div></aside><main class="content"><div class="topbar"><div><h1>${esc(title)}</h1>${sub?`<p>${esc(sub)}</p>`:''}</div></div>${content}</main></div>`;
+  return `<div class="layout auto-sidebar ${workspace?'workspace-mode':''} view-${S.view}"><aside class="sidebar" aria-label="Главное меню"><div class="brand">Mathroom <span class="cloud-badge">☁ cloud</span></div><nav class="nav">${nav.map(([id,n])=>`<button data-nav="${id}" class="${S.view===id?'active':''}">${n}</button>`).join('')}</nav><div class="sidebar-footer"><button class="btn ghost sm sidebar-help" id="sidebarHelp" type="button">? Справка</button><button class="btn ghost sm" id="logout">Выйти</button></div></aside><main class="content"><div class="topbar"><div><h1>${esc(title)}</h1>${sub?`<p>${esc(sub)}</p>`:''}</div>${topActions||''}</div>${content}</main></div>`;
 }
 function bindShell(){
   document.querySelectorAll('[data-nav]').forEach(b=>b.onclick=()=>{cleanupAll();forgetActiveLesson();S.view=b.dataset.nav;S.topic=null;S.activeLesson=null;renderTeacher()});
@@ -698,11 +698,9 @@ function renderDashboard(){
       }).join('')}</div>`:`<div class="mr-dash-calm"><b>На сегодня занятий нет</b><span>Можно спокойно готовиться к следующему уроку или создать новый.</span></div>`}
     </section>`;
 
-  app.innerHTML=shell(`<div class="mr-dashboard"><div class="mr-dash-grid">${nextHtml}${attentionHtml}</div>${todayHtml}</div>`,title,'Хорошего дня и продуктивных уроков!');
+  const dashboardActions=`<div class="mr-dash-top-actions mr-topbar-tools"><button class="mr-dash-primary" id="mrDashCreateNow">${iPlus}Создать урок сейчас</button><button class="mr-dash-secondary" id="mrDashHelp">?&nbsp;&nbsp;Инструкция</button></div>`;
+  app.innerHTML=shell(`<div class="mr-dashboard"><div class="mr-dash-grid">${nextHtml}${attentionHtml}</div>${todayHtml}</div>`,title,'Хорошего дня и продуктивных уроков!',dashboardActions);
   bindShell();
-
-  const top=document.querySelector('.view-dashboard .topbar');
-  if(top)top.insertAdjacentHTML('beforeend',`<div class="mr-dash-top-actions"><button class="mr-dash-primary" id="mrDashCreateNow">${iPlus}Создать урок сейчас</button><button class="mr-dash-secondary" id="mrDashHelp">?&nbsp;&nbsp;Инструкция</button></div>`);
 
   const openScheduleCreator=()=>{
     S.view='schedule';renderTeacher();
