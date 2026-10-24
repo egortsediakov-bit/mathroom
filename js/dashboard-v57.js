@@ -141,4 +141,13 @@
       if(l)await startLesson(l);
     }));
   };
+  // If the legacy app rendered the dashboard before this enhancement loaded,
+  // repaint it once with the v57 implementation.
+  const mrDashBootRerender=()=>{
+    if(S?.view==='dashboard'&&document.querySelector('.view-dashboard')){
+      try{window.renderDashboard()}catch(e){console.warn('[Mathroom dashboard v57 boot]',e)}
+    }
+  };
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>setTimeout(mrDashBootRerender,0),{once:true});
+  else setTimeout(mrDashBootRerender,0);
 })();
