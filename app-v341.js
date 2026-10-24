@@ -1839,16 +1839,28 @@ async function completeLesson(lesson,queue,live){
   const isCrmTrial=lesson.lesson_type==='trial'||String(lesson.crm_event_key||'').startsWith('crm-trial:');
   const currentAttendance=['present','late','absent'].includes(lesson.attendance_status)?lesson.attendance_status:'';
   let selectedAttendance=currentAttendance;
-  const attendanceHtml=`<section class="mr-finish-attendance">
-    <div class="mr-finish-attendance-head"><div><span>ПОСЕЩАЕМОСТЬ</span><h3>Ученик был на уроке?</h3></div><em>Обязательно</em></div>
-    <div class="mr-finish-attendance-options">
-      <button type="button" data-finish-attendance="present" class="${currentAttendance==='present'?'active':''}"><b>✓</b><span>Был</span><small>Присутствовал на занятии</small></button>
-      <button type="button" data-finish-attendance="late" class="${currentAttendance==='late'?'active':''}"><b>↘</b><span>Опоздал</span><small>Пришёл после начала урока</small></button>
-      <button type="button" data-finish-attendance="absent" class="${currentAttendance==='absent'?'active':''}"><b>×</b><span>Не был</span><small>Ученик не присутствовал</small></button>
-    </div>
-    ${isCrmTrial?'<div class="mr-finish-attendance-note">Для пробного CRM отметит занятие проведённым только при «Был» или «Опоздал». При «Не был» потребуется назначить новую дату.</div>':''}
-  </section>`;
-  const m=modal(`<div class="mr-finish-modal-head"><span>ЗАВЕРШЕНИЕ УРОКА</span><h2>Итоги занятия</h2><p>Перед сохранением отметь посещаемость и проверь итоговые заметки.</p></div>${attendanceHtml}<div class="lesson-report-preview"><div class="report-stats"><span>Задач: ${counts.total}</span><span>Решено: ${counts.solved}</span><span>Сложно: ${counts.hard}</span><span>Позже: ${counts.later}</span><span>Разобрано: ${completion}%</span><span>Время: ${mins} мин</span></div></div><div class="grid cols2"><div class="field"><label>Что сегодня получилось</label><textarea id="finishHighlights">${esc(strengths?`Хорошо получалось: ${strengths}.`:`Уверенно решено ${counts.solved} из ${counts.total} задач.`)}</textarea></div><div class="field"><label>Что повторить</label><textarea id="finishFocus">${esc(focus?`Повторить: ${focus}.`:counts.later?`Вернуться к ${counts.later} отложенным задачам.`:'Закрепить материал по необходимости.')}</textarea></div></div><div class="field"><label>Итоги ученику</label><textarea id="finishSummary">${esc(summary)}</textarea></div><div class="field"><label>К следующему уроку</label><textarea id="finishPlan">${esc(plan)}</textarea></div><div class="field"><label>Приватная заметка</label><textarea id="finishPrivate">${esc(lesson.private_notes||`Очередь: ${counts.total}; решено: ${counts.solved}; сложно: ${counts.hard}; позже: ${counts.later}; таймер: ${mins} мин.`)}</textarea></div><button class="btn primary mr-finish-submit" id="finishConfirm" ${currentAttendance?'':'disabled'}>Завершить и сохранить отчёт</button>`);
+  const student=S.students.find(x=>String(x.id)===String(lesson.student_id))||{};
+  const highlightsText=strengths?`Хорошо получалось: ${strengths}.`:`Уверенно решено ${counts.solved} из ${counts.total} задач.`;
+  const focusText=focus?`Повторить: ${focus}.`:counts.later?`Вернуться к ${counts.later} отложенным задачам.`:'Закрепить материал по необходимости.';
+  const privateNote=lesson.private_notes||`Очередь: ${counts.total}; решено: ${counts.solved}; сложно: ${counts.hard}; позже: ${counts.later}; таймер: ${mins} мин.`;
+  const finishUi=window.MathroomFinishV58;
+  if(!finishUi?.render)throw new Error('Интерфейс завершения урока не загрузился');
+  const m=modal(finishUi.render({
+    lesson,
+    student,
+    topic:currentTopic,
+    counts,
+    minutes:mins,
+    completion,
+    highlights:highlightsText,
+    focusText,
+    summary,
+    plan,
+    privateNote,
+    isCrmTrial,
+    currentAttendance
+  }),'mr-finish-v58');
+  finishUi.bind?.(m);
   const finishConfirm=m.querySelector('#finishConfirm');
   m.querySelectorAll('[data-finish-attendance]').forEach(choice=>choice.onclick=()=>{
     selectedAttendance=choice.dataset.finishAttendance||'';
