@@ -54,24 +54,10 @@
   }
 
   function teacherWelcome(){
-    if (S.access || S.view !== 'dashboard' || safeStoreGet(key('welcome')) === 'done') return;
-    const content = document.querySelector('.content'); if (!content || document.getElementById('mrFirstMinutes')) return;
-    const hasStudents = (S.students || []).length > 0;
-    const hasLessons = (S.lessons || []).length > 0;
-    const hasActive = (S.lessons || []).some(x => x.status === 'in_progress');
-    const checks = [hasStudents, hasLessons, hasActive]; const done = checks.filter(Boolean).length;
-    const card = document.createElement('section'); card.id='mrFirstMinutes'; card.className='card mr-first-minutes';
-    card.innerHTML = `<div class="mr-card-head"><div><span class="pill">Первые минуты</span><h2>Быстрый старт</h2><p class="small muted">Три шага, чтобы провести первый урок без поиска функций по сайту.</p></div><button class="btn sm ghost" id="mrHideFirstMinutes">Скрыть</button></div>
-      <div class="mr-first-progress"><i style="width:${percent(done,3)}%"></i></div>
-      <div class="mr-first-grid">
-        <button class="mr-first-step ${hasStudents?'done':''}" data-first-go="students"><span>${hasStudents?'✓':'1'}</span><div><b>Добавь ученика</b><small>${hasStudents?'Готово':'Создай ученика и получи его ссылку'}</small></div></button>
-        <button class="mr-first-step ${hasLessons?'done':''}" data-first-go="schedule"><span>${hasLessons?'✓':'2'}</span><div><b>Поставь урок</b><small>${hasLessons?'В расписании есть занятия':'Разовый или каждую неделю'}</small></div></button>
-        <button class="mr-first-step ${hasActive?'done':''}" data-first-go="schedule"><span>${hasActive?'✓':'3'}</span><div><b>Открой урок</b><small>${hasActive?'Урок сейчас идёт':'Видео, доска и таймер находятся внутри урока'}</small></div></button>
-      </div><div class="actions"><button class="btn sm" id="mrOpenFullGuide">Показать инструкцию</button></div>`;
-    const top = content.querySelector('.topbar'); top ? top.insertAdjacentElement('afterend',card) : content.prepend(card);
-    card.querySelector('#mrHideFirstMinutes').onclick = () => { safeStoreSet(key('welcome'),'done'); card.remove(); };
-    card.querySelector('#mrOpenFullGuide').onclick = openGuide;
-    card.querySelectorAll('[data-first-go]').forEach(b => b.onclick = () => goTeacher(b.dataset.firstGo));
+    // v57.2: teacher dashboard is intentionally minimal.
+    // Keep the full guide available from the explicit Instruction button,
+    // but never inject the old onboarding card on the dashboard.
+    document.getElementById('mrFirstMinutes')?.remove();
   }
 
   function studentWelcome(){
