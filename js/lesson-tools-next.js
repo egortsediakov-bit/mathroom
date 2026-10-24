@@ -8589,7 +8589,11 @@
   async function refreshNonLessonEnhancements() {
     if (!S.access && S.view === 'profile') { await enhanceTeacherProfile(); await enhanceStudentAttendanceProfile(); await enhanceSmartPreparation(); await enhanceAttentionOverview(); await enhanceRoadmapOverview(); await enhanceMasteryOverview(); await enhanceLearningIntelligence(); await enhanceTargetTrajectoryOverview(); await enhanceActivityOverview(); }
     if (!S.access) enhanceTeacherQuickJump();
-    if (!S.access && S.view === 'dashboard') { await enhanceTeacherActionCenter(); await enhanceTeacherOperationsDashboard(); await enhancePostLessonClosure(); await enhancePreparationCenter(); await enhanceDashboardHomeworkWatch(); }
+    if (!S.access && S.view === 'dashboard') {
+      // v57.2: the home screen owns its own minimal sections.
+      // Remove legacy cumulative dashboard cards instead of reinserting them.
+      ['mrTeacherActionCenter','mrTeacherWorkday','mrAfterLessonFlow','mrPreparationCenter','mrHomeworkWatch','mrCommunicationInbox'].forEach(id=>document.getElementById(id)?.remove());
+    }
     if (!S.access && S.view === 'schedule') { await enhanceScheduleWorkspace(); }
     if (S.access && S.studentTab === 'today') { await enhanceStudentToday(); }
     if (S.access && S.studentTab === 'progress') { await enhanceStudentGoals(); await enhanceStudentReview(); await enhanceStudentMastery(); await enhanceStudentProgressSnapshots(); await enhanceStudentActivity(); }
