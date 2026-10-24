@@ -1816,7 +1816,35 @@ async function renderLesson(){
   document.querySelectorAll('[data-status]').forEach(b=>b.onclick=async()=>{if(!current)return;await sb.from('lesson_queue_items').update({status:b.dataset.status}).eq('id',current.id);renderLesson()});
   if(current){document.getElementById('currentToBoard').onclick=()=>ctrl.addText(`${current.title}\n${current.prompt}`,{fontSize:25});document.getElementById('currentToHomework').onclick=async()=>{if(!realTopic)return toast('Сначала назначь тему урока, чтобы добавить задачу в домашнюю');let hw=S.homeworks.find(x=>x.lesson_id===lesson.id&&x.status==='assigned');if(!hw){const {data,error}=await sb.from('homeworks').insert({teacher_id:S.user.id,student_id:st.id,topic_id:realTopic.id,lesson_id:lesson.id,title:`Домашняя после урока · ${realTopic.title}`}).select().single();if(error)return fail(error);hw=data}const {data:dup}=await sb.from('homework_items').select('id').eq('homework_id',hw.id).eq('source_queue_item_id',current.id).maybeSingle();if(!dup){const {error}=await sb.from('homework_items').insert({homework_id:hw.id,prompt:current.prompt,correct_answer:current.correct_answer,position:999,source_exercise_id:current.exercise_id,source_queue_item_id:current.id,difficulty:current.difficulty,category:current.category,tags:current.tags||[]});if(error)return fail(error)}await sb.from('lesson_queue_items').update({homework_added:true}).eq('id',current.id);await loadTeacher();renderLesson();toast('Добавлено в домашнюю')}}
   document.getElementById('focusToggle').onclick=async()=>{const next=!liveState.focus_enabled;await updateLive({focus_enabled:next});const b=document.getElementById('focusToggle');if(b){b.textContent=`Фокус ученика: ${next?'вкл':'выкл'}`;b.classList.toggle('active',next)}toast(next?'Фокус включён только у ученика':'Фокус ученика выключен')};document.getElementById('timerToggle').onclick=async()=>{const b=document.getElementById('timerToggle');if(liveState.timer_running){const e=elapsedSeconds(liveState);await updateLive({timer_running:false,timer_started_at:null,timer_elapsed_seconds:e});if(b)b.textContent='Начать урок'}else{await updateLive({timer_running:true,timer_started_at:new Date().toISOString()});if(b)b.textContent='Пауза'}};document.getElementById('timerReset').onclick=async()=>{await updateLive({timer_running:false,timer_started_at:null,timer_elapsed_seconds:0});const b=document.getElementById('timerToggle');if(b)b.textContent='Начать урок';const el=document.getElementById('lessonTimer');if(el)el.textContent='00:00'};
-  const interval=setInterval(()=>{const el=document.getElementById('lessonTimer');if(el)el.textContent=fmtTime(elapsedSeconds(liveState))},1000);S.liveCleanup=()=>clearInterval(interval);
+  const autoCloseAt=lesson.started_at?new Date(lesson.started_at).getTime()+3*60*60*1000:0;
+  let autoCloseBusy=false,lastAutoCloseCheck=0;
+  const interval=setInterval(async()=>{
+    const el=document.getElementById('lessonTimer');
+    if(el)el.textContent=fmtTime(elapsedSeconds(liveState));
+    if(!autoCloseAt||Date.now()<autoCloseAt||autoCloseBusy||Date.now()-lastAutoCloseCheck<5000)return;
+    autoCloseBusy=true;lastAutoCloseCheck=Date.now();
+    try{
+      const {data,error}=await sb.from('lessons').select('status,completed_at').eq('id',lesson.id).maybeSingle();
+      if(error)throw error;
+      if(data?.status==='completed'){
+        try{window.MathroomLessonSuite?.stopPhaseTimer?.()}catch{}
+        try{await window.MathroomLiveCall?.stopRecording?.(true)}catch{}
+        try{await window.MathroomLiveCall?.end?.()}catch{}
+        cleanupAll();
+        forgetActiveLesson();
+        await loadTeacher();
+        S.activeLesson=null;
+        S.view='history';
+        renderTeacher();
+        toast('Урок автоматически завершён через 3 часа после начала');
+      }
+    }catch(e){
+      console.warn('[Mathroom auto finish check]',e);
+    }finally{
+      autoCloseBusy=false;
+    }
+  },1000);
+  S.liveCleanup=()=>clearInterval(interval);
   document.getElementById('completeLesson').onclick=()=>completeLesson(lesson,queue||[],liveState);
 }
 function queueStats(queue){
