@@ -6607,23 +6607,6 @@
     } catch (e) { console.warn('[Mathroom smart prep]', e); }
   }
 
-  async function enhanceDashboardHomeworkWatch() {
-    if (S.access || S.view !== 'dashboard' || document.querySelector('#mrHomeworkWatch')) return;
-    const content = document.querySelector('.content'); if (!content) return;
-    const now = Date.now(), soon = now + 48 * 3600000;
-    const overdue = (S.homeworks || []).filter(x => x.status === 'assigned' && x.due_at && new Date(x.due_at).getTime() < now);
-    const dueSoon = (S.homeworks || []).filter(x => x.status === 'assigned' && x.due_at && new Date(x.due_at).getTime() >= now && new Date(x.due_at).getTime() <= soon);
-    const submitted = (S.homeworks || []).filter(x => x.status === 'submitted');
-    const revision = (S.homeworks || []).filter(x => x.status === 'assigned' && x.revision_requested_at);
-    if (!overdue.length && !dueSoon.length && !submitted.length && !revision.length) return;
-    const stName = id => (S.students || []).find(x=>x.id===id)?.name || 'Ученик';
-    const rows = [...submitted.map(x=>({...x,_kind:'На проверке'})), ...revision.map(x=>({...x,_kind:'Доработка'})), ...overdue.map(x=>({...x,_kind:'Просрочено'})), ...dueSoon.map(x=>({...x,_kind:'Срок скоро'}))].slice(0,8);
-    const box = document.createElement('div'); box.id='mrHomeworkWatch'; box.className='card mr-homework-watch';
-    box.innerHTML=`<div class="mr-card-head"><div><h2>Контроль домашних</h2><p class="small muted">${submitted.length} на проверке · ${revision.length} доработка · ${overdue.length} просрочено · ${dueSoon.length} скоро срок</p></div><button class="btn sm" id="mrOpenAssignments">Открыть задания</button></div><div class="mr-homework-watch-list">${rows.map(x=>`<div><span class="pill ${x._kind==='Просрочено'?'warn':''}">${x._kind}</span><b>${esc(stName(x.student_id))}</b><span>${esc(x.title)}</span><small>${x.due_at?new Date(x.due_at).toLocaleString('ru-RU'):''}</small></div>`).join('')}</div>`;
-    const grid=content.querySelector('.grid.cols4'); if(grid) grid.insertAdjacentElement('afterend',box); else content.prepend(box);
-    box.querySelector('#mrOpenAssignments').onclick=()=>document.querySelector('[data-nav="assignments"]')?.click();
-  }
-
   async function enhanceStudentReview() {
     if (!S.access || S.studentTab !== 'progress' || !S.student || document.querySelector('#mrStudentReview')) return;
     const content=document.querySelector('#studentContent'); if(!content) return;
@@ -7120,16 +7103,6 @@
   async function openPreparationCenterModal(){
     try{const d=await loadPrepDataset(true);const m=modal(`<div class="mr-card-head"><div><h2>Центр подготовки</h2><p class="muted">Ближайшие занятия и всё, что стоит закрыть до их начала.</p></div><span class="pill">${d.lessons.length} ближайших</span></div><div class="mr-prep-center-list">${d.lessons.length?d.lessons.map(l=>{const st=lessonStudent(l),topic=lessonTopic(l),plan=d.plans.find(x=>x.lesson_id===l.id),q=d.queue.filter(x=>x.lesson_id===l.id).length,alerts=prepAlertsForLesson(l,d);return`<div class="mr-prep-lesson"><div class="mr-prep-time">${esc(compactWhen(l.scheduled_at))}</div><div><b>${esc(st?.name||'Ученик')} · ${esc(topic?.title||'Без темы')}</b><small>${plan?.main_goal?esc(plan.main_goal):'Цель урока ещё не заполнена'} · ${q} задач</small><div class="mr-alert-chips">${alerts.slice(0,3).map(a=>`<span class="pill ${alertPill(a.severity)}">${esc(a.title)}</span>`).join('')||'<span class="pill good">Без срочных хвостов</span>'}</div></div><button class="btn sm ${plan?.prep_status==='ready'?'':'primary'}" data-open-prep="${l.id}">${plan?.prep_status==='ready'?'Проверить':'Подготовить'}</button></div>`}).join(''):'<div class="empty">Нет ближайших запланированных уроков.</div>'}</div>`, 'wide-modal');m.querySelectorAll('[data-open-prep]').forEach(b=>b.onclick=()=>{m.remove();openLessonPreparation(b.dataset.openPrep)})}catch(e){fail(e)}
   }
-
-  async function enhancePreparationCenter(){
-    if(S.access||S.view!=='dashboard'||document.querySelector('#mrPreparationCenter')||prepCenterBusy)return;const content=document.querySelector('.content');if(!content)return;prepCenterBusy=true;
-    try{const d=await loadPrepDataset();if(S.view!=='dashboard'||document.querySelector('#mrPreparationCenter'))return;const near=d.lessons.filter(x=>new Date(x.scheduled_at).getTime()-Date.now()<=48*3600000);const allAlerts=d.lessons.flatMap(l=>prepAlertsForLesson(l,d));const critical=allAlerts.filter(x=>x.severity==='critical').length;const ready=d.lessons.filter(l=>d.plans.find(p=>p.lesson_id===l.id)?.prep_status==='ready').length;const box=document.createElement('div');box.id='mrPreparationCenter';box.className='card mr-prep-center';box.innerHTML=`<div class="mr-card-head"><div><h2>Центр подготовки</h2><p class="small muted">Ближайшие уроки, хвосты и готовность материалов в одном месте.</p></div><button class="btn sm primary" id="mrPrepCenterOpen">Открыть центр</button></div><div class="mr-smart-metrics"><span><b>${near.length}</b><small>в ближайшие 48 ч</small></span><span><b>${ready}</b><small>отмечено готовыми</small></span><span><b>${critical}</b><small>важно закрыть</small></span><span><b>${allAlerts.length}</b><small>всего напоминаний</small></span></div><div class="mr-prep-center-list compact">${d.lessons.slice(0,4).map(l=>{const st=lessonStudent(l),p=d.plans.find(x=>x.lesson_id===l.id),alerts=prepAlertsForLesson(l,d);return`<button class="mr-prep-compact-row" data-open-prep="${l.id}"><span>${esc(compactWhen(l.scheduled_at))}</span><b>${esc(st?.name||'Ученик')}</b><em>${alerts[0]?esc(alerts[0].title):(p?.prep_status==='ready'?'Готово':'Проверить подготовку')}</em><i class="${p?.prep_status==='ready'?'ready':''}"></i></button>`}).join('')}</div>`;const grid=content.querySelector('.grid.cols4');if(grid)grid.insertAdjacentElement('afterend',box);else content.prepend(box);box.querySelector('#mrPrepCenterOpen').onclick=openPreparationCenterModal;box.querySelectorAll('[data-open-prep]').forEach(b=>b.onclick=()=>openLessonPreparation(b.dataset.openPrep))}catch(e){console.warn('[Mathroom prep center]',e)}finally{prepCenterBusy=false}
-  }
-
-
-
-  // ---- Cumulative WIP: diagnostics + readiness + progress snapshots ----
-  const SNAPSHOT_INTERVAL_MS = 6 * 86400000;
 
   function scoreBand(score) {
     if (score == null || !Number.isFinite(Number(score))) return {key:'no_data', label:'Нет данных'};
@@ -8005,29 +7978,6 @@
       <div class="small muted">Тёмная колонка — фактически проведённое время, контур — запланированное. Неявки: ${absent} · отмены: ${all.filter(l=>l.status==='cancelled').length} · переносы: ${all.filter(l=>l.rescheduled_from&&Math.abs(new Date(l.rescheduled_from)-new Date(l.scheduled_at))>60000).length}.</div>`,'wide-modal');
   }
 
-  async function enhanceTeacherOperationsDashboard(){
-    if(S.access||S.view!=='dashboard'||document.querySelector('#mrTeacherWorkday'))return;
-    const content=document.querySelector('.content');if(!content)return;
-    const [a,b]=todayBounds(),today=(S.lessons||[]).filter(l=>{const t=new Date(l.scheduled_at);return t>=a&&t<b}).sort((x,y)=>new Date(x.scheduled_at)-new Date(y.scheduled_at));
-    const active=today.filter(l=>l.status!=='cancelled'),remaining=active.filter(l=>!isClosedForOperations(l)&&new Date(l.scheduled_at).getTime()+Number(l.duration_minutes||60)*60000>Date.now()),next=remaining[0]||null,mins=active.reduce((s,l)=>s+Number(l.duration_minutes||0),0),unmarked=today.filter(pastUnmarked).length;
-    const reminders=operationsReminderData();
-    const nextPlan=next?await getLessonPlan(next.id).catch(()=>null):null, mediaReady=recentMediaSelfCheck();
-    if(document.querySelector('#mrTeacherWorkday'))return;
-    const box=document.createElement('section');box.id='mrTeacherWorkday';box.className='card mr-workday';
-    box.innerHTML=`<div class="mr-card-head"><div><h2>Рабочий день</h2><p class="small muted">${new Date().toLocaleDateString('ru-RU',{weekday:'long',day:'numeric',month:'long'})}</p></div><div class="actions"><button class="btn sm" id="mrDeviceCheck">Проверка связи</button><button class="btn sm" id="mrEnableNotifications">${localStorage.getItem('mathroom.browser.reminders')==='1'?'Уведомления ✓':'Включить уведомления'}</button><button class="btn sm" id="mrOpenWorkload">Статистика загрузки</button></div></div>
-      <div class="grid cols4 mr-ops-metrics"><div><small>Сегодня</small><b>${active.length}</b><span>уроков · ${Math.floor(mins/60)}ч ${mins%60}м</span></div><div><small>Осталось</small><b>${remaining.length}</b><span>${next?`ближайший ${compactClock(next.scheduled_at)}`:'день завершён'}</span></div><div><small>Посещаемость</small><b>${unmarked}</b><span>${unmarked?'нужно отметить':'всё отмечено'}</span></div><div><small>Напоминания</small><b>${reminders.length}</b><span>требуют внимания</span></div></div>
-      ${next?`<div class="mr-next-lesson mr-next-lesson-ready"><div class="mr-next-main"><div class="actions"><span class="pill">Следующий урок</span><span class="pill ${nextPlan?.prep_status==='ready'?'good':'warn'}">${nextPlan?.prep_status==='ready'?'Подготовлен ✓':'Нужна подготовка'}</span><span class="pill ${mediaReady?'good':'warn'}" data-media-ready-state>${mediaReady?'Проверено ✓':'Нужно проверить'}</span></div><h3>${esc(lessonStudentName(next))}</h3><p>${compactClock(next.scheduled_at)} · ${esc(lessonTopicName(next))}</p><div class="mr-live-countdown" data-live-countdown="${esc(next.scheduled_at)}">${esc(liveCountdownText(next.scheduled_at))}</div></div><div class="actions mr-next-actions"><button class="btn primary" data-ops-open-lesson="${next.id}">Открыть урок</button><button class="btn" data-ops-prepare="${next.id}">Подготовить</button><button class="btn" data-ops-att="${next.id}">Посещаемость</button></div></div>`:''}
-      <div class="mr-reminder-list">${reminders.length?reminders.map(r=>`<div class="mr-reminder ${r.level==='high'?'high':''}"><span>${r.kind==='lesson'?'◷':r.kind==='attendance'?'●':'✓'}</span><div><b>${esc(r.title)}</b><small>${esc(r.text)}</small></div>${r.lesson?`<button class="btn xs" data-ops-${r.kind==='attendance'?'att':'open-lesson'}="${r.lesson.id}">${r.kind==='attendance'?'Отметить':'Открыть'}</button>`:''}</div>`).join(''):'<div class="empty">Срочных напоминаний нет.</div>'}</div>`;
-    const prep=document.querySelector('#mrPreparationCenter'); if(prep)prep.insertAdjacentElement('beforebegin',box); else {const top=content.querySelector('.topbar');if(top)top.insertAdjacentElement('afterend',box);else content.prepend(box)}
-    box.querySelector('#mrDeviceCheck').onclick=openMediaSelfCheck;
-    box.querySelector('#mrEnableNotifications').onclick=requestBrowserReminders;
-    box.querySelector('#mrOpenWorkload').onclick=openWorkloadAnalytics;
-    box.querySelectorAll('[data-ops-open-lesson]').forEach(b=>b.onclick=()=>openLessonAnywhere(b.dataset.opsOpenLesson));
-    box.querySelectorAll('[data-ops-prepare]').forEach(b=>b.onclick=()=>openLessonPreparation(b.dataset.opsPrepare));
-    box.querySelectorAll('[data-ops-att]').forEach(b=>b.onclick=()=>openAttendanceModal(b.dataset.opsAtt));
-    paintLiveCountdowns();
-  }
-
   async function enhanceStudentAttendanceProfile(){
     if(S.access||S.view!=='profile'||!S.selectedStudent||document.querySelector('#mrAttendanceProfile'))return;
     const content=document.querySelector('.content');if(!content)return;
@@ -8086,20 +8036,6 @@
       m.querySelectorAll('[data-res-vis]').forEach(b=>b.onclick=async()=>{const r=rows.find(x=>x.id===b.dataset.resVis);const {error}=await sb.from('student_resources').update({visible_to_student:r.visible_to_student===false,updated_at:new Date().toISOString()}).eq('id',r.id);if(error)return fail(error);invalidateComms();m.remove();openResourceManager(studentId)});
       m.querySelectorAll('[data-res-del]').forEach(b=>b.onclick=async()=>{if(!confirm('Удалить материал?'))return;const {error}=await sb.from('student_resources').delete().eq('id',b.dataset.resDel);if(error)return fail(error);invalidateComms();m.remove();openResourceManager(studentId)});
     }catch(e){fail(e)}
-  }
-
-  async function enhanceTeacherCommunicationDashboard(){
-    if(S.access||S.view!=='dashboard'||document.querySelector('#mrCommunicationInbox'))return;
-    const content=document.querySelector('.content');if(!content)return;
-    try{
-      const d=await loadTeacherComms('',false); const open=d.questions.filter(x=>x.status!=='resolved'),low=d.checkins.filter(x=>Number(x.confidence)<=2 && Date.now()-new Date(x.created_at).getTime()<14*86400000);
-      const box=document.createElement('section');box.id='mrCommunicationInbox';box.className='card mr-comms-dashboard';
-      box.innerHTML=`<div class="mr-card-head"><div><h2>Связь с учениками</h2><p class="small muted">Вопросы между уроками и сигналы самооценки.</p></div><button class="btn sm ${open.length?'primary':''}" id="mrOpenQuestions">Вопросы ${open.length?`· ${open.length}`:''}</button></div><div class="grid cols2"><div class="mr-comms-mini"><b>${open.length}</b><span>открытых вопросов</span>${open.slice(0,3).map(q=>`<button data-comms-student="${q.student_id}"><strong>${esc(q.students?.name||'Ученик')}</strong><small>${esc(String(q.question||'').slice(0,90))}</small></button>`).join('')}</div><div class="mr-comms-mini"><b>${low.length}</b><span>уроков с отметкой «сложно» за 14 дней</span>${low.slice(0,3).map(x=>`<button data-comms-profile="${x.student_id}"><strong>${esc(x.students?.name||'Ученик')}</strong><small>${esc(x.lessons?.topics?.title||'Урок')} · ${confidenceMeta(x.confidence)[0]}</small></button>`).join('')}</div></div>`;
-      const work=document.querySelector('#mrAfterLessonFlow')||document.querySelector('#mrTeacherWorkday'); if(work)work.insertAdjacentElement('afterend',box); else content.prepend(box);
-      box.querySelector('#mrOpenQuestions').onclick=()=>openTeacherQuestions('');
-      box.querySelectorAll('[data-comms-student]').forEach(b=>b.onclick=()=>openTeacherQuestions(b.dataset.commsStudent));
-      box.querySelectorAll('[data-comms-profile]').forEach(b=>b.onclick=()=>{const nav=document.querySelector('[data-nav="students"]');nav?.click();setTimeout(()=>document.querySelector(`[data-profile="${CSS.escape(b.dataset.commsProfile)}"]`)?.click(),100)});
-    }catch(e){console.warn('[Mathroom communication dashboard]',e)}
   }
 
   async function enhanceTeacherStudentCommunication(){
@@ -8181,27 +8117,6 @@
     }catch(e){fail(e)}
   }
 
-  async function enhancePostLessonClosure(){
-    if(S.access||S.view!=='dashboard'||document.querySelector('#mrAfterLessonFlow'))return;
-    const rows=recentCompletedLessons(36);if(!rows.length)return;
-    const content=document.querySelector('.content');if(!content)return;
-    try{
-      const ids=rows.map(x=>x.id),[rr,cc]=await Promise.all([
-        sb.from('lesson_reports').select('lesson_id,public_highlights,public_focus').in('lesson_id',ids),
-        sb.from('student_lesson_checkins').select('lesson_id,confidence,note,created_at').in('lesson_id',ids)
-      ]);const err=rr.error||cc.error;if(err)throw err;
-      const reports=rr.data||[],checkins=cc.data||[];
-      const box=document.createElement('section');box.id='mrAfterLessonFlow';box.className='card mr-after-lesson';
-      box.innerHTML=`<div class="mr-card-head"><div><h2>После урока</h2><p class="small muted">Быстро проверь, что итог занятия действительно закрыт.</p></div><span class="pill">последние 36 ч</span></div><div class="mr-after-list">${rows.map(l=>{const report=reports.find(x=>x.lesson_id===l.id),checkin=checkins.find(x=>x.lesson_id===l.id),hws=(S.homeworks||[]).filter(x=>x.lesson_id===l.id),att=attendanceMeta(l.attendance_status);return`<article><div class="mr-after-main"><small>${new Date(l.completed_at||l.scheduled_at).toLocaleString('ru-RU',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}</small><b>${esc(lessonStudentName(l))} · ${esc(lessonTopicName(l))}</b><div class="actions"><span class="pill ${report?'good':'warn'}">${report?'итог ✓':'нет отчёта'}</span><span class="pill">${hws.length?`ДЗ ${hws.length}`:'без ДЗ'}</span><span class="pill ${checkin&&Number(checkin.confidence)<=2?'warn':''}">${checkin?`самооценка ${checkin.confidence}/5`:'самооценка ожидается'}</span><span class="pill ${att[1]}">${esc(att[0])}</span></div></div><div class="actions"><button class="btn sm primary" data-wrap-lesson="${l.id}">Закрыть хвосты</button><button class="btn sm" data-wrap-parent="${l.id}">Отчёт родителю</button></div></article>`}).join('')}</div>`;
-      const work=document.querySelector('#mrTeacherWorkday');if(work)work.insertAdjacentElement('afterend',box);else content.prepend(box);
-      box.querySelectorAll('[data-wrap-lesson]').forEach(b=>b.onclick=()=>openLessonWrapUp(b.dataset.wrapLesson));
-      box.querySelectorAll('[data-wrap-parent]').forEach(b=>b.onclick=()=>openLessonParentReport(b.dataset.wrapParent));
-    }catch(e){console.warn('[Mathroom post lesson]',e)}
-  }
-
-
-
-  // Iteration 16 — calm student “Today” workspace + pre-lesson device self-check.
   function studentTabGo(tab){
     const ids={today:'studentTodayTab',board:'studentBoardTab',tasks:'studentTasksTab',lessons:'studentLessonsTab',progress:'studentProgressTab'};
     const el=document.getElementById(ids[tab]||'');
@@ -8552,8 +8467,15 @@
   function enhanceTeacherQuickJump(){
     if(S.access||!S.user)return;
     const top=document.querySelector('.topbar');if(!top||top.querySelector('#mrQuickJumpButton'))return;
-    const wrap=document.createElement('div');wrap.className='actions mr-topbar-tools';wrap.innerHTML='<button class="btn sm" id="mrQuickJumpButton"><span>⌕</span> Быстрый переход <kbd>Alt K</kbd></button>';top.appendChild(wrap);
-    wrap.querySelector('#mrQuickJumpButton').onclick=openTeacherQuickJump;
+    let wrap=top.querySelector(':scope > .mr-topbar-tools');
+    if(!wrap){wrap=document.createElement('div');wrap.className='actions mr-topbar-tools';top.appendChild(wrap)}
+    const button=document.createElement('button');
+    button.className='btn sm';
+    button.id='mrQuickJumpButton';
+    button.innerHTML='<span>⌕</span> Быстрый переход <kbd>Alt K</kbd>';
+    const instruction=wrap.querySelector('#mrDashHelp');
+    if(instruction)wrap.insertBefore(button,instruction);else wrap.appendChild(button);
+    button.onclick=openTeacherQuickJump;
   }
 
   function teacherActionLabel(item){
@@ -8561,39 +8483,9 @@
   }
   function teacherActionIcon(kind){return ({homework:'✓',attendance:'●',wrap:'↺',prep:'◷'})[kind]||'•'}
 
-  async function enhanceTeacherActionCenter(){
-    if(S.access||S.view!=='dashboard'||document.querySelector('#mrTeacherActionCenter'))return;
-    const content=document.querySelector('.content');if(!content)return;
-    try{
-      const now=Date.now(),items=[];
-      const add=(kind,priority,title,meta,data={})=>items.push({kind,priority,title,meta,...data});
-      (S.homeworks||[]).filter(h=>h.status==='submitted').forEach(h=>add('homework',100,`ДЗ ждёт проверки · ${h.students?.name||'Ученик'}`,h.title,{id:h.id,student_id:h.student_id}));
-      (S.lessons||[]).filter(l=>pastUnmarked(l)&&now-new Date(l.scheduled_at).getTime()<=14*86400000).sort((a,b)=>new Date(b.scheduled_at)-new Date(a.scheduled_at)).slice(0,12).forEach(l=>add('attendance',90,`Не отмечена посещаемость · ${lessonStudentName(l)}`,`${lessonTopicName(l)} · ${dateLong(l.scheduled_at)}`,{lesson_id:l.id}));
-      const recentCompleted=(S.lessons||[]).filter(l=>l.status==='completed'&&Date.now()-new Date(l.completed_at||l.scheduled_at).getTime()<=36*3600000);
-      let reportIds=new Set();
-      if(recentCompleted.length){const {data,error}=await sb.from('lesson_reports').select('lesson_id').in('lesson_id',recentCompleted.map(x=>x.id));if(!error)reportIds=new Set((data||[]).map(x=>x.lesson_id))}
-      recentCompleted.filter(l=>!reportIds.has(l.id)).forEach(l=>add('wrap',88,`Нет итога урока · ${lessonStudentName(l)}`,`${lessonTopicName(l)} · ${dateLong(l.completed_at||l.scheduled_at)}`,{lesson_id:l.id}));
-      const prep=await loadPrepDataset(false).catch(()=>({lessons:[],plans:[]}));
-      (prep.lessons||[]).filter(l=>{const dt=new Date(l.scheduled_at).getTime()-now;const plan=(prep.plans||[]).find(p=>p.lesson_id===l.id);return dt>=-5*60000&&dt<=48*3600000&&plan?.prep_status!=='ready'}).forEach(l=>add('prep',80,`Подготовить урок · ${lessonStudentName(l)}`,`${lessonTopicName(l)} · ${relativeStudentDate(l.scheduled_at)}`,{lesson_id:l.id}));
-      items.sort((a,b)=>b.priority-a.priority);
-      if(document.querySelector('#mrTeacherActionCenter'))return;
-      const urgent=items.filter(x=>x.priority>=90).length,checks=items.filter(x=>x.kind==='homework').length,lessons=items.filter(x=>['attendance','wrap','prep'].includes(x.kind)).length;
-      const box=document.createElement('section');box.id='mrTeacherActionCenter';box.className='card mr-action-center';
-      box.innerHTML=`<div class="mr-card-head"><div><div class="actions"><span class="pill ${urgent?'warn':'good'}">${urgent?`срочно ${urgent}`:'без срочного'}</span><span class="pill">в работе ${items.length}</span></div><h2>К обработке</h2><p class="small muted">Только действия, связанные с проведением и закрытием уроков.</p></div><button class="btn sm" id="mrActionQuickJump">Быстрый переход</button></div><div class="grid cols3 mr-action-metrics"><div><small>Проверка</small><b>${checks}</b><span>сданные задания</span></div><div><small>Уроки</small><b>${lessons}</b><span>подготовка и завершение</span></div><div><small>Всего</small><b>${items.length}</b><span>${items.length?'можно разбирать сверху вниз':'всё закрыто'}</span></div></div><div class="mr-action-list">${items.length?items.slice(0,10).map((x,i)=>`<article class="mr-action-row ${x.priority>=90?'urgent':''}"><span class="mr-action-icon">${teacherActionIcon(x.kind)}</span><div><small>${i===0?'Следующее действие':x.kind==='homework'?'Задание':x.kind==='prep'?'До урока':x.kind==='wrap'?'После урока':'Журнал'}</small><b>${esc(x.title)}</b><em>${esc(x.meta||'')}</em></div><button class="btn sm ${i===0?'primary':''}" data-action-index="${i}">${teacherActionLabel(x)}</button></article>`).join(''):'<div class="empty">Очередь пуста — обязательных действий сейчас нет.</div>'}</div>`;
-      const work=document.querySelector('#mrTeacherWorkday');if(work)work.insertAdjacentElement('beforebegin',box);else{const top=content.querySelector('.topbar');top?top.insertAdjacentElement('afterend',box):content.prepend(box)}
-      box.querySelector('#mrActionQuickJump').onclick=openTeacherQuickJump;
-      box.querySelectorAll('[data-action-index]').forEach(b=>b.onclick=()=>{const x=items[Number(b.dataset.actionIndex)];if(!x)return;if(x.kind==='homework')openAssignmentAnywhere('homework',x.id);if(x.kind==='attendance')openAttendanceModal(x.lesson_id);if(x.kind==='wrap')openLessonWrapUp(x.lesson_id);if(x.kind==='prep')openLessonPreparation(x.lesson_id)});
-    }catch(e){console.warn('[Mathroom action center]',e)}
-  }
-
   async function refreshNonLessonEnhancements() {
     if (!S.access && S.view === 'profile') { await enhanceTeacherProfile(); await enhanceStudentAttendanceProfile(); await enhanceSmartPreparation(); await enhanceAttentionOverview(); await enhanceRoadmapOverview(); await enhanceMasteryOverview(); await enhanceLearningIntelligence(); await enhanceTargetTrajectoryOverview(); await enhanceActivityOverview(); }
     if (!S.access) enhanceTeacherQuickJump();
-    if (!S.access && S.view === 'dashboard') {
-      // v57.2: the home screen owns its own minimal sections.
-      // Remove legacy cumulative dashboard cards instead of reinserting them.
-      ['mrTeacherActionCenter','mrTeacherWorkday','mrAfterLessonFlow','mrPreparationCenter','mrHomeworkWatch','mrCommunicationInbox'].forEach(id=>document.getElementById(id)?.remove());
-    }
     if (!S.access && S.view === 'schedule') { await enhanceScheduleWorkspace(); }
     if (S.access && S.studentTab === 'today') { await enhanceStudentToday(); }
     if (S.access && S.studentTab === 'progress') { await enhanceStudentGoals(); await enhanceStudentReview(); await enhanceStudentMastery(); await enhanceStudentProgressSnapshots(); await enhanceStudentActivity(); }
