@@ -597,12 +597,131 @@ function renderTeacher(){
 }
 
 function renderDashboard(){
-  const now=Date.now(),upcoming=S.lessons.filter(x=>x.status==='assigned'&&x.scheduled_at&&new Date(x.scheduled_at).getTime()>=now).slice(0,5);
-  const pending=S.homeworks.filter(x=>x.status==='submitted').length;
-  app.innerHTML=shell(`<div class="grid cols4"><div class="card"><div class="muted">Ученики</div><div class="metric">${S.students.length}</div></div><div class="card"><div class="muted">Темы</div><div class="metric">${S.topics.length}</div></div><div class="card"><div class="muted">Задачи</div><div class="metric">${S.exercises.filter(x=>x.kind==='task').length}</div></div><div class="card"><div class="muted">На проверку</div><div class="metric">${pending}</div></div></div><div class="section-title"><h2>Ближайшие уроки</h2></div><div class="list">${upcoming.length?upcoming.map(l=>`<div class="row"><div><h3>${esc(l.students?.name||'Ученик')} · ${esc(l.topics?.title||'Без темы')}</h3><p>${dateLong(l.scheduled_at)} · ${l.duration_minutes} мин</p></div><button class="btn primary sm" data-start="${l.id}">Начать</button></div>`).join(''):'<div class="empty">Добавь первое занятие в разделе «Расписание».</div>'}</div>`,'Кабинет преподавателя','Mathroom Web v3.4 · облачная учебная система');bindShell();
-  document.querySelectorAll('[data-start]').forEach(b=>b.onclick=async()=>{const l=S.lessons.find(x=>x.id===b.dataset.start);await startLesson(l)});
-}
+  const now=Date.now();
+  const sameDay=(a,b)=>a&&b&&a.getFullYear()===b.getFullYear()&&a.getMonth()===b.getMonth()&&a.getDate()===b.getDate();
+  const clock=v=>new Date(v).toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'});
+  const shortDate=v=>new Date(v).toLocaleDateString('ru-RU',{day:'numeric',month:'long'});
+  const initials=name=>String(name||'У').trim().split(/\s+/).filter(Boolean).slice(0,2).map(x=>x[0]?.toUpperCase()||'').join('')||'У';
+  const stById=id=>(S.students||[]).find(x=>String(x.id)===String(id));
+  const tpById=id=>(S.topics||[]).find(x=>String(x.id)===String(id));
+  const studentName=l=>l?.students?.name||stById(l?.student_id)?.name||'Ученик';
+  const grade=l=>l?.students?.grade||stById(l?.student_id)?.grade||'';
+  const topic=l=>l?.topics?.title||tpById(l?.topic_id)?.title||'Без темы';
+  const icon=body=>`<span class="mr-dash-icon"><svg viewBox="0 0 24 24" aria-hidden="true">${body}</svg></span>`;
+  const iPlus=icon('<path d="M12 5v14M5 12h14"/>');
+  const iClock=icon('<circle cx="12" cy="12" r="8"/><path d="M12 8v5l3 2"/>');
+  const iWarn=icon('<path d="M12 3 22 20H2L12 3Z"/><path d="M12 9v4M12 17h.01"/>');
+  const iCalendar=icon('<rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M8 3v4M16 3v4M3.5 10h17"/>');
+  const iPlay=icon('<path d="m8 5 11 7-11 7z"/>');
+  const iBook=icon('<path d="M4 5c3.2-1.2 5.9-.7 8 1.1V20c-2.1-1.8-4.8-2.3-8-1.1V5Z"/><path d="M20 5c-3.2-1.2-5.9-.7-8 1.1V20c2.1-1.8 4.8-2.3 8-1.1V5Z"/>');
+  const iArrow=icon('<path d="M5 12h14M14 7l5 5-5 5"/>');
 
+  const current=(S.lessons||[]).filter(l=>{
+    if(!l.scheduled_at||l.status==='cancelled'||l.status==='completed')return false;
+    return l.status==='in_progress'||new Date(l.scheduled_at).getTime()>=now;
+  }).sort((a,b)=>{
+    if(a.status==='in_progress'&&b.status!=='in_progress')return -1;
+    if(b.status==='in_progress'&&a.status!=='in_progress')return 1;
+    return new Date(a.scheduled_at)-new Date(b.scheduled_at);
+  })[0]||null;
+
+  const todayStart=new Date();todayStart.setHours(0,0,0,0);
+  const tomorrow=new Date(todayStart);tomorrow.setDate(tomorrow.getDate()+1);
+  const today=(S.lessons||[]).filter(l=>{
+    if(!l.scheduled_at||l.status==='cancelled')return false;
+    const d=new Date(l.scheduled_at);
+    return d>=todayStart&&d<tomorrow;
+  }).sort((a,b)=>new Date(a.scheduled_at)-new Date(b.scheduled_at));
+
+  const attention=[];
+  const pushAttention=(studentId,kind,reason,meta)=>{
+    const st=stById(studentId),name=st?.name||'Ученик';
+    const key=`${studentId}|${kind}|${reason}`;
+    if(attention.some(x=>x.key===key))return;
+    attention.push({key,kind,name,reason,meta});
+  };
+  (S.homeworks||[]).forEach(h=>{
+    if(h.status==='assigned'&&!h.revision_requested_at&&h.due_at&&new Date(h.due_at).getTime()<now){
+      const days=Math.max(1,Math.ceil((now-new Date(h.due_at).getTime())/86400000));
+      pushAttention(h.student_id,'assignments','Не сдано домашнее задание',`${days} ${days===1?'день':'дн.'} просрочки`);
+    }else if(h.status==='submitted')pushAttention(h.student_id,'assignments','Домашняя ждёт проверки','На проверке');
+    else if(h.status==='assigned'&&h.revision_requested_at)pushAttention(h.student_id,'assignments','Работа на доработке','Нужна повторная сдача');
+  });
+  (S.lessons||[]).forEach(l=>{
+    if(['missed','absent','no_show'].includes(String(l.status||'')))pushAttention(l.student_id,'history','Пропущено занятие',shortDate(l.scheduled_at||new Date()));
+  });
+  const attentionTop=attention.slice(0,3);
+
+  const teacherRaw=String(S.teacher?.name||S.teacher?.full_name||S.teacher?.display_name||S.teacher?.email||'').trim();
+  const teacherName=teacherRaw?(teacherRaw.includes('@')?teacherRaw.split('@')[0]:teacherRaw.split(/\s+/)[0]):'';
+  const title=teacherName?`Привет, ${esc(teacherName)}!`:'Главная';
+
+  const when=l=>{
+    if(l?.status==='in_progress')return 'Идёт сейчас';
+    const d=new Date(l.scheduled_at),diff=d.getTime()-now;
+    if(diff>=0&&diff<3600000){
+      const min=Math.max(1,Math.round(diff/60000));
+      return `Через ${min} ${min%10===1&&min%100!==11?'минуту':min%10>=2&&min%10<=4&&(min%100<10||min%100>=20)?'минуты':'минут'}`;
+    }
+    if(sameDay(d,new Date(now)))return `Сегодня · ${clock(l.scheduled_at)}`;
+    return `${shortDate(l.scheduled_at)} · ${clock(l.scheduled_at)}`;
+  };
+
+  const nextHtml=current?`
+    <section class="mr-dash-next">
+      <div class="mr-dash-card-head"><div class="mr-dash-card-title">${iClock}<h2>Ближайший урок</h2></div><span class="mr-dash-next-time">${esc(when(current))}</span></div>
+      <div class="mr-dash-next-body">
+        <div class="mr-dash-avatar large">${esc(initials(studentName(current)))}</div>
+        <div class="mr-dash-next-copy"><h3>${esc(studentName(current))}</h3><p>${esc(grade(current)?grade(current)+' класс · ':'')}${esc(topic(current))}</p><span>${iCalendar}${esc(clock(current.scheduled_at))} · ${Number(current.duration_minutes||50)} мин</span></div>
+        <div class="mr-dash-next-actions"><button class="mr-dash-primary" data-dash-start="${esc(current.id)}">${iPlay}${current.status==='in_progress'?'Продолжить урок':'Начать урок'}</button>${current.topic_id?`<button class="mr-dash-secondary" data-dash-topic="${esc(current.topic_id)}">${iBook}Открыть тему</button>`:''}</div>
+      </div>
+    </section>`:`
+    <section class="mr-dash-next mr-dash-empty-card">
+      <div class="mr-dash-card-title">${iClock}<h2>Ближайший урок</h2></div>
+      <div class="mr-dash-empty-copy"><b>Пока ничего не запланировано</b><span>Создай занятие прямо с главной — оно сразу появится в расписании.</span></div>
+      <button class="mr-dash-primary" id="mrDashCreateEmpty">${iPlus}Создать урок сейчас</button>
+    </section>`;
+
+  const attentionHtml=`
+    <section class="mr-dash-attention">
+      <div class="mr-dash-card-head"><div class="mr-dash-card-title">${iWarn}<h2>Требуют внимания</h2></div>${attentionTop.length?`<button class="mr-dash-link" id="mrDashAttentionAll">Смотреть все ${iArrow}</button>`:''}</div>
+      ${attentionTop.length?`<div class="mr-dash-attention-list">${attentionTop.map(x=>`<button class="mr-dash-attention-row" data-dash-attention="${esc(x.kind)}"><span class="mr-dash-avatar">${esc(initials(x.name))}</span><span class="mr-dash-attention-copy"><b>${esc(x.name)}</b><small>${esc(x.reason)}</small></span><em>${esc(x.meta)}</em></button>`).join('')}</div>`:`<div class="mr-dash-calm"><b>Всё спокойно</b><span>Просроченных ДЗ и других срочных сигналов сейчас нет.</span></div>`}
+    </section>`;
+
+  const dateLabel=new Date().toLocaleDateString('ru-RU',{weekday:'long',day:'numeric',month:'long'});
+  const todayHtml=`
+    <section class="mr-dash-today">
+      <div class="mr-dash-card-head"><div class="mr-dash-card-title">${iCalendar}<h2>Сегодня</h2><span class="mr-dash-date">${esc(dateLabel)}</span></div><button class="mr-dash-link" id="mrDashSchedule">Открыть расписание ${iArrow}</button></div>
+      ${today.length?`<div class="mr-dash-today-list">${today.map(l=>{
+        const done=l.status==='completed',active=l.status==='in_progress';
+        return `<article class="mr-dash-today-row ${active?'active ':''}${done?'done':''}"><div class="mr-dash-today-time"><b>${esc(clock(l.scheduled_at))}</b><span>${Number(l.duration_minutes||50)} мин</span></div><span class="mr-dash-avatar">${esc(initials(studentName(l)))}</span><div class="mr-dash-today-copy"><b>${esc(studentName(l))}</b><span>${esc((grade(l)?grade(l)+' класс · ':'')+topic(l))}</span></div><div class="mr-dash-today-action">${done?'<span class="mr-dash-status">Завершён</span>':`<button class="${active?'mr-dash-primary':'mr-dash-secondary'}" data-dash-start="${esc(l.id)}">${iPlay}${active?'Продолжить':'Начать урок'}</button>`}</div></article>`;
+      }).join('')}</div>`:`<div class="mr-dash-calm"><b>На сегодня занятий нет</b><span>Можно спокойно готовиться к следующему уроку или создать новый.</span></div>`}
+    </section>`;
+
+  app.innerHTML=shell(`<div class="mr-dashboard"><div class="mr-dash-grid">${nextHtml}${attentionHtml}</div>${todayHtml}</div>`,title,'Хорошего дня и продуктивных уроков!');
+  bindShell();
+
+  const top=document.querySelector('.view-dashboard .topbar');
+  if(top)top.insertAdjacentHTML('beforeend',`<div class="mr-dash-top-actions"><button class="mr-dash-primary" id="mrDashCreateNow">${iPlus}Создать урок сейчас</button><button class="mr-dash-secondary" id="mrDashHelp">?&nbsp;&nbsp;Инструкция</button></div>`);
+
+  const openScheduleCreator=()=>{
+    S.view='schedule';renderTeacher();
+    let tries=0;
+    const timer=setInterval(()=>{
+      const b=document.querySelector('[data-v48-add-main]');
+      if(b){clearInterval(timer);b.click();return}
+      if(++tries>40)clearInterval(timer);
+    },80);
+  };
+  document.getElementById('mrDashCreateNow')?.addEventListener('click',openScheduleCreator);
+  document.getElementById('mrDashCreateEmpty')?.addEventListener('click',openScheduleCreator);
+  document.getElementById('mrDashHelp')?.addEventListener('click',()=>document.getElementById('sidebarHelp')?.click());
+  document.getElementById('mrDashSchedule')?.addEventListener('click',()=>{S.view='schedule';renderTeacher()});
+  document.getElementById('mrDashAttentionAll')?.addEventListener('click',()=>{S.view='assignments';renderTeacher()});
+  document.querySelectorAll('[data-dash-attention]').forEach(b=>b.addEventListener('click',()=>{S.view=b.dataset.dashAttention==='history'?'history':'assignments';renderTeacher()}));
+  document.querySelectorAll('[data-dash-topic]').forEach(b=>b.addEventListener('click',()=>{S.topic=(S.topics||[]).find(x=>String(x.id)===String(b.dataset.dashTopic))||null;if(S.topic){S.view='topics';renderTeacher()}}));
+  document.querySelectorAll('[data-dash-start]').forEach(b=>b.addEventListener('click',async()=>{const l=(S.lessons||[]).find(x=>String(x.id)===String(b.dataset.dashStart));if(l)await startLesson(l)}));
+}
 function renderStudents(){
   const all=(S.students||[]).slice();
   const classes=[...new Set(all.map(s=>Number(s.grade)).filter(Boolean))].sort((a,b)=>a-b);
