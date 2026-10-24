@@ -579,6 +579,17 @@ function bindShell(){
   document.querySelectorAll('[data-nav]').forEach(b=>b.onclick=()=>{cleanupAll();forgetActiveLesson();S.view=b.dataset.nav;S.topic=null;S.activeLesson=null;renderTeacher()});
   const l=document.getElementById('logout');if(l)l.onclick=async()=>{cleanupAll();forgetActiveLesson();if(teacherAccessWatch){clearInterval(teacherAccessWatch);teacherAccessWatch=null}await clearAuthSession();await sb.auth.signOut();S.user=S.teacher=null;renderAuth()};
 }
+function renderTaskBuilder(){
+  const mod=window.MathroomTaskBuilderV60;
+  if(!mod?.render)return toast('Конструктор задач не загрузился');
+  return mod.render({
+    app,shell,bindShell,S,sb,esc,nl,toast,fail,loadTeacher,
+    renderBank,renderTopic,renderTopics,
+    sharedMaterialForExercise,sharedMaterialUserTags,
+    exerciseSystemTags,curriculumBank
+  });
+}
+
 function renderTeacher(){
   cleanupAll();
   if(S.view!=='lesson')rememberTeacherView(S.view);
@@ -586,6 +597,7 @@ function renderTeacher(){
   if(S.view==='profile')return renderStudentProfile(S.selectedStudent);
   if(S.view==='topics')return S.topic?renderTopic():renderTopics();
   if(S.view==='textbooks')return renderTextbooks();
+  if(S.view==='task-builder')return renderTaskBuilder();
   if(S.view==='bank')return renderBank();
   if(S.view==='schedule')return renderSchedule();
   if(S.view==='assignments')return renderAssignments();
@@ -1091,6 +1103,12 @@ async function deleteTopicRow(t,{returnToTopics=true}={}){
   await loadTeacher();if(S.topic?.id===t.id)S.topic=null;if(returnToTopics){S.view='topics';renderTopics()}toast('Тема удалена');return true;
 }
 function editExerciseModal(x,{onDone}={}){
+  if(x?.kind==='task'){
+    S.taskBuilderExerciseId=x.id;
+    S.taskBuilderReturn={view:S.view==='topics'?'topics':'bank',topicId:S.topic?.id||null};
+    S.view='task-builder';
+    return renderTaskBuilder();
+  }
   const topic=S.topics.find(t=>t.id===x.topic_id),userTags=exerciseEditableTags(x.tags).join(', ');
   const m=modal(`<h2>Редактировать ${x.kind==='example'?'пример':'задачу'}</h2><p class="muted">${esc(topic?.grade||'')} класс · ${esc(topic?.title||'Без темы')}</p><div class="grid cols3"><div class="field"><label>Тип</label><select id="eeKind"><option value="task" ${x.kind==='task'?'selected':''}>Задача</option><option value="example" ${x.kind==='example'?'selected':''}>Пример</option></select></div><div class="field"><label>Сложность</label><select id="eeDiff"><option value="basic" ${x.difficulty==='basic'?'selected':''}>Базовая</option><option value="medium" ${x.difficulty==='medium'?'selected':''}>Средняя</option><option value="advanced" ${x.difficulty==='advanced'?'selected':''}>Сложная</option></select></div><div class="field"><label>Категория</label><input id="eeCat" value="${esc(x.category||'')}"></div></div><div class="field"><label>Название</label><input id="eeTitle" value="${esc(x.title||'')}"></div><div class="field"><label>Условие</label><textarea id="eeContent" rows="7">${esc(x.content||'')}</textarea></div><div class="grid cols2"><div class="field"><label>Ответ</label><input id="eeAnswer" value="${esc(x.answer||'')}"></div><div class="field"><label>Теги через запятую</label><input id="eeTags" value="${esc(userTags)}"></div></div><div class="actions"><button class="btn primary" id="saveExerciseEdit">Сохранить</button></div>`,'wide-modal');
   m.querySelector('#saveExerciseEdit').onclick=async()=>{const content=m.querySelector('#eeContent').value.trim();if(!content)return toast('Условие не может быть пустым');const tags=[...exerciseSystemTags(x.tags)];if(topic){tags.push(`класс-${topic.grade}`,`тема:${topic.title}`)}for(const tag of m.querySelector('#eeTags').value.split(',').map(v=>v.trim()).filter(Boolean)){if(!tags.includes(tag))tags.push(tag)}const body={kind:m.querySelector('#eeKind').value,title:m.querySelector('#eeTitle').value.trim(),content,answer:m.querySelector('#eeAnswer').value.trim(),difficulty:m.querySelector('#eeDiff').value,category:m.querySelector('#eeCat').value.trim(),tags};const {error}=await sb.from('exercises').update(body).eq('id',x.id);if(error)return fail(error);m.remove();await loadTeacher();if(S.topic)S.topic=S.topics.find(t=>t.id===S.topic.id)||S.topic;onDone?.();toast('Материал обновлён')};
@@ -1634,6 +1652,7 @@ function renderBank(){
       <span class="pill">${own.filter(x=>x.kind==='task').length} задач</span>
       <span class="pill">${own.filter(x=>x.kind==='example').length} примеров</span>
       <span class="pill">${builtIn} из готовой базы</span>
+      <button class="btn sm primary" id="createBankTask">＋ Создать задачу</button>
       <button class="btn sm" id="syncCurriculumBank">Обновить базу 1–11</button>
     </div>
     <div class="form-card mr-library-filters">
@@ -1650,6 +1669,12 @@ function renderBank(){
     </div>
     <div id="bankList"></div>`,'Библиотека материалов','Задачи и примеры: личные копии + общая библиотека преподавателей');
   bindShell();
+  document.getElementById('createBankTask').onclick=()=>{
+    S.taskBuilderExerciseId=null;
+    S.taskBuilderReturn={view:'bank',topicId:null};
+    S.view='task-builder';
+    renderTaskBuilder();
+  };
   document.getElementById('syncCurriculumBank').onclick=()=>syncCurriculumBank({manual:true});
   document.querySelectorAll('[data-library-mode]').forEach(b=>b.onclick=()=>{S.bankLibraryMode=b.dataset.libraryMode;renderBank()});
 
@@ -1694,7 +1719,7 @@ function renderBank(){
     host.innerHTML=`<div class="list mr-personal-library-list">${arr.length?arr.map(x=>{
       const t=(S.topics||[]).find(z=>String(z.id)===String(x.topic_id));
       const visibleTags=exerciseEditableTags(x.tags),published=sharedMaterialForExercise(x.id);
-      return `<div class="row mr-library-own-row"><div><div class="actions"><span class="pill">${x.kind==='example'?'Пример':'Задача'}</span><span class="pill">${t?.grade||'?'} кл.</span><span class="pill">${diffLabel(x.difficulty)}</span>${x.category?`<span class="pill">${esc(x.category)}</span>`:''}${published?'<span class="pill good">в общей библиотеке</span>':''}</div><h3>${esc(x.title||(x.kind==='example'?'Пример':'Задача'))}</h3><div class="prewrap">${nl(x.content)}</div><p>${esc(t?.section||'')} · ${esc(t?.title||'')} ${visibleTags.map(z=>'#'+esc(z)).join(' ')} · использован ${x.use_count||0} раз</p></div><div class="actions mr-library-own-actions"><button class="btn sm" data-answer="${x.id}">Ответ</button>${published?`<button class="btn sm library" data-bank-share="${x.id}">Обновить общую</button><button class="btn sm danger" data-bank-unshare="${x.id}">Убрать из общей</button>`:`<button class="btn sm library" data-bank-share="${x.id}">＋ В общую</button>`}<button class="btn sm" data-bank-edit="${x.id}">Редактировать</button><button class="btn sm danger" data-bank-delete="${x.id}">Удалить</button></div></div>`;
+      return `<div class="row mr-library-own-row"><div><div class="actions"><span class="pill">${x.kind==='example'?'Пример':'Задача'}</span><span class="pill">${t?.grade||'?'} кл.</span><span class="pill">${diffLabel(x.difficulty)}</span>${x.category?`<span class="pill">${esc(x.category)}</span>`:''}${x.is_draft?'<span class="pill warn">черновик</span>':''}${published?'<span class="pill good">в общей библиотеке</span>':''}</div><h3>${esc(x.title||(x.kind==='example'?'Пример':'Задача'))}</h3><div class="prewrap">${nl(x.content)}</div><p>${esc(t?.section||'')} · ${esc(t?.title||'')} ${visibleTags.map(z=>'#'+esc(z)).join(' ')} · использован ${x.use_count||0} раз</p></div><div class="actions mr-library-own-actions"><button class="btn sm" data-answer="${x.id}">Ответ</button>${published?`<button class="btn sm library" data-bank-share="${x.id}">Обновить общую</button><button class="btn sm danger" data-bank-unshare="${x.id}">Убрать из общей</button>`:`<button class="btn sm library" data-bank-share="${x.id}">＋ В общую</button>`}<button class="btn sm" data-bank-edit="${x.id}">Редактировать</button><button class="btn sm danger" data-bank-delete="${x.id}">Удалить</button></div></div>`;
     }).join(''):'<div class="empty">Ничего не найдено.</div>'}</div>`;
     host.querySelectorAll('[data-answer]').forEach(b=>b.onclick=()=>{const e=own.find(x=>String(x.id)===String(b.dataset.answer));if(e)modal(`<h2>${esc(e.title||'Ответ')}</h2><div class="notice mono">${esc(e.answer||'Ответ не заполнен')}</div>`)});
     host.querySelectorAll('[data-bank-share]').forEach(b=>b.onclick=()=>{const e=own.find(x=>String(x.id)===String(b.dataset.bankShare));if(e)publishExerciseToSharedLibrary(e,{onDone:renderBank})});
