@@ -1664,18 +1664,18 @@ function renderBank(){
     </div>
     <div class="form-card mr-library-filters mr-bank-filter-card">
       <div class="mr-bank-filter-head">
-        <div class="mr-bank-filter-title"><span aria-hidden="true">⌕</span><div><h2>Поиск и фильтры</h2><p>Найди нужные задачи с помощью фильтров</p></div></div>
+        <div class="mr-bank-filter-title"><span aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 5 5"/><path d="M8 10.5h5M10.5 8v5"/></svg></span><div><h2>Поиск и фильтры</h2><p>Найди нужные задачи с помощью фильтров</p></div></div>
         <button type="button" id="bankReset" class="mr-bank-reset">↻&nbsp; Сбросить фильтры</button>
       </div>
       <div class="grid cols4">
-        <div class="field"><label>Поиск</label><input id="bankSearch" placeholder="условие, тег, тема..."></div>
-        <div class="field"><label>Тип</label><select id="bankKind"><option value="">Все</option><option value="task">Задачи</option><option value="example">Примеры</option></select></div>
-        <div class="field"><label>Класс</label><select id="bankGrade"><option value="">Все</option>${grades.map(x=>`<option value="${x}">${x}</option>`).join('')}</select></div>
-        <div class="field"><label>Сложность</label><select id="bankDiff"><option value="">Все</option><option value="basic">Базовые</option><option value="medium">Средние</option><option value="advanced">Сложные</option></select></div>
+        <div class="field mr-bank-field"><label>Поиск</label><span class="mr-bank-field-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 5 5"/></svg></span><input id="bankSearch" placeholder="условие, тег, тема..."></div>
+        <div class="field mr-bank-field"><label>Тип</label><span class="mr-bank-field-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="6" height="6" rx="1.5"/><rect x="14" y="4" width="6" height="6" rx="1.5"/><rect x="4" y="14" width="6" height="6" rx="1.5"/><path d="M14 17h6M17 14v6"/></svg></span><select id="bankKind"><option value="">Все</option><option value="task">Задачи</option><option value="example">Примеры</option></select></div>
+        <div class="field mr-bank-field"><label>Класс</label><span class="mr-bank-field-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m3 9 9-5 9 5-9 5-9-5Z"/><path d="M7 12.2V17c2.8 2 7.2 2 10 0v-4.8"/><path d="M21 9v6"/></svg></span><select id="bankGrade"><option value="">Все</option>${grades.map(x=>`<option value="${x}">${x}</option>`).join('')}</select></div>
+        <div class="field mr-bank-field"><label>Сложность</label><span class="mr-bank-field-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 19V14M12 19V9M19 19V4"/><path d="M3 19h18"/></svg></span><select id="bankDiff"><option value="">Все</option><option value="basic">Базовые</option><option value="medium">Средние</option><option value="advanced">Сложные</option></select></div>
       </div>
-      <div class="grid cols2" style="margin-top:10px">
-        <div class="field"><label>Категория</label><select id="bankCat"><option value="">Все</option>${categories.map(x=>`<option>${esc(x)}</option>`).join('')}</select></div>
-        <div class="field"><label>Тег</label><select id="bankTag"><option value="">Все</option>${tags.map(x=>`<option>${esc(x)}</option>`).join('')}</select></div>
+      <div class="grid cols2" style="margin-top:12px">
+        <div class="field mr-bank-field"><label>Категория</label><span class="mr-bank-field-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3.5 7.5h7l2-2h8v13h-17v-11Z"/><path d="M3.5 9.5h17"/></svg></span><select id="bankCat"><option value="">Все</option>${categories.map(x=>`<option>${esc(x)}</option>`).join('')}</select></div>
+        <div class="field mr-bank-field"><label>Тег</label><span class="mr-bank-field-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 5h8l8 8-7 7-8-8V5Z"/><circle cx="8.5" cy="9.5" r="1.3"/></svg></span><select id="bankTag"><option value="">Все</option>${tags.map(x=>`<option>${esc(x)}</option>`).join('')}</select></div>
       </div>
     </div>
     <div id="bankList" class="mr-bank-results"></div>`,'Банк задач','Ищите, сохраняйте и используйте задачи на занятиях');
