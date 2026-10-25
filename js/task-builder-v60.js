@@ -26,7 +26,16 @@
     const diffName=v=>v==="advanced"?"Сложная":v==="medium"?"Средняя":"Простая";
     const typeName=v=>({standard:"Обычная задача",numeric:"Числовой ответ",single:"Тест",multiple:"Несколько ответов",open:"Развёрнутый ответ"}[v]||"Обычная задача");
     const q=id=>document.getElementById(id);
-    const section=(n,title,sub)=>'<div class="mr-tb-head"><span>'+n+'</span><div><h2>'+title+'</h2><p>'+sub+'</p></div></div>';
+    const icon=name=>{const map={
+      info:'<path d="M4 6.5h16v12H4z"/><path d="M8 4v5M16 4v5M8 13h3M13 13h3"/>',
+      condition:'<path d="M5 4h10l4 4v12H5z"/><path d="M15 4v5h5M8 13h8M8 16h6"/>',
+      answer:'<circle cx="12" cy="12" r="8"/><path d="m8.5 12 2.3 2.3 4.9-5"/>',
+      solution:'<path d="M4 18h16M7 15l7-7 3 3-7 7H7v-3Z"/><path d="m13 9 3 3"/>',
+      source:'<path d="M5 5h11a3 3 0 0 1 3 3v11H8a3 3 0 0 1-3-3V5Z"/><path d="M8 19a3 3 0 0 1 0-6h11M9 8h6"/>',
+      preview:'<path d="M3 12s3.5-6 9-6 9 6 9 6-3.5 6-9 6-9-6-9-6Z"/><circle cx="12" cy="12" r="2.5"/>',
+      settings:'<circle cx="12" cy="12" r="3"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6 7 7M17 17l1.4 1.4M18.4 5.6 17 7M7 17l-1.4 1.4"/>'
+    };return '<svg viewBox="0 0 24 24" aria-hidden="true">'+(map[name]||map.info)+'</svg>'};
+    const section=(name,title,sub)=>'<div class="mr-tb-head"><span>'+icon(name)+'</span><div><h2>'+title+'</h2><p>'+sub+'</p></div></div>';
     const types=[["standard","Обычная задача"],["numeric","Числовой ответ"],["single","Тест"],["multiple","Несколько ответов"],["open","Развёрнутый ответ"]];
     const typeButtons=types.map(([v,n])=>'<button type="button" data-tb-type="'+v+'" class="'+(state.taskType===v?"active":"")+'">'+n+'</button>').join("");
     const diffButtons=[["basic","Простая"],["medium","Средняя"],["advanced","Сложная"]].map(([v,n])=>'<button type="button" data-tb-diff="'+v+'" class="'+(state.difficulty===v?"active":"")+'">'+n+'</button>').join("");
@@ -34,30 +43,30 @@
     const top='<div class="mr-tb-top"><button id="tbExit" class="ghost">← В банк</button><button id="tbDraft">Сохранить в черновики</button><button id="tbSave" class="save">✓ '+(editing?"Сохранить изменения":"Сохранить задачу")+'</button></div>';
     const html=
       '<div class="mr-task-builder"><div class="mr-tb-grid"><main class="mr-tb-main">'+
-        '<section class="mr-tb-card">'+section("1","Основная информация","Выберите тему, сложность и тип задачи")+
+        '<section class="mr-tb-card">'+section("info","Основная информация","Выберите тему, сложность и тип задачи")+
           '<div class="mr-tb-fields"><label><span>Класс</span><select id="tbGrade">'+grades+'</select></label><label class="topic"><span>Тема</span><select id="tbTopic"></select></label><label><span>Подтема <em>(необязательно)</em></span><input id="tbSubtopic" value="'+esc(state.subtopic)+'" placeholder="Например: Округление"></label></div>'+
           '<div class="mr-tb-choices"><div><b>Сложность</b><div class="mr-tb-segments">'+diffButtons+'</div></div><div class="grow"><b>Тип задачи</b><div class="mr-tb-segments types">'+typeButtons+'</div></div></div>'+
         '</section>'+
-        '<section class="mr-tb-card">'+section("2","Условие задачи","Введите текст, добавьте формулы и структурные элементы")+
+        '<section class="mr-tb-card">'+section("condition","Условие задачи","Введите текст, добавьте формулы и структурные элементы")+
           '<div class="mr-tb-toolbar"><button data-insert="text">T&nbsp; Текст</button><button class="active" data-insert="formula">∿&nbsp; Формула</button><button data-insert="list">☷&nbsp; Список</button><button data-insert="template">◇&nbsp; Шаблон</button><button data-coming="Изображения">▧&nbsp; Изображение</button><button data-coming="Таблицы">⊞&nbsp; Таблица</button><button data-coming="Геометрия">△&nbsp; Геометрия</button></div>'+
           '<div class="mr-tb-editor"><textarea id="tbContent" maxlength="5000" placeholder="Введите условие задачи…">'+esc(state.content)+'</textarea><span id="tbContentCount">'+state.content.length+'/5000</span></div>'+
         '</section>'+
-        '<section class="mr-tb-card">'+section("3","Правильный ответ","Укажите правильный ответ и допустимые варианты")+
+        '<section class="mr-tb-card">'+section("answer","Правильный ответ","Укажите правильный ответ и допустимые варианты")+
           '<div class="mr-tb-answer-types">'+typeButtons+'</div><div id="tbAnswerEditor"></div>'+
         '</section>'+
         '<div class="mr-tb-bottom">'+
-          '<section class="mr-tb-card">'+section("4","Решение и подсказки","Добавьте решение для преподавателя и подсказки ученику")+
+          '<section class="mr-tb-card">'+section("solution","Решение и подсказки","Добавьте решение для преподавателя и подсказки ученику")+
             '<div class="mr-tb-help-tabs"><button class="active" data-help="solution">Решение</button><button data-help="hint0">Подсказка 1</button><button data-help="hint1">Подсказка 2</button><button data-help="hint2">Подсказка 3</button></div>'+
             '<div class="mr-tb-mini-tools"><button data-help-insert="formula">∿ Формула</button><button data-help-insert="list">☷ Список</button></div>'+
             '<div class="mr-tb-editor small"><textarea id="tbHelp" maxlength="5000"></textarea><span id="tbHelpCount">0/5000</span></div>'+
           '</section>'+
-          '<section class="mr-tb-card">'+section("5","Источник","Укажите, откуда взята задача")+
+          '<section class="mr-tb-card">'+section("source","Источник","Укажите, откуда взята задача")+
             '<div class="mr-tb-source-tabs"><button data-source="textbook" class="'+(state.source.kind==="textbook"?"active":"")+'">Учебник</button><button data-source="mine" class="'+(state.source.kind==="mine"?"active":"")+'">Моя задача</button><button data-source="ai" class="'+(state.source.kind==="ai"?"active":"")+'">Сгенерировано AI</button><button data-source="other" class="'+(state.source.kind==="other"?"active":"")+'">Другое</button></div><div id="tbSource"></div>'+
           '</section>'+
         '</div>'+
       '</main><aside class="mr-tb-side">'+
-        '<section class="mr-tb-preview-card"><div class="mr-tb-sidehead"><span>◇</span><div><h2>Предпросмотр задачи</h2><p>Так задачу увидит ученик</p></div></div><div class="mr-tb-preview-tabs"><button class="active">Условие</button><button data-info="Решение видно только преподавателю">Решение</button><button data-info="Подсказки открываются ученику по очереди">Подсказки</button></div><div id="tbPreview"></div></section>'+
-        '<section class="mr-tb-settings"><div class="mr-tb-sidehead"><span>◈</span><div><h2>Параметры использования</h2><p>Настройки для банка задач</p></div></div>'+
+        '<section class="mr-tb-preview-card"><div class="mr-tb-sidehead"><span>'+icon("preview")+'</span><div><h2>Предпросмотр задачи</h2><p>Так задачу увидит ученик</p></div></div><div class="mr-tb-preview-tabs"><button class="active">Условие</button><button data-info="Решение видно только преподавателю">Решение</button><button data-info="Подсказки открываются ученику по очереди">Подсказки</button></div><div id="tbPreview"></div></section>'+
+        '<section class="mr-tb-settings"><div class="mr-tb-sidehead"><span>'+icon("settings")+'</span><div><h2>Параметры использования</h2><p>Настройки для банка задач</p></div></div>'+
           '<label class="mr-tb-toggle disabled"><div><b>Добавить в мой банк задач</b><small>Сохранённая задача всегда остаётся в вашей библиотеке</small></div><input checked disabled type="checkbox"><i></i></label>'+
           '<label class="mr-tb-toggle"><div><b>Добавить в общий банк</b><small>Задача станет доступна всем преподавателям</small></div><input id="tbShared" '+(state.settings.shared?"checked":"")+' type="checkbox"><i></i></label>'+
           '<label class="mr-tb-toggle"><div><b>Разрешить использование в тестах</b><small>Эту задачу можно будет добавлять в тесты</small></div><input id="tbAllowTests" '+(state.settings.allowTests?"checked":"")+' type="checkbox"><i></i></label>'+
