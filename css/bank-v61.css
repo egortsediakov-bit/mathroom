@@ -269,3 +269,134 @@ html[data-theme=dark] .view-bank .mr-bank-import-copy p{color:#a3acb6!important}
   .view-bank .mr-library-own-row:after{left:25px;width:24px}
   .view-bank .mr-library-own-actions{flex-wrap:wrap!important}
 }
+
+/* v61.1 bank polish — Topics visual language */
+.view-bank .mr-bank-summary .pill{
+  min-height:38px!important;padding:0 14px!important;border-radius:13px!important;
+  font-size:11px!important;font-weight:850!important
+}
+.view-bank .mr-bank-summary .btn{
+  min-height:44px!important;padding:0 16px!important;border-radius:13px!important;
+  font-size:11px!important
+}
+.view-bank .mr-bank-summary .btn.primary{font-size:12px!important;padding:0 19px!important}
+
+.view-bank .mr-bank-filter-card{
+  position:relative;overflow:hidden;
+  padding:21px 22px 22px!important;border-radius:24px!important;
+  border-color:#eadfd8!important;
+  background:
+    radial-gradient(circle at 92% 118%,rgba(243,90,22,.105) 0 125px,transparent 126px),
+    radial-gradient(circle at 82% -22%,rgba(243,90,22,.055) 0 105px,transparent 106px),
+    linear-gradient(110deg,#fff 0%,#fff 62%,#fff7f2 100%)!important;
+  box-shadow:0 12px 34px rgba(18,21,25,.055)!important
+}
+.view-bank .mr-bank-filter-card:after{
+  content:"";position:absolute;right:5%;bottom:-108px;width:205px;height:205px;border-radius:50%;
+  border:1px solid rgba(243,90,22,.16);pointer-events:none
+}
+.view-bank .mr-bank-filter-card>*{position:relative;z-index:1}
+.view-bank .mr-bank-filter-head{margin-bottom:18px}
+.view-bank .mr-bank-filter-title{gap:13px}
+.view-bank .mr-bank-filter-title>span{
+  width:46px;height:46px;flex:0 0 46px;border-radius:14px;
+  background:linear-gradient(145deg,#24272a,#0c0e10);color:#ff6a24;border:1px solid #2e3236;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.08),0 8px 18px rgba(15,17,19,.13)
+}
+.view-bank .mr-bank-filter-title>span svg{width:23px;height:23px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+.view-bank .mr-bank-filter-title h2{font-size:19px!important;letter-spacing:-.02em}
+.view-bank .mr-bank-filter-title p{margin-top:4px!important;font-size:11.5px!important}
+.view-bank .mr-bank-reset{
+  min-height:42px;padding:0 15px;border-radius:13px;font-size:11px;
+  box-shadow:0 5px 14px rgba(243,90,22,.06)
+}
+.view-bank .mr-bank-filter-card .grid{gap:12px!important}
+.view-bank .mr-bank-field{position:relative;min-width:0}
+.view-bank .mr-bank-filter-card .field label{
+  margin-bottom:7px!important;font-size:11.5px!important;letter-spacing:.005em
+}
+.view-bank .mr-bank-field-icon{
+  position:absolute;left:14px;bottom:15px;width:24px;height:24px;display:grid;place-items:center;
+  color:#f35a16;pointer-events:none;z-index:2
+}
+.view-bank .mr-bank-field-icon svg{width:19px;height:19px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.view-bank .mr-bank-filter-card input,
+.view-bank .mr-bank-filter-card select{
+  min-height:54px!important;border-radius:16px!important;border-color:#eadfd7!important;
+  background:
+    radial-gradient(circle at 92% 125%,rgba(243,90,22,.07) 0 45px,transparent 46px),
+    linear-gradient(180deg,#fffdfb,#fff8f4)!important;
+  font-size:13.5px!important;font-weight:700!important;
+  padding-left:46px!important;padding-right:34px!important;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.85),0 5px 14px rgba(17,20,24,.025)
+}
+.view-bank .mr-bank-filter-card input::placeholder{color:#a3aab2!important}
+.view-bank .mr-bank-filter-card input:hover,
+.view-bank .mr-bank-filter-card select:hover{border-color:#ffc8ad!important}
+.view-bank .mr-bank-filter-card input:focus,
+.view-bank .mr-bank-filter-card select:focus{
+  border-color:#ff8f5a!important;box-shadow:0 0 0 4px rgba(243,90,22,.09),0 7px 18px rgba(243,90,22,.05)!important;
+  background:#fff!important
+}
+
+.view-bank #pdfTaskImportCard.mr-bank-import,
+.view-bank #pdfTaskImportCard{
+  position:relative;overflow:hidden;
+  padding:20px 22px!important;border-radius:24px!important;border-color:#f0d8ca!important;
+  background:
+    radial-gradient(circle at 12% 145%,rgba(243,90,22,.11) 0 115px,transparent 116px),
+    radial-gradient(circle at 88% -30%,rgba(243,90,22,.08) 0 105px,transparent 106px),
+    linear-gradient(105deg,#fff 0%,#fff9f5 62%,#fff2e9 100%)!important;
+  box-shadow:0 12px 30px rgba(18,21,25,.045)!important
+}
+.view-bank .mr-bank-import-copy{gap:16px}
+.view-bank .mr-bank-import-icon{
+  width:58px;height:58px;border-radius:17px;position:relative;
+  background:linear-gradient(145deg,#ff7535,#f14d09);color:#fff;border:1px solid #df490a;
+  box-shadow:0 7px 0 #c73d07,0 13px 22px rgba(211,66,8,.20),inset 0 1px 0 rgba(255,255,255,.35);
+  transform:translateY(-3px)
+}
+.view-bank .mr-bank-import-icon:after{
+  content:"";position:absolute;inset:7px;border-radius:11px;border:1px solid rgba(255,255,255,.22);
+  background:linear-gradient(145deg,rgba(255,255,255,.08),transparent 58%);pointer-events:none
+}
+.view-bank .mr-bank-import-icon svg{position:relative;z-index:1;width:28px;height:28px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.view-bank .mr-bank-import-copy h3{font-size:18px!important;letter-spacing:-.018em}
+.view-bank .mr-bank-import-copy p{font-size:11.5px!important;line-height:1.5!important}
+.view-bank .mr-bank-import-status{font-size:10px}
+.view-bank .mr-bank-import-button{
+  min-height:48px;padding:0 18px;border-radius:14px;font-size:11.5px;
+  display:inline-flex;align-items:center;gap:9px;box-shadow:0 8px 0 #c9440a,0 15px 25px rgba(243,90,22,.15)
+}
+.view-bank .mr-bank-import-button svg{width:19px;height:19px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.view-bank .mr-bank-import-button:hover{transform:translateY(-2px);box-shadow:0 10px 0 #c9440a,0 17px 27px rgba(243,90,22,.17)}
+.view-bank .mr-bank-import-button:active{transform:translateY(4px);box-shadow:0 4px 0 #c9440a,0 8px 16px rgba(243,90,22,.13)}
+
+.view-bank .mr-bank-results-head{font-size:11.5px!important;min-height:44px}
+.view-bank .mr-bank-results-head b{font-size:14px}
+.view-bank .mr-library-own-row h3{font-size:16px!important}
+.view-bank .mr-library-own-row .prewrap{font-size:12.5px!important;line-height:1.52!important}
+.view-bank .mr-library-own-row p{font-size:10px!important}
+.view-bank .mr-library-own-row .pill{font-size:9.5px!important;min-height:27px}
+.view-bank .mr-library-own-actions .btn{font-size:9.5px!important;min-height:40px!important}
+
+html[data-theme=dark] .view-bank .mr-bank-filter-card{
+  background:
+    radial-gradient(circle at 92% 118%,rgba(243,90,22,.08) 0 125px,transparent 126px),
+    linear-gradient(110deg,#171b20 0%,#171b20 70%,#21160f 100%)!important
+}
+html[data-theme=dark] .view-bank .mr-bank-filter-card input,
+html[data-theme=dark] .view-bank .mr-bank-filter-card select{
+  background:linear-gradient(180deg,#171b20,#13171b)!important;border-color:#343b44!important
+}
+html[data-theme=dark] .view-bank #pdfTaskImportCard{
+  background:
+    radial-gradient(circle at 12% 145%,rgba(243,90,22,.08) 0 115px,transparent 116px),
+    linear-gradient(105deg,#171b20 0%,#171b20 65%,#21160f 100%)!important
+}
+@media(max-width:680px){
+  .view-bank .mr-bank-filter-card{padding:17px!important;border-radius:19px!important}
+  .view-bank .mr-bank-filter-title h2{font-size:17px!important}
+  .view-bank .mr-bank-filter-card input,.view-bank .mr-bank-filter-card select{min-height:50px!important;font-size:13px!important}
+  .view-bank .mr-bank-import-icon{width:52px;height:52px}
+}
