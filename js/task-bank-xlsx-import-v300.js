@@ -261,7 +261,7 @@
     panel.innerHTML=`
       <div class="mr-bank-import-inner">
         <div class="mr-bank-import-copy">
-          <span class="mr-bank-import-icon" aria-hidden="true">⇧</span>
+          <span class="mr-bank-import-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 16V5"/><path d="m8 9 4-4 4 4"/><path d="M5 14v5h14v-5"/></svg></span>
           <div>
             <h3>Импорт задач</h3>
             <p>Загрузите подготовленный XLSX. Лист <b>READY</b> попадёт прямо в основной банк задач.</p>
@@ -270,7 +270,7 @@
         </div>
         <div>
           <input data-xlsx-input type="file" accept=".xlsx,.xls" hidden>
-          <button data-xlsx-button class="mr-bank-import-button" type="button">⇧&nbsp;&nbsp; Загрузить файл с задачами</button>
+          <button data-xlsx-button class="mr-bank-import-button" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V5"/><path d="m8 9 4-4 4 4"/><path d="M5 14v5h14v-5"/></svg><span>Загрузить файл с задачами</span></button>
         </div>
       </div>`;
     const input=panel.querySelector('[data-xlsx-input]'),button=panel.querySelector('[data-xlsx-button]'),status=panel.querySelector('[data-xlsx-status]');
