@@ -250,21 +250,27 @@
     let panel=findPdfPanel()||document.getElementById('pdfTaskImportCard');
     if(!panel){
       const list=document.getElementById('bankList');if(!list)return;
-      panel=document.createElement('div');panel.id='pdfTaskImportCard';panel.className='notice';panel.style.cssText='margin:0 0 12px;';
+      panel=document.createElement('div');panel.id='pdfTaskImportCard';panel.className='mr-bank-import';
       list.parentNode.insertBefore(panel,list);
+    }else{
+      panel.classList.add('mr-bank-import');
+      panel.style.cssText='';
     }
     if(panel.dataset.xlsxImportV303==='1'&&panel.querySelector('[data-xlsx-button]'))return;
     panel.dataset.xlsxImportV303='1';
     panel.innerHTML=`
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:18px;flex-wrap:wrap">
-        <div>
-          <h3 style="margin:0 0 6px">Импорт задач</h3>
-          <div class="muted" style="font-size:14px">Загрузите подготовленный XLSX. Лист <b>READY</b> попадёт прямо в основной банк задач.</div>
-          <div data-xlsx-status class="muted" style="font-size:13px;margin-top:6px"></div>
+      <div class="mr-bank-import-inner">
+        <div class="mr-bank-import-copy">
+          <span class="mr-bank-import-icon" aria-hidden="true">⇧</span>
+          <div>
+            <h3>Импорт задач</h3>
+            <p>Загрузите подготовленный XLSX. Лист <b>READY</b> попадёт прямо в основной банк задач.</p>
+            <div data-xlsx-status class="mr-bank-import-status"></div>
+          </div>
         </div>
-        <div style="display:flex;gap:10px;align-items:center">
+        <div>
           <input data-xlsx-input type="file" accept=".xlsx,.xls" hidden>
-          <button data-xlsx-button class="btn primary" type="button">Загрузить файл с задачами</button>
+          <button data-xlsx-button class="mr-bank-import-button" type="button">⇧&nbsp;&nbsp; Загрузить файл с задачами</button>
         </div>
       </div>`;
     const input=panel.querySelector('[data-xlsx-input]'),button=panel.querySelector('[data-xlsx-button]'),status=panel.querySelector('[data-xlsx-status]');
