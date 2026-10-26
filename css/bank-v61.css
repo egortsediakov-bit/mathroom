@@ -25,7 +25,8 @@
 .view-bank .mr-bank-hero-main{display:flex;align-items:center;gap:18px;position:relative;z-index:1}
 .view-bank .mr-bank-hero-icon{
   position:relative;
-  width:72px;height:72px;flex:0 0 72px;display:grid;place-items:center;
+  width:72px;height:72px;flex:0 0 72px;
+  display:flex;align-items:center;justify-content:center;
   border-radius:21px;background:linear-gradient(145deg,#25282b,#0d0f11);
   color:#fff;font-size:34px;font-weight:900;
   border:1px solid #2c2f33;
@@ -36,7 +37,9 @@
   background:#f35a16;box-shadow:0 0 0 3px rgba(243,90,22,.14)
 }
 .view-bank .mr-bank-hero-icon .mr-bank-hero-svg{
-  display:block;width:34px;height:34px;overflow:visible;
+  position:absolute;left:50%;top:50%;
+  display:block;width:48px;height:48px;overflow:visible;
+  transform:translate(-50%,-50%);
   fill:none;stroke:#fff;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round
 }
 .view-bank .mr-bank-hero-icon .mr-bank-hero-svg .accent{stroke:#ff6822;stroke-width:2.1}
