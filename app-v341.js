@@ -1642,7 +1642,7 @@ function renderBank(){
   app.innerHTML=shell(`
     <section class="mr-library-hero mr-bank-hero">
       <div class="mr-bank-hero-main">
-        <span class="mr-bank-hero-icon" aria-hidden="true">▤</span>
+        <span class="mr-bank-hero-icon" aria-hidden="true"><svg class="mr-bank-hero-svg" viewBox="0 0 24 24"><rect x="5" y="5.5" width="14" height="15" rx="3"/><path d="M9 5.5V4h6v1.5"/><path d="M9.2 10.2h5.8M9.2 14h4.2"/><path class="accent" d="m14.2 16.7 1.5 1.5 3-3"/></svg></span>
         <div><span class="mr-bank-kicker">БАНК ЗАДАЧ</span><h1>Банк задач по математике</h1><p>Большая коллекция задач для уроков и домашних работ. Ищи по теме, классу, типу и сложности, сохраняй свои задачи и публикуй лучшие в общую библиотеку.</p></div>
       </div>
       <div class="mr-library-hero-stats mr-bank-hero-stats">
