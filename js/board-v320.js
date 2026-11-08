@@ -970,6 +970,38 @@
       root.querySelector('[data-tool="select"]')?.remove();
       root.querySelector('#quickCommands')?.remove();
     }
+    /* Clean sheet mode: hide the top panel (board head + page tabs) and keep only the canvas. */
+    {
+      const cleanCard=root.querySelector('.board-card');
+      const headActions=root.querySelector('.board-head-actions');
+      if(cleanCard&&headActions){
+        const KEY='mathroom_board_clean_sheet';
+        const hideBtn=document.createElement('button');
+        hideBtn.type='button';hideBtn.className='btn sm board-clean-hide';hideBtn.id='hideBoardPanel';
+        hideBtn.title='Скрыть верхнюю панель · Ctrl+Shift+H';hideBtn.setAttribute('aria-label','Скрыть верхнюю панель');
+        hideBtn.textContent='▲ Скрыть панель';
+        headActions.appendChild(hideBtn);
+        const showBtn=document.createElement('button');
+        showBtn.type='button';showBtn.className='btn sm board-clean-show';showBtn.id='showBoardPanel';
+        showBtn.title='Показать верхнюю панель · Ctrl+Shift+H';showBtn.setAttribute('aria-label','Показать верхнюю панель');
+        showBtn.textContent='▼';showBtn.hidden=true;
+        cleanCard.appendChild(showBtn);
+        const setClean=on=>{
+          cleanCard.classList.toggle('mr-board-clean',on);
+          showBtn.hidden=!on;
+          try{localStorage.setItem(KEY,on?'1':'0')}catch(e){}
+          setTimeout(()=>window.dispatchEvent(new Event('resize')),50);
+        };
+        hideBtn.onclick=()=>setClean(true);
+        showBtn.onclick=()=>setClean(false);
+        const keyHandler=e=>{
+          if(!root.isConnected){document.removeEventListener('keydown',keyHandler,true);return}
+          if(e.ctrlKey&&e.shiftKey&&e.code==='KeyH'){e.preventDefault();setClean(!cleanCard.classList.contains('mr-board-clean'))}
+        };
+        document.addEventListener('keydown',keyHandler,true);
+        try{if(localStorage.getItem(KEY)==='1')setClean(true)}catch(e){}
+      }
+    }
     if(phoneBoardUI){
       /* Fullscreen support varies heavily on mobile Safari / embedded Chromium.
          Never leave a dead control visible for either lesson role. */
