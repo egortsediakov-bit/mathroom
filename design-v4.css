@@ -8782,3 +8782,11 @@ html[data-theme="dark"] .board-inline-crop-toolbar button{background:#22272d;bor
   }
   .board-inline-crop-toolbar:after{display:none}
 }
+
+/* Clean sheet mode: hide board top panel, keep only canvas */
+.board-card.mr-board-clean>.board-head,
+.board-card.mr-board-clean>.board-page-tabs{display:none!important}
+.board-card.mr-board-clean>.board-stage{height:calc(100vh - 120px)!important;min-height:480px}
+.board-clean-show{position:absolute!important;top:8px;right:8px;z-index:30;width:30px;height:30px;padding:0!important;justify-content:center;opacity:.35;transition:opacity .15s}
+.board-clean-show:hover,.board-clean-show:focus-visible{opacity:1}
+.board-clean-show[hidden]{display:none!important}
