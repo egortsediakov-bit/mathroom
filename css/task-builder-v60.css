@@ -406,3 +406,52 @@ html[data-theme=dark] .mr-tb-student-answer{
   .mr-tb-card{padding:17px}
   .mr-tb-fields,.mr-tb-choices,.mr-tb-bottom,.mr-tb-side{grid-template-columns:1fr}
 }
+
+
+/* v63 task images */
+.mr-tb-images{display:grid;gap:11px;margin-top:12px}
+.mr-tb-images-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 13px;border:1px solid #eadfd7;border-radius:15px;background:linear-gradient(180deg,#fffdfb,#fff8f4)}
+.mr-tb-images-head b{display:block;color:#24282d;font-size:12px;font-weight:900}
+.mr-tb-images-head small{display:block;margin-top:3px;color:#8c96a0;font-size:9.5px}
+.mr-tb-images-head button{min-height:34px;padding:0 11px;border:1px dashed #ffad86;border-radius:10px;background:#fff;color:#ed5715;font-size:10px;font-weight:850;cursor:pointer}
+.mr-tb-image-list{display:grid;gap:10px}
+.mr-tb-image-card{display:grid;grid-template-columns:128px minmax(0,1fr) 38px;gap:12px;align-items:start;padding:11px;border:1px solid #eadfd7;border-radius:16px;background:linear-gradient(135deg,#fff 0%,#fff 68%,#fff7f2 100%)}
+.mr-tb-image-thumb{position:relative;display:grid;place-items:center;width:128px;height:96px;overflow:hidden;border:1px solid #e5ddd7;border-radius:12px;background:#f4f5f6}
+.mr-tb-image-thumb img{display:block;max-width:100%;max-height:100%;object-fit:contain}
+.mr-tb-image-thumb>span{display:none;padding:8px;color:#9b6250;font-size:9px;text-align:center}
+.mr-tb-image-thumb.load-error img{display:none}.mr-tb-image-thumb.load-error>span{display:block}
+.mr-tb-image-body{display:grid;gap:9px;min-width:0}
+.mr-tb-image-title{display:flex;align-items:baseline;justify-content:space-between;gap:10px;min-width:0}
+.mr-tb-image-title b{overflow:hidden;color:#252a30;font-size:11px;font-weight:900;text-overflow:ellipsis;white-space:nowrap}
+.mr-tb-image-title small{flex:0 0 auto;color:#8d97a1;font-size:9px}
+.mr-tb-image-alt{display:grid;gap:5px}.mr-tb-image-alt>span,.mr-tb-image-width>span{font-size:9.5px;font-weight:800;color:#4c5660}
+.mr-tb-image-alt em{font-style:normal;color:#9aa3ac;font-weight:600}
+.mr-tb-image-alt input{width:100%;min-height:38px;padding:0 10px;border:1px solid #dedfe1;border-radius:10px;background:#fff;color:#202429;font-size:10.5px;outline:none}
+.mr-tb-image-alt input:focus{border-color:#ff9160;box-shadow:0 0 0 3px rgba(243,90,22,.08)}
+.mr-tb-image-width{display:grid;gap:5px}.mr-tb-image-width>div{display:grid;grid-template-columns:minmax(0,1fr) 44px;gap:9px;align-items:center}
+.mr-tb-image-width input{width:100%;accent-color:#f35a16}.mr-tb-image-width b{font-size:10px;text-align:right;color:#ef5916}
+.mr-tb-image-remove{width:38px;height:38px;border:1px solid #ead9d0;border-radius:11px;background:#fff;color:#8e7468;font-size:19px;cursor:pointer}
+.mr-tb-image-remove:hover{border-color:#ffad88;background:#fff4ee;color:#e84d0b}
+.mr-tb-preview-images{display:grid;gap:9px;margin-top:12px}
+.mr-tb-preview-image{margin:0;max-width:100%}
+.mr-tb-preview-image img{display:block;width:100%;max-height:260px;object-fit:contain;border:1px solid #eadfd7;border-radius:11px;background:#fff}
+.mr-tb-preview-image figcaption{margin-top:4px;color:#7d8791;font:600 8.5px/1.4 Inter,system-ui,sans-serif}
+.mr-tb-preview-image.load-error{min-height:70px;border:1px dashed #e2b39c;border-radius:11px;background:#fff6f1}
+.mr-tb-toolbar button:disabled{opacity:.55;cursor:wait}
+
+html[data-theme=dark] .mr-tb-images-head,
+html[data-theme=dark] .mr-tb-image-card{background:linear-gradient(135deg,#171b20,#171b20 68%,#211813);border-color:#343a42}
+html[data-theme=dark] .mr-tb-images-head b,
+html[data-theme=dark] .mr-tb-image-title b{color:#f3f5f7}
+html[data-theme=dark] .mr-tb-image-thumb{background:#101317;border-color:#343a42}
+html[data-theme=dark] .mr-tb-image-alt input{background:#101317;border-color:#363d45;color:#f3f5f7}
+html[data-theme=dark] .mr-tb-image-remove{background:#171b20;border-color:#3a3f46;color:#cbb7ae}
+html[data-theme=dark] .mr-tb-preview-image img{background:#101317;border-color:#343a42}
+
+@media(max-width:650px){
+  .mr-tb-images-head{align-items:flex-start;flex-direction:column}
+  .mr-tb-image-card{grid-template-columns:96px minmax(0,1fr) 34px;gap:9px}
+  .mr-tb-image-thumb{width:96px;height:82px}
+  .mr-tb-image-remove{width:34px;height:34px}
+  .mr-tb-image-title{align-items:flex-start;flex-direction:column;gap:2px}
+}
