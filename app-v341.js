@@ -1211,7 +1211,8 @@ async function publishExerciseToSharedLibrary(exercise,{onDone}={}){
     tags:sharedMaterialUserTags(exercise.tags),
     grade:Number(topic.grade)||null,
     section:topic.section||'',
-    topic_title:topic.title||''
+    topic_title:topic.title||'',
+    builder_meta:exercise.builder_meta&&typeof exercise.builder_meta==='object'?exercise.builder_meta:{}
   };
   const q=old
     ? sb.from('shared_materials').update({...body,updated_at:new Date().toISOString()}).eq('id',old.id)
@@ -1243,7 +1244,8 @@ function importSharedMaterial(shared,{onDone}={}){
     const body={
       teacher_id:S.user.id,topic_id:topic.id,kind:shared.kind==='example'?'example':'task',
       title:shared.title||'',content:shared.content||'',answer:shared.answer||'',
-      difficulty:shared.difficulty||'basic',category:shared.category||'',tags:[...new Set(tags)]
+      difficulty:shared.difficulty||'basic',category:shared.category||'',tags:[...new Set(tags)],
+      builder_meta:shared.builder_meta&&typeof shared.builder_meta==='object'?shared.builder_meta:{}
     };
     const {error}=await sb.from('exercises').insert(body);if(error)return fail(error);
     m.remove();await loadTeacher();onDone?.();toast('Личная копия добавлена');
