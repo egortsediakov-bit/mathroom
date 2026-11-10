@@ -14,6 +14,16 @@
       difficulty:["basic","medium","advanced"].includes(editing?.difficulty)?editing.difficulty:"medium",
       taskType:["standard","numeric","single","multiple","open"].includes(meta.task_type)?meta.task_type:"standard",
       content:String(editing?.content||""),
+      images:Array.isArray(meta.images)?meta.images.map((img,i)=>({
+        id:String(img?.id||("img"+i)),
+        path:String(img?.path||""),
+        name:String(img?.name||"Изображение"),
+        mime:String(img?.mime||"image/png"),
+        width:Math.max(1,Number(img?.width)||1),
+        height:Math.max(1,Number(img?.height)||1),
+        displayWidth:Math.min(100,Math.max(30,Number(img?.display_width)||100)),
+        alt:String(img?.alt||"")
+      })).filter(img=>img.path):[],
       answers:Array.isArray(meta.answers)&&meta.answers.length?meta.answers.map((a,i)=>({label:String(a?.label||("Ответ "+(i+1))),value:String(a?.value||""),accepted:Array.isArray(a?.accepted)?a.accepted.map(String):[]})):[{label:"Ответ",value:String(editing?.answer||""),accepted:[]}],
       options:Array.isArray(meta.options)&&meta.options.length?meta.options.map((o,i)=>({id:String(o?.id||("o"+i)),text:String(o?.text||""),correct:!!o?.correct})):[{id:"o0",text:"",correct:true},{id:"o1",text:"",correct:false},{id:"o2",text:"",correct:false},{id:"o3",text:"",correct:false}],
       openAnswer:String(meta.open_answer??(meta.task_type==="open"?editing?.answer||"":"")),
@@ -26,6 +36,44 @@
     const diffName=v=>v==="advanced"?"Сложная":v==="medium"?"Средняя":"Простая";
     const typeName=v=>({standard:"Обычная задача",numeric:"Числовой ответ",single:"Тест",multiple:"Несколько ответов",open:"Развёрнутый ответ"}[v]||"Обычная задача");
     const q=id=>document.getElementById(id);
+    const TASK_IMAGE_BUCKET="task-images";
+    const imageUrlCache=new Map(),pendingImagePaths=new Set();
+    const imageById=id=>state.images.find(x=>String(x.id)===String(id))||null;
+    const imageId=()=>window.crypto?.randomUUID?.()||("img-"+Date.now()+"-"+Math.random().toString(36).slice(2));
+    const imageExt=mime=>({"image/png":"png","image/jpeg":"jpg","image/webp":"webp","image/gif":"gif"}[mime]||"png");
+    async function signedImageUrl(path){
+      if(!path)return "";
+      if(imageUrlCache.has(path))return imageUrlCache.get(path);
+      const {data,error}=await sb.storage.from(TASK_IMAGE_BUCKET).createSignedUrl(path,3600);
+      if(error)throw error;
+      const url=data?.signedUrl||"";
+      imageUrlCache.set(path,url);
+      return url;
+    }
+    async function hydrateTaskImages(root=document){
+      const nodes=[...(root||document).querySelectorAll?.("[data-tb-image-src]")||[]];
+      await Promise.all(nodes.map(async el=>{
+        const img=imageById(el.dataset.tbImageSrc);if(!img||!img.path)return;
+        if(el.dataset.tbLoadedPath===img.path&&el.getAttribute("src"))return;
+        try{
+          const url=await signedImageUrl(img.path);
+          if(el.isConnected&&url){el.src=url;el.dataset.tbLoadedPath=img.path}
+        }catch(e){console.warn("[Mathroom task image]",e);el.closest(".mr-tb-image-thumb,.mr-tb-preview-image")?.classList.add("load-error")}
+      }));
+    }
+    async function readImageSize(file){
+      return await new Promise((resolve,reject)=>{
+        const url=URL.createObjectURL(file),img=new Image();
+        img.onload=()=>{const out={width:img.naturalWidth||1,height:img.naturalHeight||1};URL.revokeObjectURL(url);resolve(out)};
+        img.onerror=()=>{URL.revokeObjectURL(url);reject(new Error("Не удалось прочитать изображение"))};
+        img.src=url;
+      });
+    }
+    async function cleanupPendingImages(){
+      const paths=[...pendingImagePaths];pendingImagePaths.clear();
+      if(!paths.length)return;
+      try{await sb.storage.from(TASK_IMAGE_BUCKET).remove(paths)}catch(e){console.warn("[Mathroom task image cleanup]",e)}
+    }
     const icon=name=>{const map={
       info:'<path d="M4 6.5h16v12H4z"/><path d="M8 4v5M16 4v5M8 13h3M13 13h3"/>',
       condition:'<path d="M5 4h10l4 4v12H5z"/><path d="M15 4v5h5M8 13h8M8 16h6"/>',
@@ -48,8 +96,10 @@
           '<div class="mr-tb-choices"><div><b>Сложность</b><div class="mr-tb-segments">'+diffButtons+'</div></div><div class="grow"><b>Тип задачи</b><div class="mr-tb-segments types">'+typeButtons+'</div></div></div>'+
         '</section>'+
         '<section class="mr-tb-card">'+section("condition","Условие задачи","Введите текст, добавьте формулы и структурные элементы")+
-          '<div class="mr-tb-toolbar"><button data-insert="text">T&nbsp; Текст</button><button class="active" data-insert="formula">∿&nbsp; Формула</button><button data-insert="list">☷&nbsp; Список</button><button data-insert="template">◇&nbsp; Шаблон</button><button data-coming="Изображения">▧&nbsp; Изображение</button><button data-coming="Таблицы">⊞&nbsp; Таблица</button><button data-coming="Геометрия">△&nbsp; Геометрия</button></div>'+
+          '<div class="mr-tb-toolbar"><button data-insert="text">T&nbsp; Текст</button><button class="active" data-insert="formula">∿&nbsp; Формула</button><button data-insert="list">☷&nbsp; Список</button><button data-insert="template">◇&nbsp; Шаблон</button><button data-insert="image">▧&nbsp; Изображение</button><button data-coming="Таблицы">⊞&nbsp; Таблица</button><button data-coming="Геометрия">△&nbsp; Геометрия</button></div>'+
           '<div class="mr-tb-editor"><textarea id="tbContent" maxlength="5000" placeholder="Введите условие задачи…">'+esc(state.content)+'</textarea><span id="tbContentCount">'+state.content.length+'/5000</span></div>'+
+          '<input id="tbImageInput" type="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple hidden>'+
+          '<div id="tbImages" class="mr-tb-images"></div>'+
         '</section>'+
         '<section class="mr-tb-card">'+section("answer","Правильный ответ","Укажите правильный ответ и допустимые варианты")+
           '<div class="mr-tb-answer-types">'+typeButtons+'</div><div id="tbAnswerEditor"></div>'+
@@ -130,18 +180,73 @@
       if(["single","multiple"].includes(state.taskType)){const it=state.taskType==="single"?"radio":"checkbox";return '<div class="mr-tb-student-answer"><h4>Выберите '+(state.taskType==="single"?"один ответ":"все правильные ответы")+'</h4><div class="mr-tb-student-options">'+state.options.map((o,i)=>'<label><input type="'+it+'" name="previewChoice"><span>'+String.fromCharCode(65+i)+'. '+esc(o.text||"Вариант ответа")+'</span></label>').join("")+'</div><button>Проверить ответ</button></div>'}
       return '<div class="mr-tb-student-answer"><h4>Развёрнутый ответ</h4><textarea rows="5" placeholder="Введите решение или пояснение…"></textarea><button>Отправить ответ</button></div>';
     }
-    function preview(){const t=topic();q("tbPreview").innerHTML='<div class="mr-tb-preview-sheet"><div class="mr-tb-preview-meta"><span>'+diffName(state.difficulty)+'</span><small>'+esc(t?.title||"Тема не выбрана")+' · '+esc(typeName(state.taskType))+'</small></div><div class="mr-tb-preview-problem">'+(state.content.trim()?nl(state.content):'<span class="placeholder">Здесь появится условие задачи.</span>')+'</div></div>'+studentAnswer()}
+    function previewImagesHtml(){
+      if(!state.images.length)return "";
+      return '<div class="mr-tb-preview-images">'+state.images.map(img=>'<figure class="mr-tb-preview-image" style="width:'+img.displayWidth+'%"><img data-tb-image-src="'+esc(img.id)+'" alt="'+esc(img.alt||img.name||"Изображение к задаче")+'"><figcaption>'+(img.alt?esc(img.alt):"")+'</figcaption></figure>').join("")+'</div>';
+    }
+    function preview(){
+      const t=topic();
+      q("tbPreview").innerHTML='<div class="mr-tb-preview-sheet"><div class="mr-tb-preview-meta"><span>'+diffName(state.difficulty)+'</span><small>'+esc(t?.title||"Тема не выбрана")+' · '+esc(typeName(state.taskType))+'</small></div><div class="mr-tb-preview-problem">'+(state.content.trim()?nl(state.content):'<span class="placeholder">Здесь появится условие задачи.</span>')+'</div>'+previewImagesHtml()+'</div>'+studentAnswer();
+      hydrateTaskImages(q("tbPreview"));
+    }
+    function renderImages(){
+      const host=q("tbImages");if(!host)return;
+      if(!state.images.length){host.innerHTML="";return}
+      host.innerHTML='<div class="mr-tb-images-head"><div><b>Изображения к условию</b><small>'+state.images.length+' шт. · PNG, JPG, WEBP или GIF до 15 МБ</small></div><button type="button" id="tbAddMoreImages">＋ Добавить ещё</button></div>'+
+        '<div class="mr-tb-image-list">'+state.images.map(img=>'<article class="mr-tb-image-card" data-tb-image-card="'+esc(img.id)+'">'+
+          '<div class="mr-tb-image-thumb"><img data-tb-image-src="'+esc(img.id)+'" alt="'+esc(img.alt||img.name)+'"><span>Не удалось загрузить превью</span></div>'+
+          '<div class="mr-tb-image-body"><div class="mr-tb-image-title"><b>'+esc(img.name)+'</b><small>'+img.width+' × '+img.height+' px</small></div>'+
+          '<label class="mr-tb-image-alt"><span>Описание <em>(для доступности)</em></span><input data-tb-image-alt="'+esc(img.id)+'" maxlength="180" value="'+esc(img.alt)+'" placeholder="Например: график функции y = x²"></label>'+
+          '<label class="mr-tb-image-width"><span>Ширина в задаче</span><div><input data-tb-image-width="'+esc(img.id)+'" type="range" min="30" max="100" step="5" value="'+img.displayWidth+'"><b data-tb-image-width-label="'+esc(img.id)+'">'+img.displayWidth+'%</b></div></label></div>'+
+          '<button type="button" class="mr-tb-image-remove" data-tb-image-remove="'+esc(img.id)+'" title="Удалить изображение">×</button>'+
+        '</article>').join("")+'</div>';
+      q("tbAddMoreImages").onclick=()=>q("tbImageInput").click();
+      host.querySelectorAll("[data-tb-image-alt]").forEach(el=>el.oninput=()=>{const img=imageById(el.dataset.tbImageAlt);if(!img)return;img.alt=el.value;preview()});
+      host.querySelectorAll("[data-tb-image-width]").forEach(el=>el.oninput=()=>{const img=imageById(el.dataset.tbImageWidth);if(!img)return;img.displayWidth=Number(el.value)||100;const label=host.querySelector('[data-tb-image-width-label="'+CSS.escape(img.id)+'"]');if(label)label.textContent=img.displayWidth+"%";preview()});
+      host.querySelectorAll("[data-tb-image-remove]").forEach(el=>el.onclick=async()=>{
+        const img=imageById(el.dataset.tbImageRemove);if(!img)return;
+        state.images=state.images.filter(x=>x!==img);
+        if(pendingImagePaths.has(img.path)){
+          pendingImagePaths.delete(img.path);
+          try{await sb.storage.from(TASK_IMAGE_BUCKET).remove([img.path])}catch(e){console.warn("[Mathroom task image remove]",e)}
+        }
+        renderImages();preview();
+      });
+      hydrateTaskImages(host);
+    }
+    async function uploadTaskImages(files){
+      const list=[...(files||[])];if(!list.length)return;
+      const button=document.querySelector('[data-insert="image"]');
+      if(button){button.disabled=true;button.textContent="▧  Загружаем…"}
+      try{
+        for(const file of list){
+          if(!["image/png","image/jpeg","image/webp","image/gif"].includes(file.type)){toast("Поддерживаются PNG, JPG, WEBP и GIF");continue}
+          if(file.size>15*1024*1024){toast("Изображение «"+file.name+"» больше 15 МБ");continue}
+          const size=await readImageSize(file),id=imageId(),ext=imageExt(file.type);
+          const path=S.user.id+"/"+Date.now()+"-"+id+"."+ext;
+          const {error}=await sb.storage.from(TASK_IMAGE_BUCKET).upload(path,file,{contentType:file.type,upsert:false,cacheControl:"3600"});
+          if(error)throw error;
+          pendingImagePaths.add(path);
+          state.images.push({id,path,name:file.name||("image."+ext),mime:file.type,width:size.width,height:size.height,displayWidth:100,alt:""});
+          renderImages();preview();
+        }
+      }catch(e){fail(e)}
+      finally{
+        if(button){button.disabled=false;button.innerHTML="▧&nbsp; Изображение"}
+        q("tbImageInput").value="";
+      }
+    }
     function insertInto(el,text){if(!el)return;const a=el.selectionStart??el.value.length,b=el.selectionEnd??a;el.setRangeText(text,a,b,"end");el.dispatchEvent(new Event("input",{bubbles:true}));el.focus()}
     function legacyAnswer(){if(["standard","numeric"].includes(state.taskType))return state.answers.map(a=>a.value.trim()).filter(Boolean).join("; ");if(["single","multiple"].includes(state.taskType))return state.options.filter(o=>o.correct&&o.text.trim()).map(o=>o.text.trim()).join(" | ");return state.openAnswer.trim()}
     function collect(){state.grade=Number(q("tbGrade").value)||state.grade;state.topicId=q("tbTopic").value;state.subtopic=q("tbSubtopic").value;state.content=q("tbContent").value;state.settings.shared=!!q("tbShared").checked;state.settings.allowTests=!!q("tbAllowTests").checked;state.settings.allowAi=!!q("tbAllowAi").checked;setHelp(q("tbHelp").value);syncAnswer()}
-    function builderMeta(){const t=topic();return {version:1,grade:Number(t?.grade||state.grade)||null,subtopic:state.subtopic.trim(),task_type:state.taskType,answers:state.answers,options:state.options,open_answer:state.openAnswer,solution:state.solution,hints:state.hints,source:{kind:state.source.kind,textbook_id:state.source.kind==="textbook"?(state.source.textbookId||null):null,page:state.source.kind==="textbook"?(state.source.page||null):null,exercise_no:state.source.kind==="textbook"?(state.source.exerciseNo||null):null,note:state.source.kind==="textbook"?"":state.source.note.trim()},settings:{shared:!!state.settings.shared,allow_tests:!!state.settings.allowTests,allow_ai_example:!!state.settings.allowAi}}}
-    function back(){const ret=S.taskBuilderReturn||{view:"bank"};S.taskBuilderExerciseId=null;S.taskBuilderReturn=null;if(ret.view==="topics"&&ret.topicId){S.view="topics";S.topic=(S.topics||[]).find(t=>String(t.id)===String(ret.topicId))||null;return S.topic?renderTopic():renderTopics()}S.view="bank";S.topic=null;renderBank()}
+    function builderMeta(){const t=topic();return {version:2,grade:Number(t?.grade||state.grade)||null,subtopic:state.subtopic.trim(),task_type:state.taskType,images:state.images.map(img=>({id:img.id,path:img.path,name:img.name,mime:img.mime,width:img.width,height:img.height,display_width:img.displayWidth,alt:img.alt.trim()})),answers:state.answers,options:state.options,open_answer:state.openAnswer,solution:state.solution,hints:state.hints,source:{kind:state.source.kind,textbook_id:state.source.kind==="textbook"?(state.source.textbookId||null):null,page:state.source.kind==="textbook"?(state.source.page||null):null,exercise_no:state.source.kind==="textbook"?(state.source.exerciseNo||null):null,note:state.source.kind==="textbook"?"":state.source.note.trim()},settings:{shared:!!state.settings.shared,allow_tests:!!state.settings.allowTests,allow_ai_example:!!state.settings.allowAi}}}
+    function back(){cleanupPendingImages();const ret=S.taskBuilderReturn||{view:"bank"};S.taskBuilderExerciseId=null;S.taskBuilderReturn=null;if(ret.view==="topics"&&ret.topicId){S.view="topics";S.topic=(S.topics||[]).find(t=>String(t.id)===String(ret.topicId))||null;return S.topic?renderTopic():renderTopics()}S.view="bank";S.topic=null;renderBank()}
     async function syncShared(saved,draft){
       if(draft)return;
       const t=(S.topics||[]).find(x=>String(x.id)===String(saved.topic_id));
       const old=(S.sharedMaterials||[]).find(x=>String(x.source_exercise_id||"")===String(saved.id)&&String(x.published_by||"")===String(S.user?.id||""));
       if(!state.settings.shared){if(old){const {error}=await sb.from("shared_materials").delete().eq("id",old.id);if(error)throw error}return}
-      const body={published_by:S.user.id,source_exercise_id:saved.id,kind:"task",title:saved.title||"",content:saved.content||"",answer:saved.answer||"",difficulty:saved.difficulty||"basic",category:saved.category||"",tags:sharedMaterialUserTags(saved.tags),grade:Number(t?.grade)||null,section:t?.section||"",topic_title:t?.title||""};
+      const body={published_by:S.user.id,source_exercise_id:saved.id,kind:"task",title:saved.title||"",content:saved.content||"",answer:saved.answer||"",difficulty:saved.difficulty||"basic",category:saved.category||"",tags:sharedMaterialUserTags(saved.tags),grade:Number(t?.grade)||null,section:t?.section||"",topic_title:t?.title||"",builder_meta:saved.builder_meta&&typeof saved.builder_meta==="object"?saved.builder_meta:{}};
       const res=old?await sb.from("shared_materials").update({...body,updated_at:new Date().toISOString()}).eq("id",old.id):await sb.from("shared_materials").insert(body);
       if(res.error)throw res.error;
     }
@@ -151,11 +256,11 @@
         const sys=editing?exerciseSystemTags(editing.tags):[];const tags=[...new Set([...sys,"класс-"+t.grade,"тема:"+t.title,"тип:"+state.taskType])];
         const body={topic_id:t.id,kind:"task",title:(editing?.title&&editing.title.trim())||("Задача · "+t.title),content:state.content.trim(),answer:legacyAnswer(),difficulty:state.difficulty,category:state.subtopic.trim(),tags,builder_meta:builderMeta(),is_draft:!!draft,updated_at:new Date().toISOString()};
         const res=editing?await sb.from("exercises").update(body).eq("id",editing.id).select().single():await sb.from("exercises").insert({teacher_id:S.user.id,...body}).select().single();
-        if(res.error)throw res.error;await syncShared(res.data,draft);await loadTeacher();toast(draft?"Черновик сохранён":editing?"Задача обновлена":"Задача добавлена в банк");back();
+        if(res.error)throw res.error;pendingImagePaths.clear();await syncShared(res.data,draft);await loadTeacher();toast(draft?"Черновик сохранён":editing?"Задача обновлена":"Задача добавлена в банк");back();
       }catch(e){fail(e)}
     }
 
-    fillTopics();renderAnswer();renderSource();renderHelp();preview();
+    fillTopics();renderAnswer();renderSource();renderHelp();renderImages();preview();
     q("tbGrade").onchange=e=>{state.grade=Number(e.target.value);fillTopics();state.topicId=q("tbTopic").value;preview()};
     q("tbTopic").onchange=e=>{state.topicId=e.target.value;preview()};
     q("tbSubtopic").oninput=e=>state.subtopic=e.target.value;
@@ -163,7 +268,8 @@
     document.querySelectorAll("[data-tb-diff]").forEach(b=>b.onclick=()=>{state.difficulty=b.dataset.tbDiff;document.querySelectorAll("[data-tb-diff]").forEach(x=>x.classList.toggle("active",x===b));preview()});
     const setType=v=>{syncAnswer();state.taskType=v;if(v==="single"&&!state.options.some(o=>o.correct)&&state.options[0])state.options[0].correct=true;document.querySelectorAll("[data-tb-type]").forEach(x=>x.classList.toggle("active",x.dataset.tbType===v));renderAnswer();preview()};
     document.querySelectorAll("[data-tb-type]").forEach(b=>b.onclick=()=>setType(b.dataset.tbType));
-    document.querySelectorAll("[data-insert]").forEach(b=>b.onclick=()=>{const k=b.dataset.insert;if(k==="formula")insertInto(q("tbContent"),"\\(  \\)");else if(k==="list")insertInto(q("tbContent"),"\n• ");else if(k==="template")insertInto(q("tbContent"),"{{a}}");else q("tbContent").focus()});
+    document.querySelectorAll("[data-insert]").forEach(b=>b.onclick=()=>{const k=b.dataset.insert;if(k==="formula")insertInto(q("tbContent"),"\\(  \\)");else if(k==="list")insertInto(q("tbContent"),"\n• ");else if(k==="template")insertInto(q("tbContent"),"{{a}}");else if(k==="image")q("tbImageInput").click();else q("tbContent").focus()});
+    q("tbImageInput").onchange=e=>uploadTaskImages(e.target.files);
     document.querySelectorAll("[data-coming]").forEach(b=>b.onclick=()=>toast(b.dataset.coming+" подключим следующим этапом конструктора"));
     document.querySelectorAll("[data-help]").forEach(b=>b.onclick=()=>{setHelp(q("tbHelp").value);state.help=b.dataset.help;document.querySelectorAll("[data-help]").forEach(x=>x.classList.toggle("active",x===b));renderHelp()});
     q("tbHelp").oninput=e=>{setHelp(e.target.value);q("tbHelpCount").textContent=e.target.value.length+"/5000"};
