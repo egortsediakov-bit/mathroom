@@ -111,10 +111,10 @@ create policy task_relations_teacher_select on public.task_relations for select 
 create policy task_relations_teacher_insert on public.task_relations for insert to authenticated with check ((select auth.uid()) = teacher_id);
 create policy task_relations_teacher_delete on public.task_relations for delete to authenticated using ((select auth.uid()) = teacher_id);
 
-revoke all on table public.task_generation_jobs from anon;
-revoke all on table public.task_candidates from anon;
-revoke all on table public.task_candidate_checks from anon;
-revoke all on table public.task_relations from anon;
+revoke all on table public.task_generation_jobs from anon, authenticated, service_role;
+revoke all on table public.task_candidates from anon, authenticated, service_role;
+revoke all on table public.task_candidate_checks from anon, authenticated, service_role;
+revoke all on table public.task_relations from anon, authenticated, service_role;
 grant select, insert, update, delete on table public.task_generation_jobs to authenticated;
 grant select, insert, update, delete on table public.task_candidates to authenticated;
 grant select, insert, delete on table public.task_candidate_checks to authenticated;
