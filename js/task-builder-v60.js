@@ -37,18 +37,39 @@
     const typeName=v=>({standard:"Обычная задача",numeric:"Числовой ответ",single:"Тест",multiple:"Несколько ответов",open:"Развёрнутый ответ"}[v]||"Обычная задача");
     const q=id=>document.getElementById(id);
     const TASK_IMAGE_BUCKET="task-images";
-    const imageUrlCache=new Map(),pendingImagePaths=new Set();
+    const imageUrlCache=new Map(),imageUrlPending=new Map(),pendingImagePaths=new Set();
     const imageById=id=>state.images.find(x=>String(x.id)===String(id))||null;
     const imageId=()=>window.crypto?.randomUUID?.()||("img-"+Date.now()+"-"+Math.random().toString(36).slice(2));
     const imageExt=mime=>({"image/png":"png","image/jpeg":"jpg","image/webp":"webp","image/gif":"gif"}[mime]||"png");
     async function signedImageUrl(path){
       if(!path)return "";
       if(imageUrlCache.has(path))return imageUrlCache.get(path);
-      const {data,error}=await sb.storage.from(TASK_IMAGE_BUCKET).createSignedUrl(path,3600);
-      if(error)throw error;
-      const url=data?.signedUrl||"";
-      imageUrlCache.set(path,url);
-      return url;
+      if(imageUrlPending.has(path))return imageUrlPending.get(path);
+      const promise=(async()=>{
+        let lastError=null;
+        for(const delay of [0,180,420,900]){
+          if(delay)await new Promise(r=>setTimeout(r,delay));
+          const {data,error}=await sb.storage.from(TASK_IMAGE_BUCKET).createSignedUrl(path,3600);
+          if(!error&&data?.signedUrl){
+            imageUrlCache.set(path,data.signedUrl);
+            return data.signedUrl;
+          }
+          lastError=error||new Error("Не удалось получить ссылку на изображение");
+        }
+        throw lastError;
+      })().finally(()=>imageUrlPending.delete(path));
+      imageUrlPending.set(path,promise);
+      return promise;
+    }
+    function releaseImageUrl(path){
+      const url=imageUrlCache.get(path);
+      if(url&&String(url).startsWith("blob:"))try{URL.revokeObjectURL(url)}catch{}
+      imageUrlCache.delete(path);
+    }
+    function releaseLocalImageUrls(){
+      for(const [path,url] of imageUrlCache.entries()){
+        if(String(url).startsWith("blob:")){try{URL.revokeObjectURL(url)}catch{};imageUrlCache.delete(path)}
+      }
     }
     async function hydrateTaskImages(root=document){
       const nodes=[...(root||document).querySelectorAll?.("[data-tb-image-src]")||[]];
@@ -57,7 +78,7 @@
         if(el.dataset.tbLoadedPath===img.path&&el.getAttribute("src"))return;
         try{
           const url=await signedImageUrl(img.path);
-          if(el.isConnected&&url){el.src=url;el.dataset.tbLoadedPath=img.path}
+          if(el.isConnected&&url){el.src=url;el.dataset.tbLoadedPath=img.path;el.closest(".mr-tb-image-thumb,.mr-tb-preview-image")?.classList.remove("load-error")}
         }catch(e){console.warn("[Mathroom task image]",e);el.closest(".mr-tb-image-thumb,.mr-tb-preview-image")?.classList.add("load-error")}
       }));
     }
@@ -210,6 +231,7 @@
           pendingImagePaths.delete(img.path);
           try{await sb.storage.from(TASK_IMAGE_BUCKET).remove([img.path])}catch(e){console.warn("[Mathroom task image remove]",e)}
         }
+        releaseImageUrl(img.path);
         renderImages();preview();
       });
       hydrateTaskImages(host);
@@ -227,6 +249,7 @@
           const {error}=await sb.storage.from(TASK_IMAGE_BUCKET).upload(path,file,{contentType:file.type,upsert:false,cacheControl:"3600"});
           if(error)throw error;
           pendingImagePaths.add(path);
+          imageUrlCache.set(path,URL.createObjectURL(file));
           state.images.push({id,path,name:file.name||("image."+ext),mime:file.type,width:size.width,height:size.height,displayWidth:100,alt:""});
           renderImages();preview();
         }
@@ -240,7 +263,7 @@
     function legacyAnswer(){if(["standard","numeric"].includes(state.taskType))return state.answers.map(a=>a.value.trim()).filter(Boolean).join("; ");if(["single","multiple"].includes(state.taskType))return state.options.filter(o=>o.correct&&o.text.trim()).map(o=>o.text.trim()).join(" | ");return state.openAnswer.trim()}
     function collect(){state.grade=Number(q("tbGrade").value)||state.grade;state.topicId=q("tbTopic").value;state.subtopic=q("tbSubtopic").value;state.content=q("tbContent").value;state.settings.shared=!!q("tbShared").checked;state.settings.allowTests=!!q("tbAllowTests").checked;state.settings.allowAi=!!q("tbAllowAi").checked;setHelp(q("tbHelp").value);syncAnswer()}
     function builderMeta(){const t=topic();return {version:2,grade:Number(t?.grade||state.grade)||null,subtopic:state.subtopic.trim(),task_type:state.taskType,images:state.images.map(img=>({id:img.id,path:img.path,name:img.name,mime:img.mime,width:img.width,height:img.height,display_width:img.displayWidth,alt:img.alt.trim()})),answers:state.answers,options:state.options,open_answer:state.openAnswer,solution:state.solution,hints:state.hints,source:{kind:state.source.kind,textbook_id:state.source.kind==="textbook"?(state.source.textbookId||null):null,page:state.source.kind==="textbook"?(state.source.page||null):null,exercise_no:state.source.kind==="textbook"?(state.source.exerciseNo||null):null,note:state.source.kind==="textbook"?"":state.source.note.trim()},settings:{shared:!!state.settings.shared,allow_tests:!!state.settings.allowTests,allow_ai_example:!!state.settings.allowAi}}}
-    function back(){cleanupPendingImages();const ret=S.taskBuilderReturn||{view:"bank"};S.taskBuilderExerciseId=null;S.taskBuilderReturn=null;if(ret.view==="topics"&&ret.topicId){S.view="topics";S.topic=(S.topics||[]).find(t=>String(t.id)===String(ret.topicId))||null;return S.topic?renderTopic():renderTopics()}S.view="bank";S.topic=null;renderBank()}
+    function back(){cleanupPendingImages();releaseLocalImageUrls();const ret=S.taskBuilderReturn||{view:"bank"};S.taskBuilderExerciseId=null;S.taskBuilderReturn=null;if(ret.view==="topics"&&ret.topicId){S.view="topics";S.topic=(S.topics||[]).find(t=>String(t.id)===String(ret.topicId))||null;return S.topic?renderTopic():renderTopics()}S.view="bank";S.topic=null;renderBank()}
     async function syncShared(saved,draft){
       if(draft)return;
       const t=(S.topics||[]).find(x=>String(x.id)===String(saved.topic_id));
