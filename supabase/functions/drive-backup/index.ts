@@ -8,7 +8,8 @@ const TABLES = [
   'student_learning_roadmaps','student_alert_snoozes','student_progress_snapshots','student_readiness_targets','student_target_trajectories',
   'student_questions','student_resources','student_lesson_checkins','student_schedule_requests',
   'textbooks','textbook_topic_links','teacher_textbook_library','shared_materials',
-  'task_bank_sources','task_bank_items','task_bank_runs'
+  'task_bank_sources','task_bank_items','task_bank_runs',
+  'task_generation_jobs','task_candidates','task_candidate_checks','task_relations'
 ]
 
 const STORAGE_BUCKETS = ['board-assets','textbooks']
