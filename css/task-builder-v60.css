@@ -455,3 +455,22 @@ html[data-theme=dark] .mr-tb-preview-image img{background:#101317;border-color:#
   .mr-tb-image-remove{width:34px;height:34px}
   .mr-tb-image-title{align-items:flex-start;flex-direction:column;gap:2px}
 }
+
+
+/* v63.1 shared task media */
+.mr-task-media{display:grid;gap:10px;margin:12px 0}
+.mr-task-media figure{margin:0;max-width:100%}
+.mr-task-media img{display:block;width:100%;max-height:360px;object-fit:contain;border:1px solid #e5ddd7;border-radius:14px;background:#fff}
+.mr-task-media figcaption{margin-top:5px;color:#7d8791;font:600 10px/1.45 Inter,system-ui,sans-serif}
+.mr-task-media.compact{gap:7px;margin:8px 0}
+.mr-task-media.compact img{max-height:180px;border-radius:10px}
+.mr-task-media figure.load-error{min-height:72px;border:1px dashed #e4b8a3;border-radius:12px;background:#fff6f1}
+html[data-theme=dark] .mr-task-media img{background:#101317;border-color:#343a42}
+html[data-theme=dark] .mr-task-media figcaption{color:#aab2bb}
+html[data-theme=dark] .mr-task-media figure.load-error{background:#211813;border-color:#67412d}
+.mr-student-current-task .mr-task-media{margin-top:14px}
+.answer-item .mr-task-media{margin:9px 0 13px}
+@media(max-width:700px){
+  .mr-task-media figure{width:100%!important}
+  .mr-task-media img{max-height:280px}
+}
