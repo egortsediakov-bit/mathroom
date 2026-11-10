@@ -1173,7 +1173,7 @@ function renderTopics(){
   document.querySelectorAll('[data-delete-topic]').forEach(b=>b.onclick=async e=>{e.stopPropagation();const t=S.topics.find(x=>x.id===b.dataset.deleteTopic);if(t)await deleteTopicRow(t)});
 }
 
-const taskImageUrlCache=new Map();
+const taskImageUrlCache=new Map(),taskImageUrlPending=new Map();
 function taskBuilderImages(meta){
   return Array.isArray(meta?.images)?meta.images.filter(x=>x&&x.path):[];
 }
@@ -1184,17 +1184,30 @@ function taskMediaHtml(meta,{compact=false}={}){
     return '<figure style="width:'+width+'%"><img data-task-image-path="'+esc(String(img.path))+'" alt="'+esc(String(img.alt||img.name||'Изображение к задаче'))+'">'+(img.alt?'<figcaption>'+esc(String(img.alt))+'</figcaption>':'')+'</figure>';
   }).join('')+'</div>';
 }
+async function signedTaskImageUrl(path){
+  if(!path)return '';
+  if(taskImageUrlCache.has(path))return taskImageUrlCache.get(path);
+  if(taskImageUrlPending.has(path))return taskImageUrlPending.get(path);
+  const promise=(async()=>{
+    let lastError=null;
+    for(const delay of [0,180,420,900]){
+      if(delay)await new Promise(r=>setTimeout(r,delay));
+      const {data,error}=await sb.storage.from('task-images').createSignedUrl(path,3600);
+      if(!error&&data?.signedUrl){taskImageUrlCache.set(path,data.signedUrl);return data.signedUrl}
+      lastError=error||new Error('Не удалось получить ссылку на изображение');
+    }
+    throw lastError;
+  })().finally(()=>taskImageUrlPending.delete(path));
+  taskImageUrlPending.set(path,promise);
+  return promise;
+}
 async function hydrateTaskMedia(root=document){
   const nodes=[...(root||document).querySelectorAll?.('[data-task-image-path]')||[]];
   await Promise.all(nodes.map(async img=>{
     const path=String(img.dataset.taskImagePath||'');if(!path)return;
     try{
-      let url=taskImageUrlCache.get(path);
-      if(!url){
-        const {data,error}=await sb.storage.from('task-images').createSignedUrl(path,3600);
-        if(error)throw error;url=data?.signedUrl||'';if(url)taskImageUrlCache.set(path,url);
-      }
-      if(img.isConnected&&url)img.src=url;
+      const url=await signedTaskImageUrl(path);
+      if(img.isConnected&&url){img.src=url;img.closest('figure')?.classList.remove('load-error')}
     }catch(e){console.warn('[Mathroom task media]',e);img.closest('figure')?.classList.add('load-error')}
   }));
 }
