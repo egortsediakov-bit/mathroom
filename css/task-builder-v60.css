@@ -602,6 +602,17 @@ html[data-theme=dark] .mr-tb-preview-table>figcaption{color:#b6bec6}
 .mr-geometry-svg .label{fill:#25292e;font:700 14px/1.2 Inter,system-ui,sans-serif}
 .mr-geometry-svg .grid{stroke:#e7e9eb;stroke-width:1}
 .mr-geometry-svg .axis{stroke:#4b535b;stroke-width:1.7}
+.mr-geometry-svg .coord-plot-bg{fill:#fbfbfa;stroke:#ece8e3;stroke-width:1}
+.mr-geometry-svg .coord-grid{stroke:#e7e5e2;stroke-width:1}
+.mr-geometry-svg .coord-axis{stroke:#2c3137;stroke-width:2.2;stroke-linecap:round}
+.mr-geometry-svg .coord-arrow{fill:none;stroke:#2c3137;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+.mr-geometry-svg .coord-tick{stroke:#2c3137;stroke-width:1.4;stroke-linecap:round}
+.mr-geometry-svg .coord-tick-label{fill:#737b84;font:600 11px/1 Inter,system-ui,sans-serif}
+.mr-geometry-svg .coord-origin{fill:#505861;font:700 11px/1 Inter,system-ui,sans-serif}
+.mr-geometry-svg .coord-axis-name{fill:#252a30;font:italic 800 15px/1 Inter,system-ui,sans-serif}
+.mr-geometry-svg .coord-point-halo{fill:#fff;stroke:#fff;stroke-width:4}
+.mr-geometry-svg .coord-point{fill:#f35a16;stroke:#d94d0b;stroke-width:1}
+.mr-geometry-svg .coord-point-label{fill:#252a30;stroke:#fff;stroke-width:4;paint-order:stroke fill;font:800 14px/1 Inter,system-ui,sans-serif}
 .mr-geometry-svg .right-angle{fill:none;stroke:#f35a16;stroke-width:2.2;stroke-linejoin:miter}
 .mr-task-geometries{margin:12px 0}
 .mr-task-geometry.compact .mr-geometry-svg svg{min-height:150px}
@@ -623,6 +634,16 @@ html[data-theme=dark] .mr-geometry-svg .shape{stroke:#eef1f4}
 html[data-theme=dark] .mr-geometry-svg .label{fill:#eef1f4}
 html[data-theme=dark] .mr-geometry-svg .grid{stroke:#2f353c}
 html[data-theme=dark] .mr-geometry-svg .axis{stroke:#aeb6be}
+html[data-theme=dark] .mr-geometry-svg .coord-plot-bg{fill:#12161a;stroke:#30363d}
+html[data-theme=dark] .mr-geometry-svg .coord-grid{stroke:#2b3138}
+html[data-theme=dark] .mr-geometry-svg .coord-axis,
+html[data-theme=dark] .mr-geometry-svg .coord-arrow,
+html[data-theme=dark] .mr-geometry-svg .coord-tick{stroke:#d7dde3}
+html[data-theme=dark] .mr-geometry-svg .coord-tick-label,
+html[data-theme=dark] .mr-geometry-svg .coord-origin{fill:#aeb6be}
+html[data-theme=dark] .mr-geometry-svg .coord-axis-name{fill:#f3f5f7}
+html[data-theme=dark] .mr-geometry-svg .coord-point-halo{fill:#101317;stroke:#101317}
+html[data-theme=dark] .mr-geometry-svg .coord-point-label{fill:#f3f5f7;stroke:#101317}
 html[data-theme=dark] .mr-tb-preview-geometry>figcaption,
 html[data-theme=dark] .mr-tb-geometry-render>figcaption,
 html[data-theme=dark] .mr-task-geometry>figcaption{color:#b6bec6}
