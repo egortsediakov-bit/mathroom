@@ -285,12 +285,37 @@
       }
       if(g.type==="coordinate"){
         const x0=g.coordinate.xMin,x1=g.coordinate.xMax,y0=g.coordinate.yMin,y1=g.coordinate.yMax;
-        const sx=x=>40+(x-x0)/(x1-x0)*280,sy=y=>190-(y-y0)/(y1-y0)*150;
-        let grid="";
-        for(let x=Math.ceil(x0);x<=Math.floor(x1);x++){const px=sx(x);grid+='<line x1="'+px+'" y1="32" x2="'+px+'" y2="190" class="'+(x===0?"axis":"grid")+'"/>';if(x!==0)grid+=txt(px,209,x)}
-        for(let y=Math.ceil(y0);y<=Math.floor(y1);y++){const py=sy(y);grid+='<line x1="40" y1="'+py+'" x2="320" y2="'+py+'" class="'+(y===0?"axis":"grid")+'"/>';if(y!==0)grid+=txt(29,py+4,y,"end")}
-        const pts=parseCoordinatePoints(g.coordinate.points).filter(p=>p.x>=x0&&p.x<=x1&&p.y>=y0&&p.y<=y1).map(p=>'<circle cx="'+sx(p.x)+'" cy="'+sy(p.y)+'" r="4.5" class="point"/>'+txt(sx(p.x)+8,sy(p.y)-8,p.label,"start")).join("");
-        return '<svg viewBox="0 0 360 230" role="img" aria-label="Координатная плоскость">'+grid+pts+'</svg>';
+        const left=52,right=354,top=28,bottom=232,w=right-left,h=bottom-top;
+        const sx=x=>left+(x-x0)/(x1-x0)*w,sy=y=>bottom-(y-y0)/(y1-y0)*h;
+        const span=Math.max(x1-x0,y1-y0),step=span<=12?1:span<=24?2:5;
+        const xAxisY=sy(0),yAxisX=sx(0);
+        let grid="",ticks="";
+        const firstX=Math.ceil(x0/step)*step,firstY=Math.ceil(y0/step)*step;
+        for(let x=firstX;x<=x1+1e-9;x+=step){
+          if(Math.abs(x)<1e-9)continue;
+          const px=sx(x);
+          grid+='<line x1="'+px+'" y1="'+top+'" x2="'+px+'" y2="'+bottom+'" class="coord-grid"/>';
+          ticks+='<line x1="'+px+'" y1="'+(xAxisY-4)+'" x2="'+px+'" y2="'+(xAxisY+4)+'" class="coord-tick"/>'+txt(px,xAxisY+19,Number(x.toFixed(6)),"middle","coord-tick-label");
+        }
+        for(let y=firstY;y<=y1+1e-9;y+=step){
+          if(Math.abs(y)<1e-9)continue;
+          const py=sy(y);
+          grid+='<line x1="'+left+'" y1="'+py+'" x2="'+right+'" y2="'+py+'" class="coord-grid"/>';
+          ticks+='<line x1="'+(yAxisX-4)+'" y1="'+py+'" x2="'+(yAxisX+4)+'" y2="'+py+'" class="coord-tick"/>'+txt(yAxisX-11,py+4,Number(y.toFixed(6)),"end","coord-tick-label");
+        }
+        const axes=
+          '<line x1="'+left+'" y1="'+xAxisY+'" x2="'+(right-7)+'" y2="'+xAxisY+'" class="coord-axis"/>'+
+          '<path d="M '+(right-7)+' '+(xAxisY-5)+' L '+right+' '+xAxisY+' L '+(right-7)+' '+(xAxisY+5)+'" class="coord-arrow"/>'+
+          '<line x1="'+yAxisX+'" y1="'+bottom+'" x2="'+yAxisX+'" y2="'+(top+7)+'" class="coord-axis"/>'+
+          '<path d="M '+(yAxisX-5)+' '+(top+7)+' L '+yAxisX+' '+top+' L '+(yAxisX+5)+' '+(top+7)+'" class="coord-arrow"/>'+
+          txt(right-1,xAxisY-11,"x","end","coord-axis-name")+txt(yAxisX+11,top+2,"y","start","coord-axis-name")+
+          txt(yAxisX-10,xAxisY+18,"0","end","coord-origin");
+        const pts=parseCoordinatePoints(g.coordinate.points).filter(p=>p.x>=x0&&p.x<=x1&&p.y>=y0&&p.y<=y1).map(p=>{
+          const px=sx(p.x),py=sy(p.y);
+          const dx=px>right-45?-10:10,anchor=px>right-45?"end":"start",dy=py<top+28?18:-11;
+          return '<circle cx="'+px+'" cy="'+py+'" r="7" class="coord-point-halo"/><circle cx="'+px+'" cy="'+py+'" r="4.8" class="coord-point"/>'+txt(px+dx,py+dy,p.label,anchor,"coord-point-label");
+        }).join("");
+        return '<svg viewBox="0 0 406 264" role="img" aria-label="Координатная плоскость"><rect x="'+left+'" y="'+top+'" width="'+w+'" height="'+h+'" rx="12" class="coord-plot-bg"/>'+grid+axes+ticks+pts+'</svg>';
       }
       const v=g.triangle.vertices,s=g.triangle.sides;
       const right=g.triangle.rightAngle;
