@@ -559,3 +559,81 @@ html[data-theme=dark] .mr-tb-preview-table>figcaption{color:#b6bec6}
   .mr-tb-table-controls>div{display:grid;grid-template-columns:1fr 1fr}
   .mr-tb-table-options{display:grid}
 }
+
+
+/* v65 task geometry */
+.mr-tb-geometries{display:grid;gap:12px;margin-top:12px}
+.mr-tb-geometries-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 14px;border:1px solid #eadfd7;border-radius:15px;background:linear-gradient(180deg,#fffdfb,#fff8f4)}
+.mr-tb-geometries-head b{display:block;color:#24282d;font-size:14px;font-weight:900}
+.mr-tb-geometries-head small{display:block;margin-top:3px;color:#8c96a0;font-size:12px}
+.mr-tb-geometries-head button{min-height:40px;padding:0 14px;border:1px dashed #ffad86;border-radius:10px;background:#fff;color:#ed5715;font-size:13px;font-weight:850;cursor:pointer}
+.mr-tb-geometry-list{display:grid;gap:12px}
+.mr-tb-geometry-card{display:grid;gap:13px;padding:14px;border:1px solid #eadfd7;border-radius:16px;background:linear-gradient(135deg,#fff 0%,#fff 72%,#fff7f2 100%)}
+.mr-tb-geometry-card-head{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.mr-tb-geometry-card-head>div{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.mr-tb-geometry-card-head span{font-size:14px;font-weight:900;color:#292e34}
+.mr-tb-geometry-card-head select{min-height:40px;padding:0 34px 0 12px;border:1px solid #dedfe1;border-radius:10px;background:#fff;color:#2e343a;font-size:13px;font-weight:800;outline:none}
+.mr-tb-geometry-remove{width:38px;height:38px;border:1px solid #ead9d0;border-radius:10px;background:#fff;color:#8e7468;font-size:20px;cursor:pointer}
+.mr-tb-geometry-remove:hover{border-color:#ffad88;background:#fff4ee;color:#e84d0b}
+.mr-tb-geometry-layout{display:grid;grid-template-columns:minmax(0,1fr) minmax(300px,42%);gap:16px;align-items:start}
+.mr-tb-geometry-controls{display:grid;gap:11px}
+.mr-tb-geo-caption,.mr-tb-geo-points,.mr-tb-geo-right,.mr-tb-geo-width,.mr-tb-geo-grid label{display:grid;gap:5px}
+.mr-tb-geo-caption>span,.mr-tb-geo-points>span,.mr-tb-geo-right>span,.mr-tb-geo-width>span,.mr-tb-geo-grid label>span{font-size:13px;font-weight:800;color:#4c5660}
+.mr-tb-geo-caption em{font-style:normal;color:#9aa3ac;font-size:12px;font-weight:600}
+.mr-tb-geo-caption input,.mr-tb-geo-points input,.mr-tb-geo-right select,.mr-tb-geo-grid input{width:100%;min-height:44px;padding:0 12px;border:1px solid #dedfe1;border-radius:10px;background:#fff;color:#202429;font-size:14px;outline:none}
+.mr-tb-geo-caption input:focus,.mr-tb-geo-points input:focus,.mr-tb-geo-right select:focus,.mr-tb-geo-grid input:focus{border-color:#ff9160;box-shadow:0 0 0 3px rgba(243,90,22,.08)}
+.mr-tb-geo-points small{font-size:11px;color:#8c96a0}
+.mr-tb-geo-grid{display:grid;gap:9px}
+.mr-tb-geo-grid.two{grid-template-columns:repeat(2,minmax(0,1fr))}
+.mr-tb-geo-grid.three{grid-template-columns:repeat(3,minmax(0,1fr))}
+.mr-tb-geo-grid.four{grid-template-columns:repeat(4,minmax(0,1fr))}
+.mr-tb-geo-width>div{display:grid;grid-template-columns:minmax(0,1fr) 48px;gap:10px;align-items:center}
+.mr-tb-geo-width input{width:100%;accent-color:#f35a16}
+.mr-tb-geo-width b{color:#ef5916;font-size:13px;text-align:right}
+.mr-tb-geometry-live{display:grid;place-items:center;min-height:260px;padding:12px;border:1px solid #e2dedb;border-radius:14px;background:linear-gradient(180deg,#fafafa,#f5f5f5)}
+.mr-tb-geometry-live .mr-tb-geometry-render{margin:0}
+.mr-tb-preview-geometries,.mr-task-geometries{display:grid;gap:12px;margin-top:12px}
+.mr-tb-preview-geometry,.mr-tb-geometry-render,.mr-task-geometry{margin:0;max-width:100%}
+.mr-tb-preview-geometry>figcaption,.mr-tb-geometry-render>figcaption,.mr-task-geometry>figcaption{margin:0 0 6px;color:#59636d;font-size:11px;font-weight:800}
+.mr-geometry-svg{width:100%;overflow:hidden;border:1px solid #e2dedb;border-radius:13px;background:#fff}
+.mr-geometry-svg svg{display:block;width:100%;height:auto;min-height:180px}
+.mr-geometry-svg .shape{fill:none;stroke:#25292e;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round}
+.mr-geometry-svg .point{fill:#f35a16}
+.mr-geometry-svg .label{fill:#25292e;font:700 14px/1.2 Inter,system-ui,sans-serif}
+.mr-geometry-svg .grid{stroke:#e7e9eb;stroke-width:1}
+.mr-geometry-svg .axis{stroke:#4b535b;stroke-width:1.7}
+.mr-geometry-svg .right-angle{fill:none;stroke:#f35a16;stroke-width:2.2;stroke-linejoin:miter}
+.mr-task-geometries{margin:12px 0}
+.mr-task-geometry.compact .mr-geometry-svg svg{min-height:150px}
+.mr-task-geometry.compact>figcaption{font-size:10px}
+
+html[data-theme=dark] .mr-tb-geometries-head,
+html[data-theme=dark] .mr-tb-geometry-card{background:linear-gradient(135deg,#171b20,#171b20 72%,#211813);border-color:#343a42}
+html[data-theme=dark] .mr-tb-geometries-head b,
+html[data-theme=dark] .mr-tb-geometry-card-head span{color:#f3f5f7}
+html[data-theme=dark] .mr-tb-geometry-card-head select,
+html[data-theme=dark] .mr-tb-geo-caption input,
+html[data-theme=dark] .mr-tb-geo-points input,
+html[data-theme=dark] .mr-tb-geo-right select,
+html[data-theme=dark] .mr-tb-geo-grid input,
+html[data-theme=dark] .mr-tb-geometry-remove{background:#101317;border-color:#343a42;color:#eef1f4}
+html[data-theme=dark] .mr-tb-geometry-live{background:#101317;border-color:#343a42}
+html[data-theme=dark] .mr-geometry-svg{background:#101317;border-color:#343a42}
+html[data-theme=dark] .mr-geometry-svg .shape{stroke:#eef1f4}
+html[data-theme=dark] .mr-geometry-svg .label{fill:#eef1f4}
+html[data-theme=dark] .mr-geometry-svg .grid{stroke:#2f353c}
+html[data-theme=dark] .mr-geometry-svg .axis{stroke:#aeb6be}
+html[data-theme=dark] .mr-tb-preview-geometry>figcaption,
+html[data-theme=dark] .mr-tb-geometry-render>figcaption,
+html[data-theme=dark] .mr-task-geometry>figcaption{color:#b6bec6}
+
+@media(max-width:900px){
+  .mr-tb-geometry-layout{grid-template-columns:1fr}
+  .mr-tb-geometry-live{min-height:220px}
+}
+@media(max-width:650px){
+  .mr-tb-geometries-head{align-items:flex-start;flex-direction:column}
+  .mr-tb-geo-grid.three,.mr-tb-geo-grid.four{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .mr-tb-geo-grid.two{grid-template-columns:1fr}
+  .mr-tb-preview-geometry,.mr-task-geometry{width:100%!important}
+}
