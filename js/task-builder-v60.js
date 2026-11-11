@@ -262,13 +262,12 @@
       return '<div class="mr-tb-preview-tables">'+state.tables.map(t=>tableHtml(t,{previewMode:true})).join("")+'</div>';
     }
     function parseCoordinatePoints(raw){
-      const out=[];
-      String(raw||"").split(/[;\n]+/).forEach(part=>{
-        const m=part.trim().match(/^([^()]+?)\s*\(\s*(-?\d+(?:[.,]\d+)?)\s*[,;]\s*(-?\d+(?:[.,]\d+)?)\s*\)$/);
-        if(!m)return;
+      const out=[],re=/([^();\n]+?)\s*\(\s*(-?\d+(?:[.,]\d+)?)\s*[,;]\s*(-?\d+(?:[.,]\d+)?)\s*\)/g;
+      let m;
+      while((m=re.exec(String(raw||"")))){
         const x=Number(m[2].replace(",", ".")),y=Number(m[3].replace(",", "."));
-        if(Number.isFinite(x)&&Number.isFinite(y))out.push({label:m[1].trim(),x,y});
-      });
+        if(Number.isFinite(x)&&Number.isFinite(y))out.push({label:m[1].trim().replace(/^[;,\s]+/,""),x,y});
+      }
       return out;
     }
     function geometrySvg(g){
