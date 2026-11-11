@@ -37,6 +37,7 @@
           cells:Array.from({length:rows},(_,r)=>Array.from({length:cols},(_,c)=>String(Array.isArray(raw[r])?raw[r][c]??"":"")))
         };
       }):[],
+      contentOrder:Array.isArray(meta.content_order)?meta.content_order.map(String):[],
       geometries:Array.isArray(meta.geometries)?meta.geometries.map((g,i)=>({
         id:String(g?.id||("geo"+i)),
         type:["triangle","rectangle","circle","coordinate"].includes(g?.type)?g.type:"triangle",
@@ -81,6 +82,25 @@
     const tableId=()=>window.crypto?.randomUUID?.()||("tbl-"+Date.now()+"-"+Math.random().toString(36).slice(2));
     const geometryById=id=>state.geometries.find(x=>String(x.id)===String(id))||null;
     const geometryId=()=>window.crypto?.randomUUID?.()||("geo-"+Date.now()+"-"+Math.random().toString(36).slice(2));
+    function allContentKeys(){
+      return ["text",...state.images.map(x=>"image:"+x.id),...state.tables.map(x=>"table:"+x.id),...state.geometries.map(x=>"geometry:"+x.id)];
+    }
+    function syncContentOrder(){
+      const valid=new Set(allContentKeys()),seen=new Set(),next=[];
+      for(const key of state.contentOrder||[]){
+        if(valid.has(key)&&!seen.has(key)){seen.add(key);next.push(key)}
+      }
+      for(const key of allContentKeys())if(!seen.has(key)){seen.add(key);next.push(key)}
+      state.contentOrder=next;
+      return next;
+    }
+    function moveContentBlock(key,delta){
+      syncContentOrder();
+      const i=state.contentOrder.indexOf(key),j=i+delta;
+      if(i<0||j<0||j>=state.contentOrder.length)return;
+      [state.contentOrder[i],state.contentOrder[j]]=[state.contentOrder[j],state.contentOrder[i]];
+      renderContentOrder();preview();
+    }
     const imageExt=mime=>({"image/png":"png","image/jpeg":"jpg","image/webp":"webp","image/gif":"gif"}[mime]||"png");
     async function signedImageUrl(path){
       if(!path)return "";
@@ -164,6 +184,7 @@
           '<div id="tbImages" class="mr-tb-images"></div>'+
           '<div id="tbTables" class="mr-tb-tables"></div>'+
           '<div id="tbGeometries" class="mr-tb-geometries"></div>'+
+          '<div id="tbContentOrder" class="mr-tb-content-order"></div>'+
         '</section>'+
         '<section class="mr-tb-card">'+section("answer","Правильный ответ","Укажите правильный ответ и допустимые варианты")+
           '<div class="mr-tb-answer-types">'+typeButtons+'</div><div id="tbAnswerEditor"></div>'+
@@ -333,9 +354,69 @@
       if(!state.geometries.length)return "";
       return '<div class="mr-tb-preview-geometries">'+state.geometries.map(g=>geometryHtml(g,{previewMode:true})).join("")+'</div>';
     }
+    function contentBlockLabel(key){
+      if(key==="text")return {icon:"T",title:"Текст условия",sub:"Основной текст задачи"};
+      const [type,id]=key.split(":");
+      if(type==="image"){
+        const x=imageById(id),i=state.images.indexOf(x);
+        return {icon:"▧",title:"Изображение "+(i+1),sub:x?.name||"Картинка"};
+      }
+      if(type==="table"){
+        const x=tableById(id),i=state.tables.indexOf(x);
+        return {icon:"⊞",title:"Таблица "+(i+1),sub:(x?.caption||((x?.rows||0)+" × "+(x?.cols||0)))};
+      }
+      const x=geometryById(id),i=state.geometries.indexOf(x);
+      const names={triangle:"Треугольник",rectangle:"Прямоугольник",circle:"Окружность",coordinate:"Координатная плоскость"};
+      return {icon:"△",title:"Схема "+(i+1),sub:names[x?.type]||"Геометрия"};
+    }
+    function renderContentOrder(){
+      const host=q("tbContentOrder");if(!host)return;
+      const order=syncContentOrder();
+      if(order.length<=1){host.innerHTML="";return}
+      host.innerHTML='<div class="mr-tb-order-head"><div><b>Порядок блоков в условии</b><small>Перетащите блоки или используйте стрелки</small></div></div>'+
+        '<div class="mr-tb-order-list">'+order.map((key,i)=>{
+          const info=contentBlockLabel(key);
+          return '<div class="mr-tb-order-item" draggable="true" data-order-key="'+esc(key)+'">'+
+            '<span class="mr-tb-order-grip" aria-hidden="true">⠿</span><span class="mr-tb-order-icon">'+info.icon+'</span>'+
+            '<div><b>'+esc(info.title)+'</b><small>'+esc(info.sub)+'</small></div>'+
+            '<div class="mr-tb-order-actions"><button type="button" data-order-up="'+esc(key)+'" '+(i===0?'disabled':'')+' title="Выше">↑</button><button type="button" data-order-down="'+esc(key)+'" '+(i===order.length-1?'disabled':'')+' title="Ниже">↓</button></div>'+
+          '</div>';
+        }).join("")+'</div>';
+      host.querySelectorAll("[data-order-up]").forEach(b=>b.onclick=()=>moveContentBlock(b.dataset.orderUp,-1));
+      host.querySelectorAll("[data-order-down]").forEach(b=>b.onclick=()=>moveContentBlock(b.dataset.orderDown,1));
+      let dragged="";
+      host.querySelectorAll("[data-order-key]").forEach(row=>{
+        row.ondragstart=e=>{dragged=row.dataset.orderKey||"";row.classList.add("dragging");if(e.dataTransfer){e.dataTransfer.effectAllowed="move";e.dataTransfer.setData("text/plain",dragged)}};
+        row.ondragend=()=>{dragged="";host.querySelectorAll(".dragging,.drag-over").forEach(x=>x.classList.remove("dragging","drag-over"))};
+        row.ondragover=e=>{e.preventDefault();if(dragged&&dragged!==row.dataset.orderKey)row.classList.add("drag-over")};
+        row.ondragleave=()=>row.classList.remove("drag-over");
+        row.ondrop=e=>{
+          e.preventDefault();row.classList.remove("drag-over");
+          const from=dragged||e.dataTransfer?.getData("text/plain")||"",to=row.dataset.orderKey||"";
+          syncContentOrder();const a=state.contentOrder.indexOf(from),b=state.contentOrder.indexOf(to);
+          if(a<0||b<0||a===b)return;
+          state.contentOrder.splice(a,1);state.contentOrder.splice(b,0,from);
+          renderContentOrder();preview();
+        };
+      });
+    }
+    function previewConditionHtml(){
+      const order=syncContentOrder();
+      return order.map(key=>{
+        if(key==="text")return '<div class="mr-tb-preview-problem">'+(state.content.trim()?nl(state.content):'<span class="placeholder">Здесь появится условие задачи.</span>')+'</div>';
+        const [type,id]=key.split(":");
+        if(type==="image"){
+          const img=imageById(id);if(!img)return "";
+          return '<div class="mr-tb-preview-images"><figure class="mr-tb-preview-image" style="width:'+img.displayWidth+'%"><img data-tb-image-src="'+esc(img.id)+'" alt="'+esc(img.alt||img.name||"Изображение к задаче")+'"><figcaption>'+(img.alt?esc(img.alt):"")+'</figcaption></figure></div>';
+        }
+        if(type==="table"){const table=tableById(id);return table?'<div class="mr-tb-preview-tables">'+tableHtml(table,{previewMode:true})+'</div>':""}
+        if(type==="geometry"){const g=geometryById(id);return g?'<div class="mr-tb-preview-geometries">'+geometryHtml(g,{previewMode:true})+'</div>':""}
+        return "";
+      }).join("");
+    }
     function preview(){
       const t=topic();
-      q("tbPreview").innerHTML='<div class="mr-tb-preview-sheet"><div class="mr-tb-preview-meta"><span>'+diffName(state.difficulty)+'</span><small>'+esc(t?.title||"Тема не выбрана")+' · '+esc(typeName(state.taskType))+'</small></div><div class="mr-tb-preview-problem">'+(state.content.trim()?nl(state.content):'<span class="placeholder">Здесь появится условие задачи.</span>')+'</div>'+previewImagesHtml()+previewTablesHtml()+previewGeometriesHtml()+'</div>'+studentAnswer();
+      q("tbPreview").innerHTML='<div class="mr-tb-preview-sheet"><div class="mr-tb-preview-meta"><span>'+diffName(state.difficulty)+'</span><small>'+esc(t?.title||"Тема не выбрана")+' · '+esc(typeName(state.taskType))+'</small></div>'+previewConditionHtml()+'</div>'+studentAnswer();
       hydrateTaskImages(q("tbPreview"));
     }
     function renderImages(){
@@ -360,7 +441,7 @@
           try{await sb.storage.from(TASK_IMAGE_BUCKET).remove([img.path])}catch(e){console.warn("[Mathroom task image remove]",e)}
         }
         releaseImageUrl(img.path);
-        renderImages();preview();
+        syncContentOrder();renderImages();renderContentOrder();preview();
       });
       hydrateTaskImages(host);
     }
@@ -384,11 +465,13 @@
       host.querySelectorAll("[data-tb-table-row-remove]").forEach(el=>el.onclick=()=>{const t=tableById(el.dataset.tbTableRowRemove);if(!t||t.rows<=1)return;t.cells.pop();t.rows--;renderTables();preview()});
       host.querySelectorAll("[data-tb-table-col-add]").forEach(el=>el.onclick=()=>{const t=tableById(el.dataset.tbTableColAdd);if(!t||t.cols>=12)return toast("Максимум 12 столбцов");t.cells.forEach(row=>row.push(''));t.cols++;renderTables();preview()});
       host.querySelectorAll("[data-tb-table-col-remove]").forEach(el=>el.onclick=()=>{const t=tableById(el.dataset.tbTableColRemove);if(!t||t.cols<=1)return;t.cells.forEach(row=>row.pop());t.cols--;renderTables();preview()});
-      host.querySelectorAll("[data-tb-table-remove]").forEach(el=>el.onclick=()=>{state.tables=state.tables.filter(t=>String(t.id)!==String(el.dataset.tbTableRemove));renderTables();preview()});
+      host.querySelectorAll("[data-tb-table-remove]").forEach(el=>el.onclick=()=>{state.tables=state.tables.filter(t=>String(t.id)!==String(el.dataset.tbTableRemove));syncContentOrder();renderTables();renderContentOrder();preview()});
     }
     function addTable(){
-      state.tables.push({id:tableId(),caption:"",rows:3,cols:3,headerRow:true,headerCol:false,cells:Array.from({length:3},()=>Array.from({length:3},()=>""))});
-      renderTables();preview();
+      const id=tableId();
+      state.tables.push({id,caption:"",rows:3,cols:3,headerRow:true,headerCol:false,cells:Array.from({length:3},()=>Array.from({length:3},()=>""))});
+      state.contentOrder.push("table:"+id);syncContentOrder();
+      renderTables();renderContentOrder();preview();
       setTimeout(()=>q("tbTables")?.scrollIntoView({behavior:"smooth",block:"nearest"}),0);
     }
     function geometryFields(g){
@@ -433,11 +516,13 @@
       host.querySelectorAll("[data-geo-circle-radius]").forEach(el=>el.oninput=()=>{const g=geometryById(el.dataset.geoCircleRadius);if(!g)return;g.circle.radiusLabel=el.value;preview();const card=el.closest("[data-geo-card]");if(card)card.querySelector(".mr-tb-geometry-live").innerHTML=geometryHtml(g)});
       host.querySelectorAll("[data-geo-points]").forEach(el=>el.oninput=()=>{const g=geometryById(el.dataset.geoPoints);if(!g)return;g.coordinate.points=el.value;preview();const card=el.closest("[data-geo-card]");if(card)card.querySelector(".mr-tb-geometry-live").innerHTML=geometryHtml(g)});
       host.querySelectorAll("[data-geo-axis]").forEach(el=>el.onchange=()=>{const g=geometryById(el.dataset.geoId);if(!g)return;const k=el.dataset.geoAxis,v=Number(el.value);if(!Number.isFinite(v))return;g.coordinate[k]=v;if(g.coordinate.xMin>=g.coordinate.xMax)g.coordinate.xMin=g.coordinate.xMax-1;if(g.coordinate.yMin>=g.coordinate.yMax)g.coordinate.yMin=g.coordinate.yMax-1;renderGeometries();preview()});
-      host.querySelectorAll("[data-geo-remove]").forEach(el=>el.onclick=()=>{state.geometries=state.geometries.filter(g=>String(g.id)!==String(el.dataset.geoRemove));renderGeometries();preview()});
+      host.querySelectorAll("[data-geo-remove]").forEach(el=>el.onclick=()=>{state.geometries=state.geometries.filter(g=>String(g.id)!==String(el.dataset.geoRemove));syncContentOrder();renderGeometries();renderContentOrder();preview()});
     }
     function addGeometry(){
-      state.geometries.push({id:geometryId(),type:"triangle",caption:"",displayWidth:80,triangle:{vertices:["A","B","C"],sides:["","",""],rightAngle:""},rectangle:{vertices:["A","B","C","D"],widthLabel:"",heightLabel:""},circle:{centerLabel:"O",radiusLabel:"r"},coordinate:{points:"A(2;3); B(-1;4)",xMin:-5,xMax:5,yMin:-5,yMax:5}});
-      renderGeometries();preview();
+      const id=geometryId();
+      state.geometries.push({id,type:"triangle",caption:"",displayWidth:80,triangle:{vertices:["A","B","C"],sides:["","",""],rightAngle:""},rectangle:{vertices:["A","B","C","D"],widthLabel:"",heightLabel:""},circle:{centerLabel:"O",radiusLabel:"r"},coordinate:{points:"A(2;3); B(-1;4)",xMin:-5,xMax:5,yMin:-5,yMax:5}});
+      state.contentOrder.push("geometry:"+id);syncContentOrder();
+      renderGeometries();renderContentOrder();preview();
       setTimeout(()=>q("tbGeometries")?.scrollIntoView({behavior:"smooth",block:"nearest"}),0);
     }
     async function uploadTaskImages(files){
@@ -455,7 +540,8 @@
           pendingImagePaths.add(path);
           imageUrlCache.set(path,URL.createObjectURL(file));
           state.images.push({id,path,name:file.name||("image."+ext),mime:file.type,width:size.width,height:size.height,displayWidth:100,alt:""});
-          renderImages();preview();
+          state.contentOrder.push("image:"+id);syncContentOrder();
+          renderImages();renderContentOrder();preview();
         }
       }catch(e){fail(e)}
       finally{
@@ -466,7 +552,7 @@
     function insertInto(el,text){if(!el)return;const a=el.selectionStart??el.value.length,b=el.selectionEnd??a;el.setRangeText(text,a,b,"end");el.dispatchEvent(new Event("input",{bubbles:true}));el.focus()}
     function legacyAnswer(){if(["standard","numeric"].includes(state.taskType))return state.answers.map(a=>a.value.trim()).filter(Boolean).join("; ");if(["single","multiple"].includes(state.taskType))return state.options.filter(o=>o.correct&&o.text.trim()).map(o=>o.text.trim()).join(" | ");return state.openAnswer.trim()}
     function collect(){state.grade=Number(q("tbGrade").value)||state.grade;state.topicId=q("tbTopic").value;state.subtopic=q("tbSubtopic").value;state.content=q("tbContent").value;state.settings.shared=!!q("tbShared").checked;state.settings.allowTests=!!q("tbAllowTests").checked;state.settings.allowAi=!!q("tbAllowAi").checked;setHelp(q("tbHelp").value);syncAnswer()}
-    function builderMeta(){const t=topic();return {version:4,grade:Number(t?.grade||state.grade)||null,subtopic:state.subtopic.trim(),task_type:state.taskType,images:state.images.map(img=>({id:img.id,path:img.path,name:img.name,mime:img.mime,width:img.width,height:img.height,display_width:img.displayWidth,alt:img.alt.trim()})),tables:state.tables.map(table=>({id:table.id,caption:table.caption.trim(),rows:table.rows,cols:table.cols,header_row:!!table.headerRow,header_col:!!table.headerCol,cells:table.cells.map(row=>row.map(cell=>String(cell)))})),geometries:state.geometries.map(g=>({id:g.id,type:g.type,caption:g.caption.trim(),display_width:g.displayWidth,triangle:{vertices:g.triangle.vertices,sides:g.triangle.sides,right_angle:g.triangle.rightAngle},rectangle:{vertices:g.rectangle.vertices,width_label:g.rectangle.widthLabel,height_label:g.rectangle.heightLabel},circle:{center_label:g.circle.centerLabel,radius_label:g.circle.radiusLabel},coordinate:{points:g.coordinate.points,x_min:g.coordinate.xMin,x_max:g.coordinate.xMax,y_min:g.coordinate.yMin,y_max:g.coordinate.yMax}})),answers:state.answers,options:state.options,open_answer:state.openAnswer,solution:state.solution,hints:state.hints,source:{kind:state.source.kind,textbook_id:state.source.kind==="textbook"?(state.source.textbookId||null):null,page:state.source.kind==="textbook"?(state.source.page||null):null,exercise_no:state.source.kind==="textbook"?(state.source.exerciseNo||null):null,note:state.source.kind==="textbook"?"":state.source.note.trim()},settings:{shared:!!state.settings.shared,allow_tests:!!state.settings.allowTests,allow_ai_example:!!state.settings.allowAi}}}
+    function builderMeta(){const t=topic();syncContentOrder();return {version:5,grade:Number(t?.grade||state.grade)||null,subtopic:state.subtopic.trim(),task_type:state.taskType,content_order:state.contentOrder,images:state.images.map(img=>({id:img.id,path:img.path,name:img.name,mime:img.mime,width:img.width,height:img.height,display_width:img.displayWidth,alt:img.alt.trim()})),tables:state.tables.map(table=>({id:table.id,caption:table.caption.trim(),rows:table.rows,cols:table.cols,header_row:!!table.headerRow,header_col:!!table.headerCol,cells:table.cells.map(row=>row.map(cell=>String(cell)))})),geometries:state.geometries.map(g=>({id:g.id,type:g.type,caption:g.caption.trim(),display_width:g.displayWidth,triangle:{vertices:g.triangle.vertices,sides:g.triangle.sides,right_angle:g.triangle.rightAngle},rectangle:{vertices:g.rectangle.vertices,width_label:g.rectangle.widthLabel,height_label:g.rectangle.heightLabel},circle:{center_label:g.circle.centerLabel,radius_label:g.circle.radiusLabel},coordinate:{points:g.coordinate.points,x_min:g.coordinate.xMin,x_max:g.coordinate.xMax,y_min:g.coordinate.yMin,y_max:g.coordinate.yMax}})),answers:state.answers,options:state.options,open_answer:state.openAnswer,solution:state.solution,hints:state.hints,source:{kind:state.source.kind,textbook_id:state.source.kind==="textbook"?(state.source.textbookId||null):null,page:state.source.kind==="textbook"?(state.source.page||null):null,exercise_no:state.source.kind==="textbook"?(state.source.exerciseNo||null):null,note:state.source.kind==="textbook"?"":state.source.note.trim()},settings:{shared:!!state.settings.shared,allow_tests:!!state.settings.allowTests,allow_ai_example:!!state.settings.allowAi}}}
     function back(){cleanupPendingImages();releaseLocalImageUrls();const ret=S.taskBuilderReturn||{view:"bank"};S.taskBuilderExerciseId=null;S.taskBuilderReturn=null;if(ret.view==="topics"&&ret.topicId){S.view="topics";S.topic=(S.topics||[]).find(t=>String(t.id)===String(ret.topicId))||null;return S.topic?renderTopic():renderTopics()}S.view="bank";S.topic=null;renderBank()}
     async function syncShared(saved,draft){
       if(draft)return;
@@ -487,7 +573,7 @@
       }catch(e){fail(e)}
     }
 
-    fillTopics();renderAnswer();renderSource();renderHelp();renderImages();renderTables();renderGeometries();preview();
+    syncContentOrder();fillTopics();renderAnswer();renderSource();renderHelp();renderImages();renderTables();renderGeometries();renderContentOrder();preview();
     q("tbGrade").onchange=e=>{state.grade=Number(e.target.value);fillTopics();state.topicId=q("tbTopic").value;preview()};
     q("tbTopic").onchange=e=>{state.topicId=e.target.value;preview()};
     q("tbSubtopic").oninput=e=>state.subtopic=e.target.value;
