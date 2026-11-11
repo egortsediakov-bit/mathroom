@@ -1180,6 +1180,52 @@ function taskBuilderImages(meta){
 function taskBuilderTables(meta){
   return Array.isArray(meta?.tables)?meta.tables.filter(x=>x&&Array.isArray(x.cells)&&x.cells.length):[];
 }
+function taskBuilderGeometries(meta){
+  return Array.isArray(meta?.geometries)?meta.geometries.filter(x=>x&&["triangle","rectangle","circle","coordinate"].includes(x.type)):[];
+}
+function taskGeometryPoints(raw){
+  const out=[];
+  String(raw||"").split(/[;\n]+/).forEach(part=>{
+    const m=part.trim().match(/^([^()]+?)\s*\(\s*(-?\d+(?:[.,]\d+)?)\s*[,;]\s*(-?\d+(?:[.,]\d+)?)\s*\)$/);
+    if(!m)return;
+    const x=Number(m[2].replace(",",".")),y=Number(m[3].replace(",","."));
+    if(Number.isFinite(x)&&Number.isFinite(y))out.push({label:m[1].trim(),x,y});
+  });
+  return out;
+}
+function taskGeometrySvg(g){
+  const txt=(x,y,v,anchor="middle",cls="label")=>'<text x="'+x+'" y="'+y+'" text-anchor="'+anchor+'" class="'+cls+'">'+esc(String(v||""))+'</text>';
+  if(g.type==="rectangle"){
+    const v=Array.isArray(g.rectangle?.vertices)?g.rectangle.vertices:["A","B","C","D"];
+    return '<svg viewBox="0 0 360 230" role="img" aria-label="Прямоугольник"><rect x="72" y="48" width="216" height="134" class="shape"/>'+
+      txt(60,43,v[0],"end")+txt(300,43,v[1],"start")+txt(300,202,v[2],"start")+txt(60,202,v[3],"end")+
+      (g.rectangle?.width_label?txt(180,34,g.rectangle.width_label):"")+(g.rectangle?.height_label?txt(314,118,g.rectangle.height_label,"start"):"")+'</svg>';
+  }
+  if(g.type==="circle"){
+    return '<svg viewBox="0 0 360 230" role="img" aria-label="Окружность"><circle cx="180" cy="115" r="72" class="shape"/><circle cx="180" cy="115" r="3.5" class="point"/><line x1="180" y1="115" x2="252" y2="115" class="shape"/>'+
+      txt(169,108,g.circle?.center_label||"O","end")+txt(216,104,g.circle?.radius_label||"r")+'</svg>';
+  }
+  if(g.type==="coordinate"){
+    const x0=Number(g.coordinate?.x_min)||-5,x1=Number(g.coordinate?.x_max)||5,y0=Number(g.coordinate?.y_min)||-5,y1=Number(g.coordinate?.y_max)||5;
+    const sx=x=>40+(x-x0)/(x1-x0)*280,sy=y=>190-(y-y0)/(y1-y0)*150;
+    let grid="";
+    for(let x=Math.ceil(x0);x<=Math.floor(x1);x++){const px=sx(x);grid+='<line x1="'+px+'" y1="32" x2="'+px+'" y2="190" class="'+(x===0?"axis":"grid")+'"/>';if(x!==0)grid+=txt(px,209,x)}
+    for(let y=Math.ceil(y0);y<=Math.floor(y1);y++){const py=sy(y);grid+='<line x1="40" y1="'+py+'" x2="320" y2="'+py+'" class="'+(y===0?"axis":"grid")+'"/>';if(y!==0)grid+=txt(29,py+4,y,"end")}
+    const pts=taskGeometryPoints(g.coordinate?.points).filter(p=>p.x>=x0&&p.x<=x1&&p.y>=y0&&p.y<=y1).map(p=>'<circle cx="'+sx(p.x)+'" cy="'+sy(p.y)+'" r="4.5" class="point"/>'+txt(sx(p.x)+8,sy(p.y)-8,p.label,"start")).join("");
+    return '<svg viewBox="0 0 360 230" role="img" aria-label="Координатная плоскость">'+grid+pts+'</svg>';
+  }
+  const v=Array.isArray(g.triangle?.vertices)?g.triangle.vertices:["A","B","C"],sd=Array.isArray(g.triangle?.sides)?g.triangle.sides:["","",""],right=String(g.triangle?.right_angle??"");
+  const marker=right==="0"?'<path d="M88 160h18v-18" class="right-angle"/>':right==="1"?'<path d="M272 160h-18v-18" class="right-angle"/>':right==="2"?'<path d="M173 54l11 14 14-11" class="right-angle"/>':"";
+  return '<svg viewBox="0 0 360 230" role="img" aria-label="Треугольник"><polygon points="82,170 278,170 180,48" class="shape"/>'+marker+
+    txt(70,188,v[0],"end")+txt(290,188,v[1],"start")+txt(180,34,v[2])+
+    (sd[0]?txt(180,193,sd[0]):"")+(sd[1]?txt(244,103,sd[1],"start"):"")+(sd[2]?txt(116,103,sd[2],"end"):"")+'</svg>';
+}
+function taskGeometryHtml(g,{compact=false}={}){
+  const width=Math.min(100,Math.max(45,Number(g.display_width)||80));
+  return '<figure class="mr-task-geometry '+(compact?'compact':'')+'" style="width:'+width+'%">'+
+    (g.caption?'<figcaption>'+esc(String(g.caption))+'</figcaption>':'')+
+    '<div class="mr-geometry-svg">'+taskGeometrySvg(g)+'</div></figure>';
+}
 function taskTableHtml(table,{compact=false}={}){
   const rows=(table.cells||[]).map((row,r)=>'<tr>'+((Array.isArray(row)?row:[]).map((cell,c)=>{
     const tag=(table.header_row&&r===0)||(table.header_col&&c===0)?'th':'td';
@@ -1191,14 +1237,15 @@ function taskTableHtml(table,{compact=false}={}){
     '<div class="mr-task-table-scroll"><table>'+rows+'</table></div></figure>';
 }
 function taskMediaHtml(meta,{compact=false}={}){
-  const images=taskBuilderImages(meta),tables=taskBuilderTables(meta);
-  if(!images.length&&!tables.length)return '';
+  const images=taskBuilderImages(meta),tables=taskBuilderTables(meta),geometries=taskBuilderGeometries(meta);
+  if(!images.length&&!tables.length&&!geometries.length)return '';
   const imageHtml=images.length?'<div class="mr-task-media '+(compact?'compact':'')+'">'+images.map(img=>{
     const width=Math.min(100,Math.max(30,Number(img.display_width)||100));
     return '<figure style="width:'+width+'%"><img data-task-image-path="'+esc(String(img.path))+'" alt="'+esc(String(img.alt||img.name||'Изображение к задаче'))+'">'+(img.alt?'<figcaption>'+esc(String(img.alt))+'</figcaption>':'')+'</figure>';
   }).join('')+'</div>':'';
   const tableHtml=tables.length?'<div class="mr-task-tables '+(compact?'compact':'')+'">'+tables.map(t=>taskTableHtml(t,{compact})).join('')+'</div>':'';
-  return imageHtml+tableHtml;
+  const geometryHtml=geometries.length?'<div class="mr-task-geometries '+(compact?'compact':'')+'">'+geometries.map(g=>taskGeometryHtml(g,{compact})).join('')+'</div>':'';
+  return imageHtml+tableHtml+geometryHtml;
 }
 async function signedTaskImageUrl(path){
   if(!path)return '';
