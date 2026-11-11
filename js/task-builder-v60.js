@@ -24,6 +24,19 @@
         displayWidth:Math.min(100,Math.max(30,Number(img?.display_width)||100)),
         alt:String(img?.alt||"")
       })).filter(img=>img.path):[],
+      tables:Array.isArray(meta.tables)?meta.tables.map((table,i)=>{
+        const raw=Array.isArray(table?.cells)?table.cells:[];
+        const rows=Math.min(12,Math.max(1,Number(table?.rows)||raw.length||3));
+        const cols=Math.min(12,Math.max(1,Number(table?.cols)||Math.max(0,...raw.map(r=>Array.isArray(r)?r.length:0))||3));
+        return {
+          id:String(table?.id||("tbl"+i)),
+          caption:String(table?.caption||""),
+          rows,cols,
+          headerRow:!!table?.header_row,
+          headerCol:!!table?.header_col,
+          cells:Array.from({length:rows},(_,r)=>Array.from({length:cols},(_,c)=>String(Array.isArray(raw[r])?raw[r][c]??"":"")))
+        };
+      }):[],
       answers:Array.isArray(meta.answers)&&meta.answers.length?meta.answers.map((a,i)=>({label:String(a?.label||("Ответ "+(i+1))),value:String(a?.value||""),accepted:Array.isArray(a?.accepted)?a.accepted.map(String):[]})):[{label:"Ответ",value:String(editing?.answer||""),accepted:[]}],
       options:Array.isArray(meta.options)&&meta.options.length?meta.options.map((o,i)=>({id:String(o?.id||("o"+i)),text:String(o?.text||""),correct:!!o?.correct})):[{id:"o0",text:"",correct:true},{id:"o1",text:"",correct:false},{id:"o2",text:"",correct:false},{id:"o3",text:"",correct:false}],
       openAnswer:String(meta.open_answer??(meta.task_type==="open"?editing?.answer||"":"")),
@@ -40,6 +53,8 @@
     const imageUrlCache=new Map(),imageUrlPending=new Map(),pendingImagePaths=new Set();
     const imageById=id=>state.images.find(x=>String(x.id)===String(id))||null;
     const imageId=()=>window.crypto?.randomUUID?.()||("img-"+Date.now()+"-"+Math.random().toString(36).slice(2));
+    const tableById=id=>state.tables.find(x=>String(x.id)===String(id))||null;
+    const tableId=()=>window.crypto?.randomUUID?.()||("tbl-"+Date.now()+"-"+Math.random().toString(36).slice(2));
     const imageExt=mime=>({"image/png":"png","image/jpeg":"jpg","image/webp":"webp","image/gif":"gif"}[mime]||"png");
     async function signedImageUrl(path){
       if(!path)return "";
@@ -117,10 +132,11 @@
           '<div class="mr-tb-choices"><div><b>Сложность</b><div class="mr-tb-segments">'+diffButtons+'</div></div><div class="grow"><b>Тип задачи</b><div class="mr-tb-segments types">'+typeButtons+'</div></div></div>'+
         '</section>'+
         '<section class="mr-tb-card">'+section("condition","Условие задачи","Введите текст, добавьте формулы и структурные элементы")+
-          '<div class="mr-tb-toolbar"><button data-insert="text">T&nbsp; Текст</button><button class="active" data-insert="formula">∿&nbsp; Формула</button><button data-insert="list">☷&nbsp; Список</button><button data-insert="template">◇&nbsp; Шаблон</button><button data-insert="image">▧&nbsp; Изображение</button><button data-coming="Таблицы">⊞&nbsp; Таблица</button><button data-coming="Геометрия">△&nbsp; Геометрия</button></div>'+
+          '<div class="mr-tb-toolbar"><button data-insert="text">T&nbsp; Текст</button><button class="active" data-insert="formula">∿&nbsp; Формула</button><button data-insert="list">☷&nbsp; Список</button><button data-insert="template">◇&nbsp; Шаблон</button><button data-insert="image">▧&nbsp; Изображение</button><button data-insert="table">⊞&nbsp; Таблица</button><button data-coming="Геометрия">△&nbsp; Геометрия</button></div>'+
           '<div class="mr-tb-editor"><textarea id="tbContent" maxlength="5000" placeholder="Введите условие задачи…">'+esc(state.content)+'</textarea><span id="tbContentCount">'+state.content.length+'/5000</span></div>'+
           '<input id="tbImageInput" type="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple hidden>'+
           '<div id="tbImages" class="mr-tb-images"></div>'+
+          '<div id="tbTables" class="mr-tb-tables"></div>'+
         '</section>'+
         '<section class="mr-tb-card">'+section("answer","Правильный ответ","Укажите правильный ответ и допустимые варианты")+
           '<div class="mr-tb-answer-types">'+typeButtons+'</div><div id="tbAnswerEditor"></div>'+
@@ -205,9 +221,22 @@
       if(!state.images.length)return "";
       return '<div class="mr-tb-preview-images">'+state.images.map(img=>'<figure class="mr-tb-preview-image" style="width:'+img.displayWidth+'%"><img data-tb-image-src="'+esc(img.id)+'" alt="'+esc(img.alt||img.name||"Изображение к задаче")+'"><figcaption>'+(img.alt?esc(img.alt):"")+'</figcaption></figure>').join("")+'</div>';
     }
+    function tableHtml(table,{previewMode=false}={}){
+      const rows=table.cells.map((row,r)=>'<tr>'+row.map((cell,c)=>{
+        const tag=(table.headerRow&&r===0)||(table.headerCol&&c===0)?'th':'td';
+        return '<'+tag+'>'+((String(cell).trim())?nl(String(cell)):(previewMode?'&nbsp;':''))+'</'+tag+'>';
+      }).join("")+'</tr>').join("");
+      return '<figure class="'+(previewMode?'mr-tb-preview-table':'mr-tb-table-render')+'">'+
+        (table.caption?'<figcaption>'+esc(table.caption)+'</figcaption>':'')+
+        '<div class="mr-tb-table-scroll"><table>'+rows+'</table></div></figure>';
+    }
+    function previewTablesHtml(){
+      if(!state.tables.length)return "";
+      return '<div class="mr-tb-preview-tables">'+state.tables.map(t=>tableHtml(t,{previewMode:true})).join("")+'</div>';
+    }
     function preview(){
       const t=topic();
-      q("tbPreview").innerHTML='<div class="mr-tb-preview-sheet"><div class="mr-tb-preview-meta"><span>'+diffName(state.difficulty)+'</span><small>'+esc(t?.title||"Тема не выбрана")+' · '+esc(typeName(state.taskType))+'</small></div><div class="mr-tb-preview-problem">'+(state.content.trim()?nl(state.content):'<span class="placeholder">Здесь появится условие задачи.</span>')+'</div>'+previewImagesHtml()+'</div>'+studentAnswer();
+      q("tbPreview").innerHTML='<div class="mr-tb-preview-sheet"><div class="mr-tb-preview-meta"><span>'+diffName(state.difficulty)+'</span><small>'+esc(t?.title||"Тема не выбрана")+' · '+esc(typeName(state.taskType))+'</small></div><div class="mr-tb-preview-problem">'+(state.content.trim()?nl(state.content):'<span class="placeholder">Здесь появится условие задачи.</span>')+'</div>'+previewImagesHtml()+previewTablesHtml()+'</div>'+studentAnswer();
       hydrateTaskImages(q("tbPreview"));
     }
     function renderImages(){
@@ -236,6 +265,33 @@
       });
       hydrateTaskImages(host);
     }
+    function renderTables(){
+      const host=q("tbTables");if(!host)return;
+      if(!state.tables.length){host.innerHTML="";return}
+      host.innerHTML='<div class="mr-tb-tables-head"><div><b>Таблицы к условию</b><small>'+state.tables.length+' шт. · до 12 × 12 ячеек</small></div><button type="button" id="tbAddMoreTables">＋ Добавить таблицу</button></div>'+
+        '<div class="mr-tb-table-list">'+state.tables.map((table,index)=>'<article class="mr-tb-table-card" data-tb-table-card="'+esc(table.id)+'">'+
+          '<div class="mr-tb-table-card-head"><div><span>Таблица '+(index+1)+'</span><b>'+table.rows+' × '+table.cols+'</b></div><button type="button" class="mr-tb-table-remove" data-tb-table-remove="'+esc(table.id)+'" title="Удалить таблицу">×</button></div>'+
+          '<label class="mr-tb-table-caption"><span>Подпись <em>(необязательно)</em></span><input data-tb-table-caption="'+esc(table.id)+'" maxlength="120" value="'+esc(table.caption)+'" placeholder="Например: результаты измерений"></label>'+
+          '<div class="mr-tb-table-options"><label><input type="checkbox" data-tb-table-header-row="'+esc(table.id)+'" '+(table.headerRow?'checked':'')+'><span>Верхняя строка — заголовок</span></label><label><input type="checkbox" data-tb-table-header-col="'+esc(table.id)+'" '+(table.headerCol?'checked':'')+'><span>Первый столбец — заголовок</span></label></div>'+
+          '<div class="mr-tb-table-editor-scroll"><table class="mr-tb-table-editor">'+table.cells.map((row,r)=>'<tr>'+row.map((cell,c)=>'<td><input data-tb-table-cell="'+esc(table.id)+'" data-row="'+r+'" data-col="'+c+'" value="'+esc(cell)+'" placeholder="'+(r+1)+','+(c+1)+'"></td>').join("")+'</tr>').join("")+'</table></div>'+
+          '<div class="mr-tb-table-controls"><div><button type="button" data-tb-table-row-add="'+esc(table.id)+'">＋ Строка</button><button type="button" data-tb-table-row-remove="'+esc(table.id)+'" '+(table.rows<=1?'disabled':'')+'>− Строка</button></div><div><button type="button" data-tb-table-col-add="'+esc(table.id)+'">＋ Столбец</button><button type="button" data-tb-table-col-remove="'+esc(table.id)+'" '+(table.cols<=1?'disabled':'')+'>− Столбец</button></div></div>'+
+        '</article>').join("")+'</div>';
+      q("tbAddMoreTables").onclick=addTable;
+      host.querySelectorAll("[data-tb-table-caption]").forEach(el=>el.oninput=()=>{const t=tableById(el.dataset.tbTableCaption);if(!t)return;t.caption=el.value;preview()});
+      host.querySelectorAll("[data-tb-table-header-row]").forEach(el=>el.onchange=()=>{const t=tableById(el.dataset.tbTableHeaderRow);if(!t)return;t.headerRow=el.checked;preview()});
+      host.querySelectorAll("[data-tb-table-header-col]").forEach(el=>el.onchange=()=>{const t=tableById(el.dataset.tbTableHeaderCol);if(!t)return;t.headerCol=el.checked;preview()});
+      host.querySelectorAll("[data-tb-table-cell]").forEach(el=>el.oninput=()=>{const t=tableById(el.dataset.tbTableCell);if(!t)return;const r=Number(el.dataset.row),c=Number(el.dataset.col);if(t.cells[r])t.cells[r][c]=el.value;preview()});
+      host.querySelectorAll("[data-tb-table-row-add]").forEach(el=>el.onclick=()=>{const t=tableById(el.dataset.tbTableRowAdd);if(!t||t.rows>=12)return toast("Максимум 12 строк");t.cells.push(Array.from({length:t.cols},()=>''));t.rows++;renderTables();preview()});
+      host.querySelectorAll("[data-tb-table-row-remove]").forEach(el=>el.onclick=()=>{const t=tableById(el.dataset.tbTableRowRemove);if(!t||t.rows<=1)return;t.cells.pop();t.rows--;renderTables();preview()});
+      host.querySelectorAll("[data-tb-table-col-add]").forEach(el=>el.onclick=()=>{const t=tableById(el.dataset.tbTableColAdd);if(!t||t.cols>=12)return toast("Максимум 12 столбцов");t.cells.forEach(row=>row.push(''));t.cols++;renderTables();preview()});
+      host.querySelectorAll("[data-tb-table-col-remove]").forEach(el=>el.onclick=()=>{const t=tableById(el.dataset.tbTableColRemove);if(!t||t.cols<=1)return;t.cells.forEach(row=>row.pop());t.cols--;renderTables();preview()});
+      host.querySelectorAll("[data-tb-table-remove]").forEach(el=>el.onclick=()=>{state.tables=state.tables.filter(t=>String(t.id)!==String(el.dataset.tbTableRemove));renderTables();preview()});
+    }
+    function addTable(){
+      state.tables.push({id:tableId(),caption:"",rows:3,cols:3,headerRow:true,headerCol:false,cells:Array.from({length:3},()=>Array.from({length:3},()=>""))});
+      renderTables();preview();
+      setTimeout(()=>q("tbTables")?.scrollIntoView({behavior:"smooth",block:"nearest"}),0);
+    }
     async function uploadTaskImages(files){
       const list=[...(files||[])];if(!list.length)return;
       const button=document.querySelector('[data-insert="image"]');
@@ -262,7 +318,7 @@
     function insertInto(el,text){if(!el)return;const a=el.selectionStart??el.value.length,b=el.selectionEnd??a;el.setRangeText(text,a,b,"end");el.dispatchEvent(new Event("input",{bubbles:true}));el.focus()}
     function legacyAnswer(){if(["standard","numeric"].includes(state.taskType))return state.answers.map(a=>a.value.trim()).filter(Boolean).join("; ");if(["single","multiple"].includes(state.taskType))return state.options.filter(o=>o.correct&&o.text.trim()).map(o=>o.text.trim()).join(" | ");return state.openAnswer.trim()}
     function collect(){state.grade=Number(q("tbGrade").value)||state.grade;state.topicId=q("tbTopic").value;state.subtopic=q("tbSubtopic").value;state.content=q("tbContent").value;state.settings.shared=!!q("tbShared").checked;state.settings.allowTests=!!q("tbAllowTests").checked;state.settings.allowAi=!!q("tbAllowAi").checked;setHelp(q("tbHelp").value);syncAnswer()}
-    function builderMeta(){const t=topic();return {version:2,grade:Number(t?.grade||state.grade)||null,subtopic:state.subtopic.trim(),task_type:state.taskType,images:state.images.map(img=>({id:img.id,path:img.path,name:img.name,mime:img.mime,width:img.width,height:img.height,display_width:img.displayWidth,alt:img.alt.trim()})),answers:state.answers,options:state.options,open_answer:state.openAnswer,solution:state.solution,hints:state.hints,source:{kind:state.source.kind,textbook_id:state.source.kind==="textbook"?(state.source.textbookId||null):null,page:state.source.kind==="textbook"?(state.source.page||null):null,exercise_no:state.source.kind==="textbook"?(state.source.exerciseNo||null):null,note:state.source.kind==="textbook"?"":state.source.note.trim()},settings:{shared:!!state.settings.shared,allow_tests:!!state.settings.allowTests,allow_ai_example:!!state.settings.allowAi}}}
+    function builderMeta(){const t=topic();return {version:3,grade:Number(t?.grade||state.grade)||null,subtopic:state.subtopic.trim(),task_type:state.taskType,images:state.images.map(img=>({id:img.id,path:img.path,name:img.name,mime:img.mime,width:img.width,height:img.height,display_width:img.displayWidth,alt:img.alt.trim()})),tables:state.tables.map(table=>({id:table.id,caption:table.caption.trim(),rows:table.rows,cols:table.cols,header_row:!!table.headerRow,header_col:!!table.headerCol,cells:table.cells.map(row=>row.map(cell=>String(cell)))})),answers:state.answers,options:state.options,open_answer:state.openAnswer,solution:state.solution,hints:state.hints,source:{kind:state.source.kind,textbook_id:state.source.kind==="textbook"?(state.source.textbookId||null):null,page:state.source.kind==="textbook"?(state.source.page||null):null,exercise_no:state.source.kind==="textbook"?(state.source.exerciseNo||null):null,note:state.source.kind==="textbook"?"":state.source.note.trim()},settings:{shared:!!state.settings.shared,allow_tests:!!state.settings.allowTests,allow_ai_example:!!state.settings.allowAi}}}
     function back(){cleanupPendingImages();releaseLocalImageUrls();const ret=S.taskBuilderReturn||{view:"bank"};S.taskBuilderExerciseId=null;S.taskBuilderReturn=null;if(ret.view==="topics"&&ret.topicId){S.view="topics";S.topic=(S.topics||[]).find(t=>String(t.id)===String(ret.topicId))||null;return S.topic?renderTopic():renderTopics()}S.view="bank";S.topic=null;renderBank()}
     async function syncShared(saved,draft){
       if(draft)return;
@@ -283,7 +339,7 @@
       }catch(e){fail(e)}
     }
 
-    fillTopics();renderAnswer();renderSource();renderHelp();renderImages();preview();
+    fillTopics();renderAnswer();renderSource();renderHelp();renderImages();renderTables();preview();
     q("tbGrade").onchange=e=>{state.grade=Number(e.target.value);fillTopics();state.topicId=q("tbTopic").value;preview()};
     q("tbTopic").onchange=e=>{state.topicId=e.target.value;preview()};
     q("tbSubtopic").oninput=e=>state.subtopic=e.target.value;
@@ -291,7 +347,7 @@
     document.querySelectorAll("[data-tb-diff]").forEach(b=>b.onclick=()=>{state.difficulty=b.dataset.tbDiff;document.querySelectorAll("[data-tb-diff]").forEach(x=>x.classList.toggle("active",x===b));preview()});
     const setType=v=>{syncAnswer();state.taskType=v;if(v==="single"&&!state.options.some(o=>o.correct)&&state.options[0])state.options[0].correct=true;document.querySelectorAll("[data-tb-type]").forEach(x=>x.classList.toggle("active",x.dataset.tbType===v));renderAnswer();preview()};
     document.querySelectorAll("[data-tb-type]").forEach(b=>b.onclick=()=>setType(b.dataset.tbType));
-    document.querySelectorAll("[data-insert]").forEach(b=>b.onclick=()=>{const k=b.dataset.insert;if(k==="formula")insertInto(q("tbContent"),"\\(  \\)");else if(k==="list")insertInto(q("tbContent"),"\n• ");else if(k==="template")insertInto(q("tbContent"),"{{a}}");else if(k==="image")q("tbImageInput").click();else q("tbContent").focus()});
+    document.querySelectorAll("[data-insert]").forEach(b=>b.onclick=()=>{const k=b.dataset.insert;if(k==="formula")insertInto(q("tbContent"),"\\(  \\)");else if(k==="list")insertInto(q("tbContent"),"\n• ");else if(k==="template")insertInto(q("tbContent"),"{{a}}");else if(k==="image")q("tbImageInput").click();else if(k==="table")addTable();else q("tbContent").focus()});
     q("tbImageInput").onchange=e=>uploadTaskImages(e.target.files);
     document.querySelectorAll("[data-coming]").forEach(b=>b.onclick=()=>toast(b.dataset.coming+" подключим следующим этапом конструктора"));
     document.querySelectorAll("[data-help]").forEach(b=>b.onclick=()=>{setHelp(q("tbHelp").value);state.help=b.dataset.help;document.querySelectorAll("[data-help]").forEach(x=>x.classList.toggle("active",x===b));renderHelp()});
