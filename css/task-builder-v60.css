@@ -474,3 +474,88 @@ html[data-theme=dark] .mr-task-media figure.load-error{background:#211813;border
   .mr-task-media figure{width:100%!important}
   .mr-task-media img{max-height:280px}
 }
+
+
+/* v64 task tables */
+.mr-tb-tables{display:grid;gap:11px;margin-top:12px}
+.mr-tb-tables-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 13px;border:1px solid #eadfd7;border-radius:15px;background:linear-gradient(180deg,#fffdfb,#fff8f4)}
+.mr-tb-tables-head b{display:block;color:#24282d;font-size:12px;font-weight:900}
+.mr-tb-tables-head small{display:block;margin-top:3px;color:#8c96a0;font-size:9.5px}
+.mr-tb-tables-head button{min-height:34px;padding:0 11px;border:1px dashed #ffad86;border-radius:10px;background:#fff;color:#ed5715;font-size:10px;font-weight:850;cursor:pointer}
+.mr-tb-table-list{display:grid;gap:12px}
+.mr-tb-table-card{display:grid;gap:12px;padding:13px;border:1px solid #eadfd7;border-radius:16px;background:linear-gradient(135deg,#fff 0%,#fff 72%,#fff7f2 100%)}
+.mr-tb-table-card-head{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.mr-tb-table-card-head>div{display:flex;align-items:baseline;gap:9px}
+.mr-tb-table-card-head span{font-size:10px;font-weight:900;color:#2b3036}
+.mr-tb-table-card-head b{font-size:9px;color:#ef5916}
+.mr-tb-table-remove{width:34px;height:34px;border:1px solid #ead9d0;border-radius:10px;background:#fff;color:#8e7468;font-size:18px;cursor:pointer}
+.mr-tb-table-remove:hover{border-color:#ffad88;background:#fff4ee;color:#e84d0b}
+.mr-tb-table-caption{display:grid;gap:5px}
+.mr-tb-table-caption>span{font-size:9.5px;font-weight:800;color:#4c5660}
+.mr-tb-table-caption em{font-style:normal;color:#9aa3ac;font-weight:600}
+.mr-tb-table-caption input{width:100%;min-height:38px;padding:0 10px;border:1px solid #dedfe1;border-radius:10px;background:#fff;color:#202429;font-size:10.5px;outline:none}
+.mr-tb-table-caption input:focus{border-color:#ff9160;box-shadow:0 0 0 3px rgba(243,90,22,.08)}
+.mr-tb-table-options{display:flex;flex-wrap:wrap;gap:8px}
+.mr-tb-table-options label{display:flex;align-items:center;gap:7px;padding:7px 9px;border:1px solid #e6e2df;border-radius:10px;background:#fff;color:#515a64;font-size:9.5px;font-weight:750}
+.mr-tb-table-options input{accent-color:#f35a16}
+.mr-tb-table-editor-scroll,.mr-tb-table-scroll,.mr-task-table-scroll{max-width:100%;overflow:auto;border:1px solid #e1dedb;border-radius:12px;background:#fff}
+.mr-tb-table-editor{width:100%;min-width:360px;border-collapse:collapse;table-layout:fixed}
+.mr-tb-table-editor td{min-width:94px;padding:0;border-right:1px solid #e4e2df;border-bottom:1px solid #e4e2df}
+.mr-tb-table-editor tr:last-child td{border-bottom:0}
+.mr-tb-table-editor td:last-child{border-right:0}
+.mr-tb-table-editor input{width:100%;min-width:0;height:38px;padding:0 9px;border:0;background:transparent;color:#202429;font-size:10.5px;outline:none}
+.mr-tb-table-editor input:focus{background:#fff6f1;box-shadow:inset 0 0 0 2px #ff9a6c}
+.mr-tb-table-controls{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.mr-tb-table-controls>div{display:flex;gap:7px}
+.mr-tb-table-controls button{min-height:32px;padding:0 10px;border:1px solid #e5ddd7;border-radius:9px;background:#fff;color:#555e67;font-size:9.5px;font-weight:800;cursor:pointer}
+.mr-tb-table-controls button:hover{border-color:#ffad88;color:#ed5715;background:#fff8f4}
+.mr-tb-table-controls button:disabled{opacity:.4;cursor:not-allowed}
+.mr-tb-preview-tables{display:grid;gap:10px;margin-top:12px}
+.mr-tb-preview-table{margin:0}
+.mr-tb-preview-table>figcaption{margin:0 0 5px;color:#555e67;font-size:9px;font-weight:800}
+.mr-tb-preview-table table,.mr-task-table table{width:100%;border-collapse:collapse;background:#fff}
+.mr-tb-preview-table th,.mr-tb-preview-table td,.mr-task-table th,.mr-task-table td{padding:8px 9px;border-right:1px solid #dedbd8;border-bottom:1px solid #dedbd8;text-align:left;vertical-align:top;font-size:10px;line-height:1.4}
+.mr-tb-preview-table tr:last-child>*,
+.mr-task-table tr:last-child>*{border-bottom:0}
+.mr-tb-preview-table tr>*:last-child,
+.mr-task-table tr>*:last-child{border-right:0}
+.mr-tb-preview-table th,.mr-task-table th{background:#fff2ea;color:#d94d0b;font-weight:900}
+.mr-task-tables{display:grid;gap:12px;margin:12px 0}
+.mr-task-table{margin:0;max-width:100%}
+.mr-task-table>figcaption{margin:0 0 6px;color:#59636d;font:800 10px/1.4 Inter,system-ui,sans-serif}
+.mr-task-table table{min-width:360px}
+.mr-task-table th,.mr-task-table td{padding:9px 10px;font-size:11px}
+.mr-task-table.compact table{min-width:280px}
+.mr-task-table.compact th,.mr-task-table.compact td{padding:7px 8px;font-size:10px}
+
+html[data-theme=dark] .mr-tb-tables-head,
+html[data-theme=dark] .mr-tb-table-card{background:linear-gradient(135deg,#171b20,#171b20 72%,#211813);border-color:#343a42}
+html[data-theme=dark] .mr-tb-tables-head b,
+html[data-theme=dark] .mr-tb-table-card-head span{color:#f3f5f7}
+html[data-theme=dark] .mr-tb-table-caption input,
+html[data-theme=dark] .mr-tb-table-options label,
+html[data-theme=dark] .mr-tb-table-editor-scroll,
+html[data-theme=dark] .mr-tb-table-scroll,
+html[data-theme=dark] .mr-task-table-scroll{background:#101317;border-color:#343a42;color:#eef1f4}
+html[data-theme=dark] .mr-tb-table-editor input{color:#eef1f4}
+html[data-theme=dark] .mr-tb-table-editor td{border-color:#343a42}
+html[data-theme=dark] .mr-tb-table-editor input:focus{background:#211813}
+html[data-theme=dark] .mr-tb-table-remove,
+html[data-theme=dark] .mr-tb-table-controls button{background:#171b20;border-color:#3a3f46;color:#cbb7ae}
+html[data-theme=dark] .mr-tb-preview-table table,
+html[data-theme=dark] .mr-task-table table{background:#101317}
+html[data-theme=dark] .mr-tb-preview-table th,
+html[data-theme=dark] .mr-task-table th{background:#251910;color:#ff925e}
+html[data-theme=dark] .mr-tb-preview-table th,
+html[data-theme=dark] .mr-tb-preview-table td,
+html[data-theme=dark] .mr-task-table th,
+html[data-theme=dark] .mr-task-table td{border-color:#343a42;color:#eef1f4}
+html[data-theme=dark] .mr-task-table>figcaption,
+html[data-theme=dark] .mr-tb-preview-table>figcaption{color:#b6bec6}
+
+@media(max-width:650px){
+  .mr-tb-tables-head{align-items:flex-start;flex-direction:column}
+  .mr-tb-table-controls{align-items:stretch;flex-direction:column}
+  .mr-tb-table-controls>div{display:grid;grid-template-columns:1fr 1fr}
+  .mr-tb-table-options{display:grid}
+}
