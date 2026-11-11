@@ -395,7 +395,9 @@
           const from=dragged||e.dataTransfer?.getData("text/plain")||"",to=row.dataset.orderKey||"";
           syncContentOrder();const a=state.contentOrder.indexOf(from),b=state.contentOrder.indexOf(to);
           if(a<0||b<0||a===b)return;
-          state.contentOrder.splice(a,1);state.contentOrder.splice(b,0,from);
+          state.contentOrder.splice(a,1);
+          const insertAt=a<b?b-1:b;
+          state.contentOrder.splice(insertAt,0,from);
           renderContentOrder();preview();
         };
       });
@@ -457,7 +459,7 @@
           '<div class="mr-tb-table-controls"><div><button type="button" data-tb-table-row-add="'+esc(table.id)+'">＋ Строка</button><button type="button" data-tb-table-row-remove="'+esc(table.id)+'" '+(table.rows<=1?'disabled':'')+'>− Строка</button></div><div><button type="button" data-tb-table-col-add="'+esc(table.id)+'">＋ Столбец</button><button type="button" data-tb-table-col-remove="'+esc(table.id)+'" '+(table.cols<=1?'disabled':'')+'>− Столбец</button></div></div>'+
         '</article>').join("")+'</div>';
       q("tbAddMoreTables").onclick=addTable;
-      host.querySelectorAll("[data-tb-table-caption]").forEach(el=>el.oninput=()=>{const t=tableById(el.dataset.tbTableCaption);if(!t)return;t.caption=el.value;preview()});
+      host.querySelectorAll("[data-tb-table-caption]").forEach(el=>el.oninput=()=>{const t=tableById(el.dataset.tbTableCaption);if(!t)return;t.caption=el.value;renderContentOrder();preview()});
       host.querySelectorAll("[data-tb-table-header-row]").forEach(el=>el.onchange=()=>{const t=tableById(el.dataset.tbTableHeaderRow);if(!t)return;t.headerRow=el.checked;preview()});
       host.querySelectorAll("[data-tb-table-header-col]").forEach(el=>el.onchange=()=>{const t=tableById(el.dataset.tbTableHeaderCol);if(!t)return;t.headerCol=el.checked;preview()});
       host.querySelectorAll("[data-tb-table-cell]").forEach(el=>el.oninput=()=>{const t=tableById(el.dataset.tbTableCell);if(!t)return;const r=Number(el.dataset.row),c=Number(el.dataset.col);if(t.cells[r])t.cells[r][c]=el.value;preview()});
@@ -503,8 +505,8 @@
           '</div><div class="mr-tb-geometry-live">'+geometryHtml(g)+'</div></div>'+
         '</article>').join("")+'</div>';
       q("tbAddMoreGeometry").onclick=addGeometry;
-      host.querySelectorAll("[data-geo-type]").forEach(el=>el.onchange=()=>{const g=geometryById(el.dataset.geoType);if(!g)return;g.type=el.value;renderGeometries();preview()});
-      host.querySelectorAll("[data-geo-caption]").forEach(el=>el.oninput=()=>{const g=geometryById(el.dataset.geoCaption);if(!g)return;g.caption=el.value;preview();const card=el.closest("[data-geo-card]");if(card)card.querySelector(".mr-tb-geometry-live").innerHTML=geometryHtml(g)});
+      host.querySelectorAll("[data-geo-type]").forEach(el=>el.onchange=()=>{const g=geometryById(el.dataset.geoType);if(!g)return;g.type=el.value;renderGeometries();renderContentOrder();preview()});
+      host.querySelectorAll("[data-geo-caption]").forEach(el=>el.oninput=()=>{const g=geometryById(el.dataset.geoCaption);if(!g)return;g.caption=el.value;renderContentOrder();preview();const card=el.closest("[data-geo-card]");if(card)card.querySelector(".mr-tb-geometry-live").innerHTML=geometryHtml(g)});
       host.querySelectorAll("[data-geo-width]").forEach(el=>el.oninput=()=>{const g=geometryById(el.dataset.geoWidth);if(!g)return;g.displayWidth=Number(el.value)||80;const lab=host.querySelector('[data-geo-width-label="'+CSS.escape(g.id)+'"]');if(lab)lab.textContent=g.displayWidth+"%";preview();const card=el.closest("[data-geo-card]");if(card)card.querySelector(".mr-tb-geometry-live").innerHTML=geometryHtml(g)});
       host.querySelectorAll("[data-geo-tri-vertex]").forEach(el=>el.oninput=()=>{const g=geometryById(el.dataset.geoTriVertex);if(!g)return;g.triangle.vertices[Number(el.dataset.index)]=el.value;renderGeometries();preview()});
       host.querySelectorAll("[data-geo-tri-side]").forEach(el=>el.oninput=()=>{const g=geometryById(el.dataset.geoTriSide);if(!g)return;g.triangle.sides[Number(el.dataset.index)]=el.value;preview();const card=el.closest("[data-geo-card]");if(card)card.querySelector(".mr-tb-geometry-live").innerHTML=geometryHtml(g)});
