@@ -37,6 +37,30 @@
           cells:Array.from({length:rows},(_,r)=>Array.from({length:cols},(_,c)=>String(Array.isArray(raw[r])?raw[r][c]??"":"")))
         };
       }):[],
+      geometries:Array.isArray(meta.geometries)?meta.geometries.map((g,i)=>({
+        id:String(g?.id||("geo"+i)),
+        type:["triangle","rectangle","circle","coordinate"].includes(g?.type)?g.type:"triangle",
+        caption:String(g?.caption||""),
+        displayWidth:Math.min(100,Math.max(45,Number(g?.display_width)||80)),
+        triangle:{
+          vertices:Array.isArray(g?.triangle?.vertices)?[0,1,2].map(n=>String(g.triangle.vertices[n]||["A","B","C"][n])):["A","B","C"],
+          sides:Array.isArray(g?.triangle?.sides)?[0,1,2].map(n=>String(g.triangle.sides[n]||"")):["","",""],
+          rightAngle:["","0","1","2"].includes(String(g?.triangle?.right_angle??""))?String(g.triangle.right_angle??""):""
+        },
+        rectangle:{
+          vertices:Array.isArray(g?.rectangle?.vertices)?[0,1,2,3].map(n=>String(g.rectangle.vertices[n]||["A","B","C","D"][n])):["A","B","C","D"],
+          widthLabel:String(g?.rectangle?.width_label||""),
+          heightLabel:String(g?.rectangle?.height_label||"")
+        },
+        circle:{centerLabel:String(g?.circle?.center_label||"O"),radiusLabel:String(g?.circle?.radius_label||"r")},
+        coordinate:{
+          points:String(g?.coordinate?.points||"A(2;3); B(-1;4)"),
+          xMin:Math.max(-20,Math.min(-1,Number(g?.coordinate?.x_min)||-5)),
+          xMax:Math.min(20,Math.max(1,Number(g?.coordinate?.x_max)||5)),
+          yMin:Math.max(-20,Math.min(-1,Number(g?.coordinate?.y_min)||-5)),
+          yMax:Math.min(20,Math.max(1,Number(g?.coordinate?.y_max)||5))
+        }
+      })):[],
       answers:Array.isArray(meta.answers)&&meta.answers.length?meta.answers.map((a,i)=>({label:String(a?.label||("Ответ "+(i+1))),value:String(a?.value||""),accepted:Array.isArray(a?.accepted)?a.accepted.map(String):[]})):[{label:"Ответ",value:String(editing?.answer||""),accepted:[]}],
       options:Array.isArray(meta.options)&&meta.options.length?meta.options.map((o,i)=>({id:String(o?.id||("o"+i)),text:String(o?.text||""),correct:!!o?.correct})):[{id:"o0",text:"",correct:true},{id:"o1",text:"",correct:false},{id:"o2",text:"",correct:false},{id:"o3",text:"",correct:false}],
       openAnswer:String(meta.open_answer??(meta.task_type==="open"?editing?.answer||"":"")),
@@ -55,6 +79,8 @@
     const imageId=()=>window.crypto?.randomUUID?.()||("img-"+Date.now()+"-"+Math.random().toString(36).slice(2));
     const tableById=id=>state.tables.find(x=>String(x.id)===String(id))||null;
     const tableId=()=>window.crypto?.randomUUID?.()||("tbl-"+Date.now()+"-"+Math.random().toString(36).slice(2));
+    const geometryById=id=>state.geometries.find(x=>String(x.id)===String(id))||null;
+    const geometryId=()=>window.crypto?.randomUUID?.()||("geo-"+Date.now()+"-"+Math.random().toString(36).slice(2));
     const imageExt=mime=>({"image/png":"png","image/jpeg":"jpg","image/webp":"webp","image/gif":"gif"}[mime]||"png");
     async function signedImageUrl(path){
       if(!path)return "";
@@ -132,11 +158,12 @@
           '<div class="mr-tb-choices"><div><b>Сложность</b><div class="mr-tb-segments">'+diffButtons+'</div></div><div class="grow"><b>Тип задачи</b><div class="mr-tb-segments types">'+typeButtons+'</div></div></div>'+
         '</section>'+
         '<section class="mr-tb-card">'+section("condition","Условие задачи","Введите текст, добавьте формулы и структурные элементы")+
-          '<div class="mr-tb-toolbar"><button data-insert="text">T&nbsp; Текст</button><button class="active" data-insert="formula">∿&nbsp; Формула</button><button data-insert="list">☷&nbsp; Список</button><button data-insert="template">◇&nbsp; Шаблон</button><button data-insert="image">▧&nbsp; Изображение</button><button data-insert="table">⊞&nbsp; Таблица</button><button data-coming="Геометрия">△&nbsp; Геометрия</button></div>'+
+          '<div class="mr-tb-toolbar"><button data-insert="text">T&nbsp; Текст</button><button class="active" data-insert="formula">∿&nbsp; Формула</button><button data-insert="list">☷&nbsp; Список</button><button data-insert="template">◇&nbsp; Шаблон</button><button data-insert="image">▧&nbsp; Изображение</button><button data-insert="table">⊞&nbsp; Таблица</button><button data-insert="geometry">△&nbsp; Геометрия</button></div>'+
           '<div class="mr-tb-editor"><textarea id="tbContent" maxlength="5000" placeholder="Введите условие задачи…">'+esc(state.content)+'</textarea><span id="tbContentCount">'+state.content.length+'/5000</span></div>'+
           '<input id="tbImageInput" type="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple hidden>'+
           '<div id="tbImages" class="mr-tb-images"></div>'+
           '<div id="tbTables" class="mr-tb-tables"></div>'+
+          '<div id="tbGeometries" class="mr-tb-geometries"></div>'+
         '</section>'+
         '<section class="mr-tb-card">'+section("answer","Правильный ответ","Укажите правильный ответ и допустимые варианты")+
           '<div class="mr-tb-answer-types">'+typeButtons+'</div><div id="tbAnswerEditor"></div>'+
@@ -234,9 +261,57 @@
       if(!state.tables.length)return "";
       return '<div class="mr-tb-preview-tables">'+state.tables.map(t=>tableHtml(t,{previewMode:true})).join("")+'</div>';
     }
+    function parseCoordinatePoints(raw){
+      const out=[];
+      String(raw||"").split(/[;\n]+/).forEach(part=>{
+        const m=part.trim().match(/^([^()]+?)\s*\(\s*(-?\d+(?:[.,]\d+)?)\s*[,;]\s*(-?\d+(?:[.,]\d+)?)\s*\)$/);
+        if(!m)return;
+        const x=Number(m[2].replace(",", ".")),y=Number(m[3].replace(",", "."));
+        if(Number.isFinite(x)&&Number.isFinite(y))out.push({label:m[1].trim(),x,y});
+      });
+      return out;
+    }
+    function geometrySvg(g){
+      const txt=(x,y,v,anchor="middle",cls="label")=>'<text x="'+x+'" y="'+y+'" text-anchor="'+anchor+'" class="'+cls+'">'+esc(String(v||""))+'</text>';
+      if(g.type==="rectangle"){
+        const v=g.rectangle.vertices;
+        return '<svg viewBox="0 0 360 230" role="img" aria-label="Прямоугольник"><rect x="72" y="48" width="216" height="134" class="shape"/>'+
+          txt(60,43,v[0],"end")+txt(300,43,v[1],"start")+txt(300,202,v[2],"start")+txt(60,202,v[3],"end")+
+          (g.rectangle.widthLabel?txt(180,34,g.rectangle.widthLabel):"")+
+          (g.rectangle.heightLabel?txt(314,118,g.rectangle.heightLabel,"start"):"")+'</svg>';
+      }
+      if(g.type==="circle"){
+        return '<svg viewBox="0 0 360 230" role="img" aria-label="Окружность"><circle cx="180" cy="115" r="72" class="shape"/><circle cx="180" cy="115" r="3.5" class="point"/><line x1="180" y1="115" x2="252" y2="115" class="shape"/>'+
+          txt(169,108,g.circle.centerLabel,"end")+txt(216,104,g.circle.radiusLabel)+'</svg>';
+      }
+      if(g.type==="coordinate"){
+        const x0=g.coordinate.xMin,x1=g.coordinate.xMax,y0=g.coordinate.yMin,y1=g.coordinate.yMax;
+        const sx=x=>40+(x-x0)/(x1-x0)*280,sy=y=>190-(y-y0)/(y1-y0)*150;
+        let grid="";
+        for(let x=Math.ceil(x0);x<=Math.floor(x1);x++){const px=sx(x);grid+='<line x1="'+px+'" y1="32" x2="'+px+'" y2="190" class="'+(x===0?"axis":"grid")+'"/>';if(x!==0)grid+=txt(px,209,x)}
+        for(let y=Math.ceil(y0);y<=Math.floor(y1);y++){const py=sy(y);grid+='<line x1="40" y1="'+py+'" x2="320" y2="'+py+'" class="'+(y===0?"axis":"grid")+'"/>';if(y!==0)grid+=txt(29,py+4,y,"end")}
+        const pts=parseCoordinatePoints(g.coordinate.points).filter(p=>p.x>=x0&&p.x<=x1&&p.y>=y0&&p.y<=y1).map(p=>'<circle cx="'+sx(p.x)+'" cy="'+sy(p.y)+'" r="4.5" class="point"/>'+txt(sx(p.x)+8,sy(p.y)-8,p.label,"start")).join("");
+        return '<svg viewBox="0 0 360 230" role="img" aria-label="Координатная плоскость">'+grid+pts+'</svg>';
+      }
+      const v=g.triangle.vertices,s=g.triangle.sides;
+      const right=g.triangle.rightAngle;
+      const marker=right==="0"?'<path d="M88 160h18v-18" class="right-angle"/>':right==="1"?'<path d="M272 160h-18v-18" class="right-angle"/>':right==="2"?'<path d="M173 54l11 14 14-11" class="right-angle"/>':"";
+      return '<svg viewBox="0 0 360 230" role="img" aria-label="Треугольник"><polygon points="82,170 278,170 180,48" class="shape"/>'+marker+
+        txt(70,188,v[0],"end")+txt(290,188,v[1],"start")+txt(180,34,v[2])+
+        (s[0]?txt(180,193,s[0]):"")+(s[1]?txt(244,103,s[1],"start"):"")+(s[2]?txt(116,103,s[2],"end"):"")+'</svg>';
+    }
+    function geometryHtml(g,{previewMode=false}={}){
+      return '<figure class="'+(previewMode?'mr-tb-preview-geometry':'mr-tb-geometry-render')+'" style="width:'+g.displayWidth+'%">'+
+        (g.caption?'<figcaption>'+esc(g.caption)+'</figcaption>':'')+
+        '<div class="mr-geometry-svg">'+geometrySvg(g)+'</div></figure>';
+    }
+    function previewGeometriesHtml(){
+      if(!state.geometries.length)return "";
+      return '<div class="mr-tb-preview-geometries">'+state.geometries.map(g=>geometryHtml(g,{previewMode:true})).join("")+'</div>';
+    }
     function preview(){
       const t=topic();
-      q("tbPreview").innerHTML='<div class="mr-tb-preview-sheet"><div class="mr-tb-preview-meta"><span>'+diffName(state.difficulty)+'</span><small>'+esc(t?.title||"Тема не выбрана")+' · '+esc(typeName(state.taskType))+'</small></div><div class="mr-tb-preview-problem">'+(state.content.trim()?nl(state.content):'<span class="placeholder">Здесь появится условие задачи.</span>')+'</div>'+previewImagesHtml()+previewTablesHtml()+'</div>'+studentAnswer();
+      q("tbPreview").innerHTML='<div class="mr-tb-preview-sheet"><div class="mr-tb-preview-meta"><span>'+diffName(state.difficulty)+'</span><small>'+esc(t?.title||"Тема не выбрана")+' · '+esc(typeName(state.taskType))+'</small></div><div class="mr-tb-preview-problem">'+(state.content.trim()?nl(state.content):'<span class="placeholder">Здесь появится условие задачи.</span>')+'</div>'+previewImagesHtml()+previewTablesHtml()+previewGeometriesHtml()+'</div>'+studentAnswer();
       hydrateTaskImages(q("tbPreview"));
     }
     function renderImages(){
@@ -292,6 +367,55 @@
       renderTables();preview();
       setTimeout(()=>q("tbTables")?.scrollIntoView({behavior:"smooth",block:"nearest"}),0);
     }
+    function geometryFields(g){
+      if(g.type==="rectangle"){
+        return '<div class="mr-tb-geo-grid four">'+g.rectangle.vertices.map((v,i)=>'<label><span>Вершина '+(i+1)+'</span><input data-geo-rect-vertex="'+esc(g.id)+'" data-index="'+i+'" maxlength="8" value="'+esc(v)+'"></label>').join("")+'</div>'+
+          '<div class="mr-tb-geo-grid two"><label><span>Подпись ширины</span><input data-geo-rect-width="'+esc(g.id)+'" maxlength="30" value="'+esc(g.rectangle.widthLabel)+'" placeholder="например 8 см"></label><label><span>Подпись высоты</span><input data-geo-rect-height="'+esc(g.id)+'" maxlength="30" value="'+esc(g.rectangle.heightLabel)+'" placeholder="например 5 см"></label></div>';
+      }
+      if(g.type==="circle"){
+        return '<div class="mr-tb-geo-grid two"><label><span>Центр</span><input data-geo-circle-center="'+esc(g.id)+'" maxlength="8" value="'+esc(g.circle.centerLabel)+'"></label><label><span>Радиус</span><input data-geo-circle-radius="'+esc(g.id)+'" maxlength="30" value="'+esc(g.circle.radiusLabel)+'" placeholder="r = 5"></label></div>';
+      }
+      if(g.type==="coordinate"){
+        return '<label class="mr-tb-geo-points"><span>Точки</span><input data-geo-points="'+esc(g.id)+'" value="'+esc(g.coordinate.points)+'" placeholder="A(2;3); B(-1;4)"><small>Формат: A(2;3); B(-1;4)</small></label>'+
+          '<div class="mr-tb-geo-grid four"><label><span>x min</span><input type="number" min="-20" max="-1" data-geo-axis="xMin" data-geo-id="'+esc(g.id)+'" value="'+g.coordinate.xMin+'"></label><label><span>x max</span><input type="number" min="1" max="20" data-geo-axis="xMax" data-geo-id="'+esc(g.id)+'" value="'+g.coordinate.xMax+'"></label><label><span>y min</span><input type="number" min="-20" max="-1" data-geo-axis="yMin" data-geo-id="'+esc(g.id)+'" value="'+g.coordinate.yMin+'"></label><label><span>y max</span><input type="number" min="1" max="20" data-geo-axis="yMax" data-geo-id="'+esc(g.id)+'" value="'+g.coordinate.yMax+'"></label></div>';
+      }
+      return '<div class="mr-tb-geo-grid three">'+g.triangle.vertices.map((v,i)=>'<label><span>Вершина '+(i+1)+'</span><input data-geo-tri-vertex="'+esc(g.id)+'" data-index="'+i+'" maxlength="8" value="'+esc(v)+'"></label>').join("")+'</div>'+
+        '<div class="mr-tb-geo-grid three">'+g.triangle.sides.map((v,i)=>'<label><span>Сторона '+(i+1)+'</span><input data-geo-tri-side="'+esc(g.id)+'" data-index="'+i+'" maxlength="30" value="'+esc(v)+'" placeholder="например 5 см"></label>').join("")+'</div>'+
+        '<label class="mr-tb-geo-right"><span>Прямой угол</span><select data-geo-tri-right="'+esc(g.id)+'"><option value="" '+(g.triangle.rightAngle===""?'selected':'')+'>Нет</option><option value="0" '+(g.triangle.rightAngle==="0"?'selected':'')+'>В вершине '+esc(g.triangle.vertices[0])+'</option><option value="1" '+(g.triangle.rightAngle==="1"?'selected':'')+'>В вершине '+esc(g.triangle.vertices[1])+'</option><option value="2" '+(g.triangle.rightAngle==="2"?'selected':'')+'>В вершине '+esc(g.triangle.vertices[2])+'</option></select></label>';
+    }
+    function renderGeometries(){
+      const host=q("tbGeometries");if(!host)return;
+      if(!state.geometries.length){host.innerHTML="";return}
+      host.innerHTML='<div class="mr-tb-geometries-head"><div><b>Геометрические схемы</b><small>'+state.geometries.length+' шт. · векторные SVG</small></div><button type="button" id="tbAddMoreGeometry">＋ Добавить схему</button></div>'+
+        '<div class="mr-tb-geometry-list">'+state.geometries.map((g,index)=>'<article class="mr-tb-geometry-card" data-geo-card="'+esc(g.id)+'">'+
+          '<div class="mr-tb-geometry-card-head"><div><span>Схема '+(index+1)+'</span><select data-geo-type="'+esc(g.id)+'"><option value="triangle" '+(g.type==="triangle"?'selected':'')+'>Треугольник</option><option value="rectangle" '+(g.type==="rectangle"?'selected':'')+'>Прямоугольник</option><option value="circle" '+(g.type==="circle"?'selected':'')+'>Окружность</option><option value="coordinate" '+(g.type==="coordinate"?'selected':'')+'>Координатная плоскость</option></select></div><button type="button" class="mr-tb-geometry-remove" data-geo-remove="'+esc(g.id)+'">×</button></div>'+
+          '<div class="mr-tb-geometry-layout"><div class="mr-tb-geometry-controls">'+
+            '<label class="mr-tb-geo-caption"><span>Подпись <em>(необязательно)</em></span><input data-geo-caption="'+esc(g.id)+'" maxlength="120" value="'+esc(g.caption)+'" placeholder="Например: рисунок к задаче"></label>'+
+            geometryFields(g)+
+            '<label class="mr-tb-geo-width"><span>Размер схемы</span><div><input type="range" min="45" max="100" step="5" data-geo-width="'+esc(g.id)+'" value="'+g.displayWidth+'"><b data-geo-width-label="'+esc(g.id)+'">'+g.displayWidth+'%</b></div></label>'+
+          '</div><div class="mr-tb-geometry-live">'+geometryHtml(g)+'</div></div>'+
+        '</article>').join("")+'</div>';
+      q("tbAddMoreGeometry").onclick=addGeometry;
+      host.querySelectorAll("[data-geo-type]").forEach(el=>el.onchange=()=>{const g=geometryById(el.dataset.geoType);if(!g)return;g.type=el.value;renderGeometries();preview()});
+      host.querySelectorAll("[data-geo-caption]").forEach(el=>el.oninput=()=>{const g=geometryById(el.dataset.geoCaption);if(!g)return;g.caption=el.value;preview();const card=el.closest("[data-geo-card]");if(card)card.querySelector(".mr-tb-geometry-live").innerHTML=geometryHtml(g)});
+      host.querySelectorAll("[data-geo-width]").forEach(el=>el.oninput=()=>{const g=geometryById(el.dataset.geoWidth);if(!g)return;g.displayWidth=Number(el.value)||80;const lab=host.querySelector('[data-geo-width-label="'+CSS.escape(g.id)+'"]');if(lab)lab.textContent=g.displayWidth+"%";preview();const card=el.closest("[data-geo-card]");if(card)card.querySelector(".mr-tb-geometry-live").innerHTML=geometryHtml(g)});
+      host.querySelectorAll("[data-geo-tri-vertex]").forEach(el=>el.oninput=()=>{const g=geometryById(el.dataset.geoTriVertex);if(!g)return;g.triangle.vertices[Number(el.dataset.index)]=el.value;renderGeometries();preview()});
+      host.querySelectorAll("[data-geo-tri-side]").forEach(el=>el.oninput=()=>{const g=geometryById(el.dataset.geoTriSide);if(!g)return;g.triangle.sides[Number(el.dataset.index)]=el.value;preview();const card=el.closest("[data-geo-card]");if(card)card.querySelector(".mr-tb-geometry-live").innerHTML=geometryHtml(g)});
+      host.querySelectorAll("[data-geo-tri-right]").forEach(el=>el.onchange=()=>{const g=geometryById(el.dataset.geoTriRight);if(!g)return;g.triangle.rightAngle=el.value;preview();const card=el.closest("[data-geo-card]");if(card)card.querySelector(".mr-tb-geometry-live").innerHTML=geometryHtml(g)});
+      host.querySelectorAll("[data-geo-rect-vertex]").forEach(el=>el.oninput=()=>{const g=geometryById(el.dataset.geoRectVertex);if(!g)return;g.rectangle.vertices[Number(el.dataset.index)]=el.value;preview();const card=el.closest("[data-geo-card]");if(card)card.querySelector(".mr-tb-geometry-live").innerHTML=geometryHtml(g)});
+      host.querySelectorAll("[data-geo-rect-width]").forEach(el=>el.oninput=()=>{const g=geometryById(el.dataset.geoRectWidth);if(!g)return;g.rectangle.widthLabel=el.value;preview();const card=el.closest("[data-geo-card]");if(card)card.querySelector(".mr-tb-geometry-live").innerHTML=geometryHtml(g)});
+      host.querySelectorAll("[data-geo-rect-height]").forEach(el=>el.oninput=()=>{const g=geometryById(el.dataset.geoRectHeight);if(!g)return;g.rectangle.heightLabel=el.value;preview();const card=el.closest("[data-geo-card]");if(card)card.querySelector(".mr-tb-geometry-live").innerHTML=geometryHtml(g)});
+      host.querySelectorAll("[data-geo-circle-center]").forEach(el=>el.oninput=()=>{const g=geometryById(el.dataset.geoCircleCenter);if(!g)return;g.circle.centerLabel=el.value;preview();const card=el.closest("[data-geo-card]");if(card)card.querySelector(".mr-tb-geometry-live").innerHTML=geometryHtml(g)});
+      host.querySelectorAll("[data-geo-circle-radius]").forEach(el=>el.oninput=()=>{const g=geometryById(el.dataset.geoCircleRadius);if(!g)return;g.circle.radiusLabel=el.value;preview();const card=el.closest("[data-geo-card]");if(card)card.querySelector(".mr-tb-geometry-live").innerHTML=geometryHtml(g)});
+      host.querySelectorAll("[data-geo-points]").forEach(el=>el.oninput=()=>{const g=geometryById(el.dataset.geoPoints);if(!g)return;g.coordinate.points=el.value;preview();const card=el.closest("[data-geo-card]");if(card)card.querySelector(".mr-tb-geometry-live").innerHTML=geometryHtml(g)});
+      host.querySelectorAll("[data-geo-axis]").forEach(el=>el.onchange=()=>{const g=geometryById(el.dataset.geoId);if(!g)return;const k=el.dataset.geoAxis,v=Number(el.value);if(!Number.isFinite(v))return;g.coordinate[k]=v;if(g.coordinate.xMin>=g.coordinate.xMax)g.coordinate.xMin=g.coordinate.xMax-1;if(g.coordinate.yMin>=g.coordinate.yMax)g.coordinate.yMin=g.coordinate.yMax-1;renderGeometries();preview()});
+      host.querySelectorAll("[data-geo-remove]").forEach(el=>el.onclick=()=>{state.geometries=state.geometries.filter(g=>String(g.id)!==String(el.dataset.geoRemove));renderGeometries();preview()});
+    }
+    function addGeometry(){
+      state.geometries.push({id:geometryId(),type:"triangle",caption:"",displayWidth:80,triangle:{vertices:["A","B","C"],sides:["","",""],rightAngle:""},rectangle:{vertices:["A","B","C","D"],widthLabel:"",heightLabel:""},circle:{centerLabel:"O",radiusLabel:"r"},coordinate:{points:"A(2;3); B(-1;4)",xMin:-5,xMax:5,yMin:-5,yMax:5}});
+      renderGeometries();preview();
+      setTimeout(()=>q("tbGeometries")?.scrollIntoView({behavior:"smooth",block:"nearest"}),0);
+    }
     async function uploadTaskImages(files){
       const list=[...(files||[])];if(!list.length)return;
       const button=document.querySelector('[data-insert="image"]');
@@ -318,7 +442,7 @@
     function insertInto(el,text){if(!el)return;const a=el.selectionStart??el.value.length,b=el.selectionEnd??a;el.setRangeText(text,a,b,"end");el.dispatchEvent(new Event("input",{bubbles:true}));el.focus()}
     function legacyAnswer(){if(["standard","numeric"].includes(state.taskType))return state.answers.map(a=>a.value.trim()).filter(Boolean).join("; ");if(["single","multiple"].includes(state.taskType))return state.options.filter(o=>o.correct&&o.text.trim()).map(o=>o.text.trim()).join(" | ");return state.openAnswer.trim()}
     function collect(){state.grade=Number(q("tbGrade").value)||state.grade;state.topicId=q("tbTopic").value;state.subtopic=q("tbSubtopic").value;state.content=q("tbContent").value;state.settings.shared=!!q("tbShared").checked;state.settings.allowTests=!!q("tbAllowTests").checked;state.settings.allowAi=!!q("tbAllowAi").checked;setHelp(q("tbHelp").value);syncAnswer()}
-    function builderMeta(){const t=topic();return {version:3,grade:Number(t?.grade||state.grade)||null,subtopic:state.subtopic.trim(),task_type:state.taskType,images:state.images.map(img=>({id:img.id,path:img.path,name:img.name,mime:img.mime,width:img.width,height:img.height,display_width:img.displayWidth,alt:img.alt.trim()})),tables:state.tables.map(table=>({id:table.id,caption:table.caption.trim(),rows:table.rows,cols:table.cols,header_row:!!table.headerRow,header_col:!!table.headerCol,cells:table.cells.map(row=>row.map(cell=>String(cell)))})),answers:state.answers,options:state.options,open_answer:state.openAnswer,solution:state.solution,hints:state.hints,source:{kind:state.source.kind,textbook_id:state.source.kind==="textbook"?(state.source.textbookId||null):null,page:state.source.kind==="textbook"?(state.source.page||null):null,exercise_no:state.source.kind==="textbook"?(state.source.exerciseNo||null):null,note:state.source.kind==="textbook"?"":state.source.note.trim()},settings:{shared:!!state.settings.shared,allow_tests:!!state.settings.allowTests,allow_ai_example:!!state.settings.allowAi}}}
+    function builderMeta(){const t=topic();return {version:4,grade:Number(t?.grade||state.grade)||null,subtopic:state.subtopic.trim(),task_type:state.taskType,images:state.images.map(img=>({id:img.id,path:img.path,name:img.name,mime:img.mime,width:img.width,height:img.height,display_width:img.displayWidth,alt:img.alt.trim()})),tables:state.tables.map(table=>({id:table.id,caption:table.caption.trim(),rows:table.rows,cols:table.cols,header_row:!!table.headerRow,header_col:!!table.headerCol,cells:table.cells.map(row=>row.map(cell=>String(cell)))})),geometries:state.geometries.map(g=>({id:g.id,type:g.type,caption:g.caption.trim(),display_width:g.displayWidth,triangle:{vertices:g.triangle.vertices,sides:g.triangle.sides,right_angle:g.triangle.rightAngle},rectangle:{vertices:g.rectangle.vertices,width_label:g.rectangle.widthLabel,height_label:g.rectangle.heightLabel},circle:{center_label:g.circle.centerLabel,radius_label:g.circle.radiusLabel},coordinate:{points:g.coordinate.points,x_min:g.coordinate.xMin,x_max:g.coordinate.xMax,y_min:g.coordinate.yMin,y_max:g.coordinate.yMax}})),answers:state.answers,options:state.options,open_answer:state.openAnswer,solution:state.solution,hints:state.hints,source:{kind:state.source.kind,textbook_id:state.source.kind==="textbook"?(state.source.textbookId||null):null,page:state.source.kind==="textbook"?(state.source.page||null):null,exercise_no:state.source.kind==="textbook"?(state.source.exerciseNo||null):null,note:state.source.kind==="textbook"?"":state.source.note.trim()},settings:{shared:!!state.settings.shared,allow_tests:!!state.settings.allowTests,allow_ai_example:!!state.settings.allowAi}}}
     function back(){cleanupPendingImages();releaseLocalImageUrls();const ret=S.taskBuilderReturn||{view:"bank"};S.taskBuilderExerciseId=null;S.taskBuilderReturn=null;if(ret.view==="topics"&&ret.topicId){S.view="topics";S.topic=(S.topics||[]).find(t=>String(t.id)===String(ret.topicId))||null;return S.topic?renderTopic():renderTopics()}S.view="bank";S.topic=null;renderBank()}
     async function syncShared(saved,draft){
       if(draft)return;
@@ -339,7 +463,7 @@
       }catch(e){fail(e)}
     }
 
-    fillTopics();renderAnswer();renderSource();renderHelp();renderImages();renderTables();preview();
+    fillTopics();renderAnswer();renderSource();renderHelp();renderImages();renderTables();renderGeometries();preview();
     q("tbGrade").onchange=e=>{state.grade=Number(e.target.value);fillTopics();state.topicId=q("tbTopic").value;preview()};
     q("tbTopic").onchange=e=>{state.topicId=e.target.value;preview()};
     q("tbSubtopic").oninput=e=>state.subtopic=e.target.value;
@@ -347,7 +471,7 @@
     document.querySelectorAll("[data-tb-diff]").forEach(b=>b.onclick=()=>{state.difficulty=b.dataset.tbDiff;document.querySelectorAll("[data-tb-diff]").forEach(x=>x.classList.toggle("active",x===b));preview()});
     const setType=v=>{syncAnswer();state.taskType=v;if(v==="single"&&!state.options.some(o=>o.correct)&&state.options[0])state.options[0].correct=true;document.querySelectorAll("[data-tb-type]").forEach(x=>x.classList.toggle("active",x.dataset.tbType===v));renderAnswer();preview()};
     document.querySelectorAll("[data-tb-type]").forEach(b=>b.onclick=()=>setType(b.dataset.tbType));
-    document.querySelectorAll("[data-insert]").forEach(b=>b.onclick=()=>{const k=b.dataset.insert;if(k==="formula")insertInto(q("tbContent"),"\\(  \\)");else if(k==="list")insertInto(q("tbContent"),"\n• ");else if(k==="template")insertInto(q("tbContent"),"{{a}}");else if(k==="image")q("tbImageInput").click();else if(k==="table")addTable();else q("tbContent").focus()});
+    document.querySelectorAll("[data-insert]").forEach(b=>b.onclick=()=>{const k=b.dataset.insert;if(k==="formula")insertInto(q("tbContent"),"\\(  \\)");else if(k==="list")insertInto(q("tbContent"),"\n• ");else if(k==="template")insertInto(q("tbContent"),"{{a}}");else if(k==="image")q("tbImageInput").click();else if(k==="table")addTable();else if(k==="geometry")addGeometry();else q("tbContent").focus()});
     q("tbImageInput").onchange=e=>uploadTaskImages(e.target.files);
     document.querySelectorAll("[data-coming]").forEach(b=>b.onclick=()=>toast(b.dataset.coming+" подключим следующим этапом конструктора"));
     document.querySelectorAll("[data-help]").forEach(b=>b.onclick=()=>{setHelp(q("tbHelp").value);state.help=b.dataset.help;document.querySelectorAll("[data-help]").forEach(x=>x.classList.toggle("active",x===b));renderHelp()});
