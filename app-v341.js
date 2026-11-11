@@ -1177,12 +1177,28 @@ const taskImageUrlCache=new Map(),taskImageUrlPending=new Map();
 function taskBuilderImages(meta){
   return Array.isArray(meta?.images)?meta.images.filter(x=>x&&x.path):[];
 }
+function taskBuilderTables(meta){
+  return Array.isArray(meta?.tables)?meta.tables.filter(x=>x&&Array.isArray(x.cells)&&x.cells.length):[];
+}
+function taskTableHtml(table,{compact=false}={}){
+  const rows=(table.cells||[]).map((row,r)=>'<tr>'+((Array.isArray(row)?row:[]).map((cell,c)=>{
+    const tag=(table.header_row&&r===0)||(table.header_col&&c===0)?'th':'td';
+    return '<'+tag+'>'+((String(cell??'').trim())?nl(String(cell)):'&nbsp;')+'</'+tag+'>';
+  }).join(''))+'</tr>').join('');
+  if(!rows)return '';
+  return '<figure class="mr-task-table '+(compact?'compact':'')+'">'+
+    (table.caption?'<figcaption>'+esc(String(table.caption))+'</figcaption>':'')+
+    '<div class="mr-task-table-scroll"><table>'+rows+'</table></div></figure>';
+}
 function taskMediaHtml(meta,{compact=false}={}){
-  const images=taskBuilderImages(meta);if(!images.length)return '';
-  return '<div class="mr-task-media '+(compact?'compact':'')+'">'+images.map(img=>{
+  const images=taskBuilderImages(meta),tables=taskBuilderTables(meta);
+  if(!images.length&&!tables.length)return '';
+  const imageHtml=images.length?'<div class="mr-task-media '+(compact?'compact':'')+'">'+images.map(img=>{
     const width=Math.min(100,Math.max(30,Number(img.display_width)||100));
     return '<figure style="width:'+width+'%"><img data-task-image-path="'+esc(String(img.path))+'" alt="'+esc(String(img.alt||img.name||'Изображение к задаче'))+'">'+(img.alt?'<figcaption>'+esc(String(img.alt))+'</figcaption>':'')+'</figure>';
-  }).join('')+'</div>';
+  }).join('')+'</div>':'';
+  const tableHtml=tables.length?'<div class="mr-task-tables '+(compact?'compact':'')+'">'+tables.map(t=>taskTableHtml(t,{compact})).join('')+'</div>':'';
+  return imageHtml+tableHtml;
 }
 async function signedTaskImageUrl(path){
   if(!path)return '';
