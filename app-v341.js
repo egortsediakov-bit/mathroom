@@ -602,6 +602,21 @@ function renderTaskPipeline(){
   });
 }
 
+function renderTaskSupply(){
+  const mod=window.MathroomTaskSupplyV89;
+  if(!mod?.render)return toast('Фабрика задач не загрузилась');
+  return mod.render({
+    app,shell,bindShell,S,sb,esc,nl,toast,fail,loadTeacher,isTemplateExercise,
+    openBank:({focusImport=false}={})=>{
+      S.view='bank';renderBank();
+      if(focusImport)setTimeout(()=>document.querySelector('[data-xlsx-button]')?.scrollIntoView({behavior:'smooth',block:'center'}),350);
+    },
+    openPipeline:(prefill={mode:'review'})=>{
+      S.taskPipelinePrefill=prefill;S.view='task-pipeline';renderTaskPipeline();
+    }
+  });
+}
+
 function renderTeacher(){
   cleanupAll();
   if(S.view!=='lesson')rememberTeacherView(S.view);
@@ -611,6 +626,7 @@ function renderTeacher(){
   if(S.view==='textbooks')return renderTextbooks();
   if(S.view==='task-builder')return renderTaskBuilder();
   if(S.view==='task-pipeline')return renderTaskPipeline();
+  if(S.view==='task-supply')return renderTaskSupply();
   if(S.view==='bank')return renderBank();
   if(S.view==='schedule')return renderSchedule();
   if(S.view==='assignments')return renderAssignments();
@@ -2676,7 +2692,7 @@ function renderBank(){
       <span class="pill">${own.filter(x=>x.kind==='task').length} задач</span>
       <span class="pill">${own.filter(x=>x.kind==='example').length} примеров</span>
       <span class="pill">${builtIn} из готовой базы</span>
-      <button class="btn sm" id="openTaskPipeline">✦ Пополнить банк</button>
+      <button class="btn sm mr-supply-launch" id="openTaskPipeline">✦ Источники и пополнение</button>
       <button class="btn sm mr-smart-set-launch" id="openSmartSet">Собрать комплект</button>
       <button class="btn sm mr-saved-sets-launch" id="openSavedSets">Мои комплекты</button>
       <button class="btn sm mr-set-recipes-launch" id="openSetRecipes">Рецепты <b>${(S.taskSetRecipes||[]).length}</b></button>
@@ -2702,9 +2718,8 @@ function renderBank(){
     <div id="bankList" class="mr-bank-results"></div>`,'Банк задач','Ищите, сохраняйте и используйте задачи на занятиях');
   bindShell();
   document.getElementById('openTaskPipeline').onclick=()=>{
-    S.taskPipelinePrefill={mode:'topic'};
-    S.view='task-pipeline';
-    renderTaskPipeline();
+    S.view='task-supply';
+    renderTaskSupply();
   };
   document.getElementById('openSmartSet').onclick=()=>{
     const prefill={
