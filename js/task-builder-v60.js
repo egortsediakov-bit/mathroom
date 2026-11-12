@@ -626,11 +626,85 @@
     function helpValue(){return state.help==="solution"?state.solution:state.hints[Number(state.help.replace("hint",""))]||""}
     function setHelp(v){if(state.help==="solution")state.solution=v;else state.hints[Number(state.help.replace("hint",""))]=v}
     function renderHelp(){q("tbHelp").value=helpValue();q("tbHelp").placeholder=state.help==="solution"?"Распишите решение для преподавателя…":"Напишите подсказку, которая поможет сделать следующий шаг…";q("tbHelpCount").textContent=q("tbHelp").value.length+"/5000"}
+    function previewNormAnswer(value){
+      let out=String(value??"").replace(/−/g,"-").replace(/,/g,".").trim();
+      if(state.answerCheck.ignoreSpaces)out=out.replace(/\s+/g,"");
+      else out=out.replace(/\s+/g," ");
+      if(state.answerCheck.ignoreCase)out=out.toLowerCase();
+      return out;
+    }
+    function previewParseNumber(value){
+      const raw=previewNormAnswer(value).replace(/^[a-zа-яё]+=/i,"");
+      if(/^[-+]?\d+(?:\.\d+)?$/.test(raw))return Number(raw);
+      const m=raw.match(/^([-+]?\d+(?:\.\d+)?)\/([-+]?\d+(?:\.\d+)?)$/);
+      if(m){
+        const d=Number(m[2]);if(Math.abs(d)<1e-15)return null;
+        return Number(m[1])/d;
+      }
+      return null;
+    }
+    function previewScalarEqual(expected,actual){
+      const a=previewNormAnswer(expected),b=previewNormAnswer(actual);
+      if(a===b)return true;
+      if(!state.answerCheck.numericEquivalent)return false;
+      const na=previewParseNumber(a),nb=previewParseNumber(b);
+      if(na===null||nb===null||!Number.isFinite(na)||!Number.isFinite(nb))return false;
+      return Math.abs(na-nb)<=Math.max(0,Number(state.answerCheck.tolerance)||0);
+    }
+    function previewExpectedAnswerText(){
+      ensureTemplateValues();
+      if(["standard","numeric"].includes(state.taskType)){
+        return state.answers.map(a=>renderTemplateString(a.value||"")).filter(Boolean).join("; ");
+      }
+      if(["single","multiple"].includes(state.taskType)){
+        return state.options.map((o,i)=>o.correct?(String.fromCharCode(65+i)+". "+renderTemplateString(o.text||"")):"").filter(Boolean).join("; ");
+      }
+      return "";
+    }
     function studentAnswer(){
       ensureTemplateValues();
-      if(["standard","numeric"].includes(state.taskType))return '<div class="mr-tb-student-answer"><h4>Ответ ученика</h4>'+state.answers.map((a,i)=>'<label><span>'+esc(renderTemplateString(a.label||("Ответ "+(i+1))))+'</span><input placeholder="Введите ответ…"></label>').join("")+'<button>Проверить ответ</button></div>';
-      if(["single","multiple"].includes(state.taskType)){const it=state.taskType==="single"?"radio":"checkbox";return '<div class="mr-tb-student-answer"><h4>Выберите '+(state.taskType==="single"?"один ответ":"все правильные ответы")+'</h4><div class="mr-tb-student-options">'+state.options.map((o,i)=>'<label><input type="'+it+'" name="previewChoice"><span>'+String.fromCharCode(65+i)+'. '+esc(renderTemplateString(o.text||"Вариант ответа"))+'</span></label>').join("")+'</div><button>Проверить ответ</button></div>'}
-      return '<div class="mr-tb-student-answer"><h4>Развёрнутый ответ</h4><textarea rows="5" placeholder="Введите решение или пояснение…"></textarea><button>Отправить ответ</button></div>';
+      if(["standard","numeric"].includes(state.taskType)){
+        return '<div class="mr-tb-student-answer" data-preview-answer-box><h4>Ответ ученика</h4>'+
+          state.answers.map((a,i)=>'<label><span>'+esc(renderTemplateString(a.label||("Ответ "+(i+1))))+'</span><input data-preview-answer="'+i+'" '+(state.taskType==="numeric"?'inputmode="decimal"':'')+' placeholder="Введите ответ…"></label>').join("")+
+          '<button type="button" data-preview-check>Проверить ответ</button><div class="mr-tb-preview-check-result" data-preview-check-result></div></div>';
+      }
+      if(["single","multiple"].includes(state.taskType)){
+        const it=state.taskType==="single"?"radio":"checkbox";
+        return '<div class="mr-tb-student-answer" data-preview-answer-box><h4>Выберите '+(state.taskType==="single"?"один ответ":"все правильные ответы")+'</h4><div class="mr-tb-student-options">'+
+          state.options.map((o,i)=>'<label><input type="'+it+'" name="previewChoice" value="'+esc(String(o.id||("o"+i)))+'" data-preview-option="'+i+'"><span>'+String.fromCharCode(65+i)+'. '+esc(renderTemplateString(o.text||"Вариант ответа"))+'</span></label>').join("")+
+          '</div><button type="button" data-preview-check>Проверить ответ</button><div class="mr-tb-preview-check-result" data-preview-check-result></div></div>';
+      }
+      return '<div class="mr-tb-student-answer" data-preview-answer-box><h4>Развёрнутый ответ</h4><textarea rows="5" data-preview-open placeholder="Введите решение или пояснение…"></textarea><button type="button" data-preview-check>Проверить ответ</button><div class="mr-tb-preview-check-result" data-preview-check-result></div></div>';
+    }
+    function bindPreviewAnswer(host){
+      const btn=host?.querySelector("[data-preview-check]");if(!btn)return;
+      btn.onclick=()=>{
+        const result=host.querySelector("[data-preview-check-result]");if(!result)return;
+        let ok=null,detail="";
+        if(["standard","numeric"].includes(state.taskType)){
+          ok=state.answers.every((a,i)=>{
+            const actual=host.querySelector('[data-preview-answer="'+i+'"]')?.value||"";
+            const expected=renderTemplateString(a.value||"");
+            if(previewScalarEqual(expected,actual))return true;
+            return (a.accepted||[]).some(v=>previewScalarEqual(renderTemplateString(v),actual));
+          });
+        }else if(["single","multiple"].includes(state.taskType)){
+          const chosen=[...host.querySelectorAll("[data-preview-option]:checked")].map(x=>Number(x.dataset.previewOption)).sort((a,b)=>a-b);
+          const correct=state.options.map((o,i)=>o.correct?i:-1).filter(i=>i>=0).sort((a,b)=>a-b);
+          ok=chosen.length===correct.length&&chosen.every((v,i)=>v===correct[i]);
+        }else{
+          ok=null;detail="Развёрнутый ответ проверяется преподавателем вручную.";
+        }
+        result.className="mr-tb-preview-check-result "+(ok===true?"good":ok===false?"bad":"manual");
+        if(ok===true)result.innerHTML='<b>✓ Верно</b><span>Ответ соответствует настройкам проверки.</span>';
+        else if(ok===false){
+          const expected=previewExpectedAnswerText();
+          result.innerHTML='<b>× Неверно</b><span>'+(expected?'Правильный ответ в этой версии: <strong>'+esc(expected)+'</strong>':'Проверьте выбранный вариант.')+'</span>';
+        }else result.innerHTML='<b>Ручная проверка</b><span>'+esc(detail)+'</span>';
+      };
+      host.querySelectorAll("[data-preview-answer],[data-preview-open]").forEach(el=>el.addEventListener("keydown",e=>{
+        if(e.key==="Enter"&&!e.shiftKey&&el.tagName!=="TEXTAREA"){e.preventDefault();btn.click()}
+      }));
     }
     function previewImagesHtml(){
       if(!state.images.length)return "";
@@ -916,6 +990,7 @@
         const t=topic();
         host.innerHTML='<div class="mr-tb-preview-sheet"><div class="mr-tb-preview-meta"><span>'+diffName(state.difficulty)+'</span><small>'+esc(t?.title||"Тема не выбрана")+' · '+esc(typeName(state.taskType))+'</small></div>'+previewConditionHtml()+'</div>'+studentAnswer();
         hydrateTaskImages(host);
+        bindPreviewAnswer(host);
       }
       typesetTaskMath(host);
     }
