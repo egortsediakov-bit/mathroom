@@ -235,6 +235,7 @@
       else if(type==="image")renderImages();
       else if(type==="table")renderTables();
       else if(type==="geometry")renderGeometries();
+      renderContentOrder();
     }
     async function removeContentBlock(key){
       const [type,id]=String(key||"").split(":");
@@ -941,6 +942,7 @@
       const i=state.textBlocks.findIndex(x=>String(x.id)===String(id));if(i<0)return;
       state.textBlocks.splice(i,1);
       state.contentOrder=state.contentOrder.filter(x=>x!=="text:"+id);
+      collapsedBlocks.delete("text:"+id);
       if(state.activeTextBlockId===id)state.activeTextBlockId=state.textBlocks[Math.max(0,i-1)]?.id||state.textBlocks[0]?.id||"";
       syncLegacyContent();syncContentOrder();renderTextBlocks();renderContentOrder();preview();
     }
