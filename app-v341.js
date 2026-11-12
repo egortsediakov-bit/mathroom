@@ -2458,7 +2458,7 @@ async function renderLesson(){
     const existing=forceVariant&&templated?null:(queue||[]).find(x=>x.exercise_id===exercise.id);
     let q=existing;
     if(!q){
-      const inst=instantiateExercise(exercise);
+      const inst=templated&&!forceVariant?previewTemplateExercise(exercise):instantiateExercise(exercise);
       const sameCount=(queue||[]).filter(x=>x.exercise_id===exercise.id).length;
       const title=(exercise.title||'Задача')+(templated&&sameCount>0?' · вариант '+(sameCount+1):'');
       const {data,error}=await sb.from('lesson_queue_items').insert({
@@ -2478,7 +2478,7 @@ async function renderLesson(){
   document.getElementById('leaveLesson').onclick=()=>{forgetActiveLesson();S.activeLesson=null;S.view='dashboard';renderTeacher()};document.getElementById('copyLessonLink').onclick=async()=>{await copyText(studentLink(st));toast('Ссылка скопирована')};const theoryBoardBtn=document.getElementById('theoryBoard');if(theoryBoardBtn&&realTopic)theoryBoardBtn.onclick=()=>sendTheoryToBoard(ctrl,realTopic);
   document.querySelectorAll('[data-lesson-source-open]').forEach(b=>b.onclick=()=>{const link=lessonSources.find(x=>String(x.id)===String(b.dataset.lessonSourceOpen));if(link?.textbook)openTextbook(link.textbook,Number(link.page_from)||0)});
   document.querySelectorAll('[data-lesson-source-board]').forEach(b=>b.onclick=()=>{const link=lessonSources.find(x=>String(x.id)===String(b.dataset.lessonSourceBoard));if(link)textbookPagesToBoardModal(link,{controller:ctrl})});
-  document.querySelectorAll('[data-to-board]').forEach(b=>b.onclick=()=>{const x=S.exercises.find(z=>z.id===b.dataset.toBoard);const inst=instantiateExercise(x);ctrl.addText(`${x.title||'Задача'}\n${inst.content}`,{fontSize:25});sb.from('exercises').update({use_count:(x.use_count||0)+1,last_used_at:new Date().toISOString()}).eq('id',x.id).then(()=>{})});
+  document.querySelectorAll('[data-to-board]').forEach(b=>b.onclick=()=>{const x=S.exercises.find(z=>z.id===b.dataset.toBoard);if(!x)return;const inst=isTemplateExercise(x)?previewTemplateExercise(x):instantiateExercise(x);ctrl.addText(`${x.title||'Задача'}\n${inst.content}`,{fontSize:25});sb.from('exercises').update({use_count:(x.use_count||0)+1,last_used_at:new Date().toISOString()}).eq('id',x.id).then(()=>{})});
   document.querySelectorAll('[data-queue-task]').forEach(b=>b.onclick=()=>addQueue(S.exercises.find(x=>x.id===b.dataset.queueTask),false));
   document.querySelectorAll('[data-queue-variant]').forEach(b=>b.onclick=()=>addQueue(S.exercises.find(x=>x.id===b.dataset.queueVariant),false,true));
   document.querySelectorAll('[data-focus-task]').forEach(b=>b.onclick=()=>addQueue(S.exercises.find(x=>x.id===b.dataset.focusTask),true));
