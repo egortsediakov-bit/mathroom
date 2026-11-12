@@ -373,32 +373,75 @@
       const host=q("tbContentOrder");if(!host)return;
       const order=syncContentOrder();
       if(order.length<=1){host.innerHTML="";return}
-      host.innerHTML='<div class="mr-tb-order-head"><div><b>Порядок блоков в условии</b><small>Перетащите блоки или используйте стрелки</small></div></div>'+
+      host.innerHTML='<div class="mr-tb-order-head"><div><b>Порядок блоков в условии</b><small>Зажмите ручку ⠿ и тяните блок вверх или вниз</small></div></div>'+
         '<div class="mr-tb-order-list">'+order.map((key,i)=>{
           const info=contentBlockLabel(key);
-          return '<div class="mr-tb-order-item" draggable="true" data-order-key="'+esc(key)+'">'+
-            '<span class="mr-tb-order-grip" aria-hidden="true">⠿</span><span class="mr-tb-order-icon">'+info.icon+'</span>'+
+          return '<div class="mr-tb-order-item" data-order-key="'+esc(key)+'">'+
+            '<button type="button" class="mr-tb-order-grip" data-order-grip="'+esc(key)+'" title="Зажмите и перетащите" aria-label="Перетащить блок">⠿</button><span class="mr-tb-order-icon">'+info.icon+'</span>'+
             '<div><b>'+esc(info.title)+'</b><small>'+esc(info.sub)+'</small></div>'+
             '<div class="mr-tb-order-actions"><button type="button" data-order-up="'+esc(key)+'" '+(i===0?'disabled':'')+' title="Выше">↑</button><button type="button" data-order-down="'+esc(key)+'" '+(i===order.length-1?'disabled':'')+' title="Ниже">↓</button></div>'+
           '</div>';
         }).join("")+'</div>';
       host.querySelectorAll("[data-order-up]").forEach(b=>b.onclick=()=>moveContentBlock(b.dataset.orderUp,-1));
       host.querySelectorAll("[data-order-down]").forEach(b=>b.onclick=()=>moveContentBlock(b.dataset.orderDown,1));
-      let dragged="";
-      host.querySelectorAll("[data-order-key]").forEach(row=>{
-        row.ondragstart=e=>{dragged=row.dataset.orderKey||"";row.classList.add("dragging");if(e.dataTransfer){e.dataTransfer.effectAllowed="move";e.dataTransfer.setData("text/plain",dragged)}};
-        row.ondragend=()=>{dragged="";host.querySelectorAll(".dragging,.drag-over").forEach(x=>x.classList.remove("dragging","drag-over"))};
-        row.ondragover=e=>{e.preventDefault();if(dragged&&dragged!==row.dataset.orderKey)row.classList.add("drag-over")};
-        row.ondragleave=()=>row.classList.remove("drag-over");
-        row.ondrop=e=>{
-          e.preventDefault();row.classList.remove("drag-over");
-          const from=dragged||e.dataTransfer?.getData("text/plain")||"",to=row.dataset.orderKey||"";
-          syncContentOrder();const a=state.contentOrder.indexOf(from),b=state.contentOrder.indexOf(to);
-          if(a<0||b<0||a===b)return;
-          state.contentOrder.splice(a,1);
-          const insertAt=a<b?b-1:b;
-          state.contentOrder.splice(insertAt,0,from);
+
+      let pointerDrag=null;
+      const clearPointerDrag=()=>{
+        host.querySelectorAll(".dragging,.drag-before,.drag-after").forEach(x=>x.classList.remove("dragging","drag-before","drag-after"));
+        document.body.classList.remove("mr-tb-order-dragging");
+        pointerDrag=null;
+      };
+      const updateDropMarker=clientY=>{
+        if(!pointerDrag)return;
+        const rows=[...host.querySelectorAll("[data-order-key]")].filter(row=>row.dataset.orderKey!==pointerDrag.key);
+        let insertIndex=rows.length;
+        for(let i=0;i<rows.length;i++){
+          const rect=rows[i].getBoundingClientRect();
+          if(clientY<rect.top+rect.height/2){insertIndex=i;break}
+        }
+        pointerDrag.insertIndex=insertIndex;
+        host.querySelectorAll(".drag-before,.drag-after").forEach(x=>x.classList.remove("drag-before","drag-after"));
+        if(!rows.length)return;
+        if(insertIndex>=rows.length)rows[rows.length-1].classList.add("drag-after");
+        else rows[insertIndex].classList.add("drag-before");
+      };
+      host.querySelectorAll("[data-order-grip]").forEach(grip=>{
+        grip.onpointerdown=e=>{
+          if(e.button!=null&&e.button!==0)return;
+          e.preventDefault();e.stopPropagation();
+          const key=grip.dataset.orderGrip||"";
+          const row=grip.closest("[data-order-key]");
+          if(!key||!row)return;
+          syncContentOrder();
+          pointerDrag={key,insertIndex:state.contentOrder.indexOf(key)};
+          row.classList.add("dragging");
+          document.body.classList.add("mr-tb-order-dragging");
+          try{grip.setPointerCapture(e.pointerId)}catch{}
+          updateDropMarker(e.clientY);
+        };
+        grip.onpointermove=e=>{
+          if(!pointerDrag||pointerDrag.key!==grip.dataset.orderGrip)return;
+          e.preventDefault();
+          updateDropMarker(e.clientY);
+        };
+        grip.onpointerup=e=>{
+          if(!pointerDrag||pointerDrag.key!==grip.dataset.orderGrip)return;
+          e.preventDefault();
+          const key=pointerDrag.key,insertIndex=pointerDrag.insertIndex;
+          syncContentOrder();
+          const from=state.contentOrder.indexOf(key);
+          if(from>=0){
+            state.contentOrder.splice(from,1);
+            const at=Math.max(0,Math.min(insertIndex,state.contentOrder.length));
+            state.contentOrder.splice(at,0,key);
+          }
+          try{grip.releasePointerCapture(e.pointerId)}catch{}
+          clearPointerDrag();
           renderContentOrder();preview();
+        };
+        grip.onpointercancel=e=>{
+          try{grip.releasePointerCapture(e.pointerId)}catch{}
+          clearPointerDrag();
         };
       });
     }
