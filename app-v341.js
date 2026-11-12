@@ -3053,6 +3053,22 @@ function assignmentAnswerControl(item,assigned){
   const savedParts=answers.length>1?saved.split(';').map(x=>x.trim()):[saved];
   return '<div class="mr-assignment-answer-fields">'+answers.map((a,i)=>'<div class="field"><label>'+esc(String(a.label||('Ответ '+(i+1))))+'</label><input name="ans_'+item.id+'_'+i+'" '+(type==='numeric'?'inputmode="decimal"':'')+' value="'+esc(savedParts[i]||'')+'" '+disabled+' placeholder="Введите ответ…"></div>').join('')+'</div>';
 }
+function assignmentHelpHtml(item,assigned){
+  const help=item?.help&&typeof item.help==='object'?item.help:{};
+  const revealed=Array.isArray(help.revealed_hints)?help.revealed_hints:[];
+  const hints=revealed.map((h,i)=>'<div class="mr-student-hint-card"><div class="mr-student-hint-number">'+(i+1)+'</div><div><b>Подсказка '+(i+1)+'</b><div class="mr-student-hint-text">'+nl(String(h?.text||''))+'</div></div></div>').join('');
+  const next=assigned&&help.hints_enabled&&help.has_more_hints
+    ?'<button type="button" class="mr-student-hint-next" data-assignment-hint="'+esc(String(item.id))+'">💡 '+(revealed.length?'Следующая подсказка':'Открыть подсказку')+'</button>'
+    :'';
+  const solution=help.solution_available&&help.solution
+    ?'<details class="mr-student-solution"><summary>Посмотреть полное решение</summary><div class="mr-student-solution-body">'+nl(String(help.solution))+'</div></details>'
+    :'';
+  const solutionNote=assigned&&help.has_solution&&help.solution_mode==='after_attempt'
+    ?'<div class="mr-student-solution-note">Полное решение откроется после первой сданной попытки.</div>'
+    :'';
+  if(!hints&&!next&&!solution&&!solutionNote)return '';
+  return '<div class="mr-student-help" data-assignment-help="'+esc(String(item.id))+'">'+hints+next+solutionNote+solution+'</div>';
+}
 function readAssignmentPayload(form,item){
   const meta=assignmentMeta(item),type=meta.task_type||'standard';
   if(type==='single'){
@@ -3070,8 +3086,26 @@ async function openStudentAssignment(kind,id){
   const rpc=kind==='homework'?'get_student_homework':'get_student_test',arg=kind==='homework'?{p_homework_id:id}:{p_test_id:id};const {data,error}=await sb.rpc(rpc,arg);if(error)return fail(error);const assigned=data.status==='assigned',revision=kind==='homework'&&assigned&&data.revision_requested_at;
   const revisionNotice=revision?`<div class="notice warn"><b>Работа возвращена на доработку</b><br>${nl(data.revision_message||'Исправь отмеченные задания и отправь работу ещё раз.')}</div>`:'';
   const meta=kind==='homework'?`<div class="actions assignment-student-meta">${data.due_at?`<span class="pill">срок ${new Date(data.due_at).toLocaleDateString('ru-RU',{day:'2-digit',month:'2-digit'})}</span>`:''}${data.attempt_count?`<span class="pill">попытка ${data.attempt_count+(assigned?1:0)}</span>`:''}${data.reviewed_at?'<span class="pill good">проверено преподавателем</span>':''}</div>`:'';
-  const m=modal(`<h2>${esc(data.title)}</h2>${meta}${revisionNotice}${data.score!=null?`<div class="score">${data.score}%</div>`:''}<form id="studentAnswerForm" class="answers">${(data.items||[]).map((x,i)=>`<div class="answer-item ${x.is_correct===true?'correct':x.is_correct===false?'wrong':''}">${taskConditionHtml(x.prompt,x.builder_meta,{textClass:"mr-assignment-task-text",prefix:String(i+1)+"."})}${assignmentAnswerControl(x,assigned)}${x.is_correct!==null&&x.is_correct!==undefined?`<div class="small">${x.is_correct?'✓ Верно':'✕ Нужно исправить'}</div>`:(assigned?'':'<div class="small muted">Ответ проверит преподаватель</div>')}${x.teacher_feedback?`<div class="notice"><b>Комментарий к задаче</b><br>${nl(x.teacher_feedback)}</div>`:''}</div>`).join('')}${assigned?`<button class="btn primary">${revision?'Отправить исправления':'Отправить'}</button>`:''}</form>${data.comment?`<div class="notice"><b>Комментарий преподавателя</b><br>${nl(data.comment)}</div>`:''}`,'wide-modal');
+  const m=modal(`<h2>${esc(data.title)}</h2>${meta}${revisionNotice}${data.score!=null?`<div class="score">${data.score}%</div>`:''}<form id="studentAnswerForm" class="answers">${(data.items||[]).map((x,i)=>`<div class="answer-item ${x.is_correct===true?'correct':x.is_correct===false?'wrong':''}">${taskConditionHtml(x.prompt,x.builder_meta,{textClass:"mr-assignment-task-text",prefix:String(i+1)+"."})}${assignmentAnswerControl(x,assigned)}${assignmentHelpHtml(x,assigned)}${x.is_correct!==null&&x.is_correct!==undefined?`<div class="small">${x.is_correct?'✓ Верно':'✕ Нужно исправить'}</div>`:(assigned?'':'<div class="small muted">Ответ проверит преподаватель</div>')}${x.teacher_feedback?`<div class="notice"><b>Комментарий к задаче</b><br>${nl(x.teacher_feedback)}</div>`:''}</div>`).join('')}${assigned?`<button class="btn primary">${revision?'Отправить исправления':'Отправить'}</button>`:''}</form>${data.comment?`<div class="notice"><b>Комментарий преподавателя</b><br>${nl(data.comment)}</div>`:''}`,'wide-modal');
   hydrateTaskMedia(m);
+  m.querySelectorAll('[data-assignment-hint]').forEach(btn=>btn.onclick=async()=>{
+    if(btn.disabled)return;
+    btn.disabled=true;
+    const item=(data.items||[]).find(x=>String(x.id)===String(btn.dataset.assignmentHint));
+    if(!item){btn.disabled=false;return}
+    const {data:res,error:er}=await sb.rpc('reveal_student_task_hint',{p_kind:kind,p_assignment_id:id,p_item_id:item.id});
+    if(er){btn.disabled=false;return fail(er)}
+    if(res?.done){btn.remove();return}
+    const host=m.querySelector('[data-assignment-help="'+CSS.escape(String(item.id))+'"]');
+    if(!host){btn.disabled=false;return}
+    const cards=host.querySelectorAll('.mr-student-hint-card').length;
+    const card=document.createElement('div');
+    card.className='mr-student-hint-card';
+    card.innerHTML='<div class="mr-student-hint-number">'+(cards+1)+'</div><div><b>Подсказка '+(cards+1)+'</b><div class="mr-student-hint-text">'+nl(String(res.hint||''))+'</div></div>';
+    host.insertBefore(card,btn);
+    typesetTaskMath(card);
+    if(res.has_more){btn.disabled=false;btn.textContent='💡 Следующая подсказка'}else btn.remove();
+  });
   if(assigned)m.querySelector('#studentAnswerForm').onsubmit=async e=>{
     e.preventDefault();
     const answers={};
@@ -3083,7 +3117,9 @@ async function openStudentAssignment(kind,id){
     }else{
       toast(kind==='homework'?`Работа отправлена · ${res.score}%`:`Результат: ${res.score}%`);
     }
-    m.remove();renderStudent();
+    m.remove();
+    await renderStudent();
+    setTimeout(()=>openStudentAssignment(kind,id),0);
   };
 }
 
