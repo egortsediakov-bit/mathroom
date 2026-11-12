@@ -713,16 +713,27 @@
     function renderContentOrder(){
       const host=q("tbContentOrder");if(!host)return;
       const order=syncContentOrder();
-      if(order.length<=1){host.innerHTML="";return}
-      host.innerHTML='<div class="mr-tb-order-head"><div><b>Порядок блоков в условии</b><small>Зажмите ручку ⠿ и тяните блок вверх или вниз</small></div></div>'+
+      if(!order.length){host.innerHTML="";return}
+      host.innerHTML='<div class="mr-tb-order-head"><div><b>Блоки условия</b><small>Перетаскивайте, копируйте и быстро переходите к нужному блоку</small></div></div>'+
         '<div class="mr-tb-order-list">'+order.map((key,i)=>{
           const info=contentBlockLabel(key);
           return '<div class="mr-tb-order-item" data-order-key="'+esc(key)+'">'+
             '<button type="button" class="mr-tb-order-grip" data-order-grip="'+esc(key)+'" title="Зажмите и перетащите" aria-label="Перетащить блок">⠿</button><span class="mr-tb-order-icon">'+info.icon+'</span>'+
             '<div><b>'+esc(info.title)+'</b><small>'+esc(info.sub)+'</small></div>'+
-            '<div class="mr-tb-order-actions"><button type="button" data-order-up="'+esc(key)+'" '+(i===0?'disabled':'')+' title="Выше">↑</button><button type="button" data-order-down="'+esc(key)+'" '+(i===order.length-1?'disabled':'')+' title="Ниже">↓</button></div>'+
+            '<div class="mr-tb-order-actions">'+
+              '<button type="button" data-order-focus="'+esc(key)+'" title="Перейти к блоку">✎</button>'+
+              '<button type="button" data-order-duplicate="'+esc(key)+'" title="Дублировать блок">⧉</button>'+
+              '<button type="button" data-order-collapse="'+esc(key)+'" title="'+(collapsedBlocks.has(key)?"Развернуть":"Свернуть")+'">'+(collapsedBlocks.has(key)?"＋":"−")+'</button>'+
+              '<button type="button" data-order-up="'+esc(key)+'" '+(i===0?'disabled':'')+' title="Выше">↑</button>'+
+              '<button type="button" data-order-down="'+esc(key)+'" '+(i===order.length-1?'disabled':'')+' title="Ниже">↓</button>'+
+              '<button type="button" class="danger" data-order-remove="'+esc(key)+'" '+(key.startsWith("text:")&&state.textBlocks.length<=1?'disabled':'')+' title="Удалить блок">×</button>'+
+            '</div>'+
           '</div>';
         }).join("")+'</div>';
+      host.querySelectorAll("[data-order-focus]").forEach(b=>b.onclick=()=>focusContentBlock(b.dataset.orderFocus));
+      host.querySelectorAll("[data-order-duplicate]").forEach(b=>b.onclick=()=>duplicateContentBlock(b.dataset.orderDuplicate));
+      host.querySelectorAll("[data-order-collapse]").forEach(b=>b.onclick=()=>{toggleContentCollapse(b.dataset.orderCollapse);renderContentOrder()});
+      host.querySelectorAll("[data-order-remove]").forEach(b=>b.onclick=()=>removeContentBlock(b.dataset.orderRemove));
       host.querySelectorAll("[data-order-up]").forEach(b=>b.onclick=()=>moveContentBlock(b.dataset.orderUp,-1));
       host.querySelectorAll("[data-order-down]").forEach(b=>b.onclick=()=>moveContentBlock(b.dataset.orderDown,1));
 
