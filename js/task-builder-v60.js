@@ -488,10 +488,20 @@
         return "";
       }).join("");
     }
+    function typesetTaskMath(root){
+      if(!root||typeof window.renderMathInElement!=="function")return;
+      try{
+        window.renderMathInElement(root,{delimiters:[
+          {left:"\\[",right:"\\]",display:true},
+          {left:"\\(",right:"\\)",display:false}
+        ],throwOnError:false,strict:"ignore"});
+      }catch(e){console.warn("[Mathroom formula render]",e)}
+    }
     function preview(){
       const t=topic();
       q("tbPreview").innerHTML='<div class="mr-tb-preview-sheet"><div class="mr-tb-preview-meta"><span>'+diffName(state.difficulty)+'</span><small>'+esc(t?.title||"Тема не выбрана")+' · '+esc(typeName(state.taskType))+'</small></div>'+previewConditionHtml()+'</div>'+studentAnswer();
       hydrateTaskImages(q("tbPreview"));
+      typesetTaskMath(q("tbPreview"));
     }
     function renderImages(){
       const host=q("tbImages");if(!host)return;
@@ -624,6 +634,84 @@
       }
     }
     function insertInto(el,text){if(!el)return;const a=el.selectionStart??el.value.length,b=el.selectionEnd??a;el.setRangeText(text,a,b,"end");el.dispatchEvent(new Event("input",{bubbles:true}));el.focus()}
+    let formulaModal=null;
+    function closeFormulaEditor(){
+      formulaModal?.remove();
+      formulaModal=null;
+    }
+    function openFormulaEditor(target){
+      if(!target)return;
+      closeFormulaEditor();
+      const start=target.selectionStart??target.value.length,end=target.selectionEnd??start;
+      let selected=String(target.value.slice(start,end)||"").trim();
+      const inlineMatch=selected.match(/^\\\((.*)\\\)$/s),displayMatch=selected.match(/^\\\[(.*)\\\]$/s);
+      if(inlineMatch)selected=inlineMatch[1].trim();
+      if(displayMatch)selected=displayMatch[1].trim();
+
+      const modal=document.createElement("div");
+      modal.className="mr-formula-modal";
+      modal.innerHTML='<div class="mr-formula-dialog">'+
+        '<div class="mr-formula-head"><div><span>∿</span><div><b>Редактор формулы</b><small>Введите формулу или соберите её кнопками</small></div></div><button type="button" data-formula-close aria-label="Закрыть">×</button></div>'+
+        '<div class="mr-formula-mode"><button type="button" data-formula-mode="inline" class="'+(displayMatch?"":"active")+'">В строке</button><button type="button" data-formula-mode="display" class="'+(displayMatch?"active":"")+'">Отдельной строкой</button></div>'+
+        '<div class="mr-formula-tools">'+
+          '<button type="button" data-formula-snippet="\\frac{a}{b}"><span> a⁄b </span><small>Дробь</small></button>'+
+          '<button type="button" data-formula-snippet="x^{2}"><span>x²</span><small>Степень</small></button>'+
+          '<button type="button" data-formula-snippet="\\sqrt{x}"><span>√x</span><small>Корень</small></button>'+
+          '<button type="button" data-formula-snippet="\\sqrt[n]{x}"><span>ⁿ√x</span><small>Корень n</small></button>'+
+          '<button type="button" data-formula-snippet="\\left|x\\right|"><span>|x|</span><small>Модуль</small></button>'+
+          '<button type="button" data-formula-snippet="\\pi"><span>π</span><small>Пи</small></button>'+
+          '<button type="button" data-formula-snippet="\\alpha"><span>α</span><small>Альфа</small></button>'+
+          '<button type="button" data-formula-snippet="\\theta"><span>θ</span><small>Тета</small></button>'+
+          '<button type="button" data-formula-snippet="\\le"><span>≤</span><small>Меньше</small></button>'+
+          '<button type="button" data-formula-snippet="\\ge"><span>≥</span><small>Больше</small></button>'+
+          '<button type="button" data-formula-snippet="\\ne"><span>≠</span><small>Не равно</small></button>'+
+          '<button type="button" data-formula-snippet="\\pm"><span>±</span><small>Плюс-минус</small></button>'+
+          '<button type="button" data-formula-snippet="\\sum_{i=1}^{n}"><span>Σ</span><small>Сумма</small></button>'+
+          '<button type="button" data-formula-snippet="\\int_{a}^{b}"><span>∫</span><small>Интеграл</small></button>'+
+          '<button type="button" data-formula-snippet="\\to"><span>→</span><small>Стрелка</small></button>'+
+          '<button type="button" data-formula-snippet="\\infty"><span>∞</span><small>Бесконечность</small></button>'+
+        '</div>'+
+        '<label class="mr-formula-input-wrap"><span>Формула</span><textarea id="tbFormulaInput" rows="3" spellcheck="false" placeholder="Например: \\frac{x+1}{2}=5">'+esc(selected)+'</textarea></label>'+
+        '<div class="mr-formula-preview-wrap"><span>Предпросмотр</span><div id="tbFormulaPreview" class="mr-formula-preview"></div></div>'+
+        '<div class="mr-formula-actions"><button type="button" class="ghost" data-formula-cancel>Отмена</button><button type="button" class="primary" data-formula-insert>Вставить формулу</button></div>'+
+      '</div>';
+      document.body.appendChild(modal);
+      formulaModal=modal;
+
+      const input=modal.querySelector("#tbFormulaInput"),previewEl=modal.querySelector("#tbFormulaPreview");
+      let mode=displayMatch?"display":"inline";
+      const draw=()=>{
+        const latex=input.value.trim();
+        if(!latex){previewEl.innerHTML='<span class="mr-formula-empty">Здесь появится формула</span>';return}
+        if(window.katex?.render){
+          try{window.katex.render(latex,previewEl,{throwOnError:false,displayMode:mode==="display",strict:"ignore"})}
+          catch(e){previewEl.textContent=latex}
+        }else previewEl.textContent=latex;
+      };
+      const insertSnippet=snippet=>{
+        const a=input.selectionStart??input.value.length,b=input.selectionEnd??a;
+        input.setRangeText(snippet,a,b,"end");input.focus();draw();
+      };
+      modal.querySelectorAll("[data-formula-snippet]").forEach(b=>b.onclick=()=>insertSnippet(b.dataset.formulaSnippet||""));
+      modal.querySelectorAll("[data-formula-mode]").forEach(b=>b.onclick=()=>{
+        mode=b.dataset.formulaMode||"inline";
+        modal.querySelectorAll("[data-formula-mode]").forEach(x=>x.classList.toggle("active",x===b));
+        draw();
+      });
+      modal.querySelector("[data-formula-insert]").onclick=()=>{
+        const latex=input.value.trim();if(!latex)return toast("Введите формулу");
+        const wrapped=mode==="display"?"\\[\n"+latex+"\n\\]":"\\("+latex+"\\)";
+        target.setRangeText(wrapped,start,end,"end");
+        target.dispatchEvent(new Event("input",{bubbles:true}));
+        closeFormulaEditor();target.focus();
+      };
+      modal.querySelector("[data-formula-close]").onclick=closeFormulaEditor;
+      modal.querySelector("[data-formula-cancel]").onclick=closeFormulaEditor;
+      modal.onmousedown=e=>{if(e.target===modal)closeFormulaEditor()};
+      input.oninput=draw;
+      input.onkeydown=e=>{if((e.ctrlKey||e.metaKey)&&e.key==="Enter"){e.preventDefault();modal.querySelector("[data-formula-insert]").click()}};
+      draw();setTimeout(()=>{input.focus();input.setSelectionRange(input.value.length,input.value.length)},0);
+    }
     function legacyAnswer(){if(["standard","numeric"].includes(state.taskType))return state.answers.map(a=>a.value.trim()).filter(Boolean).join("; ");if(["single","multiple"].includes(state.taskType))return state.options.filter(o=>o.correct&&o.text.trim()).map(o=>o.text.trim()).join(" | ");return state.openAnswer.trim()}
     function collect(){state.grade=Number(q("tbGrade").value)||state.grade;state.topicId=q("tbTopic").value;state.subtopic=q("tbSubtopic").value;state.content=q("tbContent").value;state.settings.shared=!!q("tbShared").checked;state.settings.allowTests=!!q("tbAllowTests").checked;state.settings.allowAi=!!q("tbAllowAi").checked;setHelp(q("tbHelp").value);syncAnswer()}
     function builderMeta(){const t=topic();syncContentOrder();return {version:5,grade:Number(t?.grade||state.grade)||null,subtopic:state.subtopic.trim(),task_type:state.taskType,content_order:state.contentOrder,images:state.images.map(img=>({id:img.id,path:img.path,name:img.name,mime:img.mime,width:img.width,height:img.height,display_width:img.displayWidth,alt:img.alt.trim()})),tables:state.tables.map(table=>({id:table.id,caption:table.caption.trim(),rows:table.rows,cols:table.cols,header_row:!!table.headerRow,header_col:!!table.headerCol,cells:table.cells.map(row=>row.map(cell=>String(cell)))})),geometries:state.geometries.map(g=>({id:g.id,type:g.type,caption:g.caption.trim(),display_width:g.displayWidth,triangle:{vertices:g.triangle.vertices,sides:g.triangle.sides,right_angle:g.triangle.rightAngle},rectangle:{vertices:g.rectangle.vertices,width_label:g.rectangle.widthLabel,height_label:g.rectangle.heightLabel},circle:{center_label:g.circle.centerLabel,radius_label:g.circle.radiusLabel},coordinate:{points:g.coordinate.points,x_min:g.coordinate.xMin,x_max:g.coordinate.xMax,y_min:g.coordinate.yMin,y_max:g.coordinate.yMax}})),answers:state.answers,options:state.options,open_answer:state.openAnswer,solution:state.solution,hints:state.hints,source:{kind:state.source.kind,textbook_id:state.source.kind==="textbook"?(state.source.textbookId||null):null,page:state.source.kind==="textbook"?(state.source.page||null):null,exercise_no:state.source.kind==="textbook"?(state.source.exerciseNo||null):null,note:state.source.kind==="textbook"?"":state.source.note.trim()},settings:{shared:!!state.settings.shared,allow_tests:!!state.settings.allowTests,allow_ai_example:!!state.settings.allowAi}}}
@@ -655,12 +743,12 @@
     document.querySelectorAll("[data-tb-diff]").forEach(b=>b.onclick=()=>{state.difficulty=b.dataset.tbDiff;document.querySelectorAll("[data-tb-diff]").forEach(x=>x.classList.toggle("active",x===b));preview()});
     const setType=v=>{syncAnswer();state.taskType=v;if(v==="single"&&!state.options.some(o=>o.correct)&&state.options[0])state.options[0].correct=true;document.querySelectorAll("[data-tb-type]").forEach(x=>x.classList.toggle("active",x.dataset.tbType===v));renderAnswer();preview()};
     document.querySelectorAll("[data-tb-type]").forEach(b=>b.onclick=()=>setType(b.dataset.tbType));
-    document.querySelectorAll("[data-insert]").forEach(b=>b.onclick=()=>{const k=b.dataset.insert;if(k==="formula")insertInto(q("tbContent"),"\\(  \\)");else if(k==="list")insertInto(q("tbContent"),"\n• ");else if(k==="template")insertInto(q("tbContent"),"{{a}}");else if(k==="image")q("tbImageInput").click();else if(k==="table")addTable();else if(k==="geometry")addGeometry();else q("tbContent").focus()});
+    document.querySelectorAll("[data-insert]").forEach(b=>b.onclick=()=>{const k=b.dataset.insert;if(k==="formula")openFormulaEditor(q("tbContent"));else if(k==="list")insertInto(q("tbContent"),"\n• ");else if(k==="template")insertInto(q("tbContent"),"{{a}}");else if(k==="image")q("tbImageInput").click();else if(k==="table")addTable();else if(k==="geometry")addGeometry();else q("tbContent").focus()});
     q("tbImageInput").onchange=e=>uploadTaskImages(e.target.files);
     document.querySelectorAll("[data-coming]").forEach(b=>b.onclick=()=>toast(b.dataset.coming+" подключим следующим этапом конструктора"));
     document.querySelectorAll("[data-help]").forEach(b=>b.onclick=()=>{setHelp(q("tbHelp").value);state.help=b.dataset.help;document.querySelectorAll("[data-help]").forEach(x=>x.classList.toggle("active",x===b));renderHelp()});
     q("tbHelp").oninput=e=>{setHelp(e.target.value);q("tbHelpCount").textContent=e.target.value.length+"/5000"};
-    document.querySelectorAll("[data-help-insert]").forEach(b=>b.onclick=()=>{if(b.dataset.helpInsert==="formula")insertInto(q("tbHelp"),"\\(  \\)");else insertInto(q("tbHelp"),"\n• ")});
+    document.querySelectorAll("[data-help-insert]").forEach(b=>b.onclick=()=>{if(b.dataset.helpInsert==="formula")openFormulaEditor(q("tbHelp"));else insertInto(q("tbHelp"),"\n• ")});
     document.querySelectorAll("[data-source]").forEach(b=>b.onclick=()=>{state.source.kind=b.dataset.source;document.querySelectorAll("[data-source]").forEach(x=>x.classList.toggle("active",x===b));renderSource()});
     q("tbShared").onchange=e=>state.settings.shared=e.target.checked;q("tbAllowTests").onchange=e=>state.settings.allowTests=e.target.checked;q("tbAllowAi").onchange=e=>state.settings.allowAi=e.target.checked;
     document.querySelectorAll("[data-info]").forEach(b=>b.onclick=()=>toast(b.dataset.info));
