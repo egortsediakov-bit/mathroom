@@ -937,11 +937,12 @@
       const host=q("tbTextBlocks");if(!host)return;
       if(!state.textBlocks.length)state.textBlocks=[{id:textBlockId(),text:""}];
       if(!state.activeTextBlockId||!textBlockById(state.activeTextBlockId))state.activeTextBlockId=state.textBlocks[0].id;
-      host.innerHTML=state.textBlocks.map((block,i)=>'<article class="mr-tb-text-card '+(block.id===state.activeTextBlockId?"active":"")+'" data-text-block-card="'+esc(block.id)+'">'+
-        '<div class="mr-tb-text-head"><div><span>T</span><b>Текстовый блок '+(i+1)+'</b></div>'+
-        '<button type="button" data-remove-text="'+esc(block.id)+'" '+(state.textBlocks.length<=1?"disabled":"")+' title="Удалить текстовый блок">×</button></div>'+
+      host.innerHTML=state.textBlocks.map((block,i)=>{const key="text:"+block.id,collapsed=collapsedBlocks.has(key);return '<article class="mr-tb-text-card '+(block.id===state.activeTextBlockId?"active ":"")+(collapsed?"collapsed":"")+'" data-text-block-card="'+esc(block.id)+'">'+
+        '<div class="mr-tb-text-head"><div><span>T</span><b>Текстовый блок '+(i+1)+'</b></div><div class="mr-tb-card-mini-actions">'+
+        '<button type="button" data-card-collapse="'+esc(key)+'" title="'+(collapsed?"Развернуть":"Свернуть")+'">'+(collapsed?"＋":"−")+'</button>'+
+        '<button type="button" data-remove-text="'+esc(block.id)+'" '+(state.textBlocks.length<=1?"disabled":"")+' title="Удалить текстовый блок">×</button></div></div>'+
         '<div class="mr-tb-editor"><textarea data-text-block-input="'+esc(block.id)+'" maxlength="5000" placeholder="'+(i===0?"Введите условие задачи…":"Продолжение условия, пояснение или вопрос…")+'">'+esc(block.text)+'</textarea><span data-text-count="'+esc(block.id)+'">'+String(block.text||"").length+'/5000</span></div>'+
-      '</article>').join("");
+      '</article>'}).join("");
       host.querySelectorAll("[data-text-block-input]").forEach(el=>{
         const id=el.dataset.textBlockInput;
         const activate=()=>{
@@ -956,6 +957,7 @@
           syncLegacyContent();renderContentOrder();preview();
         };
       });
+      host.querySelectorAll("[data-card-collapse]").forEach(b=>b.onclick=()=>toggleContentCollapse(b.dataset.cardCollapse));
       host.querySelectorAll("[data-remove-text]").forEach(b=>b.onclick=()=>removeTextBlock(b.dataset.removeText));
       syncLegacyContent();
     }
@@ -963,7 +965,7 @@
       const host=q("tbImages");if(!host)return;
       if(!state.images.length){host.innerHTML="";return}
       host.innerHTML='<div class="mr-tb-images-head"><div><b>Изображения к условию</b><small>'+state.images.length+' шт. · PNG, JPG, WEBP или GIF до 15 МБ</small></div><button type="button" id="tbAddMoreImages">＋ Добавить ещё</button></div>'+
-        '<div class="mr-tb-image-list">'+state.images.map(img=>'<article class="mr-tb-image-card" data-tb-image-card="'+esc(img.id)+'">'+
+        '<div class="mr-tb-image-list">'+state.images.map(img=>'<article class="mr-tb-image-card '+(collapsedBlocks.has("image:"+img.id)?"collapsed":"")+'" data-tb-image-card="'+esc(img.id)+'">'+
           '<div class="mr-tb-image-thumb"><img data-tb-image-src="'+esc(img.id)+'" alt="'+esc(img.alt||img.name)+'"><span>Не удалось загрузить превью</span></div>'+
           '<div class="mr-tb-image-body"><div class="mr-tb-image-title"><b>'+esc(img.name)+'</b><small>'+img.width+' × '+img.height+' px</small></div>'+
           '<label class="mr-tb-image-alt"><span>Описание <em>(для доступности)</em></span><input data-tb-image-alt="'+esc(img.id)+'" maxlength="180" value="'+esc(img.alt)+'" placeholder="Например: график функции y = x²"></label>'+
@@ -973,30 +975,22 @@
       q("tbAddMoreImages").onclick=()=>q("tbImageInput").click();
       host.querySelectorAll("[data-tb-image-alt]").forEach(el=>el.oninput=()=>{const img=imageById(el.dataset.tbImageAlt);if(!img)return;img.alt=el.value;preview()});
       host.querySelectorAll("[data-tb-image-width]").forEach(el=>el.oninput=()=>{const img=imageById(el.dataset.tbImageWidth);if(!img)return;img.displayWidth=Number(el.value)||100;const label=host.querySelector('[data-tb-image-width-label="'+CSS.escape(img.id)+'"]');if(label)label.textContent=img.displayWidth+"%";preview()});
-      host.querySelectorAll("[data-tb-image-remove]").forEach(el=>el.onclick=async()=>{
-        const img=imageById(el.dataset.tbImageRemove);if(!img)return;
-        state.images=state.images.filter(x=>x!==img);
-        if(pendingImagePaths.has(img.path)){
-          pendingImagePaths.delete(img.path);
-          try{await sb.storage.from(TASK_IMAGE_BUCKET).remove([img.path])}catch(e){console.warn("[Mathroom task image remove]",e)}
-        }
-        releaseImageUrl(img.path);
-        syncContentOrder();renderImages();renderContentOrder();preview();
-      });
+      host.querySelectorAll("[data-tb-image-remove]").forEach(el=>el.onclick=()=>removeContentBlock("image:"+el.dataset.tbImageRemove));
       hydrateTaskImages(host);
     }
     function renderTables(){
       const host=q("tbTables");if(!host)return;
       if(!state.tables.length){host.innerHTML="";return}
       host.innerHTML='<div class="mr-tb-tables-head"><div><b>Таблицы к условию</b><small>'+state.tables.length+' шт. · до 12 × 12 ячеек</small></div><button type="button" id="tbAddMoreTables">＋ Добавить таблицу</button></div>'+
-        '<div class="mr-tb-table-list">'+state.tables.map((table,index)=>'<article class="mr-tb-table-card" data-tb-table-card="'+esc(table.id)+'">'+
-          '<div class="mr-tb-table-card-head"><div><span>Таблица '+(index+1)+'</span><b>'+table.rows+' × '+table.cols+'</b></div><button type="button" class="mr-tb-table-remove" data-tb-table-remove="'+esc(table.id)+'" title="Удалить таблицу">×</button></div>'+
+        '<div class="mr-tb-table-list">'+state.tables.map((table,index)=>{const key="table:"+table.id,collapsed=collapsedBlocks.has(key);return '<article class="mr-tb-table-card '+(collapsed?"collapsed":"")+'" data-tb-table-card="'+esc(table.id)+'">'+
+          '<div class="mr-tb-table-card-head"><div><span>Таблица '+(index+1)+'</span><b>'+table.rows+' × '+table.cols+'</b></div><div class="mr-tb-card-mini-actions"><button type="button" data-card-collapse="'+esc(key)+'" title="'+(collapsed?"Развернуть":"Свернуть")+'">'+(collapsed?"＋":"−")+'</button><button type="button" class="mr-tb-table-remove" data-tb-table-remove="'+esc(table.id)+'" title="Удалить таблицу">×</button></div></div>'+
           '<label class="mr-tb-table-caption"><span>Подпись <em>(необязательно)</em></span><input data-tb-table-caption="'+esc(table.id)+'" maxlength="120" value="'+esc(table.caption)+'" placeholder="Например: результаты измерений"></label>'+
           '<div class="mr-tb-table-options"><label><input type="checkbox" data-tb-table-header-row="'+esc(table.id)+'" '+(table.headerRow?'checked':'')+'><span>Верхняя строка — заголовок</span></label><label><input type="checkbox" data-tb-table-header-col="'+esc(table.id)+'" '+(table.headerCol?'checked':'')+'><span>Первый столбец — заголовок</span></label></div>'+
           '<div class="mr-tb-table-editor-scroll"><table class="mr-tb-table-editor">'+table.cells.map((row,r)=>'<tr>'+row.map((cell,c)=>'<td><input data-tb-table-cell="'+esc(table.id)+'" data-row="'+r+'" data-col="'+c+'" value="'+esc(cell)+'" placeholder="'+(r+1)+','+(c+1)+'"></td>').join("")+'</tr>').join("")+'</table></div>'+
           '<div class="mr-tb-table-controls"><div><button type="button" data-tb-table-row-add="'+esc(table.id)+'">＋ Строка</button><button type="button" data-tb-table-row-remove="'+esc(table.id)+'" '+(table.rows<=1?'disabled':'')+'>− Строка</button></div><div><button type="button" data-tb-table-col-add="'+esc(table.id)+'">＋ Столбец</button><button type="button" data-tb-table-col-remove="'+esc(table.id)+'" '+(table.cols<=1?'disabled':'')+'>− Столбец</button></div></div>'+
-        '</article>').join("")+'</div>';
+        '</article>'}).join("")+'</div>';
       q("tbAddMoreTables").onclick=addTable;
+      host.querySelectorAll("[data-card-collapse]").forEach(b=>b.onclick=()=>toggleContentCollapse(b.dataset.cardCollapse));
       host.querySelectorAll("[data-tb-table-caption]").forEach(el=>el.oninput=()=>{const t=tableById(el.dataset.tbTableCaption);if(!t)return;t.caption=el.value;renderContentOrder();preview()});
       host.querySelectorAll("[data-tb-table-header-row]").forEach(el=>el.onchange=()=>{const t=tableById(el.dataset.tbTableHeaderRow);if(!t)return;t.headerRow=el.checked;preview()});
       host.querySelectorAll("[data-tb-table-header-col]").forEach(el=>el.onchange=()=>{const t=tableById(el.dataset.tbTableHeaderCol);if(!t)return;t.headerCol=el.checked;preview()});
@@ -1005,7 +999,7 @@
       host.querySelectorAll("[data-tb-table-row-remove]").forEach(el=>el.onclick=()=>{const t=tableById(el.dataset.tbTableRowRemove);if(!t||t.rows<=1)return;t.cells.pop();t.rows--;renderTables();preview()});
       host.querySelectorAll("[data-tb-table-col-add]").forEach(el=>el.onclick=()=>{const t=tableById(el.dataset.tbTableColAdd);if(!t||t.cols>=12)return toast("Максимум 12 столбцов");t.cells.forEach(row=>row.push(''));t.cols++;renderTables();preview()});
       host.querySelectorAll("[data-tb-table-col-remove]").forEach(el=>el.onclick=()=>{const t=tableById(el.dataset.tbTableColRemove);if(!t||t.cols<=1)return;t.cells.forEach(row=>row.pop());t.cols--;renderTables();preview()});
-      host.querySelectorAll("[data-tb-table-remove]").forEach(el=>el.onclick=()=>{state.tables=state.tables.filter(t=>String(t.id)!==String(el.dataset.tbTableRemove));syncContentOrder();renderTables();renderContentOrder();preview()});
+      host.querySelectorAll("[data-tb-table-remove]").forEach(el=>el.onclick=()=>removeContentBlock("table:"+el.dataset.tbTableRemove));
     }
     function addTable(){
       const id=tableId();
@@ -1034,15 +1028,16 @@
       const host=q("tbGeometries");if(!host)return;
       if(!state.geometries.length){host.innerHTML="";return}
       host.innerHTML='<div class="mr-tb-geometries-head"><div><b>Геометрические схемы</b><small>'+state.geometries.length+' шт. · векторные SVG</small></div><button type="button" id="tbAddMoreGeometry">＋ Добавить схему</button></div>'+
-        '<div class="mr-tb-geometry-list">'+state.geometries.map((g,index)=>'<article class="mr-tb-geometry-card" data-geo-card="'+esc(g.id)+'">'+
-          '<div class="mr-tb-geometry-card-head"><div><span>Схема '+(index+1)+'</span><select data-geo-type="'+esc(g.id)+'"><option value="triangle" '+(g.type==="triangle"?'selected':'')+'>Треугольник</option><option value="rectangle" '+(g.type==="rectangle"?'selected':'')+'>Прямоугольник</option><option value="circle" '+(g.type==="circle"?'selected':'')+'>Окружность</option><option value="coordinate" '+(g.type==="coordinate"?'selected':'')+'>Координатная плоскость</option></select></div><button type="button" class="mr-tb-geometry-remove" data-geo-remove="'+esc(g.id)+'">×</button></div>'+
+        '<div class="mr-tb-geometry-list">'+state.geometries.map((g,index)=>{const key="geometry:"+g.id,collapsed=collapsedBlocks.has(key);return '<article class="mr-tb-geometry-card '+(collapsed?"collapsed":"")+'" data-geo-card="'+esc(g.id)+'">'+
+          '<div class="mr-tb-geometry-card-head"><div><span>Схема '+(index+1)+'</span><select data-geo-type="'+esc(g.id)+'"><option value="triangle" '+(g.type==="triangle"?'selected':'')+'>Треугольник</option><option value="rectangle" '+(g.type==="rectangle"?'selected':'')+'>Прямоугольник</option><option value="circle" '+(g.type==="circle"?'selected':'')+'>Окружность</option><option value="coordinate" '+(g.type==="coordinate"?'selected':'')+'>Координатная плоскость</option></select></div><div class="mr-tb-card-mini-actions"><button type="button" data-card-collapse="'+esc(key)+'" title="'+(collapsed?"Развернуть":"Свернуть")+'">'+(collapsed?"＋":"−")+'</button><button type="button" class="mr-tb-geometry-remove" data-geo-remove="'+esc(g.id)+'">×</button></div></div>'+
           '<div class="mr-tb-geometry-layout"><div class="mr-tb-geometry-controls">'+
             '<label class="mr-tb-geo-caption"><span>Подпись <em>(необязательно)</em></span><input data-geo-caption="'+esc(g.id)+'" maxlength="120" value="'+esc(g.caption)+'" placeholder="Например: рисунок к задаче"></label>'+
             geometryFields(g)+
             '<label class="mr-tb-geo-width"><span>Размер схемы</span><div><input type="range" min="45" max="100" step="5" data-geo-width="'+esc(g.id)+'" value="'+g.displayWidth+'"><b data-geo-width-label="'+esc(g.id)+'">'+g.displayWidth+'%</b></div></label>'+
           '</div><div class="mr-tb-geometry-live">'+geometryHtml(g)+'</div></div>'+
-        '</article>').join("")+'</div>';
+        '</article>'}).join("")+'</div>';
       q("tbAddMoreGeometry").onclick=addGeometry;
+      host.querySelectorAll("[data-card-collapse]").forEach(b=>b.onclick=()=>toggleContentCollapse(b.dataset.cardCollapse));
       host.querySelectorAll("[data-geo-type]").forEach(el=>el.onchange=()=>{const g=geometryById(el.dataset.geoType);if(!g)return;g.type=el.value;renderGeometries();renderContentOrder();preview()});
       host.querySelectorAll("[data-geo-caption]").forEach(el=>el.oninput=()=>{const g=geometryById(el.dataset.geoCaption);if(!g)return;g.caption=el.value;renderContentOrder();preview();const card=el.closest("[data-geo-card]");if(card)card.querySelector(".mr-tb-geometry-live").innerHTML=geometryHtml(g)});
       host.querySelectorAll("[data-geo-width]").forEach(el=>el.oninput=()=>{const g=geometryById(el.dataset.geoWidth);if(!g)return;g.displayWidth=Number(el.value)||80;const lab=host.querySelector('[data-geo-width-label="'+CSS.escape(g.id)+'"]');if(lab)lab.textContent=g.displayWidth+"%";preview();const card=el.closest("[data-geo-card]");if(card)card.querySelector(".mr-tb-geometry-live").innerHTML=geometryHtml(g)});
@@ -1056,7 +1051,7 @@
       host.querySelectorAll("[data-geo-circle-radius]").forEach(el=>el.oninput=()=>{const g=geometryById(el.dataset.geoCircleRadius);if(!g)return;g.circle.radiusLabel=el.value;preview();const card=el.closest("[data-geo-card]");if(card)card.querySelector(".mr-tb-geometry-live").innerHTML=geometryHtml(g)});
       host.querySelectorAll("[data-geo-points]").forEach(el=>el.oninput=()=>{const g=geometryById(el.dataset.geoPoints);if(!g)return;g.coordinate.points=el.value;preview();const card=el.closest("[data-geo-card]");if(card)card.querySelector(".mr-tb-geometry-live").innerHTML=geometryHtml(g)});
       host.querySelectorAll("[data-geo-axis]").forEach(el=>el.onchange=()=>{const g=geometryById(el.dataset.geoId);if(!g)return;const k=el.dataset.geoAxis,v=Number(el.value);if(!Number.isFinite(v))return;g.coordinate[k]=v;if(g.coordinate.xMin>=g.coordinate.xMax)g.coordinate.xMin=g.coordinate.xMax-1;if(g.coordinate.yMin>=g.coordinate.yMax)g.coordinate.yMin=g.coordinate.yMax-1;renderGeometries();preview()});
-      host.querySelectorAll("[data-geo-remove]").forEach(el=>el.onclick=()=>{state.geometries=state.geometries.filter(g=>String(g.id)!==String(el.dataset.geoRemove));syncContentOrder();renderGeometries();renderContentOrder();preview()});
+      host.querySelectorAll("[data-geo-remove]").forEach(el=>el.onclick=()=>removeContentBlock("geometry:"+el.dataset.geoRemove));
     }
     function addGeometry(){
       const id=geometryId();
