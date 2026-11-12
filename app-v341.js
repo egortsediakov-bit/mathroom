@@ -185,6 +185,8 @@ async function loadTeacher(){
   }catch{S.textbooksFeatureAvailable=false;S.textbooks=[];S.textbookLinks=[];S.teacherTextbookLibrary=[]}
   if(window.MathroomSavedSetsV84)await window.MathroomSavedSetsV84.load({S,sb});
   else {S.savedTaskSetsFeatureAvailable=false;S.savedTaskSets=[]}
+  if(window.MathroomSetRecipesV86)await window.MathroomSetRecipesV86.load({S,sb});
+  else {S.taskSetRecipesFeatureAvailable=false;S.taskSetRecipes=[]}
   if(!S.selectedStudent&&S.students[0])S.selectedStudent=S.students[0].id;
 }
 let curriculumSyncPromise=null;
@@ -2677,6 +2679,7 @@ function renderBank(){
       <button class="btn sm" id="openTaskPipeline">✦ Пополнить банк</button>
       <button class="btn sm mr-smart-set-launch" id="openSmartSet">Собрать комплект</button>
       <button class="btn sm mr-saved-sets-launch" id="openSavedSets">Мои комплекты</button>
+      <button class="btn sm mr-set-recipes-launch" id="openSetRecipes">Рецепты <b>${(S.taskSetRecipes||[]).length}</b></button>
       <button class="btn sm primary" id="createBankTask">＋ Создать задачу</button>
       <button class="btn sm" id="syncCurriculumBank">Обновить базу 1–11</button>
     </div>
@@ -2715,6 +2718,10 @@ function renderBank(){
     return openSmartTaskSetBuilder(prefill);
   };
   document.getElementById('openSavedSets').onclick=()=>window.MathroomSavedSetsV84?.openLibrary?.({S,sb,esc,nl,modal,toast,fail,copyText,diffLabel,taskConditionHtml,hydrateTaskMedia,typesetTaskMath,openSmartWorksheetBuilder,assignSmartTaskSetHomework});
+  document.getElementById('openSetRecipes').onclick=()=>window.MathroomSetRecipesV86?.openLibrary?.({
+    S,sb,esc,modal,toast,fail,
+    openBuilder:(prefill)=>window.MathroomMultiTopicSetsV85?.openBuilder?.({S,sb,esc,nl,modal,toast,fail,copyText,diffLabel,taskConditionHtml,hydrateTaskMedia,typesetTaskMath,buildSmartTaskSet,taskVariantFingerprint,templateVariantValues,openSmartWorksheetBuilder,assignSmartTaskSetHomework},prefill)
+  });
   document.getElementById('createBankTask').onclick=()=>{
     S.taskBuilderExerciseId=null;
     S.taskBuilderReturn={view:'bank',topicId:null};
