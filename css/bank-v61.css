@@ -614,3 +614,30 @@ html[data-theme=dark] .mr-smart-multi-head,html[data-theme=dark] .mr-smart-multi
 .mr-recipe-card-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;padding-top:12px;border-top:1px solid var(--line)}
 html[data-theme=dark] .mr-set-recipes-launch,html[data-theme=dark] .mr-recipe-save-btn{background:#2a1b13!important;border-color:#68432f!important;color:#ff9b6a!important}
 @media(max-width:760px){.mr-smart-set-run-actions{width:100%;justify-content:stretch}.mr-smart-set-run-actions .btn{flex:1}.mr-recipes-head{align-items:stretch;flex-direction:column}.mr-recipe-search{width:100%}.mr-recipes-grid{grid-template-columns:1fr}.mr-recipe-card-foot{align-items:stretch;flex-direction:column}}
+
+
+/* v87 — parallel variants */
+.mr-recipe-main-actions{display:flex;gap:7px;flex-wrap:wrap}
+.mr-parallel-launch{border-color:#efb18e!important;background:#fff4ed!important;color:#c34c18!important;font-weight:850}
+.mr-parallel-pill{border-color:#efb18e!important;background:#fff1e8!important;color:#c34c18!important}
+.mr-parallel-modal{width:min(1180px,calc(100vw - 24px));max-width:1180px}
+.mr-parallel-lab{display:grid;gap:16px}
+.mr-parallel-head{display:flex;align-items:flex-start;justify-content:space-between;gap:18px}.mr-parallel-head h2{margin:8px 0 4px}.mr-parallel-head p{margin:0;max-width:690px}
+.mr-parallel-controls{display:flex;align-items:center;gap:9px;flex-wrap:wrap;justify-content:flex-end}.mr-parallel-controls>span{font-size:11px;font-weight:800;color:var(--muted)}
+.mr-parallel-counts{display:flex;padding:3px;border:1px solid var(--line);border-radius:11px;background:#f5f5f6}.mr-parallel-counts button{width:34px;height:30px;border:0;border-radius:8px;background:transparent;font:inherit;font-size:12px;font-weight:900;color:var(--muted);cursor:pointer}.mr-parallel-counts button.active{background:#18191c;color:#fff}
+.mr-parallel-status{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 14px;border-radius:14px;border:1px solid var(--line)}.mr-parallel-status>div{display:flex;gap:9px;flex-wrap:wrap;align-items:center}.mr-parallel-status span{font-size:11px;color:var(--muted)}.mr-parallel-status.good{border-color:#b9d8c2;background:#f3fbf5}.mr-parallel-status.warn{border-color:#efd0ad;background:#fff8ef}
+.mr-parallel-actions{display:flex;gap:8px;justify-content:flex-end}
+.mr-parallel-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;max-height:66vh;overflow:auto;padding-right:3px}
+.mr-parallel-card{display:grid;gap:12px;padding:15px;border:1px solid var(--line);border-radius:17px;background:var(--surface,#fff)}
+.mr-parallel-card-top{display:grid;grid-template-columns:42px 1fr auto;gap:10px;align-items:start}.mr-parallel-number{display:grid;place-items:center;width:40px;height:40px;border-radius:13px;background:#18191c;color:#fff;font-size:16px;font-weight:900}.mr-parallel-card h3{margin:2px 0 3px;font-size:15px}.mr-parallel-card p{margin:0;font-size:11px;color:var(--muted)}
+.mr-parallel-overlap{display:flex;gap:8px;flex-wrap:wrap}.mr-parallel-overlap span{font-size:10px;color:var(--muted)}.mr-parallel-overlap b{color:var(--text)}
+.mr-parallel-preview{display:grid;gap:6px;padding:10px;border-radius:12px;background:#f7f7f8}.mr-parallel-preview div{display:grid;grid-template-columns:20px 1fr;gap:3px;font-size:11px;line-height:1.35}.mr-parallel-preview small{color:var(--muted);font-weight:750}
+.mr-parallel-open-modal{width:min(1080px,calc(100vw - 24px));max-width:1080px}
+.mr-parallel-open{display:grid;gap:14px}.mr-parallel-open-head{display:flex;align-items:flex-start;justify-content:space-between;gap:18px}.mr-parallel-open-head h2{margin:8px 0 4px}.mr-parallel-open-head p{margin:0}
+.mr-parallel-assign{display:flex;align-items:end;justify-content:flex-end;gap:10px;padding:12px;border:1px solid var(--line);border-radius:15px;background:#fafafa}.mr-parallel-assign label{display:grid;gap:6px;min-width:280px;font-size:11px;font-weight:800;color:var(--muted)}
+.mr-parallel-task-list{display:grid;gap:10px;max-height:62vh;overflow:auto;padding-right:3px}
+html[data-theme=dark] .mr-parallel-launch{background:#2b1b13!important;border-color:#68432f!important;color:#ff9b6a!important}
+html[data-theme=dark] .mr-parallel-counts,html[data-theme=dark] .mr-parallel-preview,html[data-theme=dark] .mr-parallel-assign{background:#151618}
+html[data-theme=dark] .mr-parallel-counts button.active{background:#ff6b2c}
+html[data-theme=dark] .mr-parallel-status.good{background:#122018}html[data-theme=dark] .mr-parallel-status.warn{background:#261b10}
+@media(max-width:760px){.mr-parallel-head,.mr-parallel-open-head{flex-direction:column}.mr-parallel-controls{justify-content:flex-start}.mr-parallel-grid{grid-template-columns:1fr}.mr-parallel-card-top{grid-template-columns:42px 1fr}.mr-parallel-card-top>.pill{grid-column:2}.mr-parallel-assign{align-items:stretch;flex-direction:column}.mr-parallel-assign label{min-width:0}.mr-recipe-card-foot{gap:8px}.mr-recipe-main-actions{width:100%}.mr-recipe-main-actions .btn{flex:1}}
