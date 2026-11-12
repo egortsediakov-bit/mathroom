@@ -1517,6 +1517,9 @@
     document.querySelectorAll("[data-coming]").forEach(b=>b.onclick=()=>toast(b.dataset.coming+" подключим следующим этапом конструктора"));
     document.querySelectorAll("[data-help]").forEach(b=>b.onclick=()=>{setHelp(q("tbHelp").value);state.help=b.dataset.help;document.querySelectorAll("[data-help]").forEach(x=>x.classList.toggle("active",x===b));renderHelp()});
     q("tbHelp").oninput=e=>{setHelp(e.target.value);q("tbHelpCount").textContent=e.target.value.length+"/5000";preview()};
+    q("tbHomeworkHints").onchange=e=>{state.helpSettings.homeworkHints=e.target.checked;preview()};
+    q("tbTestHints").onchange=e=>{state.helpSettings.testHints=e.target.checked;preview()};
+    q("tbSolutionMode").onchange=e=>{state.helpSettings.solutionMode=e.target.value==="teacher_only"?"teacher_only":"after_attempt";preview()};
     document.querySelectorAll("[data-help-insert]").forEach(b=>b.onclick=()=>{if(b.dataset.helpInsert==="formula")openFormulaEditor(q("tbHelp"));else insertInto(q("tbHelp"),"\n• ")});
     document.querySelectorAll("[data-source]").forEach(b=>b.onclick=()=>{state.source.kind=b.dataset.source;document.querySelectorAll("[data-source]").forEach(x=>x.classList.toggle("active",x===b));renderSource()});
     q("tbShared").onchange=e=>state.settings.shared=e.target.checked;q("tbAllowTests").onchange=e=>state.settings.allowTests=e.target.checked;q("tbAllowAi").onchange=e=>state.settings.allowAi=e.target.checked;
