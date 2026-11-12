@@ -167,10 +167,11 @@
             '<h3>'+ctx.esc(row.title||"Рецепт")+'</h3><p>'+ctx.esc(details)+'</p>'+
           '</div></div>'+
           '<div class="mr-recipe-card-meta"><span>'+ctx.esc(row.difficulty_mode||"balanced")+'</span><span>'+(row.allow_templates!==false?"генераторы":"без генераторов")+'</span><span>запусков: '+uses+'</span></div>'+
-          '<div class="mr-recipe-card-foot"><button class="btn sm primary" data-recipe-use="'+row.id+'">Собрать свежий вариант</button><div class="actions"><button class="btn sm" data-recipe-clone="'+row.id+'">Клон</button><button class="btn sm" data-recipe-rename="'+row.id+'">Название</button><button class="btn sm danger" data-recipe-delete="'+row.id+'">Удалить</button></div></div>'+
+          '<div class="mr-recipe-card-foot"><div class="mr-recipe-main-actions"><button class="btn sm primary" data-recipe-use="'+row.id+'">Свежий вариант</button><button class="btn sm mr-parallel-launch" data-recipe-parallel="'+row.id+'">2–4 варианта</button></div><div class="actions"><button class="btn sm" data-recipe-clone="'+row.id+'">Клон</button><button class="btn sm" data-recipe-rename="'+row.id+'">Название</button><button class="btn sm danger" data-recipe-delete="'+row.id+'">Удалить</button></div></div>'+
         '</article>';
       }).join("");
       host.querySelectorAll("[data-recipe-use]").forEach(b=>b.onclick=()=>{const row=(ctx.S.taskSetRecipes||[]).find(x=>String(x.id)===String(b.dataset.recipeUse));if(row)useRecipe(ctx,row,root)});
+      host.querySelectorAll("[data-recipe-parallel]").forEach(b=>b.onclick=()=>{const row=(ctx.S.taskSetRecipes||[]).find(x=>String(x.id)===String(b.dataset.recipeParallel));if(row)ctx.openParallel(row)});
       host.querySelectorAll("[data-recipe-clone]").forEach(b=>b.onclick=()=>{const row=(ctx.S.taskSetRecipes||[]).find(x=>String(x.id)===String(b.dataset.recipeClone));if(row)clone(ctx,row,draw)});
       host.querySelectorAll("[data-recipe-rename]").forEach(b=>b.onclick=()=>{const row=(ctx.S.taskSetRecipes||[]).find(x=>String(x.id)===String(b.dataset.recipeRename));if(row)rename(ctx,row,draw)});
       host.querySelectorAll("[data-recipe-delete]").forEach(b=>b.onclick=()=>{const row=(ctx.S.taskSetRecipes||[]).find(x=>String(x.id)===String(b.dataset.recipeDelete));if(row)remove(ctx,row,draw)});
