@@ -570,3 +570,24 @@ html[data-theme=dark] .mr-saved-set-assignment{background:#151618}
   .mr-saved-set-card-foot{align-items:flex-start;flex-direction:column}
   .mr-saved-set-assignment{align-items:stretch;flex-direction:column}.mr-saved-set-assignment label{min-width:0}
 }
+
+
+/* v85 — multi-topic sets */
+.mr-smart-set-mode{display:inline-flex;align-self:start;padding:4px;border:1px solid var(--line);border-radius:13px;background:#f5f5f6}
+.mr-smart-set-mode button{border:0;background:transparent;padding:8px 13px;border-radius:9px;font:inherit;font-size:12px;font-weight:850;color:var(--muted);cursor:pointer}
+.mr-smart-set-mode button.active{background:#18191c;color:#fff;box-shadow:0 3px 10px #0001}
+.mr-smart-set-panel{display:grid;gap:10px}
+.mr-smart-set-controls-single{grid-template-columns:1fr 2fr 1fr}
+.mr-smart-set-common{grid-template-columns:1fr 2fr 1.2fr}
+.mr-smart-multi-head{display:flex;align-items:end;justify-content:space-between;gap:12px;padding:14px;border:1px solid var(--line);border-radius:16px 16px 0 0;background:#fafafa}
+.mr-smart-multi-head label{display:grid;gap:6px;min-width:180px;font-size:11px;font-weight:800;color:var(--muted)}
+.mr-smart-multi-total{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--muted)}.mr-smart-multi-total b{color:var(--text);font-size:13px}.mr-smart-multi-total b.warn{color:#b45309}
+.mr-smart-multi-rows{display:grid;gap:8px;padding:12px;border:1px solid var(--line);border-top:0;background:#fff}
+.mr-smart-multi-row{display:grid;grid-template-columns:minmax(0,1fr) 100px 36px;gap:8px;align-items:end}
+.mr-smart-multi-row>select{width:100%}.mr-smart-multi-row label{display:grid;gap:5px;font-size:10px;font-weight:800;color:var(--muted)}.mr-smart-multi-row input{width:100%}
+.mr-smart-multi-remove{display:grid;place-items:center;width:36px;height:36px;border:1px solid var(--line);border-radius:10px;background:#fff;color:#777;font-size:20px;cursor:pointer}
+.mr-smart-multi-remove:hover{border-color:#ef9b83;color:#c43f1d;background:#fff2ed}
+.mr-smart-topic-pill,.mr-multi-topic-pill{border-color:#f3bd9f!important;background:#fff1e8!important;color:#c64c17!important}
+html[data-theme=dark] .mr-smart-set-mode{background:#151618}html[data-theme=dark] .mr-smart-set-mode button.active{background:#ff6b2c}
+html[data-theme=dark] .mr-smart-multi-head,html[data-theme=dark] .mr-smart-multi-rows{background:#151618}html[data-theme=dark] .mr-smart-multi-remove{background:#1b1c1f}
+@media(max-width:760px){.mr-smart-set-controls-single,.mr-smart-set-common{grid-template-columns:1fr}.mr-smart-set-controls-single label.wide,.mr-smart-set-common .mr-smart-set-check{grid-column:span 1!important}.mr-smart-multi-head{align-items:stretch;flex-direction:column}.mr-smart-multi-head label{min-width:0}.mr-smart-multi-row{grid-template-columns:minmax(0,1fr) 82px 36px}}
