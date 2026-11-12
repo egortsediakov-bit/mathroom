@@ -565,8 +565,12 @@
       return '<div class="mr-tb-preview-geometries">'+state.geometries.map(g=>geometryHtml(g,{previewMode:true})).join("")+'</div>';
     }
     function contentBlockLabel(key){
-      if(key==="text")return {icon:"T",title:"Текст условия",sub:"Основной текст задачи"};
       const [type,id]=key.split(":");
+      if(type==="text"){
+        const x=textBlockById(id),i=state.textBlocks.indexOf(x);
+        const excerpt=String(x?.text||"").trim().replace(/\s+/g," ");
+        return {icon:"T",title:"Текст "+(i+1),sub:excerpt?(excerpt.slice(0,54)+(excerpt.length>54?"…":"")):"Пустой текстовый блок"};
+      }
       if(type==="image"){
         const x=imageById(id),i=state.images.indexOf(x);
         return {icon:"▧",title:"Изображение "+(i+1),sub:x?.name||"Картинка"};
@@ -687,8 +691,12 @@
     function previewConditionHtml(){
       const order=syncContentOrder();
       return order.map(key=>{
-        if(key==="text"){ensureTemplateValues();const rendered=renderTemplateString(state.content);return '<div class="mr-tb-preview-problem">'+(rendered.trim()?nl(rendered):'<span class="placeholder">Здесь появится условие задачи.</span>')+'</div>'}
         const [type,id]=key.split(":");
+        if(type==="text"){
+          ensureTemplateValues();
+          const block=textBlockById(id),rendered=renderTemplateString(block?.text||"");
+          return '<div class="mr-tb-preview-problem">'+(rendered.trim()?nl(rendered):'<span class="placeholder">Пустой текстовый блок</span>')+'</div>';
+        }
         if(type==="image"){
           const img=imageById(id);if(!img)return "";
           return '<div class="mr-tb-preview-images"><figure class="mr-tb-preview-image" style="width:'+img.displayWidth+'%"><img data-tb-image-src="'+esc(img.id)+'" alt="'+esc(img.alt||img.name||"Изображение к задаче")+'"><figcaption>'+(img.alt?esc(img.alt):"")+'</figcaption></figure></div>';
@@ -771,6 +779,57 @@
       host.querySelectorAll("[data-template-parity]").forEach(el=>el.onchange=()=>{const v=varById(el.dataset.templateParity);if(!v)return;v.parity=el.value;refresh()});
       host.querySelectorAll("[data-template-nonzero]").forEach(el=>el.onchange=()=>{const v=varById(el.dataset.templateNonzero);if(!v)return;v.nonZero=el.checked;refresh()});
       host.querySelectorAll("[data-template-remove]").forEach(b=>b.onclick=()=>{const v=varById(b.dataset.templateRemove);if(!v)return;state.templateVars=state.templateVars.filter(x=>x!==v);delete state.templateValues[v.name];renderTemplateVars();preview()});
+    }
+    function addTextBlock(){
+      const id=textBlockId(),block={id,text:""};
+      state.textBlocks.push(block);
+      syncContentOrder();
+      const key="text:"+id,activeKey=state.activeTextBlockId?"text:"+state.activeTextBlockId:"";
+      const at=activeKey?state.contentOrder.indexOf(activeKey):-1;
+      if(at>=0){
+        state.contentOrder=state.contentOrder.filter(x=>x!==key);
+        state.contentOrder.splice(at+1,0,key);
+      }
+      state.activeTextBlockId=id;
+      renderTextBlocks();renderContentOrder();preview();
+      setTimeout(()=>{
+        const el=q("tbTextBlocks")?.querySelector('[data-text-block-input="'+CSS.escape(id)+'"]');
+        el?.focus();el?.scrollIntoView({behavior:"smooth",block:"center"});
+      },0);
+    }
+    function removeTextBlock(id){
+      if(state.textBlocks.length<=1)return toast("В условии должен остаться хотя бы один текстовый блок");
+      const i=state.textBlocks.findIndex(x=>String(x.id)===String(id));if(i<0)return;
+      state.textBlocks.splice(i,1);
+      state.contentOrder=state.contentOrder.filter(x=>x!=="text:"+id);
+      if(state.activeTextBlockId===id)state.activeTextBlockId=state.textBlocks[Math.max(0,i-1)]?.id||state.textBlocks[0]?.id||"";
+      syncLegacyContent();syncContentOrder();renderTextBlocks();renderContentOrder();preview();
+    }
+    function renderTextBlocks(){
+      const host=q("tbTextBlocks");if(!host)return;
+      if(!state.textBlocks.length)state.textBlocks=[{id:textBlockId(),text:""}];
+      if(!state.activeTextBlockId||!textBlockById(state.activeTextBlockId))state.activeTextBlockId=state.textBlocks[0].id;
+      host.innerHTML=state.textBlocks.map((block,i)=>'<article class="mr-tb-text-card '+(block.id===state.activeTextBlockId?"active":"")+'" data-text-block-card="'+esc(block.id)+'">'+
+        '<div class="mr-tb-text-head"><div><span>T</span><b>Текстовый блок '+(i+1)+'</b></div>'+
+        '<button type="button" data-remove-text="'+esc(block.id)+'" '+(state.textBlocks.length<=1?"disabled":"")+' title="Удалить текстовый блок">×</button></div>'+
+        '<div class="mr-tb-editor"><textarea data-text-block-input="'+esc(block.id)+'" maxlength="5000" placeholder="'+(i===0?"Введите условие задачи…":"Продолжение условия, пояснение или вопрос…")+'">'+esc(block.text)+'</textarea><span data-text-count="'+esc(block.id)+'">'+String(block.text||"").length+'/5000</span></div>'+
+      '</article>').join("");
+      host.querySelectorAll("[data-text-block-input]").forEach(el=>{
+        const id=el.dataset.textBlockInput;
+        const activate=()=>{
+          state.activeTextBlockId=id;
+          host.querySelectorAll("[data-text-block-card]").forEach(card=>card.classList.toggle("active",card.dataset.textBlockCard===id));
+        };
+        el.onfocus=activate;el.onpointerdown=activate;
+        el.oninput=e=>{
+          const block=textBlockById(id);if(!block)return;
+          block.text=e.target.value;
+          const count=host.querySelector('[data-text-count="'+CSS.escape(id)+'"]');if(count)count.textContent=e.target.value.length+"/5000";
+          syncLegacyContent();renderContentOrder();preview();
+        };
+      });
+      host.querySelectorAll("[data-remove-text]").forEach(b=>b.onclick=()=>removeTextBlock(b.dataset.removeText));
+      syncLegacyContent();
     }
     function renderImages(){
       const host=q("tbImages");if(!host)return;
