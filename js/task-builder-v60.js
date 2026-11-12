@@ -1380,35 +1380,51 @@
     function openFormulaEditor(target){
       if(!target)return;
       closeFormulaEditor();
-      const start=target.selectionStart??target.value.length,end=target.selectionEnd??start;
+      let start=target.selectionStart??target.value.length,end=target.selectionEnd??start;
       let selected=String(target.value.slice(start,end)||"").trim();
-      const inlineMatch=selected.match(/^\\\((.*)\\\)$/s),displayMatch=selected.match(/^\\\[(.*)\\\]$/s);
+      if(start===end){
+        const src=String(target.value||""),cursor=start,re=/\\\[([\s\S]*?)\\\]|\\\(([\s\S]*?)\\\)/g;let m;
+        while((m=re.exec(src))){
+          if(cursor>=m.index&&cursor<=re.lastIndex){
+            start=m.index;end=re.lastIndex;selected=m[0];break;
+          }
+        }
+      }
+      const inlineMatch=selected.match(/^\\\((.*)\\\)$/s),displayMatch=selected.match(/^\\\[([\s\S]*)\\\]$/s);
       if(inlineMatch)selected=inlineMatch[1].trim();
       if(displayMatch)selected=displayMatch[1].trim();
+
+      const formulaGroups=[
+        {id:"basic",title:"Основное",items:[
+          ["\\frac{§a§}{b}","a⁄b","Дробь"],["x^{§2§}","x²","Степень"],["\\sqrt{§x§}","√x","Корень"],["\\sqrt[§n§]{x}","ⁿ√x","Корень n"],
+          ["\\left|§x§\\right|","|x|","Модуль"],["\\pm","±","Плюс-минус"],["\\le","≤","Меньше"],["\\ge","≥","Больше"],["\\ne","≠","Не равно"],["\\infty","∞","Бесконечность"]
+        ]},
+        {id:"algebra",title:"Алгебра",items:[
+          ["x_{§1§}","x₁","Индекс"],["§a§x+b=0","ax+b=0","Линейное"],["§a§x^{2}+bx+c=0","ax²+bx+c","Квадратное"],
+          ["\\log_{§a§}{x}","logₐx","Логарифм"],["\\ln{§x§}","ln x","Нат. лог"],["§a§^{x}","aˣ","Показательная"],
+          ["\\begin{cases}§x+y=1§\\\\x-y=0\\end{cases}","{…","Система"],["\\begin{pmatrix}§a§&b\\\\c&d\\end{pmatrix}","[ ]","Матрица"]
+        ]},
+        {id:"trig",title:"Тригонометрия",items:[
+          ["\\sin{§x§}","sin","Синус"],["\\cos{§x§}","cos","Косинус"],["\\tan{§x§}","tg","Тангенс"],["\\cot{§x§}","ctg","Котангенс"],
+          ["\\arcsin{§x§}","arcsin","Арксинус"],["\\arccos{§x§}","arccos","Арккосинус"],["\\arctan{§x§}","arctg","Арктангенс"],
+          ["§2§\\pi n","2πn","Период"],["\\alpha","α","Альфа"],["\\beta","β","Бета"],["\\theta","θ","Тета"],["\\pi","π","Пи"]
+        ]},
+        {id:"analysis",title:"Анализ",items:[
+          ["\\lim_{§x\\to a§} f(x)","lim","Предел"],["§f§'(x)","f′","Производная"],["\\frac{d}{d§x§}f(x)","d/dx","Производная"],
+          ["\\int §f(x)§\\,dx","∫","Интеграл"],["\\int_{§a§}^{b} f(x)\\,dx","∫ₐᵇ","Интеграл"],["\\sum_{§i=1§}^{n} a_i","Σ","Сумма"],
+          ["\\vec{§a§}","→a","Вектор"],["\\overline{§AB§}","AB","Отрезок"],["\\to","→","Стрелка"]
+        ]}
+      ];
+      const formulaTools=formulaGroups.map((g,gi)=>'<section class="mr-formula-group '+(gi===0?"active":"")+'" data-formula-group="'+g.id+'">'+g.items.map(item=>'<button type="button" data-formula-snippet="'+esc(item[0])+'"><span>'+esc(item[1])+'</span><small>'+esc(item[2])+'</small></button>').join("")+'</section>').join("");
+      const formulaTabs=formulaGroups.map((g,gi)=>'<button type="button" data-formula-tab="'+g.id+'" class="'+(gi===0?"active":"")+'">'+esc(g.title)+'</button>').join("");
 
       const modal=document.createElement("div");
       modal.className="mr-formula-modal";
       modal.innerHTML='<div class="mr-formula-dialog">'+
         '<div class="mr-formula-head"><div><span>∿</span><div><b>Редактор формулы</b><small>Введите формулу или соберите её кнопками</small></div></div><button type="button" data-formula-close aria-label="Закрыть">×</button></div>'+
         '<div class="mr-formula-mode"><button type="button" data-formula-mode="inline" class="'+(displayMatch?"":"active")+'">В строке</button><button type="button" data-formula-mode="display" class="'+(displayMatch?"active":"")+'">Отдельной строкой</button></div>'+
-        '<div class="mr-formula-tools">'+
-          '<button type="button" data-formula-snippet="\\frac{a}{b}"><span> a⁄b </span><small>Дробь</small></button>'+
-          '<button type="button" data-formula-snippet="x^{2}"><span>x²</span><small>Степень</small></button>'+
-          '<button type="button" data-formula-snippet="\\sqrt{x}"><span>√x</span><small>Корень</small></button>'+
-          '<button type="button" data-formula-snippet="\\sqrt[n]{x}"><span>ⁿ√x</span><small>Корень n</small></button>'+
-          '<button type="button" data-formula-snippet="\\left|x\\right|"><span>|x|</span><small>Модуль</small></button>'+
-          '<button type="button" data-formula-snippet="\\pi"><span>π</span><small>Пи</small></button>'+
-          '<button type="button" data-formula-snippet="\\alpha"><span>α</span><small>Альфа</small></button>'+
-          '<button type="button" data-formula-snippet="\\theta"><span>θ</span><small>Тета</small></button>'+
-          '<button type="button" data-formula-snippet="\\le"><span>≤</span><small>Меньше</small></button>'+
-          '<button type="button" data-formula-snippet="\\ge"><span>≥</span><small>Больше</small></button>'+
-          '<button type="button" data-formula-snippet="\\ne"><span>≠</span><small>Не равно</small></button>'+
-          '<button type="button" data-formula-snippet="\\pm"><span>±</span><small>Плюс-минус</small></button>'+
-          '<button type="button" data-formula-snippet="\\sum_{i=1}^{n}"><span>Σ</span><small>Сумма</small></button>'+
-          '<button type="button" data-formula-snippet="\\int_{a}^{b}"><span>∫</span><small>Интеграл</small></button>'+
-          '<button type="button" data-formula-snippet="\\to"><span>→</span><small>Стрелка</small></button>'+
-          '<button type="button" data-formula-snippet="\\infty"><span>∞</span><small>Бесконечность</small></button>'+
-        '</div>'+
+        '<div class="mr-formula-category-tabs">'+formulaTabs+'</div>'+
+        '<div class="mr-formula-tools">'+formulaTools+'</div>'+
         '<label class="mr-formula-input-wrap"><span>Формула</span><textarea id="tbFormulaInput" rows="3" spellcheck="false" placeholder="Например: \\frac{x+1}{2}=5">'+esc(selected)+'</textarea></label>'+
         '<div class="mr-formula-preview-wrap"><span>Предпросмотр</span><div id="tbFormulaPreview" class="mr-formula-preview"></div></div>'+
         '<div class="mr-formula-actions"><button type="button" class="ghost" data-formula-cancel>Отмена</button><button type="button" class="primary" data-formula-insert>Вставить формулу</button></div>'+
@@ -1428,9 +1444,21 @@
       };
       const insertSnippet=snippet=>{
         const a=input.selectionStart??input.value.length,b=input.selectionEnd??a;
-        input.setRangeText(snippet,a,b,"end");input.focus();draw();
+        const first=snippet.indexOf("§"),second=first>=0?snippet.indexOf("§",first+1):-1;
+        const clean=snippet.replace(/§/g,"");
+        input.setRangeText(clean,a,b,"end");
+        if(first>=0&&second>first){
+          const selStart=a+first,selEnd=selStart+(second-first-1);
+          input.setSelectionRange(selStart,selEnd);
+        }
+        input.focus();draw();
       };
       modal.querySelectorAll("[data-formula-snippet]").forEach(b=>b.onclick=()=>insertSnippet(b.dataset.formulaSnippet||""));
+      modal.querySelectorAll("[data-formula-tab]").forEach(tab=>tab.onclick=()=>{
+        const id=tab.dataset.formulaTab;
+        modal.querySelectorAll("[data-formula-tab]").forEach(x=>x.classList.toggle("active",x===tab));
+        modal.querySelectorAll("[data-formula-group]").forEach(x=>x.classList.toggle("active",x.dataset.formulaGroup===id));
+      });
       modal.querySelectorAll("[data-formula-mode]").forEach(b=>b.onclick=()=>{
         mode=b.dataset.formulaMode||"inline";
         modal.querySelectorAll("[data-formula-mode]").forEach(x=>x.classList.toggle("active",x===b));
@@ -1446,6 +1474,8 @@
       modal.querySelector("[data-formula-close]").onclick=closeFormulaEditor;
       modal.querySelector("[data-formula-cancel]").onclick=closeFormulaEditor;
       modal.onmousedown=e=>{if(e.target===modal)closeFormulaEditor()};
+      const escHandler=e=>{if(e.key==="Escape"){e.preventDefault();document.removeEventListener("keydown",escHandler);closeFormulaEditor()}};
+      document.addEventListener("keydown",escHandler);
       input.oninput=draw;
       input.onkeydown=e=>{if((e.ctrlKey||e.metaKey)&&e.key==="Enter"){e.preventDefault();modal.querySelector("[data-formula-insert]").click()}};
       draw();setTimeout(()=>{input.focus();input.setSelectionRange(input.value.length,input.value.length)},0);
