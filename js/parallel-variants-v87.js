@@ -167,6 +167,205 @@
     };
   };
 
+
+  const shuffled=list=>{
+    const out=[...list];
+    for(let i=out.length-1;i>0;i--){
+      const j=Math.floor(Math.random()*(i+1));
+      [out[i],out[j]]=[out[j],out[i]];
+    }
+    return out;
+  };
+
+  const distributionTopicId=(row,batch)=>{
+    if(batch&&batch.multiTopic)return null;
+    const cfg=row&&row.config&&typeof row.config==="object"?row.config:{};
+    return cfg.topic_id||cfg.topic_snapshot&&cfg.topic_snapshot.id||batch&&batch.topicSnapshot&&batch.topicSnapshot.id||null;
+  };
+
+  const buildDistributionAssignments=(students,variants,{shuffleStudents=false}={})=>{
+    const ordered=shuffleStudents?shuffled(students):[...students];
+    return ordered.map((student,index)=>({
+      student,
+      variant:variants[index%variants.length],
+      position:index
+    }));
+  };
+
+  const assignDistribution=async(ctx,row,assignments)=>{
+    if(!assignments.length)return {ok:false,error:"Не выбраны ученики"};
+    const distributionId=(globalThis.crypto&&typeof globalThis.crypto.randomUUID==="function")
+      ?globalThis.crypto.randomUUID()
+      :"dist-"+Date.now()+"-"+Math.random().toString(36).slice(2);
+    const parents=assignments.map((entry,index)=>{
+      const batch=entry.variant.batch;
+      const topicId=distributionTopicId(row,batch);
+      return {
+        teacher_id:ctx.S.user.id,
+        student_id:entry.student.id,
+        topic_id:topicId,
+        title:(row.title||"Работа")+" · "+entry.variant.label,
+        source:"smart_set",
+        smart_meta:{
+          multi_topic:!!batch.multiTopic,
+          topic_snapshots:batch.topicSnapshots||[],
+          topic_quotas:batch.topicQuotas||[],
+          recipe_id:row.id||null,
+          parallel_distribution_id:distributionId,
+          parallel_distribution_slot:index,
+          parallel_variant_index:entry.variant.index,
+          parallel_variant_label:entry.variant.label
+        }
+      };
+    });
+    const parentRes=await ctx.sb.from("homeworks").insert(parents).select("id,student_id,smart_meta");
+    if(parentRes.error)throw parentRes.error;
+    const created=parentRes.data||[];
+    const bySlot=new Map(created.map(hw=>[Number(hw.smart_meta&&hw.smart_meta.parallel_distribution_slot),hw]));
+    const items=[];
+    assignments.forEach((entry,index)=>{
+      const parent=bySlot.get(index);
+      if(!parent)return;
+      (entry.variant.batch.items||[]).forEach((item,position)=>{
+        items.push({
+          homework_id:parent.id,
+          prompt:item.content,
+          correct_answer:item.answer,
+          position,
+          source_exercise_id:(ctx.S.exercises||[]).some(x=>String(x.id)===String(item.source&&item.source.id))?item.source.id:null,
+          difficulty:item.difficulty,
+          category:item.category||"",
+          tags:item.tags||[],
+          builder_meta:{
+            ...(item.builder_meta||{}),
+            smart_topic:item.topic_id?{
+              id:item.topic_id,
+              title:item.topic_title||"",
+              grade:item.topic_grade||null,
+              section:item.topic_section||""
+            }:undefined,
+            parallel_variant:{
+              distribution_id:distributionId,
+              index:entry.variant.index,
+              label:entry.variant.label
+            }
+          }
+        });
+      });
+    });
+    if(created.length!==assignments.length){
+      if(created.length)await ctx.sb.from("homeworks").delete().in("id",created.map(x=>x.id));
+      throw new Error("Не удалось создать все домашние работы");
+    }
+    if(items.length){
+      const itemRes=await ctx.sb.from("homework_items").insert(items);
+      if(itemRes.error){
+        await ctx.sb.from("homeworks").delete().in("id",created.map(x=>x.id));
+        throw itemRes.error;
+      }
+    }
+    if(ctx.loadTeacher)await ctx.loadTeacher();
+    return {ok:true,distributionId,homeworks:created.length,items:items.length};
+  };
+
+  const openDistribution=(ctx,row,result)=>{
+    if(!result||!result.variants||!result.variants.length)return ctx.toast("Сначала собери параллельные варианты");
+    const students=(ctx.S.students||[]).filter(s=>s&&s.active!==false);
+    if(!students.length)return ctx.toast("Нет активных учеников для раздачи");
+    const grades=[...new Set(students.map(s=>Number(s.grade)).filter(Boolean))].sort((a,b)=>a-b);
+    const recipeGrade=Number(row&&row.grade)||0;
+    const defaultGrade=grades.includes(recipeGrade)?String(recipeGrade):"";
+    const groups=[...new Set(students.map(s=>String(s.group_name||"").trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"ru"));
+    const root=ctx.modal(
+      '<section class="mr-distribute">'+
+        '<div class="mr-distribute-head"><div><span class="pill mr-parallel-pill">Раздача вариантов</span><h2>'+ctx.esc(row.title||"Работа")+'</h2><p class="muted">'+result.variants.length+' варианта будут распределяться по кругу между выбранными учениками.</p></div></div>'+
+        '<div class="mr-distribute-filters">'+
+          '<label><span>Класс</span><select id="distGrade"><option value="">Все классы</option>'+grades.map(g=>'<option value="'+g+'" '+(String(g)===defaultGrade?"selected":"")+'>'+g+' класс</option>').join("")+'</select></label>'+
+          '<label><span>Группа</span><select id="distGroup"><option value="">Все группы</option>'+groups.map(g=>'<option value="'+ctx.esc(g)+'">'+ctx.esc(g)+'</option>').join("")+'</select></label>'+
+          '<label class="wide"><span>Поиск</span><input id="distSearch" placeholder="Имя ученика"></label>'+
+          '<label class="mr-distribute-shuffle"><input type="checkbox" id="distShuffle"><span><b>Перемешать учеников</b><small>Перед циклической раздачей</small></span></label>'+
+        '</div>'+
+        '<div class="mr-distribute-tools"><div><button class="btn sm" id="distSelectVisible">Выбрать видимых</button><button class="btn sm" id="distClear">Снять выбор</button></div><b id="distSelectedCount">0 учеников</b></div>'+
+        '<div class="mr-distribute-body">'+
+          '<div class="mr-distribute-students"><div id="distStudents" class="mr-distribute-student-list"></div></div>'+
+          '<div class="mr-distribute-preview"><div class="mr-distribute-preview-head"><h3>Предпросмотр раздачи</h3><span id="distVariantBalance"></span></div><div id="distPreviewList" class="mr-distribute-preview-list"></div></div>'+
+        '</div>'+
+        '<div class="mr-distribute-footer"><div class="small muted">Каждому ученику создаётся отдельное ДЗ с конкретным зафиксированным вариантом.</div><button class="btn primary" id="distAssign" disabled>Назначить выбранным</button></div>'+
+      '</section>',
+      "mr-distribute-modal"
+    );
+
+    const grade=root.querySelector("#distGrade"),group=root.querySelector("#distGroup"),search=root.querySelector("#distSearch"),shuffle=root.querySelector("#distShuffle");
+    const host=root.querySelector("#distStudents"),preview=root.querySelector("#distPreviewList"),balance=root.querySelector("#distVariantBalance"),countLabel=root.querySelector("#distSelectedCount"),assign=root.querySelector("#distAssign");
+    const selected=new Set();
+
+    const filtered=()=>{
+      const q=String(search.value||"").trim().toLocaleLowerCase("ru");
+      return students.filter(s=>{
+        if(grade.value&&String(s.grade)!==String(grade.value))return false;
+        if(group.value&&String(s.group_name||"")!==String(group.value))return false;
+        if(q&&!String(s.name||"").toLocaleLowerCase("ru").includes(q))return false;
+        return true;
+      });
+    };
+
+    const selectedStudents=()=>students.filter(s=>selected.has(String(s.id))).sort((a,b)=>String(a.name||"").localeCompare(String(b.name||""),"ru"));
+
+    const drawPreview=()=>{
+      const picked=selectedStudents();
+      const assignments=buildDistributionAssignments(picked,result.variants,{shuffleStudents:shuffle.checked});
+      countLabel.textContent=picked.length+" "+(picked.length===1?"ученик":picked.length>=2&&picked.length<=4?"ученика":"учеников");
+      assign.disabled=!assignments.length;
+      const counts=new Map(result.variants.map(v=>[v.index,0]));
+      assignments.forEach(x=>counts.set(x.variant.index,(counts.get(x.variant.index)||0)+1));
+      balance.textContent=result.variants.map(v=>v.label+": "+(counts.get(v.index)||0)).join(" · ");
+      preview.innerHTML=assignments.length?assignments.map((entry,index)=>
+        '<div class="mr-distribute-preview-row"><span>'+String(index+1).padStart(2,"0")+'</span><b>'+ctx.esc(entry.student.name||"Ученик")+'</b><small>'+ctx.esc(entry.student.group_name||((entry.student.grade||"?")+" класс"))+'</small><i>→</i><strong>'+ctx.esc(entry.variant.label)+'</strong></div>'
+      ).join(""):'<div class="empty">Выбери учеников слева — здесь появится распределение.</div>';
+    };
+
+    const drawStudents=()=>{
+      const rows=filtered();
+      host.innerHTML=rows.length?rows.map(s=>{
+        const checked=selected.has(String(s.id));
+        return '<label class="mr-distribute-student '+(checked?"selected":"")+'"><input type="checkbox" data-dist-student="'+s.id+'" '+(checked?"checked":"")+'><span class="mr-distribute-avatar">'+ctx.esc(String(s.name||"?").trim().charAt(0).toUpperCase()||"?")+'</span><span><b>'+ctx.esc(s.name||"Ученик")+'</b><small>'+(s.grade||"?")+' класс'+(s.group_name?" · "+ctx.esc(s.group_name):"")+'</small></span></label>';
+      }).join(""):'<div class="empty">По этим фильтрам учеников нет.</div>';
+      host.querySelectorAll("[data-dist-student]").forEach(input=>input.onchange=()=>{
+        const id=String(input.dataset.distStudent);
+        if(input.checked)selected.add(id);else selected.delete(id);
+        input.closest(".mr-distribute-student")?.classList.toggle("selected",input.checked);
+        drawPreview();
+      });
+    };
+
+    const redraw=()=>{drawStudents();drawPreview()};
+    grade.onchange=redraw;group.onchange=redraw;search.oninput=drawStudents;shuffle.onchange=drawPreview;
+    root.querySelector("#distSelectVisible").onclick=()=>{filtered().forEach(s=>selected.add(String(s.id)));redraw()};
+    root.querySelector("#distClear").onclick=()=>{selected.clear();redraw()};
+
+    if(defaultGrade)filtered().forEach(s=>selected.add(String(s.id)));
+    redraw();
+
+    assign.onclick=async()=>{
+      const picked=selectedStudents();
+      if(!picked.length)return ctx.toast("Выбери хотя бы одного ученика");
+      const assignments=buildDistributionAssignments(picked,result.variants,{shuffleStudents:shuffle.checked});
+      assign.disabled=true;assign.textContent="Назначаю…";
+      try{
+        const summary=await assignDistribution(ctx,row,assignments);
+        if(summary.ok){
+          root.querySelector(".mr-distribute-body").innerHTML=
+            '<div class="mr-distribute-success"><span>✓</span><div><h3>Варианты распределены</h3><p>'+summary.homeworks+' ученикам назначены отдельные домашние работы. Всего добавлено '+summary.items+' заданий.</p></div></div>';
+          root.querySelector(".mr-distribute-tools").remove();
+          root.querySelector(".mr-distribute-filters").remove();
+          root.querySelector(".mr-distribute-footer .small").textContent="Раздача завершена. Конкретный вариант каждого ученика зафиксирован в его ДЗ.";
+          assign.textContent="Готово";
+          ctx.toast("Варианты назначены "+summary.homeworks+" ученикам");
+        }
+      }catch(error){ctx.fail(error);assign.disabled=false;assign.textContent="Назначить выбранным"}
+    };
+  };
+
   API.open=(ctx,row)=>{
     if(!row)return ctx.toast("Рецепт не найден");
     const root=ctx.modal(
@@ -174,7 +373,7 @@
         '<div class="mr-parallel-head"><div><span class="pill mr-parallel-pill">Параллельные варианты</span><h2>'+ctx.esc(row.title||"Рецепт")+'</h2><p class="muted">Mathroom несколько раз пересоберёт рецепт и выберет комбинации с минимальным пересечением готовых задач.</p></div>'+
         '<div class="mr-parallel-controls"><span>Вариантов</span><div class="mr-parallel-counts"><button type="button" data-parallel-count="2">2</button><button type="button" data-parallel-count="3">3</button><button type="button" class="active" data-parallel-count="4">4</button></div><button class="btn primary" id="parallelGenerate">Собрать варианты</button></div></div>'+
         '<div id="parallelStatus" class="mr-parallel-status" hidden></div>'+
-        '<div id="parallelActions" class="mr-parallel-actions" hidden><button class="btn sm" id="parallelCopyAll">Скопировать все</button><button class="btn sm" id="parallelCopyAnswers">Все с ответами</button></div>'+
+        '<div id="parallelActions" class="mr-parallel-actions" hidden><button class="btn sm" id="parallelCopyAll">Скопировать все</button><button class="btn sm" id="parallelCopyAnswers">Все с ответами</button><button class="btn sm primary mr-distribute-launch" id="parallelDistribute">Распределить ученикам</button></div>'+
         '<div id="parallelGrid" class="mr-parallel-grid"></div>'+
       '</section>',
       "mr-parallel-modal"
@@ -220,6 +419,7 @@
     };
     root.querySelector("#parallelCopyAll").onclick=async()=>{if(!lastResult)return;await ctx.copyText(copyAllText(row,lastResult,false));ctx.toast("Все варианты скопированы")};
     root.querySelector("#parallelCopyAnswers").onclick=async()=>{if(!lastResult)return;await ctx.copyText(copyAllText(row,lastResult,true));ctx.toast("Все варианты с ответами скопированы")};
+    root.querySelector("#parallelDistribute").onclick=()=>openDistribution(ctx,row,lastResult);
   };
 
   window.MathroomParallelVariantsV87=API;
