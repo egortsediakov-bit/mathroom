@@ -2720,7 +2720,8 @@ function renderBank(){
   document.getElementById('openSavedSets').onclick=()=>window.MathroomSavedSetsV84?.openLibrary?.({S,sb,esc,nl,modal,toast,fail,copyText,diffLabel,taskConditionHtml,hydrateTaskMedia,typesetTaskMath,openSmartWorksheetBuilder,assignSmartTaskSetHomework});
   document.getElementById('openSetRecipes').onclick=()=>window.MathroomSetRecipesV86?.openLibrary?.({
     S,sb,esc,modal,toast,fail,
-    openBuilder:(prefill)=>window.MathroomMultiTopicSetsV85?.openBuilder?.({S,sb,esc,nl,modal,toast,fail,copyText,diffLabel,taskConditionHtml,hydrateTaskMedia,typesetTaskMath,buildSmartTaskSet,taskVariantFingerprint,templateVariantValues,openSmartWorksheetBuilder,assignSmartTaskSetHomework},prefill)
+    openBuilder:(prefill)=>window.MathroomMultiTopicSetsV85?.openBuilder?.({S,sb,esc,nl,modal,toast,fail,copyText,diffLabel,taskConditionHtml,hydrateTaskMedia,typesetTaskMath,buildSmartTaskSet,taskVariantFingerprint,templateVariantValues,openSmartWorksheetBuilder,assignSmartTaskSetHomework},prefill),
+    openParallel:(row)=>window.MathroomParallelVariantsV87?.open?.({S,sb,esc,nl,modal,toast,fail,copyText,diffLabel,taskConditionHtml,hydrateTaskMedia,typesetTaskMath,buildSmartTaskSet,taskVariantFingerprint,openSmartWorksheetBuilder,assignSmartTaskSetHomework},row)
   });
   document.getElementById('createBankTask').onclick=()=>{
     S.taskBuilderExerciseId=null;
