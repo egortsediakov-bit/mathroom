@@ -177,6 +177,13 @@
       const allowed=["grade","topicId","subtopic","difficulty","taskType","answerCheck","content","textBlocks","activeTextBlockId","templateVars","templateCondition","templateIntegerAnswers","templateValues","images","tables","contentOrder","geometries","answers","options","openAnswer","solution","hints","helpSettings","source","settings","help"];
       for(const key of allowed)if(recoveredAutosave.state[key]!==undefined)state[key]=recoveredAutosave.state[key];
     }
+    state.geometries=(state.geometries||[]).map(g=>({
+      ...g,
+      linear:g.linear||{aLabel:"A",bLabel:"B",valueLabel:""},
+      angle:g.angle||{leftLabel:"A",vertexLabel:"O",rightLabel:"B",valueLabel:""},
+      quad:g.quad||{vertices:["A","B","C","D"],sides:["","","",""]},
+      functionGraph:g.functionGraph||{expression:"x^2",xMin:-5,xMax:5,yMin:-5,yMax:5}
+    }));
     const recoveredPendingImagePaths=Array.isArray(recoveredAutosave?.pendingImagePaths)?recoveredAutosave.pendingImagePaths.map(String):[];
     const diffName=v=>v==="advanced"?"Сложная":v==="medium"?"Средняя":"Простая";
     const typeName=v=>({standard:"Обычная задача",numeric:"Числовой ответ",single:"Тест",multiple:"Несколько ответов",open:"Развёрнутый ответ"}[v]||"Обычная задача");
@@ -1493,6 +1500,15 @@
           rows.push(["Центр",g.circle.centerLabel,"tbGeometries"],["Радиус",g.circle.radiusLabel,"tbGeometries"]);
         }else if(g.type==="coordinate"){
           rows.push(["Точки координатной плоскости",g.coordinate.points,"tbGeometries"]);
+        }else if(["segment","line","ray"].includes(g.type)){
+          rows.push(["Точка A",g.linear.aLabel,"tbGeometries"],["Точка B",g.linear.bLabel,"tbGeometries"],["Подпись",g.linear.valueLabel,"tbGeometries"]);
+        }else if(g.type==="angle"){
+          rows.push(["Точка",g.angle.leftLabel,"tbGeometries"],["Вершина",g.angle.vertexLabel,"tbGeometries"],["Точка",g.angle.rightLabel,"tbGeometries"],["Величина угла",g.angle.valueLabel,"tbGeometries"]);
+        }else if(["parallelogram","rhombus","trapezoid"].includes(g.type)){
+          g.quad.vertices.forEach(v=>rows.push(["Вершина",v,"tbGeometries"]));
+          g.quad.sides.forEach(v=>rows.push(["Сторона",v,"tbGeometries"]));
+        }else if(g.type==="function"){
+          rows.push(["Функция",g.functionGraph.expression,"tbGeometries"]);
         }
       });
       return rows;
@@ -1557,6 +1573,17 @@
       });
       state.geometries.forEach((g,i)=>{
         if(g.type==="coordinate"&&!parseCoordinatePoints(renderTemplateString(g.coordinate.points)).length)issues.push(qualityIssue("error","Нет точек на координатной плоскости","Схема "+(i+1)+": добавь хотя бы одну точку в формате A(2;3).","tbGeometries"));
+        if(g.type==="function"){
+          const expr=renderTemplateString(g.functionGraph.expression||"").trim();
+          if(!expr)issues.push(qualityIssue("error","Не задана функция","Схема "+(i+1)+": введи выражение для y.","tbGeometries"));
+          else{
+            try{
+              const testX=(g.functionGraph.xMin+g.functionGraph.xMax)/2;
+              const val=window.math?.evaluate?Number(window.math.evaluate(expr,{x:testX})):NaN;
+              if(!Number.isFinite(val))throw new Error();
+            }catch{issues.push(qualityIssue("error","Ошибка в графике функции","Схема "+(i+1)+": выражение «"+expr+"» не вычисляется.","tbGeometries"))}
+          }
+        }
       });
       state.images.forEach((img,i)=>{
         if(!String(img.alt||"").trim())issues.push(qualityIssue("warn","У изображения нет подписи","Изображение "+(i+1)+": подпись поможет понять рисунок вне контекста.","tbImages"));
