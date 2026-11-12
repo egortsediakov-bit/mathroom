@@ -1,6 +1,7 @@
 (()=>{
   const API={render(ctx){
     const {app,shell,bindShell,S,sb,esc,nl,toast,fail,loadTeacher,renderBank,renderTopic,renderTopics,sharedMaterialForExercise,sharedMaterialUserTags,exerciseSystemTags,curriculumBank}=ctx;
+    if(S.taskBuilderBeforeUnload){window.removeEventListener("beforeunload",S.taskBuilderBeforeUnload);S.taskBuilderBeforeUnload=null}
     const editing=S.taskBuilderExerciseId?(S.exercises||[]).find(x=>String(x.id)===String(S.taskBuilderExerciseId)):null;
     const autosaveKey="mathroom:task-builder-autosave:"+(S.user?.id||"anonymous")+":"+(editing?.id||"new");
     let storedAutosave=null;
@@ -1211,7 +1212,112 @@
     function legacyAnswer(){if(["standard","numeric"].includes(state.taskType))return state.answers.map(a=>a.value.trim()).filter(Boolean).join("; ");if(["single","multiple"].includes(state.taskType))return state.options.filter(o=>o.correct&&o.text.trim()).map(o=>o.text.trim()).join(" | ");return state.openAnswer.trim()}
     function collect(){state.grade=Number(q("tbGrade").value)||state.grade;state.topicId=q("tbTopic").value;state.subtopic=q("tbSubtopic").value;syncLegacyContent();state.settings.shared=!!q("tbShared").checked;state.settings.allowTests=!!q("tbAllowTests").checked;state.settings.allowAi=!!q("tbAllowAi").checked;state.helpSettings.homeworkHints=!!q("tbHomeworkHints")?.checked;state.helpSettings.testHints=!!q("tbTestHints")?.checked;state.helpSettings.solutionMode=q("tbSolutionMode")?.value==="teacher_only"?"teacher_only":"after_attempt";setHelp(q("tbHelp").value);syncAnswer()}
     function builderMeta(){const t=topic();syncLegacyContent();syncContentOrder();normalizeTemplateVars();return {version:10,grade:Number(t?.grade||state.grade)||null,subtopic:state.subtopic.trim(),task_type:state.taskType,answer_check:{numeric_equivalence:!!state.answerCheck.numericEquivalent,tolerance:state.answerCheck.tolerance,ignore_case:!!state.answerCheck.ignoreCase,ignore_spaces:!!state.answerCheck.ignoreSpaces},template_vars:state.templateVars.map(v=>({id:v.id,name:v.name,min:v.min,max:v.max,step:v.step,multiple_of:v.multipleOf||0,parity:v.parity,non_zero:!!v.nonZero})),template_settings:{condition:state.templateCondition.trim(),integer_answers:!!state.templateIntegerAnswers},text_blocks:state.textBlocks.map(b=>({id:b.id,text:String(b.text||"")})),content_order:state.contentOrder,images:state.images.map(img=>({id:img.id,path:img.path,name:img.name,mime:img.mime,width:img.width,height:img.height,display_width:img.displayWidth,alt:img.alt.trim()})),tables:state.tables.map(table=>({id:table.id,caption:table.caption.trim(),rows:table.rows,cols:table.cols,header_row:!!table.headerRow,header_col:!!table.headerCol,cells:table.cells.map(row=>row.map(cell=>String(cell)))})),geometries:state.geometries.map(g=>({id:g.id,type:g.type,caption:g.caption.trim(),display_width:g.displayWidth,triangle:{vertices:g.triangle.vertices,sides:g.triangle.sides,right_angle:g.triangle.rightAngle},rectangle:{vertices:g.rectangle.vertices,width_label:g.rectangle.widthLabel,height_label:g.rectangle.heightLabel},circle:{center_label:g.circle.centerLabel,radius_label:g.circle.radiusLabel},coordinate:{points:g.coordinate.points,x_min:g.coordinate.xMin,x_max:g.coordinate.xMax,y_min:g.coordinate.yMin,y_max:g.coordinate.yMax}})),answers:state.answers,options:state.options,open_answer:state.openAnswer,solution:state.solution,hints:state.hints,help_settings:{homework_hints:!!state.helpSettings.homeworkHints,test_hints:!!state.helpSettings.testHints,solution_mode:state.helpSettings.solutionMode},source:{kind:state.source.kind,textbook_id:state.source.kind==="textbook"?(state.source.textbookId||null):null,page:state.source.kind==="textbook"?(state.source.page||null):null,exercise_no:state.source.kind==="textbook"?(state.source.exerciseNo||null):null,note:state.source.kind==="textbook"?"":state.source.note.trim()},settings:{shared:!!state.settings.shared,allow_tests:!!state.settings.allowTests,allow_ai_example:!!state.settings.allowAi}}}
-    function back(){cleanupPendingImages();releaseLocalImageUrls();const ret=S.taskBuilderReturn||{view:"bank"};S.taskBuilderExerciseId=null;S.taskBuilderReturn=null;if(ret.view==="topics"&&ret.topicId){S.view="topics";S.topic=(S.topics||[]).find(t=>String(t.id)===String(ret.topicId))||null;return S.topic?renderTopic():renderTopics()}S.view="bank";S.topic=null;renderBank()}
+
+    let builderReady=false,dirty=!!recoveredAutosave,autosaveTimer=null,autosavePaused=!!storedAutosave&&!recoveredAutosave,leaveModal=null,recoveryModal=null;
+    function autosaveStatus(text,kind=""){
+      const el=q("tbAutosaveStatus");if(!el)return;
+      el.textContent=text;el.dataset.kind=kind;
+    }
+    function autosaveState(){
+      syncLegacyContent();
+      const raw=JSON.parse(JSON.stringify(state));
+      return raw;
+    }
+    function clearAutosave(){
+      if(autosaveTimer){clearTimeout(autosaveTimer);autosaveTimer=null}
+      try{localStorage.removeItem(autosaveKey)}catch{}
+    }
+    function writeAutosave(){
+      if(autosavePaused)return;
+      if(autosaveTimer){clearTimeout(autosaveTimer);autosaveTimer=null}
+      try{
+        const payload={
+          schema:1,
+          savedAt:Date.now(),
+          editingId:editing?.id||null,
+          state:autosaveState(),
+          pendingImagePaths:[...pendingImagePaths]
+        };
+        localStorage.setItem(autosaveKey,JSON.stringify(payload));
+        autosaveStatus("Автосохранено · "+new Date(payload.savedAt).toLocaleTimeString("ru-RU",{hour:"2-digit",minute:"2-digit"}),"saved");
+      }catch(e){
+        autosaveStatus("Не удалось автосохранить","error");
+        console.warn("[Mathroom task autosave]",e);
+      }
+    }
+    function scheduleAutosave(){
+      if(!builderReady||autosavePaused)return;
+      dirty=true;
+      autosaveStatus("Сохраняю изменения…","saving");
+      if(autosaveTimer)clearTimeout(autosaveTimer);
+      autosaveTimer=setTimeout(writeAutosave,850);
+    }
+    function disposeAutosave(){
+      if(autosaveTimer){clearTimeout(autosaveTimer);autosaveTimer=null}
+      if(S.taskBuilderBeforeUnload){window.removeEventListener("beforeunload",S.taskBuilderBeforeUnload);S.taskBuilderBeforeUnload=null}
+      leaveModal?.remove();leaveModal=null;
+      recoveryModal?.remove();recoveryModal=null;
+    }
+    async function discardStoredAutosave(snapshot){
+      const paths=Array.isArray(snapshot?.pendingImagePaths)?snapshot.pendingImagePaths.filter(Boolean):[];
+      if(paths.length){
+        try{await sb.storage.from(TASK_IMAGE_BUCKET).remove(paths)}catch(e){console.warn("[Mathroom autosave cleanup]",e)}
+      }
+      try{localStorage.removeItem(autosaveKey)}catch{}
+    }
+    function showRecoveryDialog(snapshot){
+      if(!snapshot||recoveryModal)return;
+      autosavePaused=true;
+      const modal=document.createElement("div");
+      modal.className="mr-tb-recovery-modal";
+      const when=new Date(Number(snapshot.savedAt)||Date.now()).toLocaleString("ru-RU",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"});
+      const textCount=(snapshot.state?.textBlocks||[]).reduce((n,b)=>n+String(b?.text||"").length,0);
+      modal.innerHTML='<div class="mr-tb-recovery-dialog">'+
+        '<div class="mr-tb-recovery-icon">↺</div>'+
+        '<div class="mr-tb-recovery-copy"><b>Нашёл несохранённую версию</b><p>Автосохранение от '+esc(when)+(textCount?' · '+textCount+' символов':'')+'. Можно продолжить ровно с того места, где работа прервалась.</p></div>'+
+        '<div class="mr-tb-recovery-actions"><button type="button" class="ghost" data-recovery-discard>Продолжить без неё</button><button type="button" class="primary" data-recovery-restore>Восстановить</button></div>'+
+      '</div>';
+      document.body.appendChild(modal);recoveryModal=modal;
+      modal.querySelector("[data-recovery-restore]").onclick=()=>{
+        S.taskBuilderRecoveredAutosave={key:autosaveKey,state:snapshot.state,pendingImagePaths:snapshot.pendingImagePaths||[]};
+        disposeAutosave();
+        API.render(ctx);
+      };
+      modal.querySelector("[data-recovery-discard]").onclick=async()=>{
+        await discardStoredAutosave(snapshot);
+        recoveryModal?.remove();recoveryModal=null;autosavePaused=false;storedAutosave=null;
+        autosaveStatus("Автосохранение включено","saved");
+      };
+    }
+    function leaveNow(){
+      disposeAutosave();
+      cleanupPendingImages();releaseLocalImageUrls();
+      const ret=S.taskBuilderReturn||{view:"bank"};
+      S.taskBuilderExerciseId=null;S.taskBuilderReturn=null;
+      if(ret.view==="topics"&&ret.topicId){
+        S.view="topics";S.topic=(S.topics||[]).find(t=>String(t.id)===String(ret.topicId))||null;
+        return S.topic?renderTopic():renderTopics();
+      }
+      S.view="bank";S.topic=null;renderBank();
+    }
+    function showLeaveDialog(){
+      if(leaveModal)return;
+      const modal=document.createElement("div");
+      modal.className="mr-tb-recovery-modal";
+      modal.innerHTML='<div class="mr-tb-recovery-dialog leave">'+
+        '<div class="mr-tb-recovery-icon">!</div>'+
+        '<div class="mr-tb-recovery-copy"><b>Есть несохранённые изменения</b><p>Можно сохранить задачу как черновик или выйти без сохранения. Локальная автокопия при выходе будет удалена.</p></div>'+
+        '<div class="mr-tb-recovery-actions triple"><button type="button" class="ghost" data-leave-stay>Остаться</button><button type="button" class="danger" data-leave-discard>Выйти без сохранения</button><button type="button" class="primary" data-leave-save>Сохранить черновик</button></div>'+
+      '</div>';
+      document.body.appendChild(modal);leaveModal=modal;
+      modal.querySelector("[data-leave-stay]").onclick=()=>{leaveModal.remove();leaveModal=null};
+      modal.querySelector("[data-leave-discard]").onclick=()=>{
+        clearAutosave();dirty=false;leaveModal.remove();leaveModal=null;leaveNow();
+      };
+      modal.querySelector("[data-leave-save]").onclick=()=>{leaveModal.remove();leaveModal=null;save(true)};
+    }
+
+    function back(){if(dirty)return showLeaveDialog();clearAutosave();leaveNow()}
     async function syncShared(saved,draft){
       if(draft)return;
       const t=(S.topics||[]).find(x=>String(x.id)===String(saved.topic_id));
@@ -1227,7 +1333,7 @@
         const sys=editing?exerciseSystemTags(editing.tags):[];const tags=[...new Set([...sys,"класс-"+t.grade,"тема:"+t.title,"тип:"+state.taskType])];
         const body={topic_id:t.id,kind:"task",title:(editing?.title&&editing.title.trim())||("Задача · "+t.title),content:syncLegacyContent().trim(),answer:legacyAnswer(),difficulty:state.difficulty,category:state.subtopic.trim(),tags,builder_meta:builderMeta(),is_draft:!!draft,updated_at:new Date().toISOString()};
         const res=editing?await sb.from("exercises").update(body).eq("id",editing.id).select().single():await sb.from("exercises").insert({teacher_id:S.user.id,...body}).select().single();
-        if(res.error)throw res.error;pendingImagePaths.clear();await syncShared(res.data,draft);await loadTeacher();toast(draft?"Черновик сохранён":editing?"Задача обновлена":"Задача добавлена в банк");back();
+        if(res.error)throw res.error;pendingImagePaths.clear();await syncShared(res.data,draft);clearAutosave();dirty=false;await loadTeacher();toast(draft?"Черновик сохранён":editing?"Задача обновлена":"Задача добавлена в банк");leaveNow();
       }catch(e){fail(e)}
     }
 
