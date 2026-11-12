@@ -1023,3 +1023,26 @@ html[data-theme=dark] .mr-tb-top .audit{background:#171b20;border-color:#3a4149;
 html[data-theme=dark] .mr-tb-top .audit[data-status="ok"]{background:#101914;border-color:#355a40;color:#9ec8aa}
 html[data-theme=dark] .mr-tb-top .audit[data-status="warn"]{background:#211a10;border-color:#5f4826;color:#e1b56c}
 html[data-theme=dark] .mr-tb-top .audit[data-status="error"]{background:#231412;border-color:#63352f;color:#e89a8e}
+
+
+/* v73 multi text blocks */
+.mr-tb-text-blocks{display:grid;gap:10px;margin-top:10px}
+.mr-tb-text-card{overflow:hidden;border:1px solid #e5dfda;border-radius:14px;background:#fff;transition:border-color .15s ease,box-shadow .15s ease}
+.mr-tb-text-card.active{border-color:#ff9a6b;box-shadow:0 0 0 3px rgba(243,90,22,.07)}
+.mr-tb-text-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 9px 0}
+.mr-tb-text-head>div{display:flex;align-items:center;gap:7px}
+.mr-tb-text-head>div>span{display:grid;place-items:center;width:25px;height:25px;border-radius:7px;background:#fff0e7;color:#ed5715;font-size:11px;font-weight:950}
+.mr-tb-text-head b{color:#4b545c;font-size:10px;font-weight:900}
+.mr-tb-text-head>button{width:29px;height:29px;border:1px solid #eadfd8;border-radius:8px;background:#fff;color:#92796d;font-size:16px;cursor:pointer}
+.mr-tb-text-head>button:hover:not(:disabled){border-color:#ffac85;background:#fff5ef;color:#df500f}
+.mr-tb-text-head>button:disabled{opacity:.3;cursor:default}
+.mr-tb-text-card .mr-tb-editor{margin:7px 0 0;border:0;border-radius:0;background:transparent}
+.mr-tb-text-card .mr-tb-editor textarea{min-height:112px;border:0;border-top:1px solid #f0ebe7;border-radius:0;background:#fff}
+.mr-tb-text-card.active .mr-tb-editor textarea{background:#fffdfa}
+.mr-tb-text-card .mr-tb-editor textarea:focus{box-shadow:none}
+html[data-theme=dark] .mr-tb-text-card{background:#101317;border-color:#343a42}
+html[data-theme=dark] .mr-tb-text-card.active{border-color:#855139;box-shadow:0 0 0 3px rgba(243,90,22,.08)}
+html[data-theme=dark] .mr-tb-text-head b{color:#d6dce1}
+html[data-theme=dark] .mr-tb-text-head>button{background:#171b20;border-color:#343a42;color:#aab2ba}
+html[data-theme=dark] .mr-tb-text-card .mr-tb-editor textarea{background:#101317;border-color:#343a42}
+html[data-theme=dark] .mr-tb-text-card.active .mr-tb-editor textarea{background:#141311}
