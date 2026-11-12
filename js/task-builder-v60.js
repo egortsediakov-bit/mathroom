@@ -19,8 +19,13 @@
         name:String(v?.name||String.fromCharCode(97+i)).replace(/[^A-Za-z0-9_]/g,"").slice(0,16)||("v"+(i+1)),
         min:Number.isFinite(Number(v?.min))?Number(v.min):1,
         max:Number.isFinite(Number(v?.max))?Number(v.max):10,
-        step:Math.max(1,Math.abs(Number(v?.step)||1))
+        step:Math.max(1,Math.abs(Number(v?.step)||1)),
+        multipleOf:Math.max(0,Math.abs(Number(v?.multiple_of)||0)),
+        parity:["any","even","odd"].includes(v?.parity)?v.parity:"any",
+        nonZero:!!v?.non_zero
       })).slice(0,12):[],
+      templateCondition:String(meta.template_settings?.condition||""),
+      templateIntegerAnswers:!!meta.template_settings?.integer_answers,
       templateValues:{},
       images:Array.isArray(meta.images)?meta.images.map((img,i)=>({
         id:String(img?.id||("img"+i)),
@@ -118,26 +123,120 @@
         let base=name,n=2;while(used.has(name))name=(base.slice(0,13)+n++).slice(0,16);
         used.add(name);
         let min=Number(v.min),max=Number(v.max),step=Math.max(1,Math.abs(Number(v.step)||1));
+        let multipleOf=Math.max(0,Math.abs(Number(v.multipleOf)||0));
+        const parity=["any","even","odd"].includes(v.parity)?v.parity:"any";
         if(!Number.isFinite(min))min=1;if(!Number.isFinite(max))max=10;if(min>max)[min,max]=[max,min];
-        return {...v,name,min,max,step};
+        if(!Number.isFinite(multipleOf))multipleOf=0;
+        return {...v,name,min,max,step,multipleOf,parity,nonZero:!!v.nonZero};
       });
       const valid=new Set(state.templateVars.map(v=>v.name));
       for(const k of Object.keys(state.templateValues))if(!valid.has(k))delete state.templateValues[k];
     }
-    function randomTemplateValue(v){
+    function templateCandidateValid(v,value){
+      if(!Number.isFinite(value))return false;
+      if(v.nonZero&&Math.abs(value)<1e-12)return false;
+      if(v.multipleOf>0){
+        const ratio=value/v.multipleOf;
+        if(Math.abs(ratio-Math.round(ratio))>1e-10)return false;
+      }
+      if(v.parity!=="any"){
+        if(Math.abs(value-Math.round(value))>1e-10)return false;
+        const even=Math.abs(Math.round(value)%2)===0;
+        if(v.parity==="even"&&!even)return false;
+        if(v.parity==="odd"&&even)return false;
+      }
+      return true;
+    }
+    function templateCandidates(v,limit=5000){
       const count=Math.max(0,Math.floor((v.max-v.min)/v.step));
-      return v.min+Math.floor(Math.random()*(count+1))*v.step;
+      const out=[];
+      if(count<=limit){
+        for(let i=0;i<=count;i++){
+          const value=v.min+i*v.step;
+          if(templateCandidateValid(v,value))out.push(value);
+        }
+        return out;
+      }
+      const seen=new Set();
+      for(let tries=0;tries<Math.min(limit*3,15000)&&out.length<limit;tries++){
+        const i=Math.floor(Math.random()*(count+1)),value=v.min+i*v.step,key=String(value);
+        if(seen.has(key))continue;seen.add(key);
+        if(templateCandidateValid(v,value))out.push(value);
+      }
+      return out;
+    }
+    function randomTemplateValue(v){
+      const values=templateCandidates(v);
+      if(!values.length)throw new Error("Для переменной "+v.name+" нет чисел, подходящих под ограничения");
+      return values[Math.floor(Math.random()*values.length)];
+    }
+    function templateEval(expr,scope){
+      if(!window.math?.evaluate)throw new Error("Математический движок не загружен");
+      return window.math.evaluate(expr,scope);
+    }
+    function templateConditionOk(scope){
+      const cond=String(state.templateCondition||"").trim();
+      if(!cond)return true;
+      try{return !!templateEval(cond,scope)}catch{return false}
+    }
+    function templateAnswerExpressions(){
+      const strings=[];
+      if(["standard","numeric"].includes(state.taskType))state.answers.forEach(a=>strings.push(a.value,...(a.accepted||[])));
+      else if(["single","multiple"].includes(state.taskType))state.options.filter(o=>o.correct).forEach(o=>strings.push(o.text));
+      else strings.push(state.openAnswer);
+      const exprs=[];
+      strings.forEach(src=>{const re=/{{\s*([^{}]+?)\s*}}/g;let m;while((m=re.exec(String(src||""))))exprs.push(m[1])});
+      return exprs;
+    }
+    function templateIntegerAnswersOk(scope){
+      if(!state.templateIntegerAnswers)return true;
+      const exprs=templateAnswerExpressions();
+      for(const expr of exprs){
+        try{
+          const value=templateEval(expr,scope);
+          const n=typeof value==="number"?value:Number(value?.toString?.()??value);
+          if(Number.isFinite(n)&&Math.abs(n-Math.round(n))>1e-10)return false;
+        }catch{return false}
+      }
+      return true;
+    }
+    function generateTemplateScope({tries=600}={}){
+      normalizeTemplateVars();
+      if(!state.templateVars.length)return {};
+      for(const v of state.templateVars)if(!templateCandidates(v,1).length)throw new Error("Для "+v.name+" нет допустимых значений в заданном диапазоне");
+      for(let attempt=0;attempt<tries;attempt++){
+        const scope={};
+        for(const v of state.templateVars)scope[v.name]=randomTemplateValue(v);
+        if(templateConditionOk(scope)&&templateIntegerAnswersOk(scope))return scope;
+      }
+      throw new Error("Не удалось подобрать числа под все ограничения. Расширь диапазон или ослабь условие.");
     }
     function rerollTemplateValues(){
-      normalizeTemplateVars();
-      for(const v of state.templateVars)state.templateValues[v.name]=randomTemplateValue(v);
+      state.templateValues=generateTemplateScope();
+      return state.templateValues;
     }
     function ensureTemplateValues(){
       normalizeTemplateVars();
-      for(const v of state.templateVars)if(!Number.isFinite(Number(state.templateValues[v.name])))state.templateValues[v.name]=v.min;
+      const keys=state.templateVars.map(v=>v.name);
+      const complete=keys.every(k=>Number.isFinite(Number(state.templateValues[k])));
+      if(complete&&templateConditionOk(state.templateValues)&&templateIntegerAnswersOk(state.templateValues))return;
+      try{state.templateValues=generateTemplateScope({tries:300})}
+      catch{for(const v of state.templateVars){const c=templateCandidates(v);state.templateValues[v.name]=c[0]??v.min}}
     }
     function formatTemplateValue(value){
-      if(typeof value==="number"&&Number.isFinite(value))return String(Number(value.toFixed(10)));
+      if(value&&typeof value==="object"){
+        if(typeof value.toFraction==="function"){
+          try{
+            const f=value.toFraction();
+            if(Array.isArray(f)&&f.length>=2)return f[1]===1?String(f[0]):f[0]+"/"+f[1];
+          }catch{}
+        }
+        if(typeof value.toString==="function")return value.toString();
+      }
+      if(typeof value==="number"&&Number.isFinite(value)){
+        if(Math.abs(value-Math.round(value))<1e-12)return String(Math.round(value));
+        return String(Number(value.toPrecision(14)));
+      }
       return String(value??"");
     }
     function renderTemplateString(value,scope=state.templateValues){
@@ -145,7 +244,7 @@
       if(!src.includes("{{"))return src;
       return src.replace(/{{\s*([^{}]+?)\s*}}/g,(full,expr)=>{
         try{
-          if(window.math?.evaluate)return formatTemplateValue(window.math.evaluate(expr,scope));
+          if(window.math?.evaluate)return formatTemplateValue(templateEval(expr,scope));
           if(Object.prototype.hasOwnProperty.call(scope,expr.trim()))return formatTemplateValue(scope[expr.trim()]);
         }catch{}
         return full;
@@ -565,7 +664,7 @@
     }
     function addTemplateVar(){
       if(state.templateVars.length>=12)return toast("Максимум 12 переменных");
-      const name=nextTemplateName(),v={id:templateVarId(),name,min:1,max:10,step:1};
+      const name=nextTemplateName(),v={id:templateVarId(),name,min:1,max:10,step:1,multipleOf:0,parity:"any",nonZero:false};
       state.templateVars.push(v);state.templateValues[name]=v.min;
       renderTemplateVars();preview();
     }
