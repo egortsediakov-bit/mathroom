@@ -1339,12 +1339,68 @@ async function hydrateTaskMedia(root=document){
   }));
 }
 
+function taskTemplateVars(meta){
+  return Array.isArray(meta?.template_vars)?meta.template_vars.filter(v=>v&&v.name):[];
+}
+function taskTemplateScope(meta){
+  const scope={};
+  for(const raw of taskTemplateVars(meta)){
+    const name=String(raw.name||"").replace(/[^A-Za-z0-9_]/g,"");
+    if(!name)continue;
+    let min=Number(raw.min),max=Number(raw.max),step=Math.max(1,Math.abs(Number(raw.step)||1));
+    if(!Number.isFinite(min))min=1;if(!Number.isFinite(max))max=10;if(min>max)[min,max]=[max,min];
+    const count=Math.max(0,Math.floor((max-min)/step));
+    scope[name]=min+Math.floor(Math.random()*(count+1))*step;
+  }
+  return scope;
+}
+function taskTemplateFormat(value){
+  if(typeof value==="number"&&Number.isFinite(value))return String(Number(value.toFixed(10)));
+  return String(value??"");
+}
+function taskTemplateRender(value,scope){
+  const src=String(value??"");
+  if(!src.includes("{{"))return src;
+  return src.replace(/{{\s*([^{}]+?)\s*}}/g,(full,expr)=>{
+    try{
+      if(window.math?.evaluate)return taskTemplateFormat(window.math.evaluate(expr,scope));
+      if(Object.prototype.hasOwnProperty.call(scope,expr.trim()))return taskTemplateFormat(scope[expr.trim()]);
+    }catch{}
+    return full;
+  });
+}
+function taskTemplateDeep(value,scope){
+  if(typeof value==="string")return taskTemplateRender(value,scope);
+  if(Array.isArray(value))return value.map(x=>taskTemplateDeep(x,scope));
+  if(value&&typeof value==="object"){
+    const out={};for(const [k,v] of Object.entries(value))out[k]=taskTemplateDeep(v,scope);return out;
+  }
+  return value;
+}
+function instantiateExercise(exercise){
+  const meta=exercise?.builder_meta&&typeof exercise.builder_meta==="object"?exercise.builder_meta:{};
+  const vars=taskTemplateVars(meta);
+  if(!vars.length)return {
+    content:String(exercise?.content||""),
+    answer:String(exercise?.answer||""),
+    builder_meta:meta
+  };
+  const scope=taskTemplateScope(meta);
+  const materialized=taskTemplateDeep(meta,scope);
+  materialized.template_values=scope;
+  return {
+    content:taskTemplateRender(exercise?.content||"",scope),
+    answer:taskTemplateRender(exercise?.answer||"",scope),
+    builder_meta:materialized
+  };
+}
+
 async function createAssignment(kind,studentId,topicId,count){
   const tasks=shuffle(S.exercises.filter(x=>x.topic_id===topicId&&x.kind==='task'&&x.answer.trim())).slice(0,count);if(!tasks.length)return toast('В теме нет задач с заполненными ответами');
   const t=S.topics.find(x=>x.id===topicId),base={teacher_id:S.user.id,student_id:studentId,topic_id:topicId,title:`${kind==='homework'?'Домашняя работа':'Мини-тест'} · ${t?.title||''}`};
   const table=kind==='homework'?'homeworks':'tests',itemsTable=kind==='homework'?'homework_items':'test_items';
   const {data:parent,error}=await sb.from(table).insert(base).select().single();if(error)return fail(error);
-  const rows=tasks.map((x,i)=>({[kind==='homework'?'homework_id':'test_id']:parent.id,prompt:x.content,correct_answer:x.answer,position:i,source_exercise_id:x.id,difficulty:x.difficulty,category:x.category||'',tags:x.tags||[],builder_meta:x.builder_meta&&typeof x.builder_meta==='object'?x.builder_meta:{}}));
+  const rows=tasks.map((x,i)=>{const inst=instantiateExercise(x);return {[kind==='homework'?'homework_id':'test_id']:parent.id,prompt:inst.content,correct_answer:inst.answer,position:i,source_exercise_id:x.id,difficulty:x.difficulty,category:x.category||'',tags:x.tags||[],builder_meta:inst.builder_meta}});
   const {error:e2}=await sb.from(itemsTable).insert(rows);if(e2)return fail(e2);await loadTeacher();toast(kind==='homework'?'Домашняя назначена':'Тест назначен');
 }
 
@@ -2189,11 +2245,11 @@ async function renderLesson(){
   let ctrl=await mountBoard(document.getElementById('lessonBoard'),st.id,true,{lessonId:lesson.id,studentName:st.name});S.boardController=ctrl;
   const updateLive=async patch=>{const {data,error}=await sb.from('lesson_live_state').update({...patch,updated_at:new Date().toISOString()}).eq('lesson_id',lesson.id).select().single();if(error)return fail(error);liveState=data;};
   const setCurrent=async q=>{await updateLive({current_queue_item_id:q?.id||null,current_title:q?.title||'',current_prompt:q?.prompt||'',current_position:q?.position||0,current_builder_meta:q?.builder_meta&&typeof q.builder_meta==='object'?q.builder_meta:{}});renderLesson()};
-  const addQueue=async(exercise,makeCurrent=false)=>{const existing=(queue||[]).find(x=>x.exercise_id===exercise.id);let q=existing;if(!q){const {data,error}=await sb.from('lesson_queue_items').insert({teacher_id:S.user.id,lesson_id:lesson.id,exercise_id:exercise.id,title:exercise.title||'Задача',prompt:exercise.content,correct_answer:exercise.answer,difficulty:exercise.difficulty,category:exercise.category||'',tags:exercise.tags||[],builder_meta:exercise.builder_meta&&typeof exercise.builder_meta==='object'?exercise.builder_meta:{},position:(queue||[]).length}).select().single();if(error)return fail(error);q=data}if(makeCurrent)await setCurrent(q);else{toast('Добавлено в очередь');renderLesson()}};
+  const addQueue=async(exercise,makeCurrent=false)=>{const existing=(queue||[]).find(x=>x.exercise_id===exercise.id);let q=existing;if(!q){const inst=instantiateExercise(exercise);const {data,error}=await sb.from('lesson_queue_items').insert({teacher_id:S.user.id,lesson_id:lesson.id,exercise_id:exercise.id,title:exercise.title||'Задача',prompt:inst.content,correct_answer:inst.answer,difficulty:exercise.difficulty,category:exercise.category||'',tags:exercise.tags||[],builder_meta:inst.builder_meta,position:(queue||[]).length}).select().single();if(error)return fail(error);q=data}if(makeCurrent)await setCurrent(q);else{toast('Добавлено в очередь');renderLesson()}};
   document.getElementById('leaveLesson').onclick=()=>{forgetActiveLesson();S.activeLesson=null;S.view='dashboard';renderTeacher()};document.getElementById('copyLessonLink').onclick=async()=>{await copyText(studentLink(st));toast('Ссылка скопирована')};const theoryBoardBtn=document.getElementById('theoryBoard');if(theoryBoardBtn&&realTopic)theoryBoardBtn.onclick=()=>sendTheoryToBoard(ctrl,realTopic);
   document.querySelectorAll('[data-lesson-source-open]').forEach(b=>b.onclick=()=>{const link=lessonSources.find(x=>String(x.id)===String(b.dataset.lessonSourceOpen));if(link?.textbook)openTextbook(link.textbook,Number(link.page_from)||0)});
   document.querySelectorAll('[data-lesson-source-board]').forEach(b=>b.onclick=()=>{const link=lessonSources.find(x=>String(x.id)===String(b.dataset.lessonSourceBoard));if(link)textbookPagesToBoardModal(link,{controller:ctrl})});
-  document.querySelectorAll('[data-to-board]').forEach(b=>b.onclick=()=>{const x=S.exercises.find(z=>z.id===b.dataset.toBoard);ctrl.addText(`${x.title||'Задача'}\n${x.content}`,{fontSize:25});sb.from('exercises').update({use_count:(x.use_count||0)+1,last_used_at:new Date().toISOString()}).eq('id',x.id).then(()=>{})});
+  document.querySelectorAll('[data-to-board]').forEach(b=>b.onclick=()=>{const x=S.exercises.find(z=>z.id===b.dataset.toBoard);const inst=instantiateExercise(x);ctrl.addText(`${x.title||'Задача'}\n${inst.content}`,{fontSize:25});sb.from('exercises').update({use_count:(x.use_count||0)+1,last_used_at:new Date().toISOString()}).eq('id',x.id).then(()=>{})});
   document.querySelectorAll('[data-queue-task]').forEach(b=>b.onclick=()=>addQueue(S.exercises.find(x=>x.id===b.dataset.queueTask),false));document.querySelectorAll('[data-focus-task]').forEach(b=>b.onclick=()=>addQueue(S.exercises.find(x=>x.id===b.dataset.focusTask),true));
   document.querySelectorAll('[data-current]').forEach(b=>b.onclick=()=>setCurrent((queue||[]).find(x=>x.id===b.dataset.current)));document.querySelectorAll('[data-remove-queue]').forEach(b=>b.onclick=async()=>{await sb.from('lesson_queue_items').delete().eq('id',b.dataset.removeQueue);if(liveState.current_queue_item_id===b.dataset.removeQueue)await updateLive({current_queue_item_id:null,current_title:'',current_prompt:'',current_builder_meta:{}});renderLesson()});
   document.querySelectorAll('[data-status]').forEach(b=>b.onclick=async()=>{if(!current)return;await sb.from('lesson_queue_items').update({status:b.dataset.status}).eq('id',current.id);renderLesson()});
