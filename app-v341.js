@@ -183,6 +183,8 @@ async function loadTeacher(){
     ]);
     S.textbooksFeatureAvailable=!tb.error&&!tl.error&&!lib.error;S.textbooks=tb.data||[];S.textbookLinks=tl.data||[];S.teacherTextbookLibrary=lib.data||[];
   }catch{S.textbooksFeatureAvailable=false;S.textbooks=[];S.textbookLinks=[];S.teacherTextbookLibrary=[]}
+  if(window.MathroomSavedSetsV84)await window.MathroomSavedSetsV84.load({S,sb});
+  else {S.savedTaskSetsFeatureAvailable=false;S.savedTaskSets=[]}
   if(!S.selectedStudent&&S.students[0])S.selectedStudent=S.students[0].id;
 }
 let curriculumSyncPromise=null;
@@ -1846,7 +1848,7 @@ async function assignSmartTaskSetHomework(batch,topicId,studentId){
     prompt:item.content,
     correct_answer:item.answer,
     position:index,
-    source_exercise_id:item.source.id,
+    source_exercise_id:(S.exercises||[]).some(x=>String(x.id)===String(item.source?.id))?item.source.id:null,
     difficulty:item.difficulty,
     category:item.category||"",
     tags:item.tags||[],
@@ -1905,6 +1907,7 @@ function openSmartTaskSetBuilder(prefill={}){
         <button class="btn sm" id="smartSetCopy">Скопировать без ответов</button>
         <button class="btn sm" id="smartSetCopyAnswers">Скопировать с ответами</button>
         <button class="btn sm mr-smart-set-sheet" id="smartSetWorksheet">A4 / PDF</button>
+        <button class="btn sm mr-save-smart-set" id="smartSetSave" ${S.savedTaskSetsFeatureAvailable?"":"disabled"}>Сохранить комплект</button>
         <button class="btn sm primary" id="smartSetHomework" ${students.length?"":"disabled"}>Назначить как ДЗ</button>
       </div>
       <div id="smartSetList" class="mr-smart-set-list"></div>
@@ -1913,7 +1916,7 @@ function openSmartTaskSetBuilder(prefill={}){
   const q=s=>root.querySelector(s);
   const grade=q("#smartSetGrade"),topic=q("#smartSetTopic"),difficulty=q("#smartSetDifficulty"),count=q("#smartSetCount");
   const templates=q("#smartSetTemplates"),student=q("#smartSetStudent"),status=q("#smartSetStatus"),actions=q("#smartSetActions"),list=q("#smartSetList");
-  const generate=q("#smartSetGenerate"),copy=q("#smartSetCopy"),copyAnswers=q("#smartSetCopyAnswers"),worksheet=q("#smartSetWorksheet"),homework=q("#smartSetHomework");
+  const generate=q("#smartSetGenerate"),copy=q("#smartSetCopy"),copyAnswers=q("#smartSetCopyAnswers"),worksheet=q("#smartSetWorksheet"),saveSet=q("#smartSetSave"),homework=q("#smartSetHomework");
   let lastBatch=null;
   const fillTopics=()=>{
     const g=Number(grade.value);
@@ -1981,6 +1984,10 @@ function openSmartTaskSetBuilder(prefill={}){
     if(!lastBatch?.items?.length)return toast("Сначала собери комплект");
     openSmartWorksheetBuilder(lastBatch,topic.value,{studentId:student.value});
   };
+  saveSet.onclick=()=>{
+    if(!lastBatch?.items?.length)return toast("Сначала собери комплект");
+    window.MathroomSavedSetsV84?.save?.({S,sb,esc,modal,toast,fail},lastBatch,topic.value,{difficultyMode:difficulty.value,allowTemplates:templates.checked});
+  };
   homework.onclick=async()=>{
     if(!lastBatch?.items?.length)return;
     if(!student.value)return toast("Выбери ученика для домашней работы");
@@ -2001,7 +2008,7 @@ function smartWorksheetDateLabel(value){
 }
 
 function smartWorksheetMarkup(batch,topicId,options={}){
-  const topic=(S.topics||[]).find(x=>String(x.id)===String(topicId));
+  const topic=(S.topics||[]).find(x=>String(x.id)===String(topicId))||batch?.topicSnapshot||null;
   const title=String(options.title||`Практика · ${topic?.title||"Математика"}`).trim();
   const studentName=String(options.studentName||"").trim();
   const dateLabel=smartWorksheetDateLabel(options.date);
@@ -2122,7 +2129,7 @@ async function printSmartWorksheet(batch,topicId,options={}){
 
 function openSmartWorksheetBuilder(batch,topicId,{studentId=""}={}){
   if(!batch?.items?.length)return toast("Сначала собери комплект задач");
-  const topic=(S.topics||[]).find(x=>String(x.id)===String(topicId));
+  const topic=(S.topics||[]).find(x=>String(x.id)===String(topicId))||batch?.topicSnapshot||null;
   const students=S.students||[];
   const selected=students.find(x=>String(x.id)===String(studentId));
   const today=(()=>{const d=new Date(),p=n=>String(n).padStart(2,"0");return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`})();
@@ -2675,6 +2682,7 @@ function renderBank(){
       <span class="pill">${builtIn} из готовой базы</span>
       <button class="btn sm" id="openTaskPipeline">✦ Пополнить банк</button>
       <button class="btn sm mr-smart-set-launch" id="openSmartSet">Собрать комплект</button>
+      <button class="btn sm mr-saved-sets-launch" id="openSavedSets">Мои комплекты</button>
       <button class="btn sm primary" id="createBankTask">＋ Создать задачу</button>
       <button class="btn sm" id="syncCurriculumBank">Обновить базу 1–11</button>
     </div>
@@ -2705,6 +2713,7 @@ function renderBank(){
     grade:document.getElementById('bankGrade')?.value||'',
     difficulty:document.getElementById('bankDiff')?.value||'balanced'
   });
+  document.getElementById('openSavedSets').onclick=()=>window.MathroomSavedSetsV84?.openLibrary?.({S,sb,esc,nl,modal,toast,fail,copyText,diffLabel,taskConditionHtml,hydrateTaskMedia,typesetTaskMath,openSmartWorksheetBuilder,assignSmartTaskSetHomework});
   document.getElementById('createBankTask').onclick=()=>{
     S.taskBuilderExerciseId=null;
     S.taskBuilderReturn={view:'bank',topicId:null};
