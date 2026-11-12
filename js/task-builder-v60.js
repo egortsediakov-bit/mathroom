@@ -366,7 +366,7 @@
           '<div class="mr-tb-choices"><div><b>Сложность</b><div class="mr-tb-segments">'+diffButtons+'</div></div><div class="grow"><b>Тип задачи</b><div class="mr-tb-segments types">'+typeButtons+'</div></div></div>'+
         '</section>'+
         '<section class="mr-tb-card">'+section("condition","Условие задачи","Введите текст, добавьте формулы и структурные элементы")+
-          '<div class="mr-tb-toolbar"><button data-insert="text">T&nbsp; Текст</button><button class="active" data-insert="formula">∿&nbsp; Формула</button><button data-insert="list">☷&nbsp; Список</button><button data-insert="template">◇&nbsp; Шаблон</button><button data-insert="image">▧&nbsp; Изображение</button><button data-insert="table">⊞&nbsp; Таблица</button><button data-insert="geometry">△&nbsp; Геометрия</button></div>'+
+          '<div class="mr-tb-toolbar"><button data-insert="text">＋&nbsp; Текст</button><button class="active" data-insert="formula">∿&nbsp; Формула</button><button data-insert="list">☷&nbsp; Список</button><button data-insert="template">◇&nbsp; Шаблон</button><button data-insert="image">▧&nbsp; Изображение</button><button data-insert="table">⊞&nbsp; Таблица</button><button data-insert="geometry">△&nbsp; Геометрия</button></div>'+
           '<div id="tbTextBlocks" class="mr-tb-text-blocks"></div>'+
           '<input id="tbImageInput" type="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple hidden>'+
           '<div id="tbImages" class="mr-tb-images"></div>'+
