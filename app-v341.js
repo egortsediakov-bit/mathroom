@@ -1271,26 +1271,35 @@ function taskMediaHtml(meta,{compact=false}={}){
   const geometryHtml=geometries.length?'<div class="mr-task-geometries '+(compact?'compact':'')+'">'+geometries.map(g=>taskGeometryHtml(g,{compact})).join('')+'</div>':'';
   return imageHtml+tableHtml+geometryHtml;
 }
-function taskConditionOrder(meta){
-  const images=taskBuilderImages(meta),tables=taskBuilderTables(meta),geometries=taskBuilderGeometries(meta);
-  const valid=["text",...images.map(x=>"image:"+x.id),...tables.map(x=>"table:"+x.id),...geometries.map(x=>"geometry:"+x.id)];
+function taskTextBlocks(prompt,meta){
+  const blocks=Array.isArray(meta?.text_blocks)?meta.text_blocks.map((b,i)=>({id:String(b?.id||("txt"+i)),text:String(b?.text||"")})).filter(b=>b.id):[];
+  if(blocks.length)return blocks;
+  return [{id:"legacy",text:String(prompt||"")}];
+}
+function taskConditionOrder(prompt,meta){
+  const texts=taskTextBlocks(prompt,meta),images=taskBuilderImages(meta),tables=taskBuilderTables(meta),geometries=taskBuilderGeometries(meta);
+  const valid=[...texts.map(x=>"text:"+x.id),...images.map(x=>"image:"+x.id),...tables.map(x=>"table:"+x.id),...geometries.map(x=>"geometry:"+x.id)];
   const validSet=new Set(valid),seen=new Set(),order=[];
-  for(const key of Array.isArray(meta?.content_order)?meta.content_order:[]){
-    const k=String(key);if(validSet.has(k)&&!seen.has(k)){seen.add(k);order.push(k)}
+  const firstText=texts[0]?"text:"+texts[0].id:"";
+  for(let key of Array.isArray(meta?.content_order)?meta.content_order:[]){
+    key=String(key);if(key==="text")key=firstText;
+    if(key&&validSet.has(key)&&!seen.has(key)){seen.add(key);order.push(key)}
   }
   for(const key of valid)if(!seen.has(key)){seen.add(key);order.push(key)}
   return order;
 }
 function taskConditionHtml(prompt,meta,{compact=false,textClass="mr-task-text-block",prefix=""}={}){
-  const images=taskBuilderImages(meta),tables=taskBuilderTables(meta),geometries=taskBuilderGeometries(meta);
-  const byImage=new Map(images.map(x=>[String(x.id),x])),byTable=new Map(tables.map(x=>[String(x.id),x])),byGeometry=new Map(geometries.map(x=>[String(x.id),x]));
-  return '<div class="mr-task-condition '+(compact?'compact':'')+'">'+taskConditionOrder(meta).map(key=>{
-    if(key==="text"){
-      const body=String(prompt||'').trim();
-      if(!body)return '';
-      return '<div class="'+textClass+'">'+(prefix?'<b class="mr-task-text-prefix">'+esc(prefix)+'</b>':'')+'<div class="mr-task-text-body">'+nl(body)+'</div></div>';
-    }
+  const texts=taskTextBlocks(prompt,meta),images=taskBuilderImages(meta),tables=taskBuilderTables(meta),geometries=taskBuilderGeometries(meta);
+  const byText=new Map(texts.map(x=>[String(x.id),x])),byImage=new Map(images.map(x=>[String(x.id),x])),byTable=new Map(tables.map(x=>[String(x.id),x])),byGeometry=new Map(geometries.map(x=>[String(x.id),x]));
+  let prefixUsed=false;
+  return '<div class="mr-task-condition '+(compact?'compact':'')+'">'+taskConditionOrder(prompt,meta).map(key=>{
     const [type,id]=key.split(":");
+    if(type==="text"){
+      const body=String(byText.get(id)?.text||'').trim();
+      if(!body)return '';
+      const usePrefix=prefix&&!prefixUsed;prefixUsed=true;
+      return '<div class="'+textClass+'">'+(usePrefix?'<b class="mr-task-text-prefix">'+esc(prefix)+'</b>':'')+'<div class="mr-task-text-body">'+nl(body)+'</div></div>';
+    }
     if(type==="image"){
       const img=byImage.get(id);if(!img)return '';
       const width=Math.min(100,Math.max(30,Number(img.display_width)||100));
