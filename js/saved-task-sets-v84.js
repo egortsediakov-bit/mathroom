@@ -15,7 +15,11 @@
     generated:!!(item&&item.generated),
     difficulty:["basic","medium","advanced"].includes(item&&item.difficulty)?item.difficulty:"basic",
     category:String(item&&item.category||""),
-    tags:Array.isArray(item&&item.tags)?item.tags:[]
+    tags:Array.isArray(item&&item.tags)?item.tags:[],
+    topic_id:item&&item.topic_id||null,
+    topic_title:String(item&&item.topic_title||""),
+    topic_grade:item&&item.topic_grade||null,
+    topic_section:String(item&&item.topic_section||"")
   });
 
   const toBatch=row=>{
@@ -28,7 +32,11 @@
       generated:!!(item&&item.generated),
       difficulty:["basic","medium","advanced"].includes(item&&item.difficulty)?item.difficulty:"basic",
       category:String(item&&item.category||""),
-      tags:Array.isArray(item&&item.tags)?item.tags:[]
+      tags:Array.isArray(item&&item.tags)?item.tags:[],
+      topic_id:item&&item.topic_id||null,
+      topic_title:String(item&&item.topic_title||""),
+      topic_grade:item&&item.topic_grade||null,
+      topic_section:String(item&&item.topic_section||"")
     }));
     const counts={
       basic:items.filter(x=>x.difficulty==="basic").length,
@@ -40,7 +48,10 @@
       generated:items.filter(x=>x.generated).length,
       uniqueSources:new Set(items.map(x=>String(x.source&&x.source.id||("snapshot:"+x.source.title)))).size,
       savedSetId:row&&row.id||null,
-      topicSnapshot:row&&row.settings&&row.settings.topic_snapshot||null
+      topicSnapshot:row&&row.settings&&row.settings.topic_snapshot||null,
+      topicSnapshots:Array.isArray(row&&row.settings&&row.settings.topic_snapshots)?row.settings.topic_snapshots:[],
+      topicQuotas:Array.isArray(row&&row.settings&&row.settings.topic_quotas)?row.settings.topic_quotas:[],
+      multiTopic:!!(row&&row.settings&&row.settings.multi_topic)
     };
   };
 
@@ -60,8 +71,11 @@
   API.save=(ctx,batch,topicId,opts={})=>{
     if(!ctx.S.savedTaskSetsFeatureAvailable)return ctx.toast("Сохранённые комплекты пока недоступны");
     if(!batch||!batch.items||!batch.items.length)return ctx.toast("Сначала собери комплект");
-    const topic=(ctx.S.topics||[]).find(x=>String(x.id)===String(topicId));
-    const defaultTitle=topic?(topic.grade+" класс · "+topic.title+" · "+batch.items.length+" задач"):("Комплект · "+batch.items.length+" задач");
+    const liveTopic=(ctx.S.topics||[]).find(x=>String(x.id)===String(topicId));
+    const topic=liveTopic||batch&&batch.topicSnapshot||null;
+    const defaultTitle=batch&&batch.multiTopic
+      ?((topic&&topic.grade?topic.grade+" класс · ":"")+"Повторение по "+((batch.topicSnapshots||[]).length)+" темам · "+batch.items.length+" задач")
+      :(topic?(topic.grade+" класс · "+topic.title+" · "+batch.items.length+" задач"):("Комплект · "+batch.items.length+" задач"));
     const root=ctx.modal(
       '<section class="mr-save-set-dialog">'+
         '<span class="pill mr-saved-set-pill">Сохранение</span>'+
@@ -88,14 +102,17 @@
       try{
         const body={
           teacher_id:ctx.S.user.id,
-          topic_id:topic&&topic.id||null,
+          topic_id:batch&&batch.multiTopic?null:(liveTopic&&liveTopic.id||null),
           title,
           difficulty_mode:["balanced","basic","medium","advanced"].includes(opts.difficultyMode)?opts.difficultyMode:"balanced",
           item_count:batch.items.length,
           items:batch.items.map(snapshotItem),
           settings:{
             allow_templates:opts.allowTemplates!==false,
-            topic_snapshot:topic?{id:topic.id,title:topic.title,grade:topic.grade,section:topic.section||""}:null,
+            topic_snapshot:topic?{id:topic.id||null,title:topic.title,grade:topic.grade,section:topic.section||""}:null,
+            topic_snapshots:Array.isArray(batch.topicSnapshots)?batch.topicSnapshots:[],
+            topic_quotas:Array.isArray(batch.topicQuotas)?batch.topicQuotas:[],
+            multi_topic:!!batch.multiTopic,
             counts:batch.counts||{},
             generated_count:Number(batch.generated||0)
           }
@@ -114,7 +131,9 @@
 
   const copyTextFor=(ctx,row,answers)=>{
     const batch=toBatch(row),topic=topicMeta(ctx,row);
-    const head=[topic&&topic.grade?topic.grade+" класс":"",topic&&topic.title||"",row&&row.title||""].filter(Boolean).join(" · ");
+    const head=batch.multiTopic
+      ?[topic&&topic.grade?topic.grade+" класс":"",row&&row.title||"Повторение",batch.topicSnapshots.length+" тем"].filter(Boolean).join(" · ")
+      :[topic&&topic.grade?topic.grade+" класс":"",topic&&topic.title||"",row&&row.title||""].filter(Boolean).join(" · ");
     const out=[head||"Комплект задач",""];
     batch.items.forEach((item,index)=>{
       out.push((index+1)+". "+item.content);
@@ -195,7 +214,9 @@
       '</article>';
     }).join("");
     const studentOptions=students.map(s=>'<option value="'+s.id+'">'+ctx.esc(s.name)+' · '+(s.grade||"?")+' кл.</option>').join("");
-    const meta=topic?(ctx.esc(String(topic.grade||""))+" класс · "+ctx.esc(topic.section||"Математика")+" · "+ctx.esc(topic.title||"Без темы")):"Тема больше недоступна";
+    const meta=batch.multiTopic
+      ?((topic&&topic.grade?ctx.esc(String(topic.grade))+" класс · ":"")+batch.topicSnapshots.length+" тем · "+batch.topicSnapshots.map(x=>ctx.esc(x.title||"")).join(" · "))
+      :(topic?(ctx.esc(String(topic.grade||""))+" класс · "+ctx.esc(topic.section||"Математика")+" · "+ctx.esc(topic.title||"Без темы")):"Тема больше недоступна");
     const root=ctx.modal(
       '<section class="mr-saved-set-open">'+
         '<div class="mr-saved-set-open-head">'+
@@ -204,7 +225,7 @@
         '</div>'+
         '<div class="mr-saved-set-assignment">'+
           '<label><span>Назначить как ДЗ</span><select id="savedSetStudent"><option value="">Выбери ученика</option>'+studentOptions+'</select></label>'+
-          '<button class="btn primary" id="savedSetHomework" '+((topic&&students.length)?"":"disabled")+'>Назначить этот набор</button>'+
+          '<button class="btn primary" id="savedSetHomework" '+(((topic||batch.multiTopic)&&students.length)?"":"disabled")+'>Назначить этот набор</button>'+
         '</div>'+
         '<div class="mr-saved-set-task-list">'+cards+'</div>'+
       '</section>',
@@ -213,13 +234,13 @@
     ctx.hydrateTaskMedia(root);ctx.typesetTaskMath(root);
     root.querySelector("#savedSetCopy").onclick=async()=>{await ctx.copyText(copyTextFor(ctx,row,false));ctx.toast("Листок без ответов скопирован")};
     root.querySelector("#savedSetCopyAnswers").onclick=async()=>{await ctx.copyText(copyTextFor(ctx,row,true));ctx.toast("Комплект с ответами скопирован")};
-    root.querySelector("#savedSetWorksheet").onclick=()=>ctx.openSmartWorksheetBuilder(batch,row.topic_id,{});
+    root.querySelector("#savedSetWorksheet").onclick=()=>ctx.openSmartWorksheetBuilder(batch,batch.multiTopic?null:row.topic_id,{});
     const hw=root.querySelector("#savedSetHomework");
     if(hw)hw.addEventListener("click",async e=>{
       const studentId=root.querySelector("#savedSetStudent").value||"";
       if(!studentId)return ctx.toast("Выбери ученика");
       e.currentTarget.disabled=true;
-      const result=await ctx.assignSmartTaskSetHomework(batch,row.topic_id,studentId);
+      const result=await ctx.assignSmartTaskSetHomework(batch,batch.multiTopic?null:row.topic_id,studentId);
       if(!result)e.currentTarget.disabled=false;
       else e.currentTarget.textContent="✓ Домашняя назначена";
     });
@@ -241,8 +262,8 @@
     const draw=()=>{
       const q=String(search.value||"").trim().toLocaleLowerCase("ru");
       const rows=(ctx.S.savedTaskSets||[]).filter(row=>{
-        const topic=topicMeta(ctx,row);
-        return !q||[row.title,topic&&topic.title,topic&&topic.section,topic&&topic.grade].join(" ").toLocaleLowerCase("ru").includes(q);
+        const topic=topicMeta(ctx,row),many=(row.settings&&row.settings.topic_snapshots)||[];
+        return !q||[row.title,topic&&topic.title,topic&&topic.section,topic&&topic.grade,...many.map(x=>x&&x.title)].join(" ").toLocaleLowerCase("ru").includes(q);
       });
       if(!rows.length){
         host.innerHTML='<div class="empty">'+(q?"По запросу ничего не найдено.":"Сохранённых комплектов пока нет. Собери первый набор и нажми «Сохранить комплект».")+'</div>';
@@ -250,13 +271,15 @@
       }
       host.innerHTML=rows.map(row=>{
         const topic=topicMeta(ctx,row),items=Array.isArray(row.items)?row.items:[],generated=items.filter(x=>x.generated).length;
+        const multi=!!(row.settings&&row.settings.multi_topic),topicSnapshots=(row.settings&&row.settings.topic_snapshots)||[];
         const created=row.updated_at||row.created_at;
         return '<article class="mr-saved-set-card">'+
           '<div class="mr-saved-set-card-top"><span class="mr-saved-set-count">'+items.length+'</span><div>'+
             '<span class="pill">'+(topic&&topic.grade||"?")+' кл.</span>'+
+            (multi?'<span class="pill mr-multi-topic-pill">'+topicSnapshots.length+' темы</span>':'')+
             (generated?'<span class="pill mr-template-pill">'+generated+' ген.</span>':'')+
             '<h3>'+ctx.esc(row.title||"Комплект")+'</h3>'+
-            '<p>'+ctx.esc(topic&&topic.section||"Математика")+' · '+ctx.esc(topic&&topic.title||"Тема недоступна")+'</p>'+
+            '<p>'+(multi?ctx.esc(topicSnapshots.map(x=>x&&x.title).filter(Boolean).join(" · ")):ctx.esc(topic&&topic.section||"Математика")+' · '+ctx.esc(topic&&topic.title||"Тема недоступна"))+'</p>'+
           '</div></div>'+
           '<div class="mr-saved-set-card-foot"><span class="small muted">'+(created?new Date(created).toLocaleDateString("ru-RU"):"")+'</span>'+
             '<div class="actions"><button class="btn sm primary" data-set-open="'+row.id+'">Открыть</button><button class="btn sm" data-set-clone="'+row.id+'">Клонировать</button><button class="btn sm" data-set-rename="'+row.id+'">Название</button><button class="btn sm danger" data-set-delete="'+row.id+'">Удалить</button></div>'+
