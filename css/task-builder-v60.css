@@ -808,3 +808,15 @@ html[data-theme=dark] .mr-tb-template-hint code{background:#171b20;border-color:
   .mr-tb-template-chip{grid-column:1/-1}
   .mr-tb-template-remove{width:100%}
 }
+
+
+/* v68.1 inline math baseline fix */
+.mr-tb-preview-problem .katex:not(.katex-display .katex),
+.mr-task-text-body .katex:not(.katex-display .katex),
+.lesson-task-prompt .katex:not(.katex-display .katex),
+.mr-student-current-prompt .katex:not(.katex-display .katex),
+.mr-assignment-task-text .katex:not(.katex-display .katex){
+  position:relative;
+  top:.12em;
+  vertical-align:baseline;
+}
