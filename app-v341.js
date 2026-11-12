@@ -1598,6 +1598,150 @@ function openExerciseAnswerPreview(exercise){
   typesetTaskMath(m);
 }
 
+function taskVariantFingerprint(view){
+  const norm=v=>String(v??"").replace(/\s+/g," ").trim().toLocaleLowerCase("ru");
+  let renderedMeta="";
+  try{
+    const meta=view?.builder_meta&&typeof view.builder_meta==="object"?view.builder_meta:{};
+    renderedMeta=JSON.stringify({
+      blocks:Array.isArray(meta.blocks)?meta.blocks:[],
+      table:meta.table||null,
+      geometry:meta.geometry||null,
+      media:meta.media||null
+    });
+  }catch{}
+  return norm(view?.content)+"\u241f"+norm(view?.answer)+"\u241f"+renderedMeta;
+}
+
+function taskVariantHasUnresolved(view){
+  let renderedMeta="";
+  try{
+    const meta=view?.builder_meta&&typeof view.builder_meta==="object"?view.builder_meta:{};
+    renderedMeta=JSON.stringify({
+      blocks:Array.isArray(meta.blocks)?meta.blocks:[],
+      table:meta.table||null,
+      geometry:meta.geometry||null,
+      media:meta.media||null,
+      hints:Array.isArray(meta.hints)?meta.hints:[]
+    });
+  }catch{}
+  return [view?.content,view?.answer,renderedMeta].some(v=>String(v??"").includes("{{"));
+}
+
+function generateExerciseVariants(exercise,count=10){
+  const requested=Math.max(1,Math.min(30,Math.round(Number(count)||10)));
+  const variants=[],seen=new Set();
+  let attempts=0,rejected=0,duplicates=0,lastError="",consecutiveErrors=0;
+  const maxAttempts=Math.min(360,Math.max(80,requested*24));
+  while(variants.length<requested&&attempts<maxAttempts){
+    attempts++;
+    let inst;
+    try{
+      inst=instantiateExercise(exercise);
+      consecutiveErrors=0;
+    }catch(error){
+      rejected++;consecutiveErrors++;
+      lastError=String(error?.message||error||"Ошибка генерации");
+      if(consecutiveErrors>=4)break;
+      continue;
+    }
+    const content=String(inst?.content||"").trim();
+    const answer=String(inst?.answer||"").trim();
+    const blocks=Array.isArray(inst?.builder_meta?.blocks)?inst.builder_meta.blocks:[];
+    if((!content&&!blocks.length)||(exercise?.kind==="task"&&!answer)||taskVariantHasUnresolved(inst)){
+      rejected++;
+      continue;
+    }
+    const fingerprint=taskVariantFingerprint(inst);
+    if(seen.has(fingerprint)){
+      duplicates++;
+      continue;
+    }
+    seen.add(fingerprint);
+    variants.push({...inst,index:variants.length+1});
+  }
+  return {
+    requested,variants,attempts,rejected,duplicates,lastError,
+    complete:variants.length===requested
+  };
+}
+
+function templateVariantValues(meta){
+  const values=meta?.template_values&&typeof meta.template_values==="object"?meta.template_values:{};
+  return Object.entries(values).map(([name,value])=>{
+    let out;
+    try{out=taskTemplateFormat(value)}catch{out=String(value)}
+    return `${name} = ${out}`;
+  }).join(" · ");
+}
+
+function openExerciseVariants(exercise){
+  if(!exercise||!isTemplateExercise(exercise))return toast("У этой задачи нет генератора вариантов");
+  const root=modal(`
+    <section class="mr-variant-lab" data-variant-lab>
+      <div class="mr-variant-lab-head">
+        <div>
+          <span class="pill mr-template-pill">↻ генератор</span>
+          <h2>${esc(exercise.title||"Варианты задачи")}</h2>
+          <p class="muted">Проверяем генератор на уникальность и сразу показываем готовые условия с ответами.</p>
+        </div>
+        <div class="mr-variant-lab-actions">
+          <div class="mr-variant-counts" aria-label="Количество вариантов">
+            <button class="btn sm" data-variant-count="5">5</button>
+            <button class="btn sm active" data-variant-count="10">10</button>
+            <button class="btn sm" data-variant-count="20">20</button>
+          </div>
+          <button class="btn sm" data-variant-refresh>↻ Новые</button>
+          <button class="btn sm primary" data-variant-copy>Скопировать комплект</button>
+        </div>
+      </div>
+      <div class="mr-variant-status" data-variant-status></div>
+      <div class="mr-variant-grid" data-variant-list></div>
+    </section>
+  `,"mr-variant-lab-modal");
+  const status=root.querySelector("[data-variant-status]");
+  const list=root.querySelector("[data-variant-list]");
+  const countButtons=[...root.querySelectorAll("[data-variant-count]")];
+  const refresh=root.querySelector("[data-variant-refresh]");
+  const copy=root.querySelector("[data-variant-copy]");
+  let selected=10,lastBatch=null;
+  const render=count=>{
+    selected=Number(count)||10;
+    countButtons.forEach(b=>b.classList.toggle("active",Number(b.dataset.variantCount)===selected));
+    const batch=generateExerciseVariants(exercise,selected);
+    lastBatch=batch;
+    const got=batch.variants.length;
+    status.className="mr-variant-status "+(batch.complete?"good":"warn");
+    status.innerHTML=batch.complete
+      ?`<b>Готово: ${got}/${batch.requested} уникальных.</b> Попыток: ${batch.attempts}${batch.duplicates?` · дублей отброшено: ${batch.duplicates}`:""}${batch.rejected?` · некорректных: ${batch.rejected}`:""}.`
+      :`<b>Удалось собрать ${got}/${batch.requested} уникальных вариантов.</b> Попыток: ${batch.attempts}${batch.duplicates?` · дублей: ${batch.duplicates}`:""}${batch.rejected?` · некорректных: ${batch.rejected}`:""}.${batch.lastError?`<div class="small">Последняя ошибка: ${esc(batch.lastError)}</div>`:""}<div class="small">Скорее всего, ограничения переменных дают слишком мало разных комбинаций или часть комбинаций не проходит условия.</div>`;
+    list.innerHTML=got?batch.variants.map((variant,index)=>{
+      const values=templateVariantValues(variant.builder_meta);
+      return `<article class="mr-variant-card">
+        <div class="mr-variant-card-top"><b>Вариант ${index+1}</b>${values?`<span class="small muted">${esc(values)}</span>`:""}</div>
+        ${taskConditionHtml(variant.content,variant.builder_meta,{textClass:"mr-template-variant-prompt"})}
+        <div class="mr-variant-answer"><span>Ответ</span><b>${nl(variant.answer||"—")}</b></div>
+      </article>`;
+    }).join(""):`<div class="empty">Не удалось получить корректный вариант. Проверь ограничения генератора.</div>`;
+    hydrateTaskMedia(list);
+    typesetTaskMath(list);
+    copy.disabled=!got;
+  };
+  countButtons.forEach(b=>b.onclick=()=>render(Number(b.dataset.variantCount)));
+  refresh.onclick=()=>render(selected);
+  copy.onclick=async()=>{
+    if(!lastBatch?.variants?.length)return;
+    const body=lastBatch.variants.map((variant,index)=>{
+      const values=templateVariantValues(variant.builder_meta);
+      return `Вариант ${index+1}${values?` (${values})`:""}\n${variant.content}\nОтвет: ${variant.answer||"—"}`;
+    }).join("\n\n");
+    await copyText(body);
+    toast("Комплект вариантов скопирован");
+  };
+  render(10);
+}
+
+
 async function createAssignment(kind,studentId,topicId,count){
   const tasks=shuffle(S.exercises.filter(x=>{
     if(x.topic_id!==topicId||x.kind!=='task'||!x.answer.trim())return false;
@@ -2175,10 +2319,11 @@ function renderBank(){
           <div class="prewrap">${nl(view.content)}</div>
           <div class="mr-shared-material-meta"><span>${esc(x.section||'Математика')}</span><b>→</b><span>${esc(x.topic_title||'Без темы')}</span></div>
           ${visibleTags.length?`<div class="mr-library-tags">${visibleTags.slice(0,8).map(z=>`<span>#${esc(z)}</span>`).join('')}</div>`:''}
-          <div class="mr-shared-material-actions"><button class="btn sm" data-shared-answer="${x.id}">Ответ</button><button class="btn sm primary" data-shared-import="${x.id}">${mine?'Добавить ещё одну личную копию':'Добавить себе'}</button></div>
+          <div class="mr-shared-material-actions"><button class="btn sm" data-shared-answer="${x.id}">Ответ</button>${templated?`<button class="btn sm mr-template-variant" data-shared-variants="${x.id}">↻ Варианты</button>`:''}<button class="btn sm primary" data-shared-import="${x.id}">${mine?'Добавить ещё одну личную копию':'Добавить себе'}</button></div>
         </article>`;
       }).join(''):'<div class="empty">По этим фильтрам в общей библиотеке пока ничего нет.</div>'}</div>`;
       host.querySelectorAll('[data-shared-answer]').forEach(b=>b.onclick=()=>{const x=shared.find(v=>String(v.id)===String(b.dataset.sharedAnswer));if(x)openExerciseAnswerPreview(x)});
+      host.querySelectorAll('[data-shared-variants]').forEach(b=>b.onclick=()=>{const x=shared.find(v=>String(v.id)===String(b.dataset.sharedVariants));if(x)openExerciseVariants(x)});
       host.querySelectorAll('[data-shared-import]').forEach(b=>b.onclick=()=>{const x=shared.find(v=>String(v.id)===String(b.dataset.sharedImport));if(x)importSharedMaterial(x,{onDone:renderBank})});
       hydrateTaskMedia(host);
       return;
@@ -2188,9 +2333,10 @@ function renderBank(){
     host.innerHTML=`<div class="mr-bank-results-head"><span>Найдено задач: <b>${arr.length}</b></span></div><div class="list mr-personal-library-list">${arr.length?arr.map(x=>{
       const t=(S.topics||[]).find(z=>String(z.id)===String(x.topic_id));
       const visibleTags=exerciseEditableTags(x.tags),published=sharedMaterialForExercise(x.id),view=previewTemplateExercise(x),templated=isTemplateExercise(x);
-      return `<div class="row mr-library-own-row"><div><div class="actions"><span class="pill">${x.kind==='example'?'Пример':'Задача'}</span><span class="pill">${t?.grade||'?'} кл.</span><span class="pill">${diffLabel(x.difficulty)}</span>${templated?'<span class="pill mr-template-pill">↻ генератор</span>':''}${x.category?`<span class="pill">${esc(x.category)}</span>`:''}${x.is_draft?'<span class="pill warn">черновик</span>':''}${published?'<span class="pill good">в общей библиотеке</span>':''}</div><h3>${esc(x.title||(x.kind==='example'?'Пример':'Задача'))}</h3><div class="prewrap">${nl(view.content)}</div><p>${esc(t?.section||'')} · ${esc(t?.title||'')} ${visibleTags.map(z=>'#'+esc(z)).join(' ')} · использован ${x.use_count||0} раз</p></div><div class="actions mr-library-own-actions"><button class="btn sm" data-answer="${x.id}">Ответ</button>${published?`<button class="btn sm library" data-bank-share="${x.id}">Обновить общую</button><button class="btn sm danger" data-bank-unshare="${x.id}">Убрать из общей</button>`:`<button class="btn sm library" data-bank-share="${x.id}">＋ В общую</button>`}${x.kind==='task'?`<button class="btn sm" data-bank-similar="${x.id}">✦ Похожие</button>`:''}<button class="btn sm" data-bank-edit="${x.id}">Редактировать</button><button class="btn sm danger" data-bank-delete="${x.id}">Удалить</button></div></div>`;
+      return `<div class="row mr-library-own-row"><div><div class="actions"><span class="pill">${x.kind==='example'?'Пример':'Задача'}</span><span class="pill">${t?.grade||'?'} кл.</span><span class="pill">${diffLabel(x.difficulty)}</span>${templated?'<span class="pill mr-template-pill">↻ генератор</span>':''}${x.category?`<span class="pill">${esc(x.category)}</span>`:''}${x.is_draft?'<span class="pill warn">черновик</span>':''}${published?'<span class="pill good">в общей библиотеке</span>':''}</div><h3>${esc(x.title||(x.kind==='example'?'Пример':'Задача'))}</h3><div class="prewrap">${nl(view.content)}</div><p>${esc(t?.section||'')} · ${esc(t?.title||'')} ${visibleTags.map(z=>'#'+esc(z)).join(' ')} · использован ${x.use_count||0} раз</p></div><div class="actions mr-library-own-actions"><button class="btn sm" data-answer="${x.id}">Ответ</button>${templated?`<button class="btn sm mr-template-variant" data-bank-variants="${x.id}">↻ Варианты</button>`:''}${published?`<button class="btn sm library" data-bank-share="${x.id}">Обновить общую</button><button class="btn sm danger" data-bank-unshare="${x.id}">Убрать из общей</button>`:`<button class="btn sm library" data-bank-share="${x.id}">＋ В общую</button>`}${x.kind==='task'?`<button class="btn sm" data-bank-similar="${x.id}">✦ Похожие</button>`:''}<button class="btn sm" data-bank-edit="${x.id}">Редактировать</button><button class="btn sm danger" data-bank-delete="${x.id}">Удалить</button></div></div>`;
     }).join(''):'<div class="empty">Ничего не найдено.</div>'}</div>`;
     host.querySelectorAll('[data-answer]').forEach(b=>b.onclick=()=>{const e=own.find(x=>String(x.id)===String(b.dataset.answer));if(e)openExerciseAnswerPreview(e)});
+    host.querySelectorAll('[data-bank-variants]').forEach(b=>b.onclick=()=>{const e=own.find(x=>String(x.id)===String(b.dataset.bankVariants));if(e)openExerciseVariants(e)});
     host.querySelectorAll('[data-bank-share]').forEach(b=>b.onclick=()=>{const e=own.find(x=>String(x.id)===String(b.dataset.bankShare));if(e)publishExerciseToSharedLibrary(e,{onDone:renderBank})});
     host.querySelectorAll('[data-bank-unshare]').forEach(b=>b.onclick=()=>{const e=own.find(x=>String(x.id)===String(b.dataset.bankUnshare));if(e)unpublishExerciseFromSharedLibrary(e,{onDone:renderBank})});
     host.querySelectorAll('[data-bank-similar]').forEach(b=>b.onclick=()=>{
