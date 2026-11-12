@@ -1479,7 +1479,15 @@ function instantiateExercise(exercise){
 }
 
 async function createAssignment(kind,studentId,topicId,count){
-  const tasks=shuffle(S.exercises.filter(x=>x.topic_id===topicId&&x.kind==='task'&&x.answer.trim())).slice(0,count);if(!tasks.length)return toast('В теме нет задач с заполненными ответами');
+  const tasks=shuffle(S.exercises.filter(x=>{
+    if(x.topic_id!==topicId||x.kind!=='task'||!x.answer.trim())return false;
+    if(kind==='test'){
+      const meta=x.builder_meta&&typeof x.builder_meta==='object'?x.builder_meta:{};
+      if(meta?.settings?.allow_tests===false)return false;
+      if(meta?.task_type==='open')return false;
+    }
+    return true;
+  })).slice(0,count);if(!tasks.length)return toast(kind==='test'?'В теме нет задач, доступных для теста':'В теме нет задач с заполненными ответами');
   const t=S.topics.find(x=>x.id===topicId),base={teacher_id:S.user.id,student_id:studentId,topic_id:topicId,title:`${kind==='homework'?'Домашняя работа':'Мини-тест'} · ${t?.title||''}`};
   const table=kind==='homework'?'homeworks':'tests',itemsTable=kind==='homework'?'homework_items':'test_items';
   const {data:parent,error}=await sb.from(table).insert(base).select().single();if(error)return fail(error);
@@ -3024,11 +3032,59 @@ function subscribeStudentLive(lessonId){
   }).subscribe();
   S.liveCleanup=()=>{clearInterval(timerInt);sb.removeChannel(ch)};
 }
+function assignmentMeta(item){
+  return item?.builder_meta&&typeof item.builder_meta==='object'?item.builder_meta:{};
+}
+function assignmentAnswerControl(item,assigned){
+  const meta=assignmentMeta(item),type=meta.task_type||'standard',disabled=assigned?'':' disabled';
+  const saved=String(item.student_answer||'');
+  if(type==='single'||type==='multiple'){
+    const options=Array.isArray(meta.options)?meta.options:[];
+    const selected=new Set(saved.split(';').map(x=>x.trim()).filter(Boolean));
+    const inputType=type==='single'?'radio':'checkbox';
+    return '<fieldset class="mr-assignment-choice"'+(assigned?'':' disabled')+'><legend>'+(type==='single'?'Выберите один ответ':'Выберите все правильные ответы')+'</legend>'+
+      options.map((o,i)=>'<label><input type="'+inputType+'" name="ans_'+item.id+'" value="'+esc(String(o.id||('o'+i)))+'" '+(selected.has(String(o.text||''))?'checked':'')+disabled+'><span><b>'+String.fromCharCode(65+i)+'.</b> '+esc(String(o.text||'Вариант ответа'))+'</span></label>').join('')+
+    '</fieldset>';
+  }
+  if(type==='open'){
+    return '<div class="field mr-assignment-open"><label>Развёрнутый ответ</label><textarea name="ans_'+item.id+'" rows="5" '+disabled+' placeholder="Введите решение или пояснение…">'+esc(saved)+'</textarea></div>';
+  }
+  const answers=Array.isArray(meta.answers)&&meta.answers.length?meta.answers:[{label:'Ответ'}];
+  const savedParts=answers.length>1?saved.split(';').map(x=>x.trim()):[saved];
+  return '<div class="mr-assignment-answer-fields">'+answers.map((a,i)=>'<div class="field"><label>'+esc(String(a.label||('Ответ '+(i+1))))+'</label><input name="ans_'+item.id+'_'+i+'" '+(type==='numeric'?'inputmode="decimal"':'')+' value="'+esc(savedParts[i]||'')+'" '+disabled+' placeholder="Введите ответ…"></div>').join('')+'</div>';
+}
+function readAssignmentPayload(form,item){
+  const meta=assignmentMeta(item),type=meta.task_type||'standard';
+  if(type==='single'){
+    const el=form.querySelector('[name="ans_'+item.id+'"]:checked');
+    return el?[el.value]:[];
+  }
+  if(type==='multiple')return [...form.querySelectorAll('[name="ans_'+item.id+'"]:checked')].map(x=>x.value);
+  if(type==='open')return form.querySelector('[name="ans_'+item.id+'"]')?.value||'';
+  const answers=Array.isArray(meta.answers)&&meta.answers.length?meta.answers:[{label:'Ответ'}];
+  const values=answers.map((_,i)=>form.querySelector('[name="ans_'+item.id+'_'+i+'"]')?.value||'');
+  return values.length===1?values[0]:values;
+}
+
 async function openStudentAssignment(kind,id){
   const rpc=kind==='homework'?'get_student_homework':'get_student_test',arg=kind==='homework'?{p_homework_id:id}:{p_test_id:id};const {data,error}=await sb.rpc(rpc,arg);if(error)return fail(error);const assigned=data.status==='assigned',revision=kind==='homework'&&assigned&&data.revision_requested_at;
   const revisionNotice=revision?`<div class="notice warn"><b>Работа возвращена на доработку</b><br>${nl(data.revision_message||'Исправь отмеченные задания и отправь работу ещё раз.')}</div>`:'';
   const meta=kind==='homework'?`<div class="actions assignment-student-meta">${data.due_at?`<span class="pill">срок ${new Date(data.due_at).toLocaleDateString('ru-RU',{day:'2-digit',month:'2-digit'})}</span>`:''}${data.attempt_count?`<span class="pill">попытка ${data.attempt_count+(assigned?1:0)}</span>`:''}${data.reviewed_at?'<span class="pill good">проверено преподавателем</span>':''}</div>`:'';
-  const m=modal(`<h2>${esc(data.title)}</h2>${meta}${revisionNotice}${data.score!=null?`<div class="score">${data.score}%</div>`:''}<form id="studentAnswerForm" class="answers">${(data.items||[]).map((x,i)=>`<div class="answer-item ${x.is_correct===true?'correct':x.is_correct===false?'wrong':''}">${taskConditionHtml(x.prompt,x.builder_meta,{textClass:"mr-assignment-task-text",prefix:String(i+1)+"."})}<div class="field"><label>Ответ</label><input name="ans_${x.id}" value="${esc(x.student_answer||'')}" ${assigned?'':'disabled'}></div>${x.is_correct!==null&&x.is_correct!==undefined?`<div class="small">${x.is_correct?'✓ Верно':'✕ Нужно исправить'}</div>`:''}${x.teacher_feedback?`<div class="notice"><b>Комментарий к задаче</b><br>${nl(x.teacher_feedback)}</div>`:''}</div>`).join('')}${assigned?`<button class="btn primary">${revision?'Отправить исправления':'Отправить'}</button>`:''}</form>${data.comment?`<div class="notice"><b>Комментарий преподавателя</b><br>${nl(data.comment)}</div>`:''}`,'wide-modal');hydrateTaskMedia(m);if(assigned)m.querySelector('#studentAnswerForm').onsubmit=async e=>{e.preventDefault();const answers={};for(const x of data.items||[])answers[x.id]=m.querySelector(`[name="ans_${x.id}"]`).value;const submitRpc=kind==='homework'?'submit_homework':'submit_test',args=kind==='homework'?{p_homework_id:id,p_answers:answers}:{p_test_id:id,p_answers:answers};const {data:res,error:er}=await sb.rpc(submitRpc,args);if(er)return fail(er);toast(kind==='homework'?`Работа отправлена · ${res.score}%`:`Результат: ${res.score}%`);m.remove();renderStudent()};
+  const m=modal(`<h2>${esc(data.title)}</h2>${meta}${revisionNotice}${data.score!=null?`<div class="score">${data.score}%</div>`:''}<form id="studentAnswerForm" class="answers">${(data.items||[]).map((x,i)=>`<div class="answer-item ${x.is_correct===true?'correct':x.is_correct===false?'wrong':''}">${taskConditionHtml(x.prompt,x.builder_meta,{textClass:"mr-assignment-task-text",prefix:String(i+1)+"."})}${assignmentAnswerControl(x,assigned)}${x.is_correct!==null&&x.is_correct!==undefined?`<div class="small">${x.is_correct?'✓ Верно':'✕ Нужно исправить'}</div>`:(assigned?'':'<div class="small muted">Ответ проверит преподаватель</div>')}${x.teacher_feedback?`<div class="notice"><b>Комментарий к задаче</b><br>${nl(x.teacher_feedback)}</div>`:''}</div>`).join('')}${assigned?`<button class="btn primary">${revision?'Отправить исправления':'Отправить'}</button>`:''}</form>${data.comment?`<div class="notice"><b>Комментарий преподавателя</b><br>${nl(data.comment)}</div>`:''}`,'wide-modal');
+  hydrateTaskMedia(m);
+  if(assigned)m.querySelector('#studentAnswerForm').onsubmit=async e=>{
+    e.preventDefault();
+    const answers={};
+    for(const x of data.items||[])answers[x.id]=readAssignmentPayload(m.querySelector('#studentAnswerForm'),x);
+    const submitRpc=kind==='homework'?'submit_homework':'submit_test',args=kind==='homework'?{p_homework_id:id,p_answers:answers}:{p_test_id:id,p_answers:answers};
+    const {data:res,error:er}=await sb.rpc(submitRpc,args);if(er)return fail(er);
+    if(res.needs_review){
+      toast(res.score==null?'Работа отправлена на проверку преподавателю':`Автопроверка: ${res.score}% · часть ответов проверит преподаватель`);
+    }else{
+      toast(kind==='homework'?`Работа отправлена · ${res.score}%`:`Результат: ${res.score}%`);
+    }
+    m.remove();renderStudent();
+  };
 }
 
 window.addEventListener('mathroom:lesson-ended',async()=>{
