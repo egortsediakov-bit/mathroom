@@ -9,14 +9,45 @@
     }
     const editing=S.taskBuilderExerciseId?(S.exercises||[]).find(x=>String(x.id)===String(S.taskBuilderExerciseId)):null;
     const autosaveKey="mathroom:task-builder-autosave:"+(S.user?.id||"anonymous")+":"+(editing?.id||"new");
-    let storedAutosave=null;
+    let storedAutosave=null,autosaveStorageName="localStorage";
+    function storageByName(name){try{return name==="sessionStorage"?window.sessionStorage:window.localStorage}catch{return null}}
+    function readAutosaveStorage(key){
+      for(const name of ["localStorage","sessionStorage"]){
+        const store=storageByName(name);if(!store)continue;
+        try{
+          const raw=store.getItem(key);
+          if(raw){autosaveStorageName=name;return {raw,name}}
+        }catch{}
+      }
+      return null;
+    }
+    function removeAutosaveEverywhere(key){
+      for(const name of ["localStorage","sessionStorage"]){
+        const store=storageByName(name);if(!store)continue;
+        try{store.removeItem(key)}catch{}
+      }
+    }
+    function pruneTaskAutosaves(store,keepKey,keep=3){
+      if(!store)return;
+      try{
+        const prefix="mathroom:task-builder-autosave:";
+        const rows=[];
+        for(let i=0;i<store.length;i++){
+          const key=store.key(i);if(!key||!key.startsWith(prefix)||key===keepKey)continue;
+          let savedAt=0;try{savedAt=Number(JSON.parse(store.getItem(key)||"{}").savedAt||0)}catch{}
+          rows.push({key,savedAt});
+        }
+        rows.sort((a,b)=>b.savedAt-a.savedAt);
+        rows.slice(keep).forEach(x=>{try{store.removeItem(x.key)}catch{}});
+      }catch{}
+    }
     try{
-      const raw=localStorage.getItem(autosaveKey);
-      if(raw){
-        const parsed=JSON.parse(raw);
+      const found=readAutosaveStorage(autosaveKey);
+      if(found?.raw){
+        const parsed=JSON.parse(found.raw);
         const savedAt=editing?.updated_at?new Date(editing.updated_at).getTime():0;
         if(parsed?.state&&Number(parsed.savedAt||0)>savedAt)storedAutosave=parsed;
-        else localStorage.removeItem(autosaveKey);
+        else removeAutosaveEverywhere(autosaveKey);
       }
     }catch{}
     const recoveredAutosave=S.taskBuilderRecoveredAutosave?.key===autosaveKey?S.taskBuilderRecoveredAutosave:null;
@@ -1373,24 +1404,43 @@
     }
     function clearAutosave(){
       if(autosaveTimer){clearTimeout(autosaveTimer);autosaveTimer=null}
-      try{localStorage.removeItem(autosaveKey)}catch{}
+      removeAutosaveEverywhere(autosaveKey);
     }
     function writeAutosave(){
       if(autosavePaused)return;
       if(autosaveTimer){clearTimeout(autosaveTimer);autosaveTimer=null}
-      try{
-        const payload={
-          schema:1,
-          savedAt:Date.now(),
-          editingId:editing?.id||null,
-          state:autosaveState(),
-          pendingImagePaths:[...pendingImagePaths]
-        };
-        localStorage.setItem(autosaveKey,JSON.stringify(payload));
-        autosaveStatus("Автосохранено · "+new Date(payload.savedAt).toLocaleTimeString("ru-RU",{hour:"2-digit",minute:"2-digit"}),"saved");
-      }catch(e){
+      const payload={
+        schema:2,
+        savedAt:Date.now(),
+        editingId:editing?.id||null,
+        state:autosaveState(),
+        pendingImagePaths:[...pendingImagePaths]
+      };
+      const raw=JSON.stringify(payload);
+      let saved=false,lastError=null;
+      for(const name of ["localStorage","sessionStorage"]){
+        const store=storageByName(name);if(!store)continue;
+        try{
+          pruneTaskAutosaves(store,autosaveKey,3);
+          store.setItem(autosaveKey,raw);
+          autosaveStorageName=name;saved=true;
+          break;
+        }catch(e){
+          lastError=e;
+          try{
+            pruneTaskAutosaves(store,autosaveKey,0);
+            store.setItem(autosaveKey,raw);
+            autosaveStorageName=name;saved=true;
+            break;
+          }catch(second){lastError=second}
+        }
+      }
+      if(saved){
+        autosaveStatus("Автосохранено · "+new Date(payload.savedAt).toLocaleTimeString("ru-RU",{hour:"2-digit",minute:"2-digit"})+(autosaveStorageName==="sessionStorage"?" · резерв":""),
+          "saved");
+      }else{
         autosaveStatus("Не удалось автосохранить","error");
-        console.warn("[Mathroom task autosave]",e);
+        console.warn("[Mathroom task autosave]",lastError);
       }
     }
     function scheduleAutosave(){
@@ -1416,7 +1466,7 @@
       if(paths.length){
         try{await sb.storage.from(TASK_IMAGE_BUCKET).remove(paths)}catch(e){console.warn("[Mathroom autosave cleanup]",e)}
       }
-      try{localStorage.removeItem(autosaveKey)}catch{}
+      removeAutosaveEverywhere(autosaveKey);
     }
     function showRecoveryDialog(snapshot){
       if(!snapshot||recoveryModal)return;
