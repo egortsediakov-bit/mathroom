@@ -377,7 +377,7 @@
           '</section>'+
         '</div>'+
       '</main><aside class="mr-tb-side">'+
-        '<section class="mr-tb-preview-card"><div class="mr-tb-sidehead"><span>'+icon("preview")+'</span><div><h2>Предпросмотр задачи</h2><p>Так задачу увидит ученик</p></div></div><div class="mr-tb-preview-tabs"><button class="active">Условие</button><button data-info="Решение видно только преподавателю">Решение</button><button data-info="Подсказки открываются ученику по очереди">Подсказки</button></div><div id="tbPreview"></div></section>'+
+        '<section class="mr-tb-preview-card"><div class="mr-tb-sidehead"><span>'+icon("preview")+'</span><div><h2>Предпросмотр задачи</h2><p>Так задачу увидит ученик</p></div></div><div class="mr-tb-preview-tabs"><button class="active">Условие</button><button data-info="'+(state.helpSettings.solutionMode==="after_attempt"?"Решение откроется ученику после первой попытки":"Решение видно только преподавателю")+'">Решение</button><button data-info="Подсказки открываются ученику по одной и запоминаются">Подсказки</button></div><div id="tbPreview"></div></section>'+
         '<section class="mr-tb-settings"><div class="mr-tb-sidehead"><span>'+icon("settings")+'</span><div><h2>Параметры использования</h2><p>Настройки для банка задач</p></div></div>'+
           '<label class="mr-tb-toggle disabled"><div><b>Добавить в мой банк задач</b><small>Сохранённая задача всегда остаётся в вашей библиотеке</small></div><input checked disabled type="checkbox"><i></i></label>'+
           '<label class="mr-tb-toggle"><div><b>Добавить в общий банк</b><small>Задача станет доступна всем преподавателям</small></div><input id="tbShared" '+(state.settings.shared?"checked":"")+' type="checkbox"><i></i></label>'+
