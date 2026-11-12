@@ -1318,7 +1318,17 @@ async function signedTaskImageUrl(path){
   taskImageUrlPending.set(path,promise);
   return promise;
 }
+function typesetTaskMath(root=document){
+  if(!root||typeof window.renderMathInElement!=="function")return;
+  try{
+    window.renderMathInElement(root,{delimiters:[
+      {left:"\\[",right:"\\]",display:true},
+      {left:"\\(",right:"\\)",display:false}
+    ],throwOnError:false,strict:"ignore"});
+  }catch(e){console.warn("[Mathroom formula render]",e)}
+}
 async function hydrateTaskMedia(root=document){
+  typesetTaskMath(root);
   const nodes=[...(root||document).querySelectorAll?.('[data-task-image-path]')||[]];
   await Promise.all(nodes.map(async img=>{
     const path=String(img.dataset.taskImagePath||'');if(!path)return;
