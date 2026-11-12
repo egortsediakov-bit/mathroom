@@ -758,3 +758,53 @@ html[data-theme=dark] .mr-formula-actions .ghost{background:#171b20;border-color
   .mr-formula-dialog{width:100%;max-height:calc(100vh - 24px);padding:14px;border-radius:18px}
   .mr-formula-tools{grid-template-columns:repeat(4,minmax(0,1fr))}
 }
+
+
+/* v68 task templates */
+.mr-tb-template-vars{display:grid;gap:10px;margin-top:14px}
+.mr-tb-template-panel{display:grid;gap:12px;padding:14px;border:1px solid #eadfd7;border-radius:16px;background:linear-gradient(135deg,#fff 0%,#fff 72%,#fff7f2 100%)}
+.mr-tb-template-head{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.mr-tb-template-head>div:first-child b{display:block;color:#252a30;font-size:14px;font-weight:950}
+.mr-tb-template-head>div:first-child small{display:block;margin-top:3px;color:#8c96a0;font-size:11px}
+.mr-tb-template-head>div:last-child{display:flex;gap:7px}
+.mr-tb-template-head button{min-height:38px;padding:0 12px;border:1px solid #e3ddd8;border-radius:10px;background:#fff;color:#5a636c;font-size:11px;font-weight:850;cursor:pointer}
+.mr-tb-template-head button:hover{border-color:#ffab84;background:#fff6f1;color:#ed5715}
+.mr-tb-template-example{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 11px;border:1px solid #eee3dc;border-radius:12px;background:#fffaf7}
+.mr-tb-template-example>span{color:#7c858e;font-size:10px;font-weight:800}
+.mr-tb-template-example>div{display:flex;gap:6px;flex-wrap:wrap}
+.mr-tb-template-example b{padding:5px 8px;border-radius:8px;background:#fff;color:#df500f;font:800 11px/1.2 ui-monospace,SFMono-Regular,Consolas,monospace}
+.mr-tb-template-list{display:grid;gap:8px}
+.mr-tb-template-var{display:grid;grid-template-columns:126px repeat(3,minmax(90px,1fr)) 38px;gap:9px;align-items:end;padding:10px;border:1px solid #e5dfda;border-radius:13px;background:#fff}
+.mr-tb-template-chip{display:grid;place-items:center;gap:2px;min-height:54px;padding:6px 9px;border:1px solid #ffb38f;border-radius:11px;background:#fff2ea;color:#df500f;cursor:pointer}
+.mr-tb-template-chip b{font:850 14px/1.2 ui-monospace,SFMono-Regular,Consolas,monospace}
+.mr-tb-template-chip small{font-size:9px;font-weight:750;opacity:.75}
+.mr-tb-template-chip:hover{background:#ffe7da;border-color:#ff8f5a}
+.mr-tb-template-var label{display:grid;gap:5px}
+.mr-tb-template-var label>span{color:#59636d;font-size:10px;font-weight:800}
+.mr-tb-template-var input{width:100%;min-height:42px;padding:0 10px;border:1px solid #dfe1e3;border-radius:10px;background:#fff;color:#252a30;font-size:13px;outline:none}
+.mr-tb-template-var input:focus{border-color:#ff9564;box-shadow:0 0 0 3px rgba(243,90,22,.08)}
+.mr-tb-template-remove{width:38px;height:42px;border:1px solid #ead9d0;border-radius:10px;background:#fff;color:#90766b;font-size:19px;cursor:pointer}
+.mr-tb-template-remove:hover{border-color:#ffad88;background:#fff4ee;color:#e84d0b}
+.mr-tb-template-hint{display:flex;align-items:center;gap:7px;flex-wrap:wrap;padding:10px 11px;border-radius:11px;background:#f7f7f6;color:#78818a;font-size:10px}
+.mr-tb-template-hint>b{color:#4d565f;font-size:10px}
+.mr-tb-template-hint code{padding:4px 7px;border:1px solid #e4dfdb;border-radius:7px;background:#fff;color:#d95012;font:750 10px/1.2 ui-monospace,SFMono-Regular,Consolas,monospace}
+
+html[data-theme=dark] .mr-tb-template-panel{background:linear-gradient(135deg,#171b20,#171b20 72%,#211813);border-color:#343a42}
+html[data-theme=dark] .mr-tb-template-head>div:first-child b{color:#f3f5f7}
+html[data-theme=dark] .mr-tb-template-head button,
+html[data-theme=dark] .mr-tb-template-var,
+html[data-theme=dark] .mr-tb-template-var input,
+html[data-theme=dark] .mr-tb-template-remove{background:#101317;border-color:#343a42;color:#eef1f4}
+html[data-theme=dark] .mr-tb-template-example{background:#201812;border-color:#3d3028}
+html[data-theme=dark] .mr-tb-template-example b{background:#2a1b13;color:#ff9a6c}
+html[data-theme=dark] .mr-tb-template-chip{background:#2a1b13;border-color:#75442f;color:#ff9a6c}
+html[data-theme=dark] .mr-tb-template-hint{background:#11151a;color:#aeb6be}
+html[data-theme=dark] .mr-tb-template-hint>b{color:#d4dae0}
+html[data-theme=dark] .mr-tb-template-hint code{background:#171b20;border-color:#343a42;color:#ff9868}
+
+@media(max-width:760px){
+  .mr-tb-template-head{align-items:flex-start;flex-direction:column}
+  .mr-tb-template-var{grid-template-columns:1fr 1fr}
+  .mr-tb-template-chip{grid-column:1/-1}
+  .mr-tb-template-remove{width:100%}
+}
