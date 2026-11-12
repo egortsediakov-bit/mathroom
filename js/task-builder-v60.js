@@ -1372,10 +1372,11 @@
       }
     }
     function insertInto(el,text){if(!el)return;const a=el.selectionStart??el.value.length,b=el.selectionEnd??a;el.setRangeText(text,a,b,"end");el.dispatchEvent(new Event("input",{bubbles:true}));el.focus()}
-    let formulaModal=null;
+    let formulaModal=null,formulaEscHandler=null,formulaBodyOverflow="";
     function closeFormulaEditor(){
-      formulaModal?.remove();
-      formulaModal=null;
+      if(formulaEscHandler){document.removeEventListener("keydown",formulaEscHandler);formulaEscHandler=null}
+      if(formulaModal){formulaModal.remove();formulaModal=null}
+      if(formulaBodyOverflow!==null){document.body.style.overflow=formulaBodyOverflow||"";formulaBodyOverflow=""}
     }
     function openFormulaEditor(target){
       if(!target)return;
@@ -1431,6 +1432,8 @@
       '</div>';
       document.body.appendChild(modal);
       formulaModal=modal;
+      formulaBodyOverflow=document.body.style.overflow;
+      document.body.style.overflow="hidden";
 
       const input=modal.querySelector("#tbFormulaInput"),previewEl=modal.querySelector("#tbFormulaPreview");
       let mode=displayMatch?"display":"inline";
@@ -1474,8 +1477,8 @@
       modal.querySelector("[data-formula-close]").onclick=closeFormulaEditor;
       modal.querySelector("[data-formula-cancel]").onclick=closeFormulaEditor;
       modal.onmousedown=e=>{if(e.target===modal)closeFormulaEditor()};
-      const escHandler=e=>{if(e.key==="Escape"){e.preventDefault();document.removeEventListener("keydown",escHandler);closeFormulaEditor()}};
-      document.addEventListener("keydown",escHandler);
+      formulaEscHandler=e=>{if(e.key==="Escape"){e.preventDefault();closeFormulaEditor()}};
+      document.addEventListener("keydown",formulaEscHandler);
       input.oninput=draw;
       input.onkeydown=e=>{if((e.ctrlKey||e.metaKey)&&e.key==="Enter"){e.preventDefault();modal.querySelector("[data-formula-insert]").click()}};
       draw();setTimeout(()=>{input.focus();input.setSelectionRange(input.value.length,input.value.length)},0);
