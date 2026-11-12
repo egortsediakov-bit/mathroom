@@ -711,3 +711,50 @@ html[data-theme=dark] .mr-tb-order-actions button{background:#171b20;border-colo
   .mr-tb-order-icon{width:34px;height:34px}
   .mr-tb-order-actions button{width:32px;height:32px}
 }
+
+
+/* v67 formula editor */
+.mr-formula-modal{position:fixed;inset:0;z-index:120000;display:grid;place-items:center;padding:24px;background:rgba(25,29,33,.48);backdrop-filter:blur(7px)}
+.mr-formula-dialog{width:min(760px,calc(100vw - 32px));max-height:calc(100vh - 40px);overflow:auto;padding:18px;border:1px solid #eadfd7;border-radius:22px;background:#fff;box-shadow:0 26px 80px rgba(24,27,30,.24)}
+.mr-formula-head{display:flex;align-items:center;justify-content:space-between;gap:16px}
+.mr-formula-head>div{display:flex;align-items:center;gap:11px}
+.mr-formula-head>div>span{display:grid;place-items:center;width:44px;height:44px;border-radius:13px;background:#fff0e7;color:#ed5715;font-size:23px;font-weight:900}
+.mr-formula-head b{display:block;color:#252a30;font-size:18px;font-weight:950}
+.mr-formula-head small{display:block;margin-top:3px;color:#8d969f;font-size:12px}
+.mr-formula-head>button{width:40px;height:40px;border:1px solid #eadfd7;border-radius:11px;background:#fff;color:#856f64;font-size:22px;cursor:pointer}
+.mr-formula-mode{display:flex;gap:7px;margin-top:16px}
+.mr-formula-mode button{min-height:38px;padding:0 14px;border:1px solid #e5dfda;border-radius:10px;background:#fff;color:#59626b;font-size:12px;font-weight:850;cursor:pointer}
+.mr-formula-mode button.active{border-color:#ff9768;background:#fff1e8;color:#df500f}
+.mr-formula-tools{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:7px;margin-top:12px}
+.mr-formula-tools button{display:grid;place-items:center;gap:2px;min-height:58px;padding:6px;border:1px solid #e6e1dd;border-radius:11px;background:#fff;color:#2c3238;cursor:pointer}
+.mr-formula-tools button:hover{border-color:#ffac85;background:#fff8f4}
+.mr-formula-tools button>span{font-family:Georgia,"Times New Roman",serif;font-size:18px;font-weight:700}
+.mr-formula-tools button>small{color:#8b949d;font-size:9px;font-weight:700}
+.mr-formula-input-wrap,.mr-formula-preview-wrap{display:grid;gap:6px;margin-top:14px}
+.mr-formula-input-wrap>span,.mr-formula-preview-wrap>span{color:#4b555f;font-size:12px;font-weight:850}
+.mr-formula-input-wrap textarea{width:100%;min-height:94px;resize:vertical;padding:12px 14px;border:1px solid #dcdfe2;border-radius:12px;background:#fff;color:#20252a;font:500 15px/1.5 ui-monospace,SFMono-Regular,Consolas,monospace;outline:none}
+.mr-formula-input-wrap textarea:focus{border-color:#ff9564;box-shadow:0 0 0 3px rgba(243,90,22,.09)}
+.mr-formula-preview{display:grid;place-items:center;min-height:105px;padding:16px;overflow:auto;border:1px solid #e4dfdb;border-radius:14px;background:#faf9f8;color:#20252a;font-size:18px}
+.mr-formula-empty{color:#a0a7ae;font:600 12px/1.4 Inter,system-ui,sans-serif}
+.mr-formula-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:16px}
+.mr-formula-actions button{min-height:42px;padding:0 16px;border-radius:11px;font-size:12px;font-weight:900;cursor:pointer}
+.mr-formula-actions .ghost{border:1px solid #e3ded9;background:#fff;color:#5f6871}
+.mr-formula-actions .primary{border:1px solid #ef5916;background:#f35a16;color:#fff}
+.mr-tb-preview-sheet .katex-display,.mr-task-condition .katex-display{margin:12px 0;overflow-x:auto;overflow-y:hidden;padding:3px 0}
+.mr-tb-preview-sheet .katex,.mr-task-condition .katex{font-size:1.08em}
+
+html[data-theme=dark] .mr-formula-dialog{background:#171b20;border-color:#343a42;box-shadow:0 26px 80px rgba(0,0,0,.5)}
+html[data-theme=dark] .mr-formula-head b{color:#f2f4f6}
+html[data-theme=dark] .mr-formula-head>button,
+html[data-theme=dark] .mr-formula-mode button,
+html[data-theme=dark] .mr-formula-tools button,
+html[data-theme=dark] .mr-formula-input-wrap textarea{background:#101317;border-color:#343a42;color:#eef1f4}
+html[data-theme=dark] .mr-formula-mode button.active{background:#291b13;border-color:#ff7e43;color:#ff9a6c}
+html[data-theme=dark] .mr-formula-preview{background:#101317;border-color:#343a42;color:#eef1f4}
+html[data-theme=dark] .mr-formula-actions .ghost{background:#171b20;border-color:#3a4149;color:#d2d7dc}
+
+@media(max-width:720px){
+  .mr-formula-modal{padding:12px}
+  .mr-formula-dialog{width:100%;max-height:calc(100vh - 24px);padding:14px;border-radius:18px}
+  .mr-formula-tools{grid-template-columns:repeat(4,minmax(0,1fr))}
+}
