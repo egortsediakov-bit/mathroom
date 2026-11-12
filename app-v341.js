@@ -1591,6 +1591,12 @@ function previewTemplateExercise(exercise){
     builder_meta:materialized
   };
 }
+function openExerciseAnswerPreview(exercise){
+  if(!exercise)return;
+  const view=previewTemplateExercise(exercise);
+  const m=modal(`<h2>${esc(exercise.title||'Ответ')}</h2><div class="notice mono mr-template-answer-preview">${nl(view.answer||'Ответ не заполнен')}</div>`);
+  typesetTaskMath(m);
+}
 
 async function createAssignment(kind,studentId,topicId,count){
   const tasks=shuffle(S.exercises.filter(x=>{
@@ -2172,7 +2178,7 @@ function renderBank(){
           <div class="mr-shared-material-actions"><button class="btn sm" data-shared-answer="${x.id}">Ответ</button><button class="btn sm primary" data-shared-import="${x.id}">${mine?'Добавить ещё одну личную копию':'Добавить себе'}</button></div>
         </article>`;
       }).join(''):'<div class="empty">По этим фильтрам в общей библиотеке пока ничего нет.</div>'}</div>`;
-      host.querySelectorAll('[data-shared-answer]').forEach(b=>b.onclick=()=>{const x=shared.find(v=>String(v.id)===String(b.dataset.sharedAnswer));if(x){const view=previewTemplateExercise(x);modal(`<h2>${esc(x.title||'Ответ')}</h2><div class="notice mono">${esc(view.answer||'Ответ не заполнен')}</div>`)}});
+      host.querySelectorAll('[data-shared-answer]').forEach(b=>b.onclick=()=>{const x=shared.find(v=>String(v.id)===String(b.dataset.sharedAnswer));if(x)openExerciseAnswerPreview(x)});
       host.querySelectorAll('[data-shared-import]').forEach(b=>b.onclick=()=>{const x=shared.find(v=>String(v.id)===String(b.dataset.sharedImport));if(x)importSharedMaterial(x,{onDone:renderBank})});
       hydrateTaskMedia(host);
       return;
@@ -2184,7 +2190,7 @@ function renderBank(){
       const visibleTags=exerciseEditableTags(x.tags),published=sharedMaterialForExercise(x.id),view=previewTemplateExercise(x),templated=isTemplateExercise(x);
       return `<div class="row mr-library-own-row"><div><div class="actions"><span class="pill">${x.kind==='example'?'Пример':'Задача'}</span><span class="pill">${t?.grade||'?'} кл.</span><span class="pill">${diffLabel(x.difficulty)}</span>${templated?'<span class="pill mr-template-pill">↻ генератор</span>':''}${x.category?`<span class="pill">${esc(x.category)}</span>`:''}${x.is_draft?'<span class="pill warn">черновик</span>':''}${published?'<span class="pill good">в общей библиотеке</span>':''}</div><h3>${esc(x.title||(x.kind==='example'?'Пример':'Задача'))}</h3><div class="prewrap">${nl(view.content)}</div><p>${esc(t?.section||'')} · ${esc(t?.title||'')} ${visibleTags.map(z=>'#'+esc(z)).join(' ')} · использован ${x.use_count||0} раз</p></div><div class="actions mr-library-own-actions"><button class="btn sm" data-answer="${x.id}">Ответ</button>${published?`<button class="btn sm library" data-bank-share="${x.id}">Обновить общую</button><button class="btn sm danger" data-bank-unshare="${x.id}">Убрать из общей</button>`:`<button class="btn sm library" data-bank-share="${x.id}">＋ В общую</button>`}${x.kind==='task'?`<button class="btn sm" data-bank-similar="${x.id}">✦ Похожие</button>`:''}<button class="btn sm" data-bank-edit="${x.id}">Редактировать</button><button class="btn sm danger" data-bank-delete="${x.id}">Удалить</button></div></div>`;
     }).join(''):'<div class="empty">Ничего не найдено.</div>'}</div>`;
-    host.querySelectorAll('[data-answer]').forEach(b=>b.onclick=()=>{const e=own.find(x=>String(x.id)===String(b.dataset.answer));if(e){const view=previewTemplateExercise(e);modal(`<h2>${esc(e.title||'Ответ')}</h2><div class="notice mono">${esc(view.answer||'Ответ не заполнен')}</div>`)}});
+    host.querySelectorAll('[data-answer]').forEach(b=>b.onclick=()=>{const e=own.find(x=>String(x.id)===String(b.dataset.answer));if(e)openExerciseAnswerPreview(e)});
     host.querySelectorAll('[data-bank-share]').forEach(b=>b.onclick=()=>{const e=own.find(x=>String(x.id)===String(b.dataset.bankShare));if(e)publishExerciseToSharedLibrary(e,{onDone:renderBank})});
     host.querySelectorAll('[data-bank-unshare]').forEach(b=>b.onclick=()=>{const e=own.find(x=>String(x.id)===String(b.dataset.bankUnshare));if(e)unpublishExerciseFromSharedLibrary(e,{onDone:renderBank})});
     host.querySelectorAll('[data-bank-similar]').forEach(b=>b.onclick=()=>{
