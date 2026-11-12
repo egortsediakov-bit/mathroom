@@ -114,7 +114,7 @@
       contentOrder:Array.isArray(meta.content_order)?meta.content_order.map(String):[],
       geometries:Array.isArray(meta.geometries)?meta.geometries.map((g,i)=>({
         id:String(g?.id||("geo"+i)),
-        type:["triangle","rectangle","circle","coordinate"].includes(g?.type)?g.type:"triangle",
+        type:["triangle","rectangle","circle","coordinate","segment","line","ray","angle","parallelogram","rhombus","trapezoid","function"].includes(g?.type)?g.type:"triangle",
         caption:String(g?.caption||""),
         displayWidth:Math.min(100,Math.max(45,Number(g?.display_width)||80)),
         triangle:{
@@ -134,6 +134,28 @@
           xMax:Math.min(20,Math.max(1,Number(g?.coordinate?.x_max)||5)),
           yMin:Math.max(-20,Math.min(-1,Number(g?.coordinate?.y_min)||-5)),
           yMax:Math.min(20,Math.max(1,Number(g?.coordinate?.y_max)||5))
+        },
+        linear:{
+          aLabel:String(g?.linear?.a_label||"A"),
+          bLabel:String(g?.linear?.b_label||"B"),
+          valueLabel:String(g?.linear?.value_label||"")
+        },
+        angle:{
+          leftLabel:String(g?.angle?.left_label||"A"),
+          vertexLabel:String(g?.angle?.vertex_label||"O"),
+          rightLabel:String(g?.angle?.right_label||"B"),
+          valueLabel:String(g?.angle?.value_label||"")
+        },
+        quad:{
+          vertices:Array.isArray(g?.quad?.vertices)?[0,1,2,3].map(n=>String(g.quad.vertices[n]||["A","B","C","D"][n])):["A","B","C","D"],
+          sides:Array.isArray(g?.quad?.sides)?[0,1,2,3].map(n=>String(g.quad.sides[n]||"")):["","","",""]
+        },
+        functionGraph:{
+          expression:String(g?.function_graph?.expression||"x^2"),
+          xMin:Math.max(-20,Math.min(-1,Number(g?.function_graph?.x_min)||-5)),
+          xMax:Math.min(20,Math.max(1,Number(g?.function_graph?.x_max)||5)),
+          yMin:Math.max(-20,Math.min(-1,Number(g?.function_graph?.y_min)||-5)),
+          yMax:Math.min(20,Math.max(1,Number(g?.function_graph?.y_max)||5))
         }
       })):[],
       answers:Array.isArray(meta.answers)&&meta.answers.length?meta.answers.map((a,i)=>({label:String(a?.label||("Ответ "+(i+1))),value:String(a?.value||""),accepted:Array.isArray(a?.accepted)?a.accepted.map(String):[]})):[{label:"Ответ",value:String(editing?.answer||""),accepted:[]}],
@@ -1465,7 +1487,7 @@
 
     function legacyAnswer(){if(["standard","numeric"].includes(state.taskType))return state.answers.map(a=>a.value.trim()).filter(Boolean).join("; ");if(["single","multiple"].includes(state.taskType))return state.options.filter(o=>o.correct&&o.text.trim()).map(o=>o.text.trim()).join(" | ");return state.openAnswer.trim()}
     function collect(){state.grade=Number(q("tbGrade").value)||state.grade;state.topicId=q("tbTopic").value;state.subtopic=q("tbSubtopic").value;syncLegacyContent();state.settings.shared=!!q("tbShared").checked;state.settings.allowTests=!!q("tbAllowTests").checked;state.settings.allowAi=!!q("tbAllowAi").checked;state.helpSettings.homeworkHints=!!q("tbHomeworkHints")?.checked;state.helpSettings.testHints=!!q("tbTestHints")?.checked;state.helpSettings.solutionMode=q("tbSolutionMode")?.value==="teacher_only"?"teacher_only":"after_attempt";setHelp(q("tbHelp").value);syncAnswer()}
-    function builderMeta(){const t=topic();syncLegacyContent();syncContentOrder();normalizeTemplateVars();return {version:10,grade:Number(t?.grade||state.grade)||null,subtopic:state.subtopic.trim(),task_type:state.taskType,answer_check:{numeric_equivalence:!!state.answerCheck.numericEquivalent,tolerance:state.answerCheck.tolerance,ignore_case:!!state.answerCheck.ignoreCase,ignore_spaces:!!state.answerCheck.ignoreSpaces},template_vars:state.templateVars.map(v=>({id:v.id,name:v.name,min:v.min,max:v.max,step:v.step,multiple_of:v.multipleOf||0,parity:v.parity,non_zero:!!v.nonZero})),template_settings:{condition:state.templateCondition.trim(),integer_answers:!!state.templateIntegerAnswers},text_blocks:state.textBlocks.map(b=>({id:b.id,text:String(b.text||"")})),content_order:state.contentOrder,images:state.images.map(img=>({id:img.id,path:img.path,name:img.name,mime:img.mime,width:img.width,height:img.height,display_width:img.displayWidth,alt:img.alt.trim()})),tables:state.tables.map(table=>({id:table.id,caption:table.caption.trim(),rows:table.rows,cols:table.cols,header_row:!!table.headerRow,header_col:!!table.headerCol,cells:table.cells.map(row=>row.map(cell=>String(cell)))})),geometries:state.geometries.map(g=>({id:g.id,type:g.type,caption:g.caption.trim(),display_width:g.displayWidth,triangle:{vertices:g.triangle.vertices,sides:g.triangle.sides,right_angle:g.triangle.rightAngle},rectangle:{vertices:g.rectangle.vertices,width_label:g.rectangle.widthLabel,height_label:g.rectangle.heightLabel},circle:{center_label:g.circle.centerLabel,radius_label:g.circle.radiusLabel},coordinate:{points:g.coordinate.points,x_min:g.coordinate.xMin,x_max:g.coordinate.xMax,y_min:g.coordinate.yMin,y_max:g.coordinate.yMax}})),answers:state.answers,options:state.options,open_answer:state.openAnswer,solution:state.solution,hints:state.hints,help_settings:{homework_hints:!!state.helpSettings.homeworkHints,test_hints:!!state.helpSettings.testHints,solution_mode:state.helpSettings.solutionMode},source:{kind:state.source.kind,textbook_id:state.source.kind==="textbook"?(state.source.textbookId||null):null,page:state.source.kind==="textbook"?(state.source.page||null):null,exercise_no:state.source.kind==="textbook"?(state.source.exerciseNo||null):null,note:state.source.kind==="textbook"?"":state.source.note.trim()},settings:{shared:!!state.settings.shared,allow_tests:!!state.settings.allowTests,allow_ai_example:!!state.settings.allowAi}}}
+    function builderMeta(){const t=topic();syncLegacyContent();syncContentOrder();normalizeTemplateVars();return {version:10,grade:Number(t?.grade||state.grade)||null,subtopic:state.subtopic.trim(),task_type:state.taskType,answer_check:{numeric_equivalence:!!state.answerCheck.numericEquivalent,tolerance:state.answerCheck.tolerance,ignore_case:!!state.answerCheck.ignoreCase,ignore_spaces:!!state.answerCheck.ignoreSpaces},template_vars:state.templateVars.map(v=>({id:v.id,name:v.name,min:v.min,max:v.max,step:v.step,multiple_of:v.multipleOf||0,parity:v.parity,non_zero:!!v.nonZero})),template_settings:{condition:state.templateCondition.trim(),integer_answers:!!state.templateIntegerAnswers},text_blocks:state.textBlocks.map(b=>({id:b.id,text:String(b.text||"")})),content_order:state.contentOrder,images:state.images.map(img=>({id:img.id,path:img.path,name:img.name,mime:img.mime,width:img.width,height:img.height,display_width:img.displayWidth,alt:img.alt.trim()})),tables:state.tables.map(table=>({id:table.id,caption:table.caption.trim(),rows:table.rows,cols:table.cols,header_row:!!table.headerRow,header_col:!!table.headerCol,cells:table.cells.map(row=>row.map(cell=>String(cell)))})),geometries:state.geometries.map(g=>({id:g.id,type:g.type,caption:g.caption.trim(),display_width:g.displayWidth,triangle:{vertices:g.triangle.vertices,sides:g.triangle.sides,right_angle:g.triangle.rightAngle},rectangle:{vertices:g.rectangle.vertices,width_label:g.rectangle.widthLabel,height_label:g.rectangle.heightLabel},circle:{center_label:g.circle.centerLabel,radius_label:g.circle.radiusLabel},coordinate:{points:g.coordinate.points,x_min:g.coordinate.xMin,x_max:g.coordinate.xMax,y_min:g.coordinate.yMin,y_max:g.coordinate.yMax},linear:{a_label:g.linear.aLabel,b_label:g.linear.bLabel,value_label:g.linear.valueLabel},angle:{left_label:g.angle.leftLabel,vertex_label:g.angle.vertexLabel,right_label:g.angle.rightLabel,value_label:g.angle.valueLabel},quad:{vertices:g.quad.vertices,sides:g.quad.sides},function_graph:{expression:g.functionGraph.expression,x_min:g.functionGraph.xMin,x_max:g.functionGraph.xMax,y_min:g.functionGraph.yMin,y_max:g.functionGraph.yMax}})),answers:state.answers,options:state.options,open_answer:state.openAnswer,solution:state.solution,hints:state.hints,help_settings:{homework_hints:!!state.helpSettings.homeworkHints,test_hints:!!state.helpSettings.testHints,solution_mode:state.helpSettings.solutionMode},source:{kind:state.source.kind,textbook_id:state.source.kind==="textbook"?(state.source.textbookId||null):null,page:state.source.kind==="textbook"?(state.source.page||null):null,exercise_no:state.source.kind==="textbook"?(state.source.exerciseNo||null):null,note:state.source.kind==="textbook"?"":state.source.note.trim()},settings:{shared:!!state.settings.shared,allow_tests:!!state.settings.allowTests,allow_ai_example:!!state.settings.allowAi}}}
 
     let builderReady=false,dirty=!!recoveredAutosave,autosaveTimer=null,autosavePaused=!!storedAutosave&&!recoveredAutosave,leaveModal=null,recoveryModal=null;
     function autosaveStatus(text,kind=""){
