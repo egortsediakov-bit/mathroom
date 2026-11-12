@@ -1566,6 +1566,32 @@ function instantiateExercise(exercise){
   };
 }
 
+function isTemplateExercise(exercise){
+  const meta=exercise?.builder_meta&&typeof exercise.builder_meta==="object"?exercise.builder_meta:{};
+  return taskTemplateVars(meta).length>0;
+}
+function previewTemplateExercise(exercise){
+  if(!isTemplateExercise(exercise))return {
+    content:String(exercise?.content||""),
+    answer:String(exercise?.answer||""),
+    builder_meta:exercise?.builder_meta&&typeof exercise.builder_meta==="object"?exercise.builder_meta:{}
+  };
+  S.templatePreviewScopes=S.templatePreviewScopes&&typeof S.templatePreviewScopes==="object"?S.templatePreviewScopes:{};
+  const key=String(exercise?.id||exercise?.source_exercise_id||exercise?.title||"template");
+  let scope=S.templatePreviewScopes[key];
+  const meta=exercise?.builder_meta&&typeof exercise.builder_meta==="object"?exercise.builder_meta:{};
+  if(!scope){
+    try{scope=taskTemplateScope(meta,exercise?.answer||"");S.templatePreviewScopes[key]=scope}
+    catch{return {content:String(exercise?.content||""),answer:String(exercise?.answer||""),builder_meta:meta}}
+  }
+  const materialized=taskTemplateDeep(meta,scope);materialized.template_values=scope;
+  return {
+    content:taskTemplateRender(exercise?.content||"",scope),
+    answer:taskTemplateRender(exercise?.answer||"",scope),
+    builder_meta:materialized
+  };
+}
+
 async function createAssignment(kind,studentId,topicId,count){
   const tasks=shuffle(S.exercises.filter(x=>{
     if(x.topic_id!==topicId||x.kind!=='task'||!x.answer.trim())return false;
