@@ -1830,35 +1830,29 @@ function buildSmartTaskSet({topicId,count=10,difficulty="balanced",allowTemplate
   };
 }
 
-async function assignSmartTaskSetHomework(batch,topicId,studentId){
+async function assignSmartTaskSetHomework(batch,topicId,studentId,{title=""}={}){
   if(!batch?.items?.length)return toast("Сначала собери комплект");
   if(!studentId)return toast("Выбери ученика");
   const topic=(S.topics||[]).find(x=>String(x.id)===String(topicId));
   const student=(S.students||[]).find(x=>String(x.id)===String(studentId));
-  if(!topic||!student)return toast("Не найдена тема или ученик");
+  if(!student)return toast("Не найден ученик");
+  if(!batch?.multiTopic&&!topic)return toast("Не найдена тема");
+  const topicSnapshots=Array.isArray(batch?.topicSnapshots)?batch.topicSnapshots:[];
+  const homeworkTitle=String(title||(batch?.multiTopic?`Домашняя работа · Повторение ${topicSnapshots.length||"нескольких"} тем`:`Домашняя работа · ${topic?.title||"Математика"}`)).trim();
   const {data:parent,error}=await sb.from("homeworks").insert({
-    teacher_id:S.user.id,
-    student_id:student.id,
-    topic_id:topic.id,
-    title:`Домашняя работа · ${topic.title||""}`
+    teacher_id:S.user.id,student_id:student.id,topic_id:batch?.multiTopic?null:(topic?.id||null),title:homeworkTitle,source:"smart_set",
+    smart_meta:{multi_topic:!!batch?.multiTopic,topic_snapshots:topicSnapshots,topic_quotas:batch?.topicQuotas||[],saved_set_id:batch?.savedSetId||null}
   }).select().single();
   if(error)return fail(error);
   const rows=batch.items.map((item,index)=>({
-    homework_id:parent.id,
-    prompt:item.content,
-    correct_answer:item.answer,
-    position:index,
+    homework_id:parent.id,prompt:item.content,correct_answer:item.answer,position:index,
     source_exercise_id:(S.exercises||[]).some(x=>String(x.id)===String(item.source?.id))?item.source.id:null,
-    difficulty:item.difficulty,
-    category:item.category||"",
-    tags:item.tags||[],
-    builder_meta:item.builder_meta||{}
+    difficulty:item.difficulty,category:item.category||"",tags:item.tags||[],
+    builder_meta:{...(item.builder_meta||{}),smart_topic:item.topic_id?{id:item.topic_id,title:item.topic_title||"",grade:item.topic_grade||null,section:item.topic_section||""}:undefined}
   }));
   const {error:itemError}=await sb.from("homework_items").insert(rows);
   if(itemError)return fail(itemError);
-  await loadTeacher();
-  toast(`Домашняя назначена: ${student.name} · ${rows.length} задач`);
-  return parent;
+  await loadTeacher();toast(`Домашняя назначена: ${student.name} · ${rows.length} задач`);return parent;
 }
 
 function openSmartTaskSetBuilder(prefill={}){
@@ -2709,10 +2703,17 @@ function renderBank(){
     S.view='task-pipeline';
     renderTaskPipeline();
   };
-  document.getElementById('openSmartSet').onclick=()=>openSmartTaskSetBuilder({
-    grade:document.getElementById('bankGrade')?.value||'',
-    difficulty:document.getElementById('bankDiff')?.value||'balanced'
-  });
+  document.getElementById('openSmartSet').onclick=()=>{
+    const prefill={
+      grade:document.getElementById('bankGrade')?.value||'',
+      difficulty:document.getElementById('bankDiff')?.value||'balanced'
+    };
+    if(window.MathroomMultiTopicSetsV85)return window.MathroomMultiTopicSetsV85.openBuilder({
+      S,sb,esc,nl,modal,toast,fail,copyText,diffLabel,taskConditionHtml,hydrateTaskMedia,typesetTaskMath,
+      buildSmartTaskSet,taskVariantFingerprint,templateVariantValues,openSmartWorksheetBuilder,assignSmartTaskSetHomework
+    },prefill);
+    return openSmartTaskSetBuilder(prefill);
+  };
   document.getElementById('openSavedSets').onclick=()=>window.MathroomSavedSetsV84?.openLibrary?.({S,sb,esc,nl,modal,toast,fail,copyText,diffLabel,taskConditionHtml,hydrateTaskMedia,typesetTaskMath,openSmartWorksheetBuilder,assignSmartTaskSetHomework});
   document.getElementById('createBankTask').onclick=()=>{
     S.taskBuilderExerciseId=null;
