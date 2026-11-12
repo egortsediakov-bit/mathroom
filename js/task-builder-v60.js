@@ -19,7 +19,7 @@
         name:String(v?.name||String.fromCharCode(97+i)).replace(/[^A-Za-z0-9_]/g,"").slice(0,16)||("v"+(i+1)),
         min:Number.isFinite(Number(v?.min))?Number(v.min):1,
         max:Number.isFinite(Number(v?.max))?Number(v.max):10,
-        step:Math.max(1,Math.abs(Number(v?.step)||1)),
+        step:Math.max(1e-9,Math.abs(Number(v?.step)||1)),
         multipleOf:Math.max(0,Math.abs(Number(v?.multiple_of)||0)),
         parity:["any","even","odd"].includes(v?.parity)?v.parity:"any",
         nonZero:!!v?.non_zero
@@ -122,7 +122,7 @@
         let name=String(v.name||"").replace(/[^A-Za-z0-9_]/g,"").replace(/^([^A-Za-z_])/,"_$1").slice(0,16)||("v"+(i+1));
         let base=name,n=2;while(used.has(name))name=(base.slice(0,13)+n++).slice(0,16);
         used.add(name);
-        let min=Number(v.min),max=Number(v.max),step=Math.max(1,Math.abs(Number(v.step)||1));
+        let min=Number(v.min),max=Number(v.max),step=Math.max(1e-9,Math.abs(Number(v.step)||1));
         let multipleOf=Math.max(0,Math.abs(Number(v.multipleOf)||0));
         const parity=["any","even","odd"].includes(v.parity)?v.parity:"any";
         if(!Number.isFinite(min))min=1;if(!Number.isFinite(max))max=10;if(min>max)[min,max]=[max,min];
@@ -172,7 +172,11 @@
     }
     function templateEval(expr,scope){
       if(!window.math?.evaluate)throw new Error("Математический движок не загружен");
-      return window.math.evaluate(expr,scope);
+      const exactScope={};
+      for(const [k,v] of Object.entries(scope||{})){
+        try{exactScope[k]=window.math.fraction?window.math.fraction(v):v}catch{exactScope[k]=v}
+      }
+      return window.math.evaluate(expr,exactScope);
     }
     function templateConditionOk(scope){
       const cond=String(state.templateCondition||"").trim();
@@ -225,17 +229,21 @@
     }
     function formatTemplateValue(value){
       if(value&&typeof value==="object"){
-        if(typeof value.toFraction==="function"){
-          try{
-            const f=value.toFraction();
-            if(Array.isArray(f)&&f.length>=2)return f[1]===1?String(f[0]):f[0]+"/"+f[1];
-          }catch{}
+        const n=Number(value.n),d=Number(value.d),sign=Number(value.s??1);
+        if(Number.isFinite(n)&&Number.isFinite(d)&&d!==0){
+          if(d===1)return String(sign*n);
+          let rest=Math.abs(d);while(rest%2===0)rest/=2;while(rest%5===0)rest/=5;
+          if(rest===1){
+            const decimal=sign*n/d;
+            return String(Number(decimal.toPrecision(15)));
+          }
+          return (sign<0?"-":"")+n+"/"+d;
         }
         if(typeof value.toString==="function")return value.toString();
       }
       if(typeof value==="number"&&Number.isFinite(value)){
         if(Math.abs(value-Math.round(value))<1e-12)return String(Math.round(value));
-        return String(Number(value.toPrecision(14)));
+        return String(Number(value.toPrecision(15)));
       }
       return String(value??"");
     }
@@ -672,23 +680,46 @@
       const host=q("tbTemplateVars");if(!host)return;
       normalizeTemplateVars();ensureTemplateValues();
       if(!state.templateVars.length){host.innerHTML="";return}
-      host.innerHTML='<section class="mr-tb-template-panel"><div class="mr-tb-template-head"><div><b>Шаблон задачи</b><small>Переменные автоматически получают новые значения при выдаче задачи</small></div><div><button type="button" id="tbTemplateReroll">↻ Новый пример</button><button type="button" id="tbTemplateAdd">＋ Переменная</button></div></div>'+
+      const names=state.templateVars.map(v=>v.name);
+      const quick=names.length>=2?'<div class="mr-tb-template-quick"><span>Быстрые условия:</span>'+
+        '<button type="button" data-template-condition-preset="mod('+esc(names[0])+','+esc(names[1])+') == 0">'+esc(names[0])+' делится на '+esc(names[1])+'</button>'+
+        '<button type="button" data-template-condition-preset="'+esc(names[0])+' > '+esc(names[1])+'">'+esc(names[0])+' &gt; '+esc(names[1])+'</button>'+
+        '<button type="button" data-template-condition-preset="'+esc(names[0])+' != '+esc(names[1])+'">'+esc(names[0])+' ≠ '+esc(names[1])+'</button></div>':'';
+      host.innerHTML='<section class="mr-tb-template-panel"><div class="mr-tb-template-head"><div><b>Шаблон задачи</b><small>Задайте диапазоны и ограничения — Mathroom подберёт только корректные числа</small></div><div><button type="button" id="tbTemplateReroll">↻ Новый пример</button><button type="button" id="tbTemplateAdd">＋ Переменная</button></div></div>'+
         '<div class="mr-tb-template-example"><span>Текущие значения</span><div>'+state.templateVars.map(v=>'<b>'+esc(v.name)+' = '+esc(formatTemplateValue(state.templateValues[v.name]))+'</b>').join("")+'</div></div>'+
         '<div class="mr-tb-template-list">'+state.templateVars.map(v=>'<article class="mr-tb-template-var" data-template-var="'+esc(v.id)+'">'+
           '<button type="button" class="mr-tb-template-chip" data-template-insert="'+esc(v.name)+'" title="Вставить {{'+esc(v.name)+'}}"><b>{{'+esc(v.name)+'}}</b><small>вставить</small></button>'+
-          '<label><span>От</span><input type="number" data-template-min="'+esc(v.id)+'" value="'+v.min+'"></label>'+
-          '<label><span>До</span><input type="number" data-template-max="'+esc(v.id)+'" value="'+v.max+'"></label>'+
-          '<label><span>Шаг</span><input type="number" min="1" data-template-step="'+esc(v.id)+'" value="'+v.step+'"></label>'+
+          '<label><span>От</span><input type="number" step="any" data-template-min="'+esc(v.id)+'" value="'+v.min+'"></label>'+
+          '<label><span>До</span><input type="number" step="any" data-template-max="'+esc(v.id)+'" value="'+v.max+'"></label>'+
+          '<label><span>Шаг</span><input type="number" step="any" min="0.000000001" data-template-step="'+esc(v.id)+'" value="'+v.step+'"></label>'+
+          '<label><span>Кратно</span><input type="number" step="any" min="0" data-template-multiple="'+esc(v.id)+'" value="'+(v.multipleOf||"")+'" placeholder="например 10"></label>'+
+          '<label><span>Чётность</span><select data-template-parity="'+esc(v.id)+'"><option value="any" '+(v.parity==="any"?"selected":"")+'>Любое</option><option value="even" '+(v.parity==="even"?"selected":"")+'>Чётное</option><option value="odd" '+(v.parity==="odd"?"selected":"")+'>Нечётное</option></select></label>'+
+          '<label class="mr-tb-template-check"><input type="checkbox" data-template-nonzero="'+esc(v.id)+'" '+(v.nonZero?"checked":"")+'><span>Не равно 0</span></label>'+
           '<button type="button" class="mr-tb-template-remove" data-template-remove="'+esc(v.id)+'" title="Удалить переменную">×</button>'+
         '</article>').join("")+'</div>'+
-        '<div class="mr-tb-template-hint"><b>Можно считать прямо в шаблоне:</b><code>{{a+b}}</code><code>{{a*b}}</code><code>{{a^2}}</code><span>Mathroom вычислит выражение при выдаче задачи.</span></div></section>';
-      q("tbTemplateReroll").onclick=()=>{rerollTemplateValues();renderTemplateVars();preview()};
+        '<div class="mr-tb-template-rules"><div class="mr-tb-template-rule-head"><div><b>Связь между переменными</b><small>Необязательно. Например, для деления без остатка: <code>mod(a,b) == 0</code></small></div></div>'+
+          '<input id="tbTemplateCondition" value="'+esc(state.templateCondition)+'" placeholder="Например: mod(a,b) == 0 или a > b">'+quick+
+          '<label class="mr-tb-template-integer"><input id="tbTemplateIntegerAnswers" type="checkbox" '+(state.templateIntegerAnswers?"checked":"")+'><div><b>Правильный ответ должен быть целым</b><small>Mathroom отбросит варианты, где выражение ответа даёт дробь.</small></div></label>'+
+        '</div>'+
+        '<div class="mr-tb-template-hint"><b>Примеры:</b><code>{{a+b}}</code><code>{{a*b}}</code><code>{{a/b}}</code><code>{{a^2}}</code><span>Для точной дроби Mathroom хранит вычисление без плавающей ошибки; 1/3 останется 1/3, а 1/2 станет 0.5.</span></div></section>';
+      q("tbTemplateReroll").onclick=()=>{
+        try{rerollTemplateValues();renderTemplateVars();preview()}
+        catch(e){toast(e.message||"Не удалось подобрать числа")}
+      };
       q("tbTemplateAdd").onclick=addTemplateVar;
+      q("tbTemplateCondition").oninput=e=>{state.templateCondition=e.target.value};
+      q("tbTemplateCondition").onchange=()=>{try{rerollTemplateValues();renderTemplateVars();preview()}catch(e){toast(e.message||"Проверь условие генерации")}};
+      q("tbTemplateIntegerAnswers").onchange=e=>{state.templateIntegerAnswers=e.target.checked;try{rerollTemplateValues();renderTemplateVars();preview()}catch(err){toast(err.message||"Не удалось подобрать целый ответ")}};
+      host.querySelectorAll("[data-template-condition-preset]").forEach(b=>b.onclick=()=>{state.templateCondition=b.dataset.templateConditionPreset||"";try{rerollTemplateValues();renderTemplateVars();preview()}catch(e){toast(e.message||"Не удалось применить условие")}});
       host.querySelectorAll("[data-template-insert]").forEach(b=>b.onclick=()=>insertInto(q("tbContent"),"{{"+b.dataset.templateInsert+"}}"));
       const varById=id=>state.templateVars.find(v=>String(v.id)===String(id));
-      host.querySelectorAll("[data-template-min]").forEach(el=>el.onchange=()=>{const v=varById(el.dataset.templateMin);if(!v)return;v.min=Number(el.value);normalizeTemplateVars();state.templateValues[v.name]=v.min;renderTemplateVars();preview()});
-      host.querySelectorAll("[data-template-max]").forEach(el=>el.onchange=()=>{const v=varById(el.dataset.templateMax);if(!v)return;v.max=Number(el.value);normalizeTemplateVars();state.templateValues[v.name]=v.min;renderTemplateVars();preview()});
-      host.querySelectorAll("[data-template-step]").forEach(el=>el.onchange=()=>{const v=varById(el.dataset.templateStep);if(!v)return;v.step=Math.max(1,Math.abs(Number(el.value)||1));renderTemplateVars();preview()});
+      const refresh=()=>{try{rerollTemplateValues();renderTemplateVars();preview()}catch(e){renderTemplateVars();preview();toast(e.message||"Для этих ограничений нет подходящих чисел")}};
+      host.querySelectorAll("[data-template-min]").forEach(el=>el.onchange=()=>{const v=varById(el.dataset.templateMin);if(!v)return;v.min=Number(el.value);refresh()});
+      host.querySelectorAll("[data-template-max]").forEach(el=>el.onchange=()=>{const v=varById(el.dataset.templateMax);if(!v)return;v.max=Number(el.value);refresh()});
+      host.querySelectorAll("[data-template-step]").forEach(el=>el.onchange=()=>{const v=varById(el.dataset.templateStep);if(!v)return;v.step=Math.max(1e-9,Math.abs(Number(el.value)||1));refresh()});
+      host.querySelectorAll("[data-template-multiple]").forEach(el=>el.onchange=()=>{const v=varById(el.dataset.templateMultiple);if(!v)return;v.multipleOf=Math.max(0,Math.abs(Number(el.value)||0));refresh()});
+      host.querySelectorAll("[data-template-parity]").forEach(el=>el.onchange=()=>{const v=varById(el.dataset.templateParity);if(!v)return;v.parity=el.value;refresh()});
+      host.querySelectorAll("[data-template-nonzero]").forEach(el=>el.onchange=()=>{const v=varById(el.dataset.templateNonzero);if(!v)return;v.nonZero=el.checked;refresh()});
       host.querySelectorAll("[data-template-remove]").forEach(b=>b.onclick=()=>{const v=varById(b.dataset.templateRemove);if(!v)return;state.templateVars=state.templateVars.filter(x=>x!==v);delete state.templateValues[v.name];renderTemplateVars();preview()});
     }
     function renderImages(){
@@ -902,7 +933,7 @@
     }
     function legacyAnswer(){if(["standard","numeric"].includes(state.taskType))return state.answers.map(a=>a.value.trim()).filter(Boolean).join("; ");if(["single","multiple"].includes(state.taskType))return state.options.filter(o=>o.correct&&o.text.trim()).map(o=>o.text.trim()).join(" | ");return state.openAnswer.trim()}
     function collect(){state.grade=Number(q("tbGrade").value)||state.grade;state.topicId=q("tbTopic").value;state.subtopic=q("tbSubtopic").value;state.content=q("tbContent").value;state.settings.shared=!!q("tbShared").checked;state.settings.allowTests=!!q("tbAllowTests").checked;state.settings.allowAi=!!q("tbAllowAi").checked;setHelp(q("tbHelp").value);syncAnswer()}
-    function builderMeta(){const t=topic();syncContentOrder();normalizeTemplateVars();return {version:6,grade:Number(t?.grade||state.grade)||null,subtopic:state.subtopic.trim(),task_type:state.taskType,template_vars:state.templateVars.map(v=>({id:v.id,name:v.name,min:v.min,max:v.max,step:v.step})),content_order:state.contentOrder,images:state.images.map(img=>({id:img.id,path:img.path,name:img.name,mime:img.mime,width:img.width,height:img.height,display_width:img.displayWidth,alt:img.alt.trim()})),tables:state.tables.map(table=>({id:table.id,caption:table.caption.trim(),rows:table.rows,cols:table.cols,header_row:!!table.headerRow,header_col:!!table.headerCol,cells:table.cells.map(row=>row.map(cell=>String(cell)))})),geometries:state.geometries.map(g=>({id:g.id,type:g.type,caption:g.caption.trim(),display_width:g.displayWidth,triangle:{vertices:g.triangle.vertices,sides:g.triangle.sides,right_angle:g.triangle.rightAngle},rectangle:{vertices:g.rectangle.vertices,width_label:g.rectangle.widthLabel,height_label:g.rectangle.heightLabel},circle:{center_label:g.circle.centerLabel,radius_label:g.circle.radiusLabel},coordinate:{points:g.coordinate.points,x_min:g.coordinate.xMin,x_max:g.coordinate.xMax,y_min:g.coordinate.yMin,y_max:g.coordinate.yMax}})),answers:state.answers,options:state.options,open_answer:state.openAnswer,solution:state.solution,hints:state.hints,source:{kind:state.source.kind,textbook_id:state.source.kind==="textbook"?(state.source.textbookId||null):null,page:state.source.kind==="textbook"?(state.source.page||null):null,exercise_no:state.source.kind==="textbook"?(state.source.exerciseNo||null):null,note:state.source.kind==="textbook"?"":state.source.note.trim()},settings:{shared:!!state.settings.shared,allow_tests:!!state.settings.allowTests,allow_ai_example:!!state.settings.allowAi}}}
+    function builderMeta(){const t=topic();syncContentOrder();normalizeTemplateVars();return {version:7,grade:Number(t?.grade||state.grade)||null,subtopic:state.subtopic.trim(),task_type:state.taskType,template_vars:state.templateVars.map(v=>({id:v.id,name:v.name,min:v.min,max:v.max,step:v.step,multiple_of:v.multipleOf||0,parity:v.parity,non_zero:!!v.nonZero})),template_settings:{condition:state.templateCondition.trim(),integer_answers:!!state.templateIntegerAnswers},content_order:state.contentOrder,images:state.images.map(img=>({id:img.id,path:img.path,name:img.name,mime:img.mime,width:img.width,height:img.height,display_width:img.displayWidth,alt:img.alt.trim()})),tables:state.tables.map(table=>({id:table.id,caption:table.caption.trim(),rows:table.rows,cols:table.cols,header_row:!!table.headerRow,header_col:!!table.headerCol,cells:table.cells.map(row=>row.map(cell=>String(cell)))})),geometries:state.geometries.map(g=>({id:g.id,type:g.type,caption:g.caption.trim(),display_width:g.displayWidth,triangle:{vertices:g.triangle.vertices,sides:g.triangle.sides,right_angle:g.triangle.rightAngle},rectangle:{vertices:g.rectangle.vertices,width_label:g.rectangle.widthLabel,height_label:g.rectangle.heightLabel},circle:{center_label:g.circle.centerLabel,radius_label:g.circle.radiusLabel},coordinate:{points:g.coordinate.points,x_min:g.coordinate.xMin,x_max:g.coordinate.xMax,y_min:g.coordinate.yMin,y_max:g.coordinate.yMax}})),answers:state.answers,options:state.options,open_answer:state.openAnswer,solution:state.solution,hints:state.hints,source:{kind:state.source.kind,textbook_id:state.source.kind==="textbook"?(state.source.textbookId||null):null,page:state.source.kind==="textbook"?(state.source.page||null):null,exercise_no:state.source.kind==="textbook"?(state.source.exerciseNo||null):null,note:state.source.kind==="textbook"?"":state.source.note.trim()},settings:{shared:!!state.settings.shared,allow_tests:!!state.settings.allowTests,allow_ai_example:!!state.settings.allowAi}}}
     function back(){cleanupPendingImages();releaseLocalImageUrls();const ret=S.taskBuilderReturn||{view:"bank"};S.taskBuilderExerciseId=null;S.taskBuilderReturn=null;if(ret.view==="topics"&&ret.topicId){S.view="topics";S.topic=(S.topics||[]).find(t=>String(t.id)===String(ret.topicId))||null;return S.topic?renderTopic():renderTopics()}S.view="bank";S.topic=null;renderBank()}
     async function syncShared(saved,draft){
       if(draft)return;
@@ -915,7 +946,7 @@
     }
     async function save(draft){
       try{
-        collect();const t=topic();if(!t)return toast("Выбери тему задачи");if(!draft&&!state.content.trim())return toast("Добавь условие задачи");if(!draft&&!legacyAnswer()&&state.taskType!=="open")return toast("Укажи правильный ответ");
+        collect();const t=topic();if(!t)return toast("Выбери тему задачи");if(!draft&&!state.content.trim())return toast("Добавь условие задачи");if(!draft&&!legacyAnswer()&&state.taskType!=="open")return toast("Укажи правильный ответ");if(state.templateVars.length&&!draft){try{generateTemplateScope({tries:1200})}catch(e){return toast(e.message||"Проверь ограничения шаблона")}}
         const sys=editing?exerciseSystemTags(editing.tags):[];const tags=[...new Set([...sys,"класс-"+t.grade,"тема:"+t.title,"тип:"+state.taskType])];
         const body={topic_id:t.id,kind:"task",title:(editing?.title&&editing.title.trim())||("Задача · "+t.title),content:state.content.trim(),answer:legacyAnswer(),difficulty:state.difficulty,category:state.subtopic.trim(),tags,builder_meta:builderMeta(),is_draft:!!draft,updated_at:new Date().toISOString()};
         const res=editing?await sb.from("exercises").update(body).eq("id",editing.id).select().single():await sb.from("exercises").insert({teacher_id:S.user.id,...body}).select().single();
