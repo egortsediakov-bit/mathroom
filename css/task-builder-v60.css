@@ -1233,3 +1233,15 @@ html[data-theme=dark] .mr-tb-preview-empty>b{color:#cbd1d6}
 html[data-theme=dark] .mr-tb-preview-check-result.good{background:#101914;border-color:#315a3d;color:#9fcdab}
 html[data-theme=dark] .mr-tb-preview-check-result.bad{background:#241512;border-color:#63352f;color:#e9a094}
 html[data-theme=dark] .mr-tb-preview-check-result.manual{background:#151a1f;border-color:#343a42;color:#aeb6be}
+
+
+/* v78 extended geometry */
+.mr-geometry-svg .angle-arc{
+  fill:none;stroke:#f35a16;stroke-width:2.4;stroke-linecap:round
+}
+.mr-geometry-svg .function-curve{
+  fill:none;stroke:#f35a16;stroke-width:3.2;stroke-linecap:round;stroke-linejoin:round
+}
+html[data-theme=dark] .mr-geometry-svg .angle-arc,
+html[data-theme=dark] .mr-geometry-svg .function-curve{stroke:#ff8b55}
+.mr-tb-geometry-card-head select{max-width:230px}
