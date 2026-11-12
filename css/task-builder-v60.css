@@ -667,11 +667,13 @@ html[data-theme=dark] .mr-task-geometry>figcaption{color:#b6bec6}
 .mr-tb-order-head small{display:block;margin-top:3px;color:#8b949d;font-size:12px}
 .mr-tb-order-list{display:grid;gap:7px}
 .mr-tb-order-item{display:grid;grid-template-columns:26px 38px minmax(0,1fr) auto;gap:10px;align-items:center;min-height:58px;padding:8px 10px;border:1px solid #e5dfda;border-radius:13px;background:#fff;transition:border-color .15s ease,box-shadow .15s ease,transform .15s ease,opacity .15s ease}
-.mr-tb-order-item[draggable=true]{cursor:grab}
-.mr-tb-order-item[draggable=true]:active{cursor:grabbing}
-.mr-tb-order-item.dragging{opacity:.45;transform:scale(.99)}
-.mr-tb-order-item.drag-over{border-color:#ff8d59;box-shadow:0 0 0 3px rgba(243,90,22,.09)}
-.mr-tb-order-grip{display:grid;place-items:center;color:#a8afb6;font-size:22px;line-height:1;user-select:none}
+.mr-tb-order-item.dragging{opacity:.5;transform:scale(.995)}
+.mr-tb-order-item.drag-before{box-shadow:0 -3px 0 #f35a16}
+.mr-tb-order-item.drag-after{box-shadow:0 3px 0 #f35a16}
+.mr-tb-order-grip{display:grid;place-items:center;width:28px;height:38px;padding:0;border:0;border-radius:8px;background:transparent;color:#9aa2aa;font-size:22px;line-height:1;cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none}
+.mr-tb-order-grip:hover{background:#fff1e8;color:#ed5715}
+.mr-tb-order-grip:active{cursor:grabbing;background:#ffe6d8;color:#d94d0b}
+body.mr-tb-order-dragging,body.mr-tb-order-dragging *{cursor:grabbing!important;user-select:none!important}
 .mr-tb-order-icon{display:grid;place-items:center;width:38px;height:38px;border-radius:10px;background:#fff1e8;color:#ed5715;font-size:16px;font-weight:900}
 .mr-tb-order-item>div:not(.mr-tb-order-actions){min-width:0}
 .mr-tb-order-item>div>b{display:block;overflow:hidden;color:#2a2f35;font-size:13px;font-weight:900;text-overflow:ellipsis;white-space:nowrap}
@@ -696,6 +698,7 @@ html[data-theme=dark] .mr-tb-order-head b,
 html[data-theme=dark] .mr-tb-order-item>div>b{color:#f3f5f7}
 html[data-theme=dark] .mr-tb-order-item{background:#101317;border-color:#343a42}
 html[data-theme=dark] .mr-tb-order-icon{background:#2a1b13;color:#ff8b55}
+html[data-theme=dark] .mr-tb-order-grip:hover{background:#2a1b13;color:#ff8b55}
 html[data-theme=dark] .mr-tb-order-actions button{background:#171b20;border-color:#3a4149;color:#c7ced5}
 
 @media(max-width:650px){
