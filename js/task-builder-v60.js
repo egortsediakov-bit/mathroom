@@ -2,6 +2,11 @@
   const API={render(ctx){
     const {app,shell,bindShell,S,sb,esc,nl,toast,fail,loadTeacher,renderBank,renderTopic,renderTopics,sharedMaterialForExercise,sharedMaterialUserTags,exerciseSystemTags,curriculumBank}=ctx;
     if(S.taskBuilderBeforeUnload){window.removeEventListener("beforeunload",S.taskBuilderBeforeUnload);S.taskBuilderBeforeUnload=null}
+    if(S.taskBuilderAutosaveDomHandler){
+      app.removeEventListener("input",S.taskBuilderAutosaveDomHandler);
+      app.removeEventListener("change",S.taskBuilderAutosaveDomHandler);
+      S.taskBuilderAutosaveDomHandler=null;
+    }
     const editing=S.taskBuilderExerciseId?(S.exercises||[]).find(x=>String(x.id)===String(S.taskBuilderExerciseId)):null;
     const autosaveKey="mathroom:task-builder-autosave:"+(S.user?.id||"anonymous")+":"+(editing?.id||"new");
     let storedAutosave=null;
@@ -740,6 +745,7 @@
       hydrateTaskImages(q("tbPreview"));
       typesetTaskMath(q("tbPreview"));
       renderQualityAudit();
+      if(builderReady)scheduleAutosave();
     }
     function nextTemplateName(){
       const used=new Set(state.templateVars.map(v=>v.name));
@@ -1255,6 +1261,11 @@
     function disposeAutosave(){
       if(autosaveTimer){clearTimeout(autosaveTimer);autosaveTimer=null}
       if(S.taskBuilderBeforeUnload){window.removeEventListener("beforeunload",S.taskBuilderBeforeUnload);S.taskBuilderBeforeUnload=null}
+      if(S.taskBuilderAutosaveDomHandler){
+        app.removeEventListener("input",S.taskBuilderAutosaveDomHandler);
+        app.removeEventListener("change",S.taskBuilderAutosaveDomHandler);
+        S.taskBuilderAutosaveDomHandler=null;
+      }
       leaveModal?.remove();leaveModal=null;
       recoveryModal?.remove();recoveryModal=null;
     }
@@ -1338,6 +1349,21 @@
     }
 
     syncContentOrder();ensureTemplateValues();fillTopics();renderTextBlocks();renderAnswer();renderSource();renderHelp();renderImages();renderTables();renderGeometries();renderTemplateVars();renderContentOrder();preview();
+    builderReady=true;
+    const unloadHandler=e=>{if(!dirty)return;e.preventDefault();e.returnValue="";return ""};
+    S.taskBuilderBeforeUnload=unloadHandler;window.addEventListener("beforeunload",unloadHandler);
+    const domAutosaveHandler=()=>scheduleAutosave();
+    S.taskBuilderAutosaveDomHandler=domAutosaveHandler;
+    app.addEventListener("input",domAutosaveHandler);
+    app.addEventListener("change",domAutosaveHandler);
+    if(recoveredAutosave){
+      dirty=true;writeAutosave();
+      setTimeout(()=>toast("Несохранённая версия восстановлена"),0);
+    }else if(storedAutosave){
+      showRecoveryDialog(storedAutosave);
+    }else{
+      autosaveStatus("Автосохранение включено","saved");
+    }
     q("tbGrade").onchange=e=>{state.grade=Number(e.target.value);fillTopics();state.topicId=q("tbTopic").value;preview()};
     q("tbTopic").onchange=e=>{state.topicId=e.target.value;preview()};
     q("tbSubtopic").oninput=e=>state.subtopic=e.target.value;
