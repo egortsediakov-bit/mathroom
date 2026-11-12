@@ -211,7 +211,7 @@
     function generateTemplateScope({tries=600}={}){
       normalizeTemplateVars();
       if(!state.templateVars.length)return {};
-      for(const v of state.templateVars)if(!templateCandidates(v,1).length)throw new Error("Для "+v.name+" нет допустимых значений в заданном диапазоне");
+      for(const v of state.templateVars)if(!templateCandidates(v).length)throw new Error("Для "+v.name+" нет допустимых значений в заданном диапазоне");
       for(let attempt=0;attempt<tries;attempt++){
         const scope={};
         for(const v of state.templateVars)scope[v.name]=randomTemplateValue(v);
