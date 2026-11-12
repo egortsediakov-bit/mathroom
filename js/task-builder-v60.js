@@ -20,6 +20,11 @@
         ignoreSpaces:meta.answer_check?.ignore_spaces!==false
       },
       content:String(editing?.content||""),
+      textBlocks:Array.isArray(meta.text_blocks)&&meta.text_blocks.length?meta.text_blocks.map((b,i)=>({
+        id:String(b?.id||("txt"+i)),
+        text:String(b?.text||"")
+      })):[{id:"main",text:String(editing?.content||"")}],
+      activeTextBlockId:"",
       templateVars:Array.isArray(meta.template_vars)?meta.template_vars.map((v,i)=>({
         id:String(v?.id||("var"+i)),
         name:String(v?.name||String.fromCharCode(97+i)).replace(/[^A-Za-z0-9_]/g,"").slice(0,16)||("v"+(i+1)),
@@ -106,13 +111,25 @@
     const tableId=()=>window.crypto?.randomUUID?.()||("tbl-"+Date.now()+"-"+Math.random().toString(36).slice(2));
     const geometryById=id=>state.geometries.find(x=>String(x.id)===String(id))||null;
     const geometryId=()=>window.crypto?.randomUUID?.()||("geo-"+Date.now()+"-"+Math.random().toString(36).slice(2));
+    const textBlockById=id=>state.textBlocks.find(x=>String(x.id)===String(id))||null;
+    const textBlockId=()=>window.crypto?.randomUUID?.()||("txt-"+Date.now()+"-"+Math.random().toString(36).slice(2));
+    function syncLegacyContent(){
+      state.content=state.textBlocks.map(x=>String(x.text||"").trim()).filter(Boolean).join("\n\n");
+      return state.content;
+    }
+    function activeTextArea(){
+      const id=state.activeTextBlockId||state.textBlocks[0]?.id||"";
+      return q("tbTextBlocks")?.querySelector('[data-text-block-input="'+CSS.escape(String(id))+'"]')||q("tbTextBlocks")?.querySelector("[data-text-block-input]")||null;
+    }
     function allContentKeys(){
-      return ["text",...state.images.map(x=>"image:"+x.id),...state.tables.map(x=>"table:"+x.id),...state.geometries.map(x=>"geometry:"+x.id)];
+      return [...state.textBlocks.map(x=>"text:"+x.id),...state.images.map(x=>"image:"+x.id),...state.tables.map(x=>"table:"+x.id),...state.geometries.map(x=>"geometry:"+x.id)];
     }
     function syncContentOrder(){
       const valid=new Set(allContentKeys()),seen=new Set(),next=[];
-      for(const key of state.contentOrder||[]){
-        if(valid.has(key)&&!seen.has(key)){seen.add(key);next.push(key)}
+      const firstText=state.textBlocks[0]?"text:"+state.textBlocks[0].id:"";
+      for(let key of state.contentOrder||[]){
+        if(key==="text")key=firstText;
+        if(key&&valid.has(key)&&!seen.has(key)){seen.add(key);next.push(key)}
       }
       for(const key of allContentKeys())if(!seen.has(key)){seen.add(key);next.push(key)}
       state.contentOrder=next;
@@ -350,7 +367,7 @@
         '</section>'+
         '<section class="mr-tb-card">'+section("condition","Условие задачи","Введите текст, добавьте формулы и структурные элементы")+
           '<div class="mr-tb-toolbar"><button data-insert="text">T&nbsp; Текст</button><button class="active" data-insert="formula">∿&nbsp; Формула</button><button data-insert="list">☷&nbsp; Список</button><button data-insert="template">◇&nbsp; Шаблон</button><button data-insert="image">▧&nbsp; Изображение</button><button data-insert="table">⊞&nbsp; Таблица</button><button data-insert="geometry">△&nbsp; Геометрия</button></div>'+
-          '<div class="mr-tb-editor"><textarea id="tbContent" maxlength="5000" placeholder="Введите условие задачи…">'+esc(state.content)+'</textarea><span id="tbContentCount">'+state.content.length+'/5000</span></div>'+
+          '<div id="tbTextBlocks" class="mr-tb-text-blocks"></div>'+
           '<input id="tbImageInput" type="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple hidden>'+
           '<div id="tbImages" class="mr-tb-images"></div>'+
           '<div id="tbTables" class="mr-tb-tables"></div>'+
