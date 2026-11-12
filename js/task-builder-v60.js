@@ -198,6 +198,10 @@
       for(const expr of exprs){
         try{
           const value=templateEval(expr,scope);
+          if(value&&typeof value==="object"&&Number.isFinite(Number(value.d))){
+            if(Number(value.d)!==1)return false;
+            continue;
+          }
           const n=typeof value==="number"?value:Number(value?.toString?.()??value);
           if(Number.isFinite(n)&&Math.abs(n-Math.round(n))>1e-10)return false;
         }catch{return false}
