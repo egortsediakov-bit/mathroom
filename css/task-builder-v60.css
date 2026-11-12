@@ -1113,3 +1113,45 @@ html[data-theme=dark] .mr-tb-recovery-actions .danger{background:#251613;border-
   .mr-tb-recovery-actions,.mr-tb-recovery-actions.triple{display:grid;grid-template-columns:1fr}
   .mr-tb-recovery-actions button{width:100%}
 }
+
+
+/* v75 block quick actions */
+.mr-tb-order-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:4px;max-width:224px}
+.mr-tb-order-actions button{width:30px;height:30px;border-radius:8px;font-size:13px}
+.mr-tb-order-actions button.danger{color:#9a6b60}
+.mr-tb-order-actions button.danger:hover:not(:disabled){border-color:#efb7ab;background:#fff2ef;color:#c74331}
+.mr-tb-card-mini-actions{display:flex!important;align-items:center!important;gap:5px!important}
+.mr-tb-card-mini-actions button{
+  width:32px;height:32px;padding:0;border:1px solid #eadfd8;border-radius:9px;background:#fff;color:#7d6f68;
+  font-size:15px;font-weight:900;cursor:pointer
+}
+.mr-tb-card-mini-actions button:hover:not(:disabled){border-color:#ffad86;background:#fff5ef;color:#df500f}
+.mr-tb-card-mini-actions button:disabled{opacity:.3;cursor:default}
+
+/* Real collapsed cards */
+.mr-tb-text-card.collapsed .mr-tb-editor{display:none}
+.mr-tb-text-card.collapsed{box-shadow:none}
+.mr-tb-table-card.collapsed>:not(.mr-tb-table-card-head){display:none!important}
+.mr-tb-table-card.collapsed{gap:0;padding-top:10px;padding-bottom:10px}
+.mr-tb-geometry-card.collapsed>:not(.mr-tb-geometry-card-head){display:none!important}
+.mr-tb-geometry-card.collapsed{gap:0;padding-top:10px;padding-bottom:10px}
+.mr-tb-image-card.collapsed{
+  grid-template-columns:minmax(0,1fr) 38px;
+  align-items:center;
+  min-height:58px
+}
+.mr-tb-image-card.collapsed .mr-tb-image-thumb,
+.mr-tb-image-card.collapsed .mr-tb-image-alt,
+.mr-tb-image-card.collapsed .mr-tb-image-width{display:none!important}
+.mr-tb-image-card.collapsed .mr-tb-image-body{grid-column:1;display:block}
+.mr-tb-image-card.collapsed .mr-tb-image-title{min-height:34px;align-items:center}
+
+html[data-theme=dark] .mr-tb-card-mini-actions button{
+  background:#171b20;border-color:#343a42;color:#aeb6be
+}
+html[data-theme=dark] .mr-tb-order-actions button.danger{color:#c79287}
+
+@media(max-width:900px){
+  .mr-tb-order-item{grid-template-columns:26px 36px minmax(0,1fr)}
+  .mr-tb-order-actions{grid-column:2/-1;justify-content:flex-start;max-width:none}
+}
