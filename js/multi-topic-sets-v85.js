@@ -54,8 +54,10 @@
     const taskTopics=(ctx.S.topics||[]).filter(topic=>(ctx.S.exercises||[]).some(x=>String(x.topic_id)===String(topic.id)&&x.kind==="task"&&!x.is_draft&&String(x.answer||"").trim()));
     if(!taskTopics.length)return ctx.toast("В личном банке пока нет задач с ответами");
     const grades=[...new Set(taskTopics.map(x=>Number(x.grade)).filter(Boolean))].sort((a,b)=>a-b);
-    let initialGrade=Number(prefill.grade);if(!grades.includes(initialGrade))initialGrade=grades[0];
-    const initialDiff=["basic","medium","advanced"].includes(prefill.difficulty)?prefill.difficulty:"balanced";
+    const recipe=prefill&&prefill.recipe&&typeof prefill.recipe==="object"?prefill.recipe:null;
+    let initialGrade=Number(recipe&&recipe.grade||prefill.grade);if(!grades.includes(initialGrade))initialGrade=grades[0];
+    const recipeDiff=recipe&&recipe.difficulty_mode;
+    const initialDiff=["basic","medium","advanced"].includes(recipeDiff)?recipeDiff:(["basic","medium","advanced"].includes(prefill.difficulty)?prefill.difficulty:"balanced");
     const students=ctx.S.students||[];
     const root=ctx.modal(
       '<section class="mr-smart-set">'+
@@ -75,7 +77,7 @@
           '<label class="mr-smart-set-check"><input type="checkbox" id="smartSetTemplates" checked><span><b>Использовать генераторы</b><small>Один шаблон можно взять несколько раз, если варианты уникальны</small></span></label>'+
           '<label><span>Ученик для ДЗ</span><select id="smartSetStudent"><option value="">Не выбран</option>'+students.map(s=>'<option value="'+s.id+'">'+ctx.esc(s.name)+' · '+(s.grade||"?")+' кл.</option>').join("")+'</select></label>'+
         '</div>'+
-        '<div class="mr-smart-set-run"><div id="smartSetHint" class="small muted">Обычная задача не повторяется. Для генераторов система отдельно проверяет уникальность готового условия.</div><button class="btn primary" id="smartSetGenerate">✦ Собрать комплект</button></div>'+
+        '<div class="mr-smart-set-run"><div id="smartSetHint" class="small muted">Обычная задача не повторяется. Для генераторов система отдельно проверяет уникальность готового условия.</div><div class="mr-smart-set-run-actions"><button class="btn sm mr-recipe-save-btn" id="smartSetSaveRecipe" '+(ctx.S.taskSetRecipesFeatureAvailable?"":"disabled")+'>Сохранить рецепт</button><button class="btn primary" id="smartSetGenerate">✦ Собрать комплект</button></div></div>'+
         '<div id="smartSetStatus" class="mr-smart-set-status" hidden></div>'+
         '<div id="smartSetActions" class="mr-smart-set-actions" hidden><button class="btn sm" id="smartSetCopy">Скопировать без ответов</button><button class="btn sm" id="smartSetCopyAnswers">Скопировать с ответами</button><button class="btn sm mr-smart-set-sheet" id="smartSetWorksheet">A4 / PDF</button><button class="btn sm mr-save-smart-set" id="smartSetSave" '+(ctx.S.savedTaskSetsFeatureAvailable?"":"disabled")+'>Сохранить комплект</button><button class="btn sm primary" id="smartSetHomework" '+(students.length?"":"disabled")+'>Назначить как ДЗ</button></div>'+
         '<div id="smartSetList" class="mr-smart-set-list"></div>'+
@@ -83,8 +85,9 @@
       "mr-smart-set-modal"
     );
     const q=s=>root.querySelector(s);
-    const grade=q("#smartSetGrade"),topic=q("#smartSetTopic"),count=q("#smartSetCount"),multiGrade=q("#smartSetMultiGrade"),multiRows=q("#smartMultiRows"),multiTotal=q("#smartMultiTotal"),multiAdd=q("#smartMultiAdd"),singlePanel=q("#smartSetSinglePanel"),multiPanel=q("#smartSetMultiPanel"),difficulty=q("#smartSetDifficulty"),templates=q("#smartSetTemplates"),student=q("#smartSetStudent"),status=q("#smartSetStatus"),actions=q("#smartSetActions"),list=q("#smartSetList"),generate=q("#smartSetGenerate"),copy=q("#smartSetCopy"),copyAnswers=q("#smartSetCopyAnswers"),worksheet=q("#smartSetWorksheet"),saveSet=q("#smartSetSave"),homework=q("#smartSetHomework"),hint=q("#smartSetHint");
+    const grade=q("#smartSetGrade"),topic=q("#smartSetTopic"),count=q("#smartSetCount"),multiGrade=q("#smartSetMultiGrade"),multiRows=q("#smartMultiRows"),multiTotal=q("#smartMultiTotal"),multiAdd=q("#smartMultiAdd"),singlePanel=q("#smartSetSinglePanel"),multiPanel=q("#smartSetMultiPanel"),difficulty=q("#smartSetDifficulty"),templates=q("#smartSetTemplates"),student=q("#smartSetStudent"),status=q("#smartSetStatus"),actions=q("#smartSetActions"),list=q("#smartSetList"),generate=q("#smartSetGenerate"),saveRecipe=q("#smartSetSaveRecipe"),copy=q("#smartSetCopy"),copyAnswers=q("#smartSetCopyAnswers"),worksheet=q("#smartSetWorksheet"),saveSet=q("#smartSetSave"),homework=q("#smartSetHomework"),hint=q("#smartSetHint");
     difficulty.value=initialDiff;
+    templates.checked=recipe?recipe.allow_templates!==false:true;
     let lastBatch=null,builderMode="single";
 
     const topicsForGrade=g=>taskTopics.filter(x=>Number(x.grade)===Number(g));
@@ -102,6 +105,17 @@
     const resetMultiRows=()=>{const rows=topicsForGrade(multiGrade.value);multiRows.innerHTML=multiRowHtml(rows[0]&&rows[0].id||"",5)+multiRowHtml(rows[1]&&rows[1].id||rows[0]&&rows[0].id||"",5);bindMultiRows();updateMultiTotal();resetResult()};
     const addMultiRow=()=>{const rows=topicsForGrade(multiGrade.value),used=new Set([...multiRows.querySelectorAll("[data-multi-topic]")].map(x=>String(x.value))),next=rows.find(x=>!used.has(String(x.id)))||rows[0];if(!next)return ctx.toast("Нет доступных тем");multiRows.insertAdjacentHTML("beforeend",multiRowHtml(next.id,3));bindMultiRows();updateMultiTotal();resetResult()};
     const readMultiRows=()=>[...multiRows.querySelectorAll(".mr-smart-multi-row")].map(row=>({topicId:row.querySelector("[data-multi-topic]")?.value||"",count:Math.max(1,Math.min(20,Math.round(Number(row.querySelector("[data-multi-count]")?.value)||1)))}));
+    const currentRecipe=()=>{
+      if(builderMode==="multi"){
+        const rows=readMultiRows().map(row=>{
+          const tp=taskTopics.find(x=>String(x.id)===String(row.topicId));
+          return {topic_id:row.topicId,count:row.count,topic_snapshot:tp?{id:tp.id,title:tp.title,grade:tp.grade,section:tp.section||""}:null};
+        });
+        return {mode:"multi",grade:Number(multiGrade.value)||null,difficultyMode:difficulty.value,allowTemplates:templates.checked,config:{rows}};
+      }
+      const tp=taskTopics.find(x=>String(x.id)===String(topic.value));
+      return {mode:"single",grade:Number(grade.value)||null,difficultyMode:difficulty.value,allowTemplates:templates.checked,config:{topic_id:topic.value,count:Number(count.value)||10,topic_snapshot:tp?{id:tp.id,title:tp.title,grade:tp.grade,section:tp.section||""}:null}};
+    };
     const setMode=mode=>{builderMode=mode==="multi"?"multi":"single";singlePanel.hidden=builderMode!=="single";multiPanel.hidden=builderMode!=="multi";root.querySelectorAll("[data-smart-mode]").forEach(button=>button.classList.toggle("active",button.dataset.smartMode===builderMode));generate.textContent=builderMode==="multi"?"✦ Собрать по квотам":"✦ Собрать комплект";hint.textContent=builderMode==="multi"?"Каждая тема получает ровно свою квоту. Дубли отбрасываются по всему комплекту.":"Обычная задача не повторяется. Для генераторов система отдельно проверяет уникальность готового условия.";resetResult()};
     const copyBatch=async answers=>{
       if(!lastBatch||!lastBatch.items.length)return;
@@ -125,6 +139,14 @@
     };
 
     grade.onchange=()=>{fillTopics();resetResult()};multiGrade.onchange=resetMultiRows;multiAdd.onclick=addMultiRow;root.querySelectorAll("[data-smart-mode]").forEach(button=>button.onclick=()=>setMode(button.dataset.smartMode));
+    saveRecipe.onclick=()=>{
+      const data=currentRecipe();
+      if(data.mode==="multi"){
+        const unique=new Set((data.config.rows||[]).map(x=>x.topic_id));
+        if(unique.size<2)return ctx.toast("Для многотемного рецепта выбери минимум две разные темы");
+      }
+      window.MathroomSetRecipesV86?.save?.({S:ctx.S,sb:ctx.sb,esc:ctx.esc,modal:ctx.modal,toast:ctx.toast,fail:ctx.fail},data);
+    };
     generate.onclick=()=>{
       if(builderMode==="multi"){
         const rows=readMultiRows(),total=rows.reduce((sum,row)=>sum+row.count,0),uniqueTopics=new Set(rows.map(x=>x.topicId));
@@ -139,7 +161,28 @@
     worksheet.onclick=()=>{if(!lastBatch||!lastBatch.items.length)return ctx.toast("Сначала собери комплект");ctx.openSmartWorksheetBuilder(lastBatch,lastBatch.multiTopic?null:topic.value,{studentId:student.value})};
     saveSet.onclick=()=>{if(!lastBatch||!lastBatch.items.length)return ctx.toast("Сначала собери комплект");window.MathroomSavedSetsV84?.save?.({S:ctx.S,sb:ctx.sb,esc:ctx.esc,modal:ctx.modal,toast:ctx.toast,fail:ctx.fail},lastBatch,lastBatch.multiTopic?null:topic.value,{difficultyMode:difficulty.value,allowTemplates:templates.checked})};
     homework.onclick=async()=>{if(!lastBatch||!lastBatch.items.length)return;if(!student.value)return ctx.toast("Выбери ученика для домашней работы");homework.disabled=true;const result=await ctx.assignSmartTaskSetHomework(lastBatch,lastBatch.multiTopic?null:topic.value,student.value);if(!result)homework.disabled=false;else homework.textContent="✓ Домашняя назначена"};
-    fillTopics();resetMultiRows();setMode("single");
+    fillTopics();
+    if(recipe&&recipe.mode==="multi"){
+      multiGrade.value=String(recipe.grade||initialGrade);
+      const savedRows=Array.isArray(recipe.config&&recipe.config.rows)?recipe.config.rows:[];
+      if(savedRows.length){
+        multiRows.innerHTML=savedRows.map(row=>multiRowHtml(row&&row.topic_id||"",row&&row.count||1)).join("");
+        while(multiRows.querySelectorAll(".mr-smart-multi-row").length<2){
+          const rows=topicsForGrade(multiGrade.value),next=rows[multiRows.querySelectorAll(".mr-smart-multi-row").length]||rows[0];
+          if(!next)break;
+          multiRows.insertAdjacentHTML("beforeend",multiRowHtml(next.id,3));
+        }
+        bindMultiRows();updateMultiTotal();
+      }else resetMultiRows();
+      setMode("multi");
+    }else{
+      if(recipe&&recipe.config&&recipe.config.topic_id){
+        topic.value=String(recipe.config.topic_id);
+        const wanted=String(recipe.config.count||"");
+        if([...count.options].some(x=>x.value===wanted))count.value=wanted;
+      }
+      resetMultiRows();setMode("single");
+    }
   };
 
   window.MathroomMultiTopicSetsV85=API;
