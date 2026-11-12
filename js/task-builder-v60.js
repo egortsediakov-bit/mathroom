@@ -733,7 +733,7 @@
         }).join("")+'</div>';
       host.querySelectorAll("[data-order-focus]").forEach(b=>b.onclick=()=>focusContentBlock(b.dataset.orderFocus));
       host.querySelectorAll("[data-order-duplicate]").forEach(b=>b.onclick=()=>duplicateContentBlock(b.dataset.orderDuplicate));
-      host.querySelectorAll("[data-order-collapse]").forEach(b=>b.onclick=()=>{toggleContentCollapse(b.dataset.orderCollapse);renderContentOrder()});
+      host.querySelectorAll("[data-order-collapse]").forEach(b=>b.onclick=()=>toggleContentCollapse(b.dataset.orderCollapse));
       host.querySelectorAll("[data-order-remove]").forEach(b=>b.onclick=()=>removeContentBlock(b.dataset.orderRemove));
       host.querySelectorAll("[data-order-up]").forEach(b=>b.onclick=()=>moveContentBlock(b.dataset.orderUp,-1));
       host.querySelectorAll("[data-order-down]").forEach(b=>b.onclick=()=>moveContentBlock(b.dataset.orderDown,1));
