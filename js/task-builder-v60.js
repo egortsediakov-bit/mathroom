@@ -129,6 +129,7 @@
     const q=id=>document.getElementById(id);
     const TASK_IMAGE_BUCKET="task-images";
     const imageUrlCache=new Map(),imageUrlPending=new Map(),pendingImagePaths=new Set(recoveredPendingImagePaths);
+    const collapsedBlocks=new Set();
     const imageById=id=>state.images.find(x=>String(x.id)===String(id))||null;
     const imageId=()=>window.crypto?.randomUUID?.()||("img-"+Date.now()+"-"+Math.random().toString(36).slice(2));
     const tableById=id=>state.tables.find(x=>String(x.id)===String(id))||null;
@@ -165,6 +166,108 @@
       if(i<0||j<0||j>=state.contentOrder.length)return;
       [state.contentOrder[i],state.contentOrder[j]]=[state.contentOrder[j],state.contentOrder[i]];
       renderContentOrder();preview();
+    }
+    function insertContentAfter(sourceKey,newKey){
+      syncContentOrder();
+      state.contentOrder=state.contentOrder.filter(k=>k!==newKey);
+      const i=state.contentOrder.indexOf(sourceKey);
+      state.contentOrder.splice(i>=0?i+1:state.contentOrder.length,0,newKey);
+      syncContentOrder();
+    }
+    function duplicateContentBlock(key){
+      const [type,id]=String(key||"").split(":");
+      if(type==="text"){
+        const src=textBlockById(id);if(!src)return;
+        const nid=textBlockId();
+        state.textBlocks.push({id:nid,text:String(src.text||"")});
+        insertContentAfter(key,"text:"+nid);
+        state.activeTextBlockId=nid;
+        renderTextBlocks();
+      }else if(type==="image"){
+        const src=imageById(id);if(!src)return;
+        const nid=imageId();
+        state.images.push({...src,id:nid,name:String(src.name||"Изображение")+" · копия"});
+        insertContentAfter(key,"image:"+nid);
+        renderImages();
+      }else if(type==="table"){
+        const src=tableById(id);if(!src)return;
+        const nid=tableId();
+        state.tables.push({...src,id:nid,cells:src.cells.map(r=>r.map(v=>String(v)))});
+        insertContentAfter(key,"table:"+nid);
+        renderTables();
+      }else if(type==="geometry"){
+        const src=geometryById(id);if(!src)return;
+        const nid=geometryId(),copy=JSON.parse(JSON.stringify(src));copy.id=nid;
+        state.geometries.push(copy);
+        insertContentAfter(key,"geometry:"+nid);
+        renderGeometries();
+      }else return;
+      renderContentOrder();preview();
+      setTimeout(()=>focusContentBlock(type+":"+(
+        type==="text"?state.activeTextBlockId:
+        type==="image"?state.images[state.images.length-1]?.id:
+        type==="table"?state.tables[state.tables.length-1]?.id:
+        state.geometries[state.geometries.length-1]?.id
+      )),0);
+    }
+    function focusContentBlock(key){
+      const [type,id]=String(key||"").split(":");
+      let el=null;
+      if(type==="text"){
+        state.activeTextBlockId=id;renderTextBlocks();
+        el=q("tbTextBlocks")?.querySelector('[data-text-block-card="'+CSS.escape(id)+'"]');
+      }else if(type==="image")el=q("tbImages")?.querySelector('[data-tb-image-card="'+CSS.escape(id)+'"]');
+      else if(type==="table")el=q("tbTables")?.querySelector('[data-tb-table-card="'+CSS.escape(id)+'"]');
+      else if(type==="geometry")el=q("tbGeometries")?.querySelector('[data-geo-card="'+CSS.escape(id)+'"]');
+      if(!el)return;
+      collapsedBlocks.delete(key);
+      el.classList.remove("collapsed");
+      el.scrollIntoView({behavior:"smooth",block:"center"});
+      setTimeout(()=>{
+        const target=type==="text"?el.querySelector("textarea"):el.querySelector("input,textarea,select");
+        target?.focus?.();
+      },350);
+    }
+    function toggleContentCollapse(key){
+      const [type,id]=String(key||"").split(":");
+      if(collapsedBlocks.has(key))collapsedBlocks.delete(key);else collapsedBlocks.add(key);
+      if(type==="text")renderTextBlocks();
+      else if(type==="image")renderImages();
+      else if(type==="table")renderTables();
+      else if(type==="geometry")renderGeometries();
+    }
+    async function removeContentBlock(key){
+      const [type,id]=String(key||"").split(":");
+      if(type==="text")return removeTextBlock(id);
+      if(type==="image"){
+        const img=imageById(id);if(!img)return;
+        state.images=state.images.filter(x=>x!==img);
+        const stillUsed=state.images.some(x=>String(x.path)===String(img.path));
+        if(!stillUsed){
+          if(pendingImagePaths.has(img.path)){
+            pendingImagePaths.delete(img.path);
+            try{await sb.storage.from(TASK_IMAGE_BUCKET).remove([img.path])}catch(e){console.warn("[Mathroom task image remove]",e)}
+          }
+          releaseImageUrl(img.path);
+        }
+        state.contentOrder=state.contentOrder.filter(x=>x!==key);
+        collapsedBlocks.delete(key);
+        syncContentOrder();renderImages();renderContentOrder();preview();
+        return;
+      }
+      if(type==="table"){
+        state.tables=state.tables.filter(x=>String(x.id)!==id);
+        state.contentOrder=state.contentOrder.filter(x=>x!==key);
+        collapsedBlocks.delete(key);
+        syncContentOrder();renderTables();renderContentOrder();preview();
+        return;
+      }
+      if(type==="geometry"){
+        state.geometries=state.geometries.filter(x=>String(x.id)!==id);
+        state.contentOrder=state.contentOrder.filter(x=>x!==key);
+        collapsedBlocks.delete(key);
+        syncContentOrder();renderGeometries();renderContentOrder();preview();
+      }
     }
     const imageExt=mime=>({"image/png":"png","image/jpeg":"jpg","image/webp":"webp","image/gif":"gif"}[mime]||"png");
     const templateVarId=()=>window.crypto?.randomUUID?.()||("var-"+Date.now()+"-"+Math.random().toString(36).slice(2));
