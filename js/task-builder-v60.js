@@ -117,7 +117,8 @@
       },
       source:{kind:["textbook","mine","ai","other"].includes(src.kind)?src.kind:"mine",textbookId:String(src.textbook_id||""),page:String(src.page||""),exerciseNo:String(src.exercise_no||""),note:String(src.note||"")},
       settings:{shared:settings.shared!=null?!!settings.shared:!!shared,allowTests:settings.allow_tests!==false,allowAi:settings.allow_ai_example!==false},
-      help:"solution"
+      help:"solution",
+      previewTab:"condition"
     };
     if(recoveredAutosave?.state){
       const allowed=["grade","topicId","subtopic","difficulty","taskType","answerCheck","content","textBlocks","activeTextBlockId","templateVars","templateCondition","templateIntegerAnswers","templateValues","images","tables","contentOrder","geometries","answers","options","openAnswer","solution","hints","helpSettings","source","settings","help"];
@@ -522,7 +523,7 @@
           '</section>'+
         '</div>'+
       '</main><aside class="mr-tb-side">'+
-        '<section class="mr-tb-preview-card"><div class="mr-tb-sidehead"><span>'+icon("preview")+'</span><div><h2>Предпросмотр задачи</h2><p>Так задачу увидит ученик</p></div></div><div class="mr-tb-preview-tabs"><button class="active">Условие</button><button data-info="'+(state.helpSettings.solutionMode==="after_attempt"?"Решение откроется ученику после первой попытки":"Решение видно только преподавателю")+'">Решение</button><button data-info="Подсказки открываются ученику по одной и запоминаются">Подсказки</button></div><div id="tbPreview"></div></section>'+
+        '<section class="mr-tb-preview-card"><div class="mr-tb-sidehead"><span>'+icon("preview")+'</span><div><h2>Предпросмотр задачи</h2><p>Проверьте условие, решение и подсказки</p></div></div><div class="mr-tb-preview-tabs"><button type="button" data-preview-tab="condition" class="active">Условие</button><button type="button" data-preview-tab="solution">Решение</button><button type="button" data-preview-tab="hints">Подсказки</button></div><div id="tbPreview"></div></section>'+
         '<section id="tbQualityAudit" class="mr-tb-quality"></section>'+
         '<section class="mr-tb-settings"><div class="mr-tb-sidehead"><span>'+icon("settings")+'</span><div><h2>Параметры использования</h2><p>Настройки для банка задач</p></div></div>'+
           '<label class="mr-tb-toggle disabled"><div><b>Добавить в мой банк задач</b><small>Сохранённая задача всегда остаётся в вашей библиотеке</small></div><input checked disabled type="checkbox"><i></i></label>'+
@@ -854,11 +855,41 @@
         ],throwOnError:false,strict:"ignore"});
       }catch(e){console.warn("[Mathroom formula render]",e)}
     }
+    function previewSolutionHtml(){
+      ensureTemplateValues();
+      const raw=renderTemplateString(state.solution||"");
+      const visibility=state.helpSettings.solutionMode==="after_attempt"
+        ?'<span class="mr-tb-preview-visibility student">Ученик увидит после первой попытки</span>'
+        :'<span class="mr-tb-preview-visibility teacher">Только преподавателю</span>';
+      return '<div class="mr-tb-preview-help">'+
+        '<div class="mr-tb-preview-help-head"><div><b>Полное решение</b><small>Предпросмотр сохранённого решения задачи</small></div>'+visibility+'</div>'+
+        (raw.trim()?'<div class="mr-tb-preview-solution-body">'+nl(raw)+'</div>':'<div class="mr-tb-preview-empty"><span>∿</span><b>Решение пока не добавлено</b><small>Заполните его в блоке «Решение и подсказки».</small></div>')+
+      '</div>';
+    }
+    function previewHintsHtml(){
+      ensureTemplateValues();
+      const rows=state.hints.map((hint,i)=>({index:i,text:renderTemplateString(hint||"")})).filter(x=>x.text.trim());
+      const homework=state.helpSettings.homeworkHints?'ДЗ: доступны':'ДЗ: выключены';
+      const test=state.helpSettings.testHints?'Тест: доступны':'Тест: выключены';
+      return '<div class="mr-tb-preview-help">'+
+        '<div class="mr-tb-preview-help-head"><div><b>Подсказки ученику</b><small>Открываются по одной в указанном порядке</small></div><div class="mr-tb-preview-help-badges"><span>'+homework+'</span><span>'+test+'</span></div></div>'+
+        (rows.length?'<div class="mr-tb-preview-hints">'+rows.map((x,i)=>'<article><span>'+(i+1)+'</span><div><b>Подсказка '+(i+1)+'</b><div>'+nl(x.text)+'</div></div></article>').join("")+'</div>':'<div class="mr-tb-preview-empty"><span>💡</span><b>Подсказок пока нет</b><small>Можно добавить до трёх последовательных подсказок.</small></div>')+
+      '</div>';
+    }
+    function renderPreview(){
+      const host=q("tbPreview");if(!host)return;
+      document.querySelectorAll("[data-preview-tab]").forEach(b=>b.classList.toggle("active",b.dataset.previewTab===state.previewTab));
+      if(state.previewTab==="solution")host.innerHTML=previewSolutionHtml();
+      else if(state.previewTab==="hints")host.innerHTML=previewHintsHtml();
+      else{
+        const t=topic();
+        host.innerHTML='<div class="mr-tb-preview-sheet"><div class="mr-tb-preview-meta"><span>'+diffName(state.difficulty)+'</span><small>'+esc(t?.title||"Тема не выбрана")+' · '+esc(typeName(state.taskType))+'</small></div>'+previewConditionHtml()+'</div>'+studentAnswer();
+        hydrateTaskImages(host);
+      }
+      typesetTaskMath(host);
+    }
     function preview(){
-      const t=topic();
-      q("tbPreview").innerHTML='<div class="mr-tb-preview-sheet"><div class="mr-tb-preview-meta"><span>'+diffName(state.difficulty)+'</span><small>'+esc(t?.title||"Тема не выбрана")+' · '+esc(typeName(state.taskType))+'</small></div>'+previewConditionHtml()+'</div>'+studentAnswer();
-      hydrateTaskImages(q("tbPreview"));
-      typesetTaskMath(q("tbPreview"));
+      renderPreview();
       renderQualityAudit();
       if(builderReady)scheduleAutosave();
     }
@@ -1485,10 +1516,11 @@
     q("tbImageInput").onchange=e=>uploadTaskImages(e.target.files);
     document.querySelectorAll("[data-coming]").forEach(b=>b.onclick=()=>toast(b.dataset.coming+" подключим следующим этапом конструктора"));
     document.querySelectorAll("[data-help]").forEach(b=>b.onclick=()=>{setHelp(q("tbHelp").value);state.help=b.dataset.help;document.querySelectorAll("[data-help]").forEach(x=>x.classList.toggle("active",x===b));renderHelp()});
-    q("tbHelp").oninput=e=>{setHelp(e.target.value);q("tbHelpCount").textContent=e.target.value.length+"/5000"};
+    q("tbHelp").oninput=e=>{setHelp(e.target.value);q("tbHelpCount").textContent=e.target.value.length+"/5000";preview()};
     document.querySelectorAll("[data-help-insert]").forEach(b=>b.onclick=()=>{if(b.dataset.helpInsert==="formula")openFormulaEditor(q("tbHelp"));else insertInto(q("tbHelp"),"\n• ")});
     document.querySelectorAll("[data-source]").forEach(b=>b.onclick=()=>{state.source.kind=b.dataset.source;document.querySelectorAll("[data-source]").forEach(x=>x.classList.toggle("active",x===b));renderSource()});
     q("tbShared").onchange=e=>state.settings.shared=e.target.checked;q("tbAllowTests").onchange=e=>state.settings.allowTests=e.target.checked;q("tbAllowAi").onchange=e=>state.settings.allowAi=e.target.checked;
+    document.querySelectorAll("[data-preview-tab]").forEach(b=>b.onclick=()=>{state.previewTab=b.dataset.previewTab;renderPreview()});
     document.querySelectorAll("[data-info]").forEach(b=>b.onclick=()=>toast(b.dataset.info));
     q("tbAudit").onclick=()=>{collect();renderQualityAudit();q("tbQualityAudit")?.scrollIntoView({behavior:"smooth",block:"center"})};q("tbExit").onclick=back;q("tbDraft").onclick=()=>save(true);q("tbSave").onclick=()=>save(false);
   }};
