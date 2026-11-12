@@ -387,23 +387,31 @@
 
       let pointerDrag=null;
       const clearPointerDrag=()=>{
-        host.querySelectorAll(".dragging,.drag-before,.drag-after").forEach(x=>x.classList.remove("dragging","drag-before","drag-after"));
+        pointerDrag?.ghost?.remove();
+        pointerDrag?.placeholder?.remove();
+        if(pointerDrag?.row)pointerDrag.row.classList.remove("dragging-source");
         document.body.classList.remove("mr-tb-order-dragging");
         pointerDrag=null;
       };
-      const updateDropMarker=clientY=>{
+      const placeDropPlaceholder=clientY=>{
         if(!pointerDrag)return;
-        const rows=[...host.querySelectorAll("[data-order-key]")].filter(row=>row.dataset.orderKey!==pointerDrag.key);
+        const list=host.querySelector(".mr-tb-order-list");
+        if(!list)return;
+        const rows=[...list.querySelectorAll("[data-order-key]")].filter(row=>row!==pointerDrag.row);
+        pointerDrag.placeholder.remove();
         let insertIndex=rows.length;
         for(let i=0;i<rows.length;i++){
           const rect=rows[i].getBoundingClientRect();
           if(clientY<rect.top+rect.height/2){insertIndex=i;break}
         }
         pointerDrag.insertIndex=insertIndex;
-        host.querySelectorAll(".drag-before,.drag-after").forEach(x=>x.classList.remove("drag-before","drag-after"));
-        if(!rows.length)return;
-        if(insertIndex>=rows.length)rows[rows.length-1].classList.add("drag-after");
-        else rows[insertIndex].classList.add("drag-before");
+        if(insertIndex>=rows.length)list.append(pointerDrag.placeholder);
+        else list.insertBefore(pointerDrag.placeholder,rows[insertIndex]);
+      };
+      const moveDragGhost=(clientX,clientY)=>{
+        if(!pointerDrag?.ghost)return;
+        pointerDrag.ghost.style.left=(clientX-pointerDrag.offsetX)+"px";
+        pointerDrag.ghost.style.top=(clientY-pointerDrag.offsetY)+"px";
       };
       host.querySelectorAll("[data-order-grip]").forEach(grip=>{
         grip.onpointerdown=e=>{
@@ -413,16 +421,37 @@
           const row=grip.closest("[data-order-key]");
           if(!key||!row)return;
           syncContentOrder();
-          pointerDrag={key,insertIndex:state.contentOrder.indexOf(key)};
-          row.classList.add("dragging");
+          const rect=row.getBoundingClientRect();
+          const ghost=row.cloneNode(true);
+          ghost.classList.add("mr-tb-order-drag-ghost");
+          ghost.removeAttribute("data-order-key");
+          ghost.querySelectorAll("button").forEach(b=>{b.disabled=true;b.tabIndex=-1});
+          ghost.style.width=rect.width+"px";
+          ghost.style.height=rect.height+"px";
+          document.body.appendChild(ghost);
+
+          const placeholder=document.createElement("div");
+          placeholder.className="mr-tb-order-placeholder";
+          placeholder.style.minHeight=rect.height+"px";
+          placeholder.innerHTML='<span>↓</span><b>Вставить сюда</b>';
+
+          pointerDrag={
+            key,row,ghost,placeholder,
+            insertIndex:state.contentOrder.indexOf(key),
+            offsetX:e.clientX-rect.left,
+            offsetY:e.clientY-rect.top
+          };
+          row.classList.add("dragging-source");
           document.body.classList.add("mr-tb-order-dragging");
+          moveDragGhost(e.clientX,e.clientY);
+          placeDropPlaceholder(e.clientY);
           try{grip.setPointerCapture(e.pointerId)}catch{}
-          updateDropMarker(e.clientY);
         };
         grip.onpointermove=e=>{
           if(!pointerDrag||pointerDrag.key!==grip.dataset.orderGrip)return;
           e.preventDefault();
-          updateDropMarker(e.clientY);
+          moveDragGhost(e.clientX,e.clientY);
+          placeDropPlaceholder(e.clientY);
         };
         grip.onpointerup=e=>{
           if(!pointerDrag||pointerDrag.key!==grip.dataset.orderGrip)return;
