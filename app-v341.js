@@ -1742,6 +1742,251 @@ function openExerciseVariants(exercise){
 }
 
 
+function smartSetDifficultySlots(count,mode){
+  const n=Math.max(1,Math.round(Number(count)||10));
+  if(["basic","medium","advanced"].includes(mode))return Array(n).fill(mode);
+  const weights={basic:.3,medium:.5,advanced:.2};
+  const keys=["basic","medium","advanced"];
+  const raw=keys.map(k=>({key:k,raw:n*weights[k]}));
+  const counts=Object.fromEntries(raw.map(x=>[x.key,Math.floor(x.raw)]));
+  let left=n-keys.reduce((s,k)=>s+counts[k],0);
+  raw.sort((a,b)=>(b.raw-Math.floor(b.raw))-(a.raw-Math.floor(a.raw)));
+  for(let i=0;i<left;i++)counts[raw[i%raw.length].key]++;
+  return keys.flatMap(k=>Array(counts[k]).fill(k));
+}
+
+function buildSmartTaskSet({topicId,count=10,difficulty="balanced",allowTemplates=true}={}){
+  const requested=Math.max(1,Math.min(30,Math.round(Number(count)||10)));
+  const pool=(S.exercises||[]).filter(x=>
+    String(x.topic_id)===String(topicId) &&
+    x.kind==="task" &&
+    !x.is_draft &&
+    String(x.answer||"").trim()
+  );
+  const slots=smartSetDifficultySlots(requested,difficulty);
+  const items=[],seen=new Set(),sourceUse=new Map();
+  let attempts=0,duplicates=0,rejected=0,fallbacks=0,lastError="";
+  const canUse=source=>{
+    const templated=isTemplateExercise(source);
+    if(templated&&!allowTemplates)return false;
+    if(!templated&&(sourceUse.get(String(source.id))||0)>0)return false;
+    return true;
+  };
+  for(const desired of slots){
+    const exact=pool.filter(x=>x.difficulty===desired&&canUse(x));
+    const other=difficulty==="balanced"?pool.filter(x=>x.difficulty!==desired&&canUse(x)):[];
+    const candidates=shuffle([...exact,...other]).sort((a,b)=>
+      (sourceUse.get(String(a.id))||0)-(sourceUse.get(String(b.id))||0)
+    );
+    let chosen=null;
+    for(const source of candidates){
+      const templated=isTemplateExercise(source);
+      const tries=templated?7:1;
+      for(let retry=0;retry<tries;retry++){
+        attempts++;
+        let inst;
+        try{inst=instantiateExercise(source)}
+        catch(error){rejected++;lastError=String(error?.message||error||"Ошибка генерации");continue}
+        const content=String(inst?.content||"").trim();
+        const answer=String(inst?.answer||"").trim();
+        const blocks=Array.isArray(inst?.builder_meta?.blocks)?inst.builder_meta.blocks:[];
+        if((!content&&!blocks.length)||!answer||taskVariantHasUnresolved(inst)){rejected++;continue}
+        const fingerprint=taskVariantFingerprint(inst);
+        if(seen.has(fingerprint)){duplicates++;continue}
+        seen.add(fingerprint);
+        chosen={
+          source,
+          content:inst.content,
+          answer:inst.answer,
+          builder_meta:inst.builder_meta,
+          generated:templated,
+          difficulty:source.difficulty||desired,
+          category:source.category||"",
+          tags:source.tags||[]
+        };
+        if(source.difficulty!==desired)fallbacks++;
+        break;
+      }
+      if(chosen)break;
+    }
+    if(!chosen)continue;
+    const key=String(chosen.source.id);
+    sourceUse.set(key,(sourceUse.get(key)||0)+1);
+    items.push(chosen);
+  }
+  const counts={
+    basic:items.filter(x=>x.difficulty==="basic").length,
+    medium:items.filter(x=>x.difficulty==="medium").length,
+    advanced:items.filter(x=>x.difficulty==="advanced").length
+  };
+  return {
+    requested,items,attempts,duplicates,rejected,fallbacks,lastError,
+    generated:items.filter(x=>x.generated).length,
+    uniqueSources:new Set(items.map(x=>String(x.source.id))).size,
+    counts,
+    complete:items.length===requested
+  };
+}
+
+async function assignSmartTaskSetHomework(batch,topicId,studentId){
+  if(!batch?.items?.length)return toast("Сначала собери комплект");
+  if(!studentId)return toast("Выбери ученика");
+  const topic=(S.topics||[]).find(x=>String(x.id)===String(topicId));
+  const student=(S.students||[]).find(x=>String(x.id)===String(studentId));
+  if(!topic||!student)return toast("Не найдена тема или ученик");
+  const {data:parent,error}=await sb.from("homeworks").insert({
+    teacher_id:S.user.id,
+    student_id:student.id,
+    topic_id:topic.id,
+    title:`Домашняя работа · ${topic.title||""}`
+  }).select().single();
+  if(error)return fail(error);
+  const rows=batch.items.map((item,index)=>({
+    homework_id:parent.id,
+    prompt:item.content,
+    correct_answer:item.answer,
+    position:index,
+    source_exercise_id:item.source.id,
+    difficulty:item.difficulty,
+    category:item.category||"",
+    tags:item.tags||[],
+    builder_meta:item.builder_meta||{}
+  }));
+  const {error:itemError}=await sb.from("homework_items").insert(rows);
+  if(itemError)return fail(itemError);
+  await loadTeacher();
+  toast(`Домашняя назначена: ${student.name} · ${rows.length} задач`);
+  return parent;
+}
+
+function openSmartTaskSetBuilder(prefill={}){
+  const taskTopics=(S.topics||[]).filter(topic=>
+    (S.exercises||[]).some(x=>
+      String(x.topic_id)===String(topic.id) &&
+      x.kind==="task" &&
+      !x.is_draft &&
+      String(x.answer||"").trim()
+    )
+  );
+  if(!taskTopics.length)return toast("В личном банке пока нет задач с ответами");
+  const grades=[...new Set(taskTopics.map(x=>Number(x.grade)).filter(Boolean))].sort((a,b)=>a-b);
+  let initialGrade=Number(prefill.grade);
+  if(!grades.includes(initialGrade))initialGrade=grades[0];
+  const initialDiff=["basic","medium","advanced"].includes(prefill.difficulty)?prefill.difficulty:"balanced";
+  const students=S.students||[];
+  const root=modal(`
+    <section class="mr-smart-set">
+      <div class="mr-smart-set-head">
+        <div>
+          <span class="pill mr-smart-set-pill">✦ умный комплект</span>
+          <h2>Собрать готовый набор задач</h2>
+          <p class="muted">Mathroom берёт задачи из личного банка, балансирует сложность и разворачивает генераторы в уникальные варианты.</p>
+        </div>
+      </div>
+      <div class="mr-smart-set-controls">
+        <label><span>Класс</span><select id="smartSetGrade">${grades.map(g=>`<option value="${g}" ${g===initialGrade?"selected":""}>${g} класс</option>`).join("")}</select></label>
+        <label class="wide"><span>Тема</span><select id="smartSetTopic"></select></label>
+        <label><span>Сложность</span><select id="smartSetDifficulty">
+          <option value="balanced" ${initialDiff==="balanced"?"selected":""}>Сбалансировано</option>
+          <option value="basic" ${initialDiff==="basic"?"selected":""}>Только базовые</option>
+          <option value="medium" ${initialDiff==="medium"?"selected":""}>Только средние</option>
+          <option value="advanced" ${initialDiff==="advanced"?"selected":""}>Только сложные</option>
+        </select></label>
+        <label><span>Количество</span><select id="smartSetCount">${[5,8,10,15,20].map(n=>`<option value="${n}" ${n===10?"selected":""}>${n} задач</option>`).join("")}</select></label>
+        <label class="mr-smart-set-check"><input type="checkbox" id="smartSetTemplates" checked><span><b>Использовать генераторы</b><small>Один шаблон можно взять несколько раз, если варианты уникальны</small></span></label>
+        <label><span>Ученик для ДЗ</span><select id="smartSetStudent"><option value="">Не выбран</option>${students.map(s=>`<option value="${s.id}">${esc(s.name)} · ${s.grade||"?"} кл.</option>`).join("")}</select></label>
+      </div>
+      <div class="mr-smart-set-run">
+        <div class="small muted">Обычная задача не повторяется. Для генераторов система отдельно проверяет уникальность готового условия.</div>
+        <button class="btn primary" id="smartSetGenerate">✦ Собрать комплект</button>
+      </div>
+      <div id="smartSetStatus" class="mr-smart-set-status" hidden></div>
+      <div id="smartSetActions" class="mr-smart-set-actions" hidden>
+        <button class="btn sm" id="smartSetCopy">Скопировать без ответов</button>
+        <button class="btn sm" id="smartSetCopyAnswers">Скопировать с ответами</button>
+        <button class="btn sm primary" id="smartSetHomework" ${students.length?"":"disabled"}>Назначить как ДЗ</button>
+      </div>
+      <div id="smartSetList" class="mr-smart-set-list"></div>
+    </section>
+  `,"mr-smart-set-modal");
+  const q=s=>root.querySelector(s);
+  const grade=q("#smartSetGrade"),topic=q("#smartSetTopic"),difficulty=q("#smartSetDifficulty"),count=q("#smartSetCount");
+  const templates=q("#smartSetTemplates"),student=q("#smartSetStudent"),status=q("#smartSetStatus"),actions=q("#smartSetActions"),list=q("#smartSetList");
+  const generate=q("#smartSetGenerate"),copy=q("#smartSetCopy"),copyAnswers=q("#smartSetCopyAnswers"),homework=q("#smartSetHomework");
+  let lastBatch=null;
+  const fillTopics=()=>{
+    const g=Number(grade.value);
+    const rows=taskTopics.filter(x=>Number(x.grade)===g);
+    const current=topic.value;
+    topic.innerHTML=rows.map(x=>`<option value="${x.id}">${esc(x.section||"Математика")} · ${esc(x.title)}</option>`).join("");
+    if(rows.some(x=>String(x.id)===String(current)))topic.value=current;
+  };
+  const copyBatch=async withAnswers=>{
+    if(!lastBatch?.items?.length)return;
+    const tp=taskTopics.find(x=>String(x.id)===String(topic.value));
+    const body=[
+      tp?`${tp.grade} класс · ${tp.title}`:"Комплект задач",
+      "",
+      ...lastBatch.items.flatMap((item,index)=>{
+        const rows=[`${index+1}. ${item.content}`];
+        if(withAnswers)rows.push(`Ответ: ${item.answer||"—"}`);
+        rows.push("");
+        return rows;
+      })
+    ].join("\n").trim();
+    await copyText(body);
+    toast(withAnswers?"Комплект с ответами скопирован":"Листок без ответов скопирован");
+  };
+  const render=()=>{
+    const batch=buildSmartTaskSet({
+      topicId:topic.value,
+      count:Number(count.value)||10,
+      difficulty:difficulty.value,
+      allowTemplates:templates.checked
+    });
+    lastBatch=batch;
+    const got=batch.items.length;
+    status.hidden=false;
+    status.className="mr-smart-set-status "+(batch.complete?"good":"warn");
+    status.innerHTML=batch.complete
+      ?`<div><b>Готово: ${got}/${batch.requested}</b><span>${batch.counts.basic} базовых · ${batch.counts.medium} средних · ${batch.counts.advanced} сложных</span></div><div><span>Источников: ${batch.uniqueSources}</span><span>Сгенерировано: ${batch.generated}</span>${batch.duplicates?`<span>Дублей отброшено: ${batch.duplicates}</span>`:""}</div>`
+      :`<div><b>Собрано ${got}/${batch.requested}</b><span>Не хватило подходящих уникальных задач под выбранные ограничения.</span></div><div><span>Источников: ${batch.uniqueSources}</span><span>Дублей: ${batch.duplicates}</span><span>Некорректных: ${batch.rejected}</span>${batch.lastError?`<span>${esc(batch.lastError)}</span>`:""}</div>`;
+    actions.hidden=!got;
+    copy.disabled=!got;copyAnswers.disabled=!got;homework.disabled=!got||!students.length;
+    list.innerHTML=got?batch.items.map((item,index)=>{
+      const values=item.generated?templateVariantValues(item.builder_meta):"";
+      return `<article class="mr-smart-set-card">
+        <div class="mr-smart-set-card-num">${String(index+1).padStart(2,"0")}</div>
+        <div class="mr-smart-set-card-main">
+          <div class="mr-smart-set-card-meta">
+            <span class="pill">${diffLabel(item.difficulty)}</span>
+            ${item.generated?'<span class="pill mr-template-pill">↻ вариант генератора</span>':""}
+            <span class="small muted">${esc(item.source.title||"Задача")}</span>
+          </div>
+          ${taskConditionHtml(item.content,item.builder_meta,{textClass:"mr-smart-set-prompt"})}
+          ${values?`<div class="small muted mr-smart-set-values">${esc(values)}</div>`:""}
+          <div class="mr-smart-set-answer"><span>Ответ</span><b>${nl(item.answer||"—")}</b></div>
+        </div>
+      </article>`;
+    }).join(""):'<div class="empty">Под выбранные настройки комплект собрать не удалось.</div>';
+    hydrateTaskMedia(list);
+    typesetTaskMath(list);
+  };
+  grade.onchange=()=>{fillTopics();lastBatch=null;actions.hidden=true;status.hidden=true;list.innerHTML=""};
+  generate.onclick=render;
+  copy.onclick=()=>copyBatch(false);
+  copyAnswers.onclick=()=>copyBatch(true);
+  homework.onclick=async()=>{
+    if(!lastBatch?.items?.length)return;
+    if(!student.value)return toast("Выбери ученика для домашней работы");
+    homework.disabled=true;
+    const result=await assignSmartTaskSetHomework(lastBatch,topic.value,student.value);
+    if(!result)homework.disabled=false;
+    else homework.textContent="✓ Домашняя назначена";
+  };
+  fillTopics();
+}
+
 async function createAssignment(kind,studentId,topicId,count){
   const tasks=shuffle(S.exercises.filter(x=>{
     if(x.topic_id!==topicId||x.kind!=='task'||!x.answer.trim())return false;
@@ -2248,6 +2493,7 @@ function renderBank(){
       <span class="pill">${own.filter(x=>x.kind==='example').length} примеров</span>
       <span class="pill">${builtIn} из готовой базы</span>
       <button class="btn sm" id="openTaskPipeline">✦ Пополнить банк</button>
+      <button class="btn sm mr-smart-set-launch" id="openSmartSet">Собрать комплект</button>
       <button class="btn sm primary" id="createBankTask">＋ Создать задачу</button>
       <button class="btn sm" id="syncCurriculumBank">Обновить базу 1–11</button>
     </div>
@@ -2274,6 +2520,10 @@ function renderBank(){
     S.view='task-pipeline';
     renderTaskPipeline();
   };
+  document.getElementById('openSmartSet').onclick=()=>openSmartTaskSetBuilder({
+    grade:document.getElementById('bankGrade')?.value||'',
+    difficulty:document.getElementById('bankDiff')?.value||'balanced'
+  });
   document.getElementById('createBankTask').onclick=()=>{
     S.taskBuilderExerciseId=null;
     S.taskBuilderReturn={view:'bank',topicId:null};
