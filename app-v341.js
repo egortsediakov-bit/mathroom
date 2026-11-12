@@ -1904,6 +1904,7 @@ function openSmartTaskSetBuilder(prefill={}){
       <div id="smartSetActions" class="mr-smart-set-actions" hidden>
         <button class="btn sm" id="smartSetCopy">Скопировать без ответов</button>
         <button class="btn sm" id="smartSetCopyAnswers">Скопировать с ответами</button>
+        <button class="btn sm mr-smart-set-sheet" id="smartSetWorksheet">A4 / PDF</button>
         <button class="btn sm primary" id="smartSetHomework" ${students.length?"":"disabled"}>Назначить как ДЗ</button>
       </div>
       <div id="smartSetList" class="mr-smart-set-list"></div>
@@ -1912,7 +1913,7 @@ function openSmartTaskSetBuilder(prefill={}){
   const q=s=>root.querySelector(s);
   const grade=q("#smartSetGrade"),topic=q("#smartSetTopic"),difficulty=q("#smartSetDifficulty"),count=q("#smartSetCount");
   const templates=q("#smartSetTemplates"),student=q("#smartSetStudent"),status=q("#smartSetStatus"),actions=q("#smartSetActions"),list=q("#smartSetList");
-  const generate=q("#smartSetGenerate"),copy=q("#smartSetCopy"),copyAnswers=q("#smartSetCopyAnswers"),homework=q("#smartSetHomework");
+  const generate=q("#smartSetGenerate"),copy=q("#smartSetCopy"),copyAnswers=q("#smartSetCopyAnswers"),worksheet=q("#smartSetWorksheet"),homework=q("#smartSetHomework");
   let lastBatch=null;
   const fillTopics=()=>{
     const g=Number(grade.value);
@@ -1976,6 +1977,10 @@ function openSmartTaskSetBuilder(prefill={}){
   generate.onclick=render;
   copy.onclick=()=>copyBatch(false);
   copyAnswers.onclick=()=>copyBatch(true);
+  worksheet.onclick=()=>{
+    if(!lastBatch?.items?.length)return toast("Сначала собери комплект");
+    openSmartWorksheetBuilder(lastBatch,topic.value,{studentId:student.value});
+  };
   homework.onclick=async()=>{
     if(!lastBatch?.items?.length)return;
     if(!student.value)return toast("Выбери ученика для домашней работы");
@@ -1985,6 +1990,182 @@ function openSmartTaskSetBuilder(prefill={}){
     else homework.textContent="✓ Домашняя назначена";
   };
   fillTopics();
+}
+
+function smartWorksheetDateLabel(value){
+  const raw=String(value||"").trim();
+  if(!raw)return "";
+  const d=new Date(raw+"T12:00:00");
+  if(Number.isNaN(d.getTime()))return raw;
+  return d.toLocaleDateString("ru-RU",{day:"2-digit",month:"2-digit",year:"numeric"});
+}
+
+function smartWorksheetMarkup(batch,topicId,options={}){
+  const topic=(S.topics||[]).find(x=>String(x.id)===String(topicId));
+  const title=String(options.title||`Практика · ${topic?.title||"Математика"}`).trim();
+  const studentName=String(options.studentName||"").trim();
+  const dateLabel=smartWorksheetDateLabel(options.date);
+  const answers=!!options.answers;
+  const compact=options.density==="compact";
+  const metaParts=[topic?.grade?`${topic.grade} класс`:"",topic?.section||"",dateLabel].filter(Boolean);
+  const tasks=(batch?.items||[]).map((item,index)=>`
+    <section class="mr-worksheet-task ${compact?"compact":""}">
+      <div class="mr-worksheet-task-number">${index+1}</div>
+      <div class="mr-worksheet-task-body">
+        ${taskConditionHtml(item.content,item.builder_meta,{compact,textClass:"mr-worksheet-task-text"})}
+        ${answers
+          ?`<div class="mr-worksheet-task-answer"><span>Ответ</span><b>${nl(item.answer||"—")}</b></div>`
+          :`<div class="mr-worksheet-answer-line"><span>Ответ:</span><i></i></div>`
+        }
+      </div>
+    </section>`).join("");
+  return `
+    <article class="mr-worksheet-sheet ${answers?"teacher-version":"student-version"} ${compact?"compact-layout":""}">
+      <header class="mr-worksheet-header">
+        <div class="mr-worksheet-brand">
+          <span class="mr-worksheet-brand-mark">K</span>
+          <div><b>KOTOMATIKA</b><small>Mathroom worksheet</small></div>
+        </div>
+        <div class="mr-worksheet-version">${answers?"Версия преподавателя":"Лист ученика"}</div>
+      </header>
+      <div class="mr-worksheet-title-block">
+        <div>
+          <div class="mr-worksheet-kicker">${esc(metaParts.join(" · ")||"Математика")}</div>
+          <h1>${esc(title)}</h1>
+        </div>
+        <div class="mr-worksheet-student">
+          <span>Ученик</span>
+          <b>${studentName?esc(studentName):"____________________________"}</b>
+        </div>
+      </div>
+      <div class="mr-worksheet-rule"></div>
+      <main class="mr-worksheet-tasks">${tasks}</main>
+      <footer class="mr-worksheet-footer">
+        <span>kotomatika.ru</span>
+        <span>${answers?"Ключ с ответами":"Удачи! Решай аккуратно и проверяй себя."}</span>
+      </footer>
+    </article>`;
+}
+
+function smartWorksheetPrintCss(){
+  return `
+    *{box-sizing:border-box}
+    html,body{margin:0;padding:0;background:#fff;color:#17191c;font-family:Inter,Arial,Helvetica,sans-serif;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+    body{padding:0}
+    .mr-worksheet-sheet{width:210mm;min-height:297mm;margin:0 auto;padding:15mm 16mm 13mm;background:#fff;color:#17191c}
+    .mr-worksheet-header{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:12mm}
+    .mr-worksheet-brand{display:flex;align-items:center;gap:10px}
+    .mr-worksheet-brand-mark{display:grid;place-items:center;width:34px;height:34px;border-radius:10px;background:#ff6b2c;color:#fff;font-size:19px;font-weight:900}
+    .mr-worksheet-brand div{display:grid;gap:1px}.mr-worksheet-brand b{font-size:13px;letter-spacing:.08em}.mr-worksheet-brand small{font-size:9px;color:#777}
+    .mr-worksheet-version{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:#777;border:1px solid #dadada;border-radius:999px;padding:6px 9px}
+    .mr-worksheet-title-block{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:16mm;align-items:end}
+    .mr-worksheet-kicker{font-size:9px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#e75d22;margin-bottom:4px}
+    .mr-worksheet-title-block h1{font-size:24px;line-height:1.08;margin:0;max-width:135mm}
+    .mr-worksheet-student{min-width:52mm;display:grid;gap:6px}.mr-worksheet-student span{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:#777}.mr-worksheet-student b{font-size:11px;white-space:nowrap}
+    .mr-worksheet-rule{height:2px;background:#17191c;margin:7mm 0 8mm}
+    .mr-worksheet-tasks{display:grid;gap:6mm}
+    .mr-worksheet-task{display:grid;grid-template-columns:9mm 1fr;gap:4mm;break-inside:avoid-page;page-break-inside:avoid}
+    .mr-worksheet-task-number{display:grid;place-items:center;width:8mm;height:8mm;border-radius:50%;background:#17191c;color:#fff;font-size:10px;font-weight:900;margin-top:.5mm}
+    .mr-worksheet-task-body{min-width:0}
+    .mr-worksheet-task-text{font-size:12px;line-height:1.5}
+    .mr-task-condition{display:grid;gap:3mm}.mr-task-condition.compact{gap:2mm}
+    .mr-task-text-body{font-size:12px;line-height:1.5}
+    .mr-task-media{display:flex;justify-content:center;margin:2mm 0}.mr-task-media figure{margin:0;max-width:100%}.mr-task-media img{max-width:100%;max-height:74mm;display:block;margin:0 auto;object-fit:contain}.mr-task-media figcaption{text-align:center;font-size:8px;color:#777;margin-top:2mm}
+    .mr-task-tables{overflow:visible}.mr-task-tables table{border-collapse:collapse;width:auto;max-width:100%;font-size:10px}.mr-task-tables th,.mr-task-tables td{border:1px solid #777;padding:2.5mm 3mm;text-align:center}
+    .mr-task-geometries svg{max-width:100%;max-height:80mm}
+    .mr-worksheet-answer-line{display:flex;align-items:end;gap:7px;margin-top:4mm;font-size:9px;font-weight:800;color:#777}.mr-worksheet-answer-line i{display:block;flex:1;border-bottom:1px solid #bdbdbd;height:4mm}
+    .mr-worksheet-task-answer{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-top:3mm;padding:2.5mm 3mm;border-radius:3mm;background:#fff1e9;border:1px solid #f4c2a7}.mr-worksheet-task-answer span{font-size:8px;font-weight:900;text-transform:uppercase;letter-spacing:.07em;color:#d95116}.mr-worksheet-task-answer b{font-size:10px;text-align:right}
+    .mr-worksheet-footer{display:flex;justify-content:space-between;gap:12px;margin-top:10mm;padding-top:4mm;border-top:1px solid #ddd;font-size:8px;color:#8a8a8a}
+    .compact-layout .mr-worksheet-tasks{gap:4mm}.compact-layout .mr-worksheet-task{gap:3mm}.compact-layout .mr-task-text-body{font-size:11px;line-height:1.4}.compact-layout .mr-task-media img{max-height:58mm}
+    .katex{font-size:1em}.katex-display{margin:2.5mm 0;overflow:visible}
+    @page{size:A4;margin:0}
+    @media print{html,body{width:210mm}.mr-worksheet-sheet{margin:0;box-shadow:none}}
+  `;
+}
+
+async function printSmartWorksheet(batch,topicId,options={}){
+  const popup=window.open("","_blank");
+  if(!popup)return toast("Браузер заблокировал окно печати. Разреши всплывающие окна для Mathroom.");
+  popup.document.open();
+  popup.document.write('<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>Подготовка листка…</title></head><body style="font-family:Arial;padding:32px">Готовим листок…</body></html>');
+  popup.document.close();
+  const staging=document.createElement("div");
+  staging.className="mr-worksheet-staging";
+  staging.style.position="fixed";staging.style.left="-200vw";staging.style.top="0";staging.style.width="210mm";staging.style.background="#fff";
+  staging.innerHTML=smartWorksheetMarkup(batch,topicId,options);
+  document.body.appendChild(staging);
+  try{
+    await hydrateTaskMedia(staging);
+    await new Promise(resolve=>setTimeout(resolve,80));
+    const sheet=staging.querySelector(".mr-worksheet-sheet");
+    const html=sheet?.outerHTML||staging.innerHTML;
+    const title=String(options.title||"Mathroom worksheet").replace(/[<>]/g,"");
+    popup.document.open();
+    popup.document.write(`<!doctype html>
+      <html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+      <title>${esc(title)}</title>
+      <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css" crossorigin="anonymous">
+      <style>${smartWorksheetPrintCss()}</style></head>
+      <body>${html}<script>
+        window.addEventListener('load',()=>{
+          const imgs=[...document.images];
+          Promise.all(imgs.map(img=>img.complete?Promise.resolve():new Promise(r=>{img.onload=img.onerror=r})))
+            .then(()=>setTimeout(()=>window.print(),120));
+        });
+      <\/script></body></html>`);
+    popup.document.close();
+  }catch(error){
+    try{popup.close()}catch{}
+    fail(error);
+  }finally{staging.remove()}
+}
+
+function openSmartWorksheetBuilder(batch,topicId,{studentId=""}={}){
+  if(!batch?.items?.length)return toast("Сначала собери комплект задач");
+  const topic=(S.topics||[]).find(x=>String(x.id)===String(topicId));
+  const students=S.students||[];
+  const selected=students.find(x=>String(x.id)===String(studentId));
+  const today=(()=>{const d=new Date(),p=n=>String(n).padStart(2,"0");return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`})();
+  const root=modal(`
+    <section class="mr-worksheet-builder">
+      <div class="mr-worksheet-builder-head">
+        <div><span class="pill mr-smart-set-pill">A4 · PDF</span><h2>Оформить листок</h2><p class="muted">Один и тот же набор можно распечатать как чистый лист ученику или как ключ преподавателю.</p></div>
+        <div class="mr-worksheet-builder-actions"><button class="btn primary" id="worksheetPrint">Печать / PDF</button></div>
+      </div>
+      <div class="mr-worksheet-toolbar">
+        <label class="wide"><span>Название</span><input id="worksheetTitle" value="${esc(`Практика · ${topic?.title||"Математика"}`)}"></label>
+        <label><span>Ученик</span><select id="worksheetStudent"><option value="">Без имени</option>${students.map(s=>`<option value="${s.id}" ${String(s.id)===String(selected?.id||"")?"selected":""}>${esc(s.name)} · ${s.grade||"?"} кл.</option>`).join("")}</select></label>
+        <label><span>Дата</span><input id="worksheetDate" type="date" value="${today}"></label>
+        <label><span>Версия</span><select id="worksheetVersion"><option value="student">Для ученика</option><option value="teacher">Для преподавателя</option></select></label>
+        <label><span>Плотность</span><select id="worksheetDensity"><option value="normal">Обычная</option><option value="compact">Компактная</option></select></label>
+      </div>
+      <div class="mr-worksheet-preview-wrap"><div id="worksheetPreview" class="mr-worksheet-preview"></div></div>
+      <div class="small muted">Кнопка «Печать / PDF» откроет системное окно печати. Там можно выбрать принтер или «Сохранить как PDF».</div>
+    </section>
+  `,"mr-worksheet-builder-modal");
+  const q=s=>root.querySelector(s);
+  const title=q("#worksheetTitle"),student=q("#worksheetStudent"),date=q("#worksheetDate"),version=q("#worksheetVersion"),density=q("#worksheetDensity"),preview=q("#worksheetPreview");
+  const options=()=>({
+    title:title.value.trim()||`Практика · ${topic?.title||"Математика"}`,
+    studentName:(students.find(x=>String(x.id)===String(student.value))?.name||""),
+    date:date.value,
+    answers:version.value==="teacher",
+    density:density.value
+  });
+  let renderToken=0;
+  const render=async()=>{
+    const token=++renderToken;
+    preview.innerHTML=smartWorksheetMarkup(batch,topicId,options());
+    await hydrateTaskMedia(preview);
+    if(token!==renderToken)return;
+    typesetTaskMath(preview);
+  };
+  [title,student,date,version,density].forEach(el=>{
+    el.addEventListener(el.tagName==="INPUT"?"input":"change",()=>render());
+    if(el.tagName==="INPUT")el.addEventListener("change",()=>render());
+  });
+  q("#worksheetPrint").onclick=()=>printSmartWorksheet(batch,topicId,options());
+  render();
 }
 
 async function createAssignment(kind,studentId,topicId,count){
