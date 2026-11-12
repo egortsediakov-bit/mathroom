@@ -1282,3 +1282,35 @@ html[data-theme=dark] .mr-formula-category-tabs button.active{background:#241710
   .mr-formula-dialog{width:100%;max-height:calc(100vh - 20px);padding:14px;border-radius:17px}
   .mr-formula-group{grid-template-columns:repeat(2,minmax(0,1fr))}
 }
+
+
+/* v80 template variants */
+.mr-template-pill{
+  border-color:#f2c7b2!important;
+  background:#fff3ec!important;
+  color:#d95116!important;
+}
+.mr-template-variant{
+  border-color:#f1b996!important;
+  background:#fff8f3!important;
+  color:#d94f13!important;
+}
+.mr-template-variant:hover{
+  border-color:#ff9564!important;
+  background:#fff0e7!important;
+}
+.mr-template-answer-preview .katex-display{
+  margin:8px 0;
+  overflow-x:auto;
+  overflow-y:hidden;
+}
+html[data-theme=dark] .mr-template-pill{
+  border-color:#68432f!important;
+  background:#25180f!important;
+  color:#ff9868!important;
+}
+html[data-theme=dark] .mr-template-variant{
+  border-color:#65432f!important;
+  background:#201711!important;
+  color:#ff9868!important;
+}
