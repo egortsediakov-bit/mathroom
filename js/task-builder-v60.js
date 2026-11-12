@@ -2,6 +2,19 @@
   const API={render(ctx){
     const {app,shell,bindShell,S,sb,esc,nl,toast,fail,loadTeacher,renderBank,renderTopic,renderTopics,sharedMaterialForExercise,sharedMaterialUserTags,exerciseSystemTags,curriculumBank}=ctx;
     const editing=S.taskBuilderExerciseId?(S.exercises||[]).find(x=>String(x.id)===String(S.taskBuilderExerciseId)):null;
+    const autosaveKey="mathroom:task-builder-autosave:"+(S.user?.id||"anonymous")+":"+(editing?.id||"new");
+    let storedAutosave=null;
+    try{
+      const raw=localStorage.getItem(autosaveKey);
+      if(raw){
+        const parsed=JSON.parse(raw);
+        const savedAt=editing?.updated_at?new Date(editing.updated_at).getTime():0;
+        if(parsed?.state&&Number(parsed.savedAt||0)>savedAt)storedAutosave=parsed;
+        else localStorage.removeItem(autosaveKey);
+      }
+    }catch{}
+    const recoveredAutosave=S.taskBuilderRecoveredAutosave?.key===autosaveKey?S.taskBuilderRecoveredAutosave:null;
+    if(recoveredAutosave)S.taskBuilderRecoveredAutosave=null;
     const editingTopic=editing?(S.topics||[]).find(t=>String(t.id)===String(editing.topic_id)):null;
     const meta=editing&&editing.builder_meta&&typeof editing.builder_meta==="object"?editing.builder_meta:{};
     const src=meta.source&&typeof meta.source==="object"?meta.source:{};
@@ -100,11 +113,16 @@
       settings:{shared:settings.shared!=null?!!settings.shared:!!shared,allowTests:settings.allow_tests!==false,allowAi:settings.allow_ai_example!==false},
       help:"solution"
     };
+    if(recoveredAutosave?.state){
+      const allowed=["grade","topicId","subtopic","difficulty","taskType","answerCheck","content","textBlocks","activeTextBlockId","templateVars","templateCondition","templateIntegerAnswers","templateValues","images","tables","contentOrder","geometries","answers","options","openAnswer","solution","hints","helpSettings","source","settings","help"];
+      for(const key of allowed)if(recoveredAutosave.state[key]!==undefined)state[key]=recoveredAutosave.state[key];
+    }
+    const recoveredPendingImagePaths=Array.isArray(recoveredAutosave?.pendingImagePaths)?recoveredAutosave.pendingImagePaths.map(String):[];
     const diffName=v=>v==="advanced"?"Сложная":v==="medium"?"Средняя":"Простая";
     const typeName=v=>({standard:"Обычная задача",numeric:"Числовой ответ",single:"Тест",multiple:"Несколько ответов",open:"Развёрнутый ответ"}[v]||"Обычная задача");
     const q=id=>document.getElementById(id);
     const TASK_IMAGE_BUCKET="task-images";
-    const imageUrlCache=new Map(),imageUrlPending=new Map(),pendingImagePaths=new Set();
+    const imageUrlCache=new Map(),imageUrlPending=new Map(),pendingImagePaths=new Set(recoveredPendingImagePaths);
     const imageById=id=>state.images.find(x=>String(x.id)===String(id))||null;
     const imageId=()=>window.crypto?.randomUUID?.()||("img-"+Date.now()+"-"+Math.random().toString(36).slice(2));
     const tableById=id=>state.tables.find(x=>String(x.id)===String(id))||null;
@@ -358,7 +376,7 @@
     const typeButtons=types.map(([v,n])=>'<button type="button" data-tb-type="'+v+'" class="'+(state.taskType===v?"active":"")+'">'+n+'</button>').join("");
     const diffButtons=[["basic","Простая"],["medium","Средняя"],["advanced","Сложная"]].map(([v,n])=>'<button type="button" data-tb-diff="'+v+'" class="'+(state.difficulty===v?"active":"")+'">'+n+'</button>').join("");
     const grades=Array.from({length:11},(_,i)=>i+1).map(g=>'<option value="'+g+'" '+(g===state.grade?"selected":"")+'>'+g+' класс</option>').join("");
-    const top='<div class="mr-tb-top"><button id="tbExit" class="ghost">← В банк</button><button id="tbAudit" class="audit">◉ Проверить задачу</button><button id="tbDraft">Сохранить в черновики</button><button id="tbSave" class="save">✓ '+(editing?"Сохранить изменения":"Сохранить задачу")+'</button></div>';
+    const top='<div class="mr-tb-top"><button id="tbExit" class="ghost">← В банк</button><span id="tbAutosaveStatus" class="mr-tb-autosave-status">Все изменения сохранены локально</span><button id="tbAudit" class="audit">◉ Проверить задачу</button><button id="tbDraft">Сохранить в черновики</button><button id="tbSave" class="save">✓ '+(editing?"Сохранить изменения":"Сохранить задачу")+'</button></div>';
     const html=
       '<div class="mr-task-builder"><div class="mr-tb-grid"><main class="mr-tb-main">'+
         '<section class="mr-tb-card">'+section("info","Основная информация","Выберите тему, сложность и тип задачи")+
