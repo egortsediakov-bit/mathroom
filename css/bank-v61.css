@@ -444,3 +444,58 @@ html[data-theme=dark] .mr-variant-answer{background:#202124}
   .mr-variant-card-top{flex-direction:column}
   .mr-variant-card-top .small{text-align:left;max-width:none}
 }
+
+
+/* v82 — smart task sets */
+.mr-smart-set-launch{border-color:#ff9b68!important;background:#fff5ef!important;color:#d94f13!important;font-weight:800}
+.mr-smart-set-launch:hover{background:#ffeadf!important;border-color:#ff7f42!important}
+.mr-smart-set-modal{width:min(1120px,calc(100vw - 28px));max-width:1120px}
+.mr-smart-set{display:grid;gap:16px}
+.mr-smart-set-head h2{margin:9px 0 6px}
+.mr-smart-set-head p{margin:0;max-width:780px}
+.mr-smart-set-pill{border-color:#f4c2a7!important;background:#fff2e9!important;color:#d95116!important}
+.mr-smart-set-controls{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;padding:16px;border:1px solid var(--line);border-radius:17px;background:#fafafa}
+.mr-smart-set-controls label{display:grid;gap:7px;font-size:12px;font-weight:800;color:var(--muted)}
+.mr-smart-set-controls label.wide{grid-column:span 2}
+.mr-smart-set-controls select{width:100%}
+.mr-smart-set-check{grid-column:span 2!important;display:flex!important;align-items:center;gap:10px!important;padding:10px 12px;border:1px solid var(--line);border-radius:13px;background:#fff;cursor:pointer}
+.mr-smart-set-check input{width:18px;height:18px;margin:0}
+.mr-smart-set-check span{display:grid;gap:2px;color:var(--text)}
+.mr-smart-set-check small{font-weight:500;color:var(--muted)}
+.mr-smart-set-run{display:flex;align-items:center;justify-content:space-between;gap:14px}
+.mr-smart-set-status{display:flex;justify-content:space-between;gap:18px;padding:13px 15px;border-radius:14px;border:1px solid var(--line);font-size:13px}
+.mr-smart-set-status>div{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.mr-smart-set-status.good{background:#f0faf4;border-color:#bfe6cc;color:#17643a}
+.mr-smart-set-status.warn{background:#fff7ed;border-color:#f2cf9d;color:#8a4b08}
+.mr-smart-set-actions{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}
+.mr-smart-set-list{display:grid;gap:10px;max-height:min(60vh,680px);overflow:auto;padding-right:4px}
+.mr-smart-set-card{display:grid;grid-template-columns:54px 1fr;gap:12px;padding:14px;border:1px solid var(--line);border-radius:16px;background:var(--surface,#fff)}
+.mr-smart-set-card-num{display:flex;align-items:flex-start;justify-content:center;padding-top:3px;font-size:20px;font-weight:900;color:#e86125}
+.mr-smart-set-card-main{display:grid;gap:10px;min-width:0}
+.mr-smart-set-card-meta{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+.mr-smart-set-prompt{font-size:15px;line-height:1.55}
+.mr-smart-set-values{padding-top:2px}
+.mr-smart-set-answer{display:flex;justify-content:space-between;gap:12px;padding:9px 11px;border-radius:11px;background:#f7f7f8}
+.mr-smart-set-answer span{font-size:11px;font-weight:900;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
+.mr-smart-set-answer b{text-align:right}
+html[data-theme=dark] .mr-smart-set-launch{background:#25180f!important;border-color:#68432f!important;color:#ff9868!important}
+html[data-theme=dark] .mr-smart-set-controls{background:#151618}
+html[data-theme=dark] .mr-smart-set-check{background:#1b1c1f}
+html[data-theme=dark] .mr-smart-set-status.good{background:#13251a;border-color:#285c3a;color:#8fddb0}
+html[data-theme=dark] .mr-smart-set-status.warn{background:#2a2013;border-color:#654a26;color:#f2bd72}
+html[data-theme=dark] .mr-smart-set-card{background:#17181a}
+html[data-theme=dark] .mr-smart-set-answer{background:#202124}
+@media(max-width:900px){
+  .mr-smart-set-controls{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .mr-smart-set-controls label.wide,.mr-smart-set-check{grid-column:span 2!important}
+}
+@media(max-width:620px){
+  .mr-smart-set-modal{width:min(100%,calc(100vw - 14px))}
+  .mr-smart-set-controls{grid-template-columns:1fr}
+  .mr-smart-set-controls label.wide,.mr-smart-set-check{grid-column:span 1!important}
+  .mr-smart-set-run{align-items:stretch;flex-direction:column}
+  .mr-smart-set-status{flex-direction:column}
+  .mr-smart-set-actions{justify-content:stretch}
+  .mr-smart-set-actions .btn{flex:1 1 100%}
+  .mr-smart-set-card{grid-template-columns:40px 1fr}
+}
