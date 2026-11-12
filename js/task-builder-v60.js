@@ -695,6 +695,7 @@
       q("tbPreview").innerHTML='<div class="mr-tb-preview-sheet"><div class="mr-tb-preview-meta"><span>'+diffName(state.difficulty)+'</span><small>'+esc(t?.title||"Тема не выбрана")+' · '+esc(typeName(state.taskType))+'</small></div>'+previewConditionHtml()+'</div>'+studentAnswer();
       hydrateTaskImages(q("tbPreview"));
       typesetTaskMath(q("tbPreview"));
+      renderQualityAudit();
     }
     function nextTemplateName(){
       const used=new Set(state.templateVars.map(v=>v.name));
@@ -963,6 +964,154 @@
       input.onkeydown=e=>{if((e.ctrlKey||e.metaKey)&&e.key==="Enter"){e.preventDefault();modal.querySelector("[data-formula-insert]").click()}};
       draw();setTimeout(()=>{input.focus();input.setSelectionRange(input.value.length,input.value.length)},0);
     }
+
+    function qualityIssue(level,title,detail,target=""){return {level,title,detail,target}}
+    function latexIssues(text,label,target){
+      const src=String(text||"");
+      if(!src.includes("\\(")&&!src.includes("\\["))return [];
+      const issues=[],ranges=[];
+      const re=/\\\[([\s\S]*?)\\\]|\\\(([\s\S]*?)\\\)/g;
+      let m;
+      while((m=re.exec(src))){
+        ranges.push([m.index,re.lastIndex]);
+        const latex=(m[1]??m[2]??"").trim();
+        if(!latex){issues.push(qualityIssue("error","Пустая формула",label+": формула ничего не содержит.",target));continue}
+        if(window.katex?.renderToString){
+          try{window.katex.renderToString(latex,{throwOnError:true,strict:"ignore"})}
+          catch(e){issues.push(qualityIssue("error","Ошибка в формуле",label+": "+String(e?.message||"некорректный LaTeX").replace(/^KaTeX parse error:\s*/,""),target))}
+        }
+      }
+      let rest=src;
+      for(let i=ranges.length-1;i>=0;i--)rest=rest.slice(0,ranges[i][0])+rest.slice(ranges[i][1]);
+      if(/\\\(|\\\)|\\\[|\\\]/.test(rest))issues.push(qualityIssue("error","Незакрытая формула",label+": проверь границы \\(…\\) или \\[…\\].",target));
+      return issues;
+    }
+    function templateStrings(){
+      const rows=[
+        ["Условие",state.content,"tbContent"],
+        ["Решение",state.solution,"tbHelp"],
+        ...state.hints.map((x,i)=>["Подсказка "+(i+1),x,"tbHelp"])
+      ];
+      state.answers.forEach((a,i)=>{
+        rows.push(["Ответ "+(i+1),a.value,"tbAnswerEditor"]);
+        (a.accepted||[]).forEach((x,j)=>rows.push(["Допустимый ответ "+(i+1)+"."+(j+1),x,"tbAnswerEditor"]));
+      });
+      state.options.forEach((o,i)=>rows.push(["Вариант "+String.fromCharCode(65+i),o.text,"tbAnswerEditor"]));
+      rows.push(["Критерий ответа",state.openAnswer,"tbAnswerEditor"]);
+      state.tables.forEach((t,i)=>{
+        rows.push(["Подпись таблицы "+(i+1),t.caption,"tbTables"]);
+        t.cells.forEach((r,ri)=>r.forEach((v,ci)=>rows.push(["Таблица "+(i+1)+", ячейка "+(ri+1)+"×"+(ci+1),v,"tbTables"])));
+      });
+      state.geometries.forEach((g,i)=>{
+        rows.push(["Подпись схемы "+(i+1),g.caption,"tbGeometries"]);
+        if(g.type==="triangle"){
+          g.triangle.vertices.forEach(v=>rows.push(["Вершина",v,"tbGeometries"]));
+          g.triangle.sides.forEach(v=>rows.push(["Сторона",v,"tbGeometries"]));
+        }else if(g.type==="rectangle"){
+          g.rectangle.vertices.forEach(v=>rows.push(["Вершина",v,"tbGeometries"]));
+          rows.push(["Ширина",g.rectangle.widthLabel,"tbGeometries"],["Высота",g.rectangle.heightLabel,"tbGeometries"]);
+        }else if(g.type==="circle"){
+          rows.push(["Центр",g.circle.centerLabel,"tbGeometries"],["Радиус",g.circle.radiusLabel,"tbGeometries"]);
+        }else if(g.type==="coordinate"){
+          rows.push(["Точки координатной плоскости",g.coordinate.points,"tbGeometries"]);
+        }
+      });
+      return rows;
+    }
+    function collectQualityIssues(){
+      const issues=[];
+      if(!topic())issues.push(qualityIssue("error","Не выбрана тема","Укажи тему, к которой относится задача.","tbTopic"));
+      if(!state.content.trim())issues.push(qualityIssue("error","Нет условия задачи","Добавь текст условия — без него задачу нельзя публиковать.","tbContent"));
+
+      if(["standard","numeric"].includes(state.taskType)){
+        if(!state.answers.length||state.answers.some(a=>!String(a.value||"").trim()))issues.push(qualityIssue("error","Не заполнен правильный ответ","У каждого поля ответа должно быть эталонное значение.","tbAnswerEditor"));
+        const labels=state.answers.map(a=>String(a.label||"").trim().toLowerCase()).filter(Boolean);
+        if(new Set(labels).size<labels.length)issues.push(qualityIssue("warn","Повторяются метки ответов","Лучше дать полям разные названия, чтобы ученик не путался.","tbAnswerEditor"));
+      }else if(["single","multiple"].includes(state.taskType)){
+        const filled=state.options.filter(o=>String(o.text||"").trim());
+        if(filled.length<2)issues.push(qualityIssue("error","Мало вариантов ответа","Для тестовой задачи нужно минимум два заполненных варианта.","tbAnswerEditor"));
+        if(filled.length!==state.options.length)issues.push(qualityIssue("error","Есть пустой вариант","Заполни или удали пустые варианты ответа.","tbAnswerEditor"));
+        const normalized=filled.map(o=>o.text.trim().toLowerCase());
+        if(new Set(normalized).size<normalized.length)issues.push(qualityIssue("error","Есть одинаковые варианты","Дубли вариантов делают тест неоднозначным.","tbAnswerEditor"));
+        const correct=filled.filter(o=>o.correct).length;
+        if(state.taskType==="single"&&correct!==1)issues.push(qualityIssue("error","Нужен ровно один правильный вариант","Для типа «Тест» отметь один правильный ответ.","tbAnswerEditor"));
+        if(state.taskType==="multiple"&&correct<2)issues.push(qualityIssue("error","Нужно несколько правильных вариантов","Для этого типа отметь минимум два правильных ответа.","tbAnswerEditor"));
+      }else if(state.taskType==="open"&&!state.openAnswer.trim()){
+        issues.push(qualityIssue("warn","Нет критерия проверки","Добавь эталон ответа или критерии — преподавателю будет проще проверять работу.","tbAnswerEditor"));
+      }
+
+      for(const [label,value,target] of templateStrings())issues.push(...latexIssues(value,label,target));
+
+      if(state.templateVars.length){
+        try{
+          const scope=generateTemplateScope({tries:1200});
+          const expressions=[];
+          for(const [label,value,target] of templateStrings()){
+            const re=/{{\s*([^{}]+?)\s*}}/g;let m;
+            while((m=re.exec(String(value||""))))expressions.push([label,m[1],target]);
+          }
+          for(const [label,expr,target] of expressions){
+            try{templateEval(expr,scope)}
+            catch{issues.push(qualityIssue("error","Ошибка в шаблоне",label+": не вычисляется {{"+expr+"}}.",target))}
+          }
+          const used=new Set();
+          for(const [,expr] of expressions){
+            for(const v of state.templateVars){
+              const safeName=String(v.name||"").replace(/[^A-Za-z0-9_]/g,"");
+              if(safeName&&new RegExp("(^|[^A-Za-z0-9_])"+safeName+"([^A-Za-z0-9_]|$)").test(expr))used.add(v.name);
+            }
+          }
+          const unused=state.templateVars.filter(v=>!used.has(v.name));
+          if(unused.length)issues.push(qualityIssue("warn","Есть неиспользуемые переменные","Не используются: "+unused.map(v=>v.name).join(", ")+".","tbTemplateVars"));
+        }catch(e){issues.push(qualityIssue("error","Шаблон не генерируется",e.message||"Не удалось подобрать допустимые значения.","tbTemplateVars"))}
+      }else{
+        for(const [label,value,target] of templateStrings()){
+          if(/{{\s*[^{}]+\s*}}/.test(String(value||"")))issues.push(qualityIssue("error","Переменная без шаблона",label+": есть {{…}}, но переменные шаблона не настроены.",target));
+        }
+      }
+
+      state.tables.forEach((t,i)=>{
+        const values=t.cells.flat().map(x=>String(x||"").trim()).filter(Boolean);
+        if(!values.length)issues.push(qualityIssue("error","Пустая таблица","Таблица "+(i+1)+" добавлена, но в ней нет данных.","tbTables"));
+      });
+      state.geometries.forEach((g,i)=>{
+        if(g.type==="coordinate"&&!parseCoordinatePoints(renderTemplateString(g.coordinate.points)).length)issues.push(qualityIssue("error","Нет точек на координатной плоскости","Схема "+(i+1)+": добавь хотя бы одну точку в формате A(2;3).","tbGeometries"));
+      });
+      state.images.forEach((img,i)=>{
+        if(!String(img.alt||"").trim())issues.push(qualityIssue("warn","У изображения нет подписи","Изображение "+(i+1)+": подпись поможет понять рисунок вне контекста.","tbImages"));
+      });
+
+      if(!state.solution.trim())issues.push(qualityIssue("warn","Нет полного решения","Для банка задач полезно сохранить решение преподавателя.","tbHelp"));
+      if(!state.hints.some(x=>String(x||"").trim()))issues.push(qualityIssue("info","Подсказки не добавлены","Это нормально, но для тренировочных задач подсказки могут быть полезны.","tbHelp"));
+      if(state.helpSettings.testHints)issues.push(qualityIssue("warn","Подсказки включены в тестах","Ученик сможет использовать подсказки во время теста.","tbHelp"));
+      if(state.taskType==="open"&&state.settings.allowTests)issues.push(qualityIssue("warn","Развёрнутый ответ не попадёт в автотест","Такие задачи сейчас исключаются из автоматических тестов.","tbAnswerEditor"));
+      if(state.source.kind==="textbook"&&(!state.source.textbookId||!state.source.page))issues.push(qualityIssue("warn","Источник указан не полностью","Для учебника желательно выбрать книгу и страницу.","tbSource"));
+      return issues;
+    }
+    function qualityTarget(id){
+      const el=q(id);if(!el)return;
+      el.scrollIntoView({behavior:"smooth",block:"center"});
+      setTimeout(()=>{if(typeof el.focus==="function"&&!el.matches("div,section"))el.focus()},350);
+    }
+    function renderQualityAudit(){
+      const host=q("tbQualityAudit");if(!host)return {issues:[],errors:[],warnings:[],infos:[]};
+      const issues=collectQualityIssues();
+      const errors=issues.filter(x=>x.level==="error"),warnings=issues.filter(x=>x.level==="warn"),infos=issues.filter(x=>x.level==="info");
+      const status=errors.length?"error":warnings.length?"warn":"ok";
+      const title=errors.length?"Нужно исправить "+errors.length:warnings.length?"Можно публиковать · "+warnings.length+" замеч.":"Задача готова";
+      const detail=errors.length?"Публикация заблокирована до исправления критичных ошибок.":warnings.length?"Критичных ошибок нет. Проверь замечания перед сохранением.":"Критичных ошибок и замечаний не найдено.";
+      host.innerHTML='<div class="mr-tb-quality-head '+status+'"><span>'+(status==="ok"?"✓":status==="warn"?"!":"×")+'</span><div><b>'+title+'</b><small>'+detail+'</small></div></div>'+
+        '<div class="mr-tb-quality-summary"><span class="bad">'+errors.length+' ошибок</span><span class="warn">'+warnings.length+' замечаний</span><span class="info">'+infos.length+' советов</span></div>'+
+        (issues.length?'<div class="mr-tb-quality-list">'+issues.slice(0,10).map((x,i)=>'<button type="button" data-quality-index="'+i+'" class="'+x.level+'"><i>'+(x.level==="error"?"×":x.level==="warn"?"!":"i")+'</i><span><b>'+esc(x.title)+'</b><small>'+esc(x.detail)+'</small></span><em>→</em></button>').join("")+(issues.length>10?'<div class="mr-tb-quality-more">Ещё '+(issues.length-10)+' замечаний</div>':'')+'</div>':'<div class="mr-tb-quality-perfect">Можно сохранять задачу в банк.</div>');
+      host.querySelectorAll("[data-quality-index]").forEach(b=>b.onclick=()=>qualityTarget(issues[Number(b.dataset.qualityIndex)]?.target));
+      const topBtn=q("tbAudit");
+      if(topBtn){
+        topBtn.dataset.status=status;
+        topBtn.textContent=(status==="ok"?"✓":errors.length?"× "+errors.length:"! "+warnings.length)+" Проверка";
+      }
+      return {issues,errors,warnings,infos};
+    }
+
     function legacyAnswer(){if(["standard","numeric"].includes(state.taskType))return state.answers.map(a=>a.value.trim()).filter(Boolean).join("; ");if(["single","multiple"].includes(state.taskType))return state.options.filter(o=>o.correct&&o.text.trim()).map(o=>o.text.trim()).join(" | ");return state.openAnswer.trim()}
     function collect(){state.grade=Number(q("tbGrade").value)||state.grade;state.topicId=q("tbTopic").value;state.subtopic=q("tbSubtopic").value;state.content=q("tbContent").value;state.settings.shared=!!q("tbShared").checked;state.settings.allowTests=!!q("tbAllowTests").checked;state.settings.allowAi=!!q("tbAllowAi").checked;state.helpSettings.homeworkHints=!!q("tbHomeworkHints")?.checked;state.helpSettings.testHints=!!q("tbTestHints")?.checked;state.helpSettings.solutionMode=q("tbSolutionMode")?.value==="teacher_only"?"teacher_only":"after_attempt";setHelp(q("tbHelp").value);syncAnswer()}
     function builderMeta(){const t=topic();syncContentOrder();normalizeTemplateVars();return {version:9,grade:Number(t?.grade||state.grade)||null,subtopic:state.subtopic.trim(),task_type:state.taskType,answer_check:{numeric_equivalence:!!state.answerCheck.numericEquivalent,tolerance:state.answerCheck.tolerance,ignore_case:!!state.answerCheck.ignoreCase,ignore_spaces:!!state.answerCheck.ignoreSpaces},template_vars:state.templateVars.map(v=>({id:v.id,name:v.name,min:v.min,max:v.max,step:v.step,multiple_of:v.multipleOf||0,parity:v.parity,non_zero:!!v.nonZero})),template_settings:{condition:state.templateCondition.trim(),integer_answers:!!state.templateIntegerAnswers},content_order:state.contentOrder,images:state.images.map(img=>({id:img.id,path:img.path,name:img.name,mime:img.mime,width:img.width,height:img.height,display_width:img.displayWidth,alt:img.alt.trim()})),tables:state.tables.map(table=>({id:table.id,caption:table.caption.trim(),rows:table.rows,cols:table.cols,header_row:!!table.headerRow,header_col:!!table.headerCol,cells:table.cells.map(row=>row.map(cell=>String(cell)))})),geometries:state.geometries.map(g=>({id:g.id,type:g.type,caption:g.caption.trim(),display_width:g.displayWidth,triangle:{vertices:g.triangle.vertices,sides:g.triangle.sides,right_angle:g.triangle.rightAngle},rectangle:{vertices:g.rectangle.vertices,width_label:g.rectangle.widthLabel,height_label:g.rectangle.heightLabel},circle:{center_label:g.circle.centerLabel,radius_label:g.circle.radiusLabel},coordinate:{points:g.coordinate.points,x_min:g.coordinate.xMin,x_max:g.coordinate.xMax,y_min:g.coordinate.yMin,y_max:g.coordinate.yMax}})),answers:state.answers,options:state.options,open_answer:state.openAnswer,solution:state.solution,hints:state.hints,help_settings:{homework_hints:!!state.helpSettings.homeworkHints,test_hints:!!state.helpSettings.testHints,solution_mode:state.helpSettings.solutionMode},source:{kind:state.source.kind,textbook_id:state.source.kind==="textbook"?(state.source.textbookId||null):null,page:state.source.kind==="textbook"?(state.source.page||null):null,exercise_no:state.source.kind==="textbook"?(state.source.exerciseNo||null):null,note:state.source.kind==="textbook"?"":state.source.note.trim()},settings:{shared:!!state.settings.shared,allow_tests:!!state.settings.allowTests,allow_ai_example:!!state.settings.allowAi}}}
@@ -978,7 +1127,7 @@
     }
     async function save(draft){
       try{
-        collect();const t=topic();if(!t)return toast("Выбери тему задачи");if(!draft&&!state.content.trim())return toast("Добавь условие задачи");if(!draft&&!legacyAnswer()&&state.taskType!=="open")return toast("Укажи правильный ответ");if(state.templateVars.length&&!draft){try{generateTemplateScope({tries:1200})}catch(e){return toast(e.message||"Проверь ограничения шаблона")}}
+        collect();const t=topic();if(!draft){const audit=renderQualityAudit();if(audit.errors.length){q("tbQualityAudit")?.scrollIntoView({behavior:"smooth",block:"center"});return toast("Исправь критичные ошибки перед сохранением")}}if(!t)return toast("Выбери тему задачи");
         const sys=editing?exerciseSystemTags(editing.tags):[];const tags=[...new Set([...sys,"класс-"+t.grade,"тема:"+t.title,"тип:"+state.taskType])];
         const body={topic_id:t.id,kind:"task",title:(editing?.title&&editing.title.trim())||("Задача · "+t.title),content:state.content.trim(),answer:legacyAnswer(),difficulty:state.difficulty,category:state.subtopic.trim(),tags,builder_meta:builderMeta(),is_draft:!!draft,updated_at:new Date().toISOString()};
         const res=editing?await sb.from("exercises").update(body).eq("id",editing.id).select().single():await sb.from("exercises").insert({teacher_id:S.user.id,...body}).select().single();
@@ -1003,7 +1152,7 @@
     document.querySelectorAll("[data-source]").forEach(b=>b.onclick=()=>{state.source.kind=b.dataset.source;document.querySelectorAll("[data-source]").forEach(x=>x.classList.toggle("active",x===b));renderSource()});
     q("tbShared").onchange=e=>state.settings.shared=e.target.checked;q("tbAllowTests").onchange=e=>state.settings.allowTests=e.target.checked;q("tbAllowAi").onchange=e=>state.settings.allowAi=e.target.checked;
     document.querySelectorAll("[data-info]").forEach(b=>b.onclick=()=>toast(b.dataset.info));
-    q("tbExit").onclick=back;q("tbDraft").onclick=()=>save(true);q("tbSave").onclick=()=>save(false);
+    q("tbAudit").onclick=()=>{collect();renderQualityAudit();q("tbQualityAudit")?.scrollIntoView({behavior:"smooth",block:"center"})};q("tbExit").onclick=back;q("tbDraft").onclick=()=>save(true);q("tbSave").onclick=()=>save(false);
   }};
   window.MathroomTaskBuilderV60=API;
 })();
