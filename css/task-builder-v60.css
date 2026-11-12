@@ -1213,3 +1213,23 @@ html[data-theme=dark] .mr-tb-preview-hints article>span{background:#2d1c13;color
 html[data-theme=dark] .mr-tb-preview-hints article div>div{color:#d6dce1}
 html[data-theme=dark] .mr-tb-preview-empty>span{background:#171b20}
 html[data-theme=dark] .mr-tb-preview-empty>b{color:#cbd1d6}
+
+
+/* v77 autosave + preview answer fix */
+.mr-tb-preview-check-result{
+  display:none;margin-top:8px;padding:9px 10px;border:1px solid transparent;border-radius:9px
+}
+.mr-tb-preview-check-result.good,
+.mr-tb-preview-check-result.bad,
+.mr-tb-preview-check-result.manual{display:block}
+.mr-tb-preview-check-result b{display:block;font-size:9px;font-weight:950}
+.mr-tb-preview-check-result span{display:block;margin-top:2px;font-size:7.8px;line-height:1.4}
+.mr-tb-preview-check-result strong{font-weight:950}
+.mr-tb-preview-check-result.good{border-color:#bfe2c9;background:#f2faf4;color:#287344}
+.mr-tb-preview-check-result.bad{border-color:#efb9ae;background:#fff3f0;color:#b23f31}
+.mr-tb-preview-check-result.manual{border-color:#d6dde4;background:#f5f7f9;color:#66727d}
+.mr-tb-student-answer input:focus,
+.mr-tb-student-answer textarea:focus{outline:none;border-color:#ff9564;box-shadow:0 0 0 3px rgba(243,90,22,.08)}
+html[data-theme=dark] .mr-tb-preview-check-result.good{background:#101914;border-color:#315a3d;color:#9fcdab}
+html[data-theme=dark] .mr-tb-preview-check-result.bad{background:#241512;border-color:#63352f;color:#e9a094}
+html[data-theme=dark] .mr-tb-preview-check-result.manual{background:#151a1f;border-color:#343a42;color:#aeb6be}
