@@ -759,6 +759,85 @@
     function geometrySvg(g){
       ensureTemplateValues();
       const txt=(x,y,v,anchor="middle",cls="label")=>'<text x="'+x+'" y="'+y+'" text-anchor="'+anchor+'" class="'+cls+'">'+esc(renderTemplateString(String(v||"")))+'</text>';
+
+      const plotFunction=(expr,x0,x1,y0,y1)=>{
+        const left=52,right=354,top=28,bottom=232,w=right-left,h=bottom-top;
+        const sx=x=>left+(x-x0)/(x1-x0)*w,sy=y=>bottom-(y-y0)/(y1-y0)*h;
+        const span=Math.max(x1-x0,y1-y0),step=span<=12?1:span<=24?2:5;
+        const xAxisY=sy(0),yAxisX=sx(0);
+        let grid="",ticks="";
+        const firstX=Math.ceil(x0/step)*step,firstY=Math.ceil(y0/step)*step;
+        for(let x=firstX;x<=x1+1e-9;x+=step){
+          if(Math.abs(x)<1e-9)continue;
+          const px=sx(x);
+          grid+='<line x1="'+px+'" y1="'+top+'" x2="'+px+'" y2="'+bottom+'" class="coord-grid"/>';
+          ticks+='<line x1="'+px+'" y1="'+(xAxisY-4)+'" x2="'+px+'" y2="'+(xAxisY+4)+'" class="coord-tick"/>'+txt(px,xAxisY+19,Number(x.toFixed(6)),"middle","coord-tick-label");
+        }
+        for(let y=firstY;y<=y1+1e-9;y+=step){
+          if(Math.abs(y)<1e-9)continue;
+          const py=sy(y);
+          grid+='<line x1="'+left+'" y1="'+py+'" x2="'+right+'" y2="'+py+'" class="coord-grid"/>';
+          ticks+='<line x1="'+(yAxisX-4)+'" y1="'+py+'" x2="'+(yAxisX+4)+'" y2="'+py+'" class="coord-tick"/>'+txt(yAxisX-11,py+4,Number(y.toFixed(6)),"end","coord-tick-label");
+        }
+        const axes=
+          '<line x1="'+left+'" y1="'+xAxisY+'" x2="'+(right-7)+'" y2="'+xAxisY+'" class="coord-axis"/>'+
+          '<path d="M '+(right-7)+' '+(xAxisY-5)+' L '+right+' '+xAxisY+' L '+(right-7)+' '+(xAxisY+5)+'" class="coord-arrow"/>'+
+          '<line x1="'+yAxisX+'" y1="'+bottom+'" x2="'+yAxisX+'" y2="'+(top+7)+'" class="coord-axis"/>'+
+          '<path d="M '+(yAxisX-5)+' '+(top+7)+' L '+yAxisX+' '+top+' L '+(yAxisX+5)+' '+(top+7)+'" class="coord-arrow"/>'+
+          txt(right-1,xAxisY-11,"x","end","coord-axis-name")+txt(yAxisX+11,top+2,"y","start","coord-axis-name")+
+          txt(yAxisX-10,xAxisY+18,"0","end","coord-origin");
+        const rendered=renderTemplateString(expr||"x");
+        let d="",drawing=false,lastY=null;
+        for(let i=0;i<=220;i++){
+          const x=x0+(x1-x0)*i/220;
+          let y=NaN;
+          try{y=Number(window.math?.evaluate?window.math.evaluate(rendered,{x}):NaN)}catch{}
+          const visible=Number.isFinite(y)&&y>=y0&&y<=y1;
+          if(!visible){drawing=false;lastY=null;continue}
+          const px=sx(x),py=sy(y);
+          if(lastY!==null&&Math.abs(py-lastY)>h*.55)drawing=false;
+          d+=(drawing?" L ":"M ")+px.toFixed(2)+" "+py.toFixed(2);
+          drawing=true;lastY=py;
+        }
+        const curve=d?'<path d="'+d+'" class="function-curve"/>':'';
+        return '<svg viewBox="0 0 406 264" role="img" aria-label="График функции"><rect x="'+left+'" y="'+top+'" width="'+w+'" height="'+h+'" rx="12" class="coord-plot-bg"/>'+grid+axes+ticks+curve+'</svg>';
+      };
+      if(["segment","line","ray"].includes(g.type)){
+        const a=g.linear.aLabel,b=g.linear.bLabel,value=g.linear.valueLabel;
+        const left=g.type==="segment"?78:42,right=g.type==="segment"?282:318,y=116;
+        let arrows="";
+        if(g.type==="line")arrows='<path d="M52 108 L42 116 L52 124" class="coord-arrow"/><path d="M308 108 L318 116 L308 124" class="coord-arrow"/>';
+        if(g.type==="ray")arrows='<path d="M308 108 L318 116 L308 124" class="coord-arrow"/>';
+        const ax=g.type==="ray"?78:112,bx=g.type==="ray"?215:248;
+        const dots=g.type==="segment"?'<circle cx="78" cy="'+y+'" r="4.5" class="point"/><circle cx="282" cy="'+y+'" r="4.5" class="point"/>':
+          g.type==="ray"?'<circle cx="78" cy="'+y+'" r="4.5" class="point"/><circle cx="215" cy="'+y+'" r="3.5" class="point"/>':
+          '<circle cx="112" cy="'+y+'" r="3.5" class="point"/><circle cx="248" cy="'+y+'" r="3.5" class="point"/>';
+        return '<svg viewBox="0 0 360 200" role="img" aria-label="'+(g.type==="segment"?"Отрезок":g.type==="ray"?"Луч":"Прямая")+'"><line x1="'+left+'" y1="'+y+'" x2="'+right+'" y2="'+y+'" class="shape"/>'+arrows+dots+
+          txt(ax,y+30,a)+txt(bx,y+30,b)+(value?txt((ax+bx)/2,y-18,value):"")+'</svg>';
+      }
+      if(g.type==="angle"){
+        const a=g.angle.leftLabel,o=g.angle.vertexLabel,b=g.angle.rightLabel,value=g.angle.valueLabel;
+        return '<svg viewBox="0 0 360 230" role="img" aria-label="Угол"><line x1="180" y1="168" x2="76" y2="72" class="shape"/><line x1="180" y1="168" x2="292" y2="82" class="shape"/>'+
+          '<circle cx="180" cy="168" r="4" class="point"/><path d="M148 139 Q180 112 216 140" class="angle-arc"/>'+
+          txt(62,65,a,"end")+txt(180,194,o)+txt(304,76,b,"start")+(value?txt(181,124,value):"")+'</svg>';
+      }
+      if(["parallelogram","rhombus","trapezoid"].includes(g.type)){
+        const v=g.quad.vertices,sd=g.quad.sides;
+        const pts=g.type==="parallelogram"?[[90,174],[270,174],[312,58],[132,58]]:
+          g.type==="rhombus"?[[180,42],[306,116],[180,190],[54,116]]:
+          [[70,176],[290,176],[250,62],[120,62]];
+        const poly=pts.map(p=>p.join(",")).join(" ");
+        const labelPos=g.type==="rhombus"?[[180,28],[322,116],[180,210],[38,116]]:
+          [[pts[0][0]-14,pts[0][1]+20],[pts[1][0]+14,pts[1][1]+20],[pts[2][0]+14,pts[2][1]-12],[pts[3][0]-14,pts[3][1]-12]];
+        const sidePos=g.type==="rhombus"?[[247,72],[247,164],[113,164],[113,72]]:
+          [[180,199],[294,116],[190,43],[96,116]];
+        return '<svg viewBox="0 0 360 230" role="img" aria-label="'+(g.type==="parallelogram"?"Параллелограмм":g.type==="rhombus"?"Ромб":"Трапеция")+'"><polygon points="'+poly+'" class="shape"/>'+
+          v.map((x,i)=>txt(labelPos[i][0],labelPos[i][1],x)).join("")+
+          sd.map((x,i)=>x?txt(sidePos[i][0],sidePos[i][1],x):"").join("")+'</svg>';
+      }
+      if(g.type==="function"){
+        return plotFunction(g.functionGraph.expression,g.functionGraph.xMin,g.functionGraph.xMax,g.functionGraph.yMin,g.functionGraph.yMax);
+      }
       if(g.type==="rectangle"){
         const v=g.rectangle.vertices;
         return '<svg viewBox="0 0 360 230" role="img" aria-label="Прямоугольник"><rect x="72" y="48" width="216" height="134" class="shape"/>'+
@@ -836,7 +915,7 @@
         return {icon:"⊞",title:"Таблица "+(i+1),sub:(x?.caption||((x?.rows||0)+" × "+(x?.cols||0)))};
       }
       const x=geometryById(id),i=state.geometries.indexOf(x);
-      const names={triangle:"Треугольник",rectangle:"Прямоугольник",circle:"Окружность",coordinate:"Координатная плоскость"};
+      const names={triangle:"Треугольник",rectangle:"Прямоугольник",circle:"Окружность",segment:"Отрезок",line:"Прямая",ray:"Луч",angle:"Угол",parallelogram:"Параллелограмм",rhombus:"Ромб",trapezoid:"Трапеция",coordinate:"Координатная плоскость",function:"График функции"};
       return {icon:"△",title:"Схема "+(i+1),sub:names[x?.type]||"Геометрия"};
     }
     function renderContentOrder(){
