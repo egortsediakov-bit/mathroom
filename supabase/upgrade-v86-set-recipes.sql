@@ -19,10 +19,34 @@ drop policy if exists task_set_recipes_teacher_select on public.task_set_recipes
 drop policy if exists task_set_recipes_teacher_insert on public.task_set_recipes;
 drop policy if exists task_set_recipes_teacher_update on public.task_set_recipes;
 drop policy if exists task_set_recipes_teacher_delete on public.task_set_recipes;
-create policy task_set_recipes_teacher_select on public.task_set_recipes for select to authenticated using ((select auth.uid()) = teacher_id);
-create policy task_set_recipes_teacher_insert on public.task_set_recipes for insert to authenticated with check ((select auth.uid()) = teacher_id);
-create policy task_set_recipes_teacher_update on public.task_set_recipes for update to authenticated using ((select auth.uid()) = teacher_id) with check ((select auth.uid()) = teacher_id);
-create policy task_set_recipes_teacher_delete on public.task_set_recipes for delete to authenticated using ((select auth.uid()) = teacher_id);
+create policy task_set_recipes_teacher_select
+  on public.task_set_recipes for select to authenticated
+  using (
+    (select coalesce((auth.jwt()->>'is_anonymous')::boolean,false)) is false
+    and (select auth.uid()) = teacher_id
+  );
+create policy task_set_recipes_teacher_insert
+  on public.task_set_recipes for insert to authenticated
+  with check (
+    (select coalesce((auth.jwt()->>'is_anonymous')::boolean,false)) is false
+    and (select auth.uid()) = teacher_id
+  );
+create policy task_set_recipes_teacher_update
+  on public.task_set_recipes for update to authenticated
+  using (
+    (select coalesce((auth.jwt()->>'is_anonymous')::boolean,false)) is false
+    and (select auth.uid()) = teacher_id
+  )
+  with check (
+    (select coalesce((auth.jwt()->>'is_anonymous')::boolean,false)) is false
+    and (select auth.uid()) = teacher_id
+  );
+create policy task_set_recipes_teacher_delete
+  on public.task_set_recipes for delete to authenticated
+  using (
+    (select coalesce((auth.jwt()->>'is_anonymous')::boolean,false)) is false
+    and (select auth.uid()) = teacher_id
+  );
 revoke all on table public.task_set_recipes from anon, authenticated, service_role;
 grant select, insert, update, delete on table public.task_set_recipes to authenticated;
 grant select, insert, update, delete on table public.task_set_recipes to service_role;
