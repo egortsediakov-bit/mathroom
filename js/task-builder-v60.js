@@ -14,6 +14,14 @@
       difficulty:["basic","medium","advanced"].includes(editing?.difficulty)?editing.difficulty:"medium",
       taskType:["standard","numeric","single","multiple","open"].includes(meta.task_type)?meta.task_type:"standard",
       content:String(editing?.content||""),
+      templateVars:Array.isArray(meta.template_vars)?meta.template_vars.map((v,i)=>({
+        id:String(v?.id||("var"+i)),
+        name:String(v?.name||String.fromCharCode(97+i)).replace(/[^A-Za-z0-9_]/g,"").slice(0,16)||("v"+(i+1)),
+        min:Number.isFinite(Number(v?.min))?Number(v.min):1,
+        max:Number.isFinite(Number(v?.max))?Number(v.max):10,
+        step:Math.max(1,Math.abs(Number(v?.step)||1))
+      })).slice(0,12):[],
+      templateValues:{},
       images:Array.isArray(meta.images)?meta.images.map((img,i)=>({
         id:String(img?.id||("img"+i)),
         path:String(img?.path||""),
@@ -102,6 +110,47 @@
       renderContentOrder();preview();
     }
     const imageExt=mime=>({"image/png":"png","image/jpeg":"jpg","image/webp":"webp","image/gif":"gif"}[mime]||"png");
+    const templateVarId=()=>window.crypto?.randomUUID?.()||("var-"+Date.now()+"-"+Math.random().toString(36).slice(2));
+    function normalizeTemplateVars(){
+      const used=new Set();
+      state.templateVars=state.templateVars.map((v,i)=>{
+        let name=String(v.name||"").replace(/[^A-Za-z0-9_]/g,"").replace(/^([^A-Za-z_])/,"_$1").slice(0,16)||("v"+(i+1));
+        let base=name,n=2;while(used.has(name))name=(base.slice(0,13)+n++).slice(0,16);
+        used.add(name);
+        let min=Number(v.min),max=Number(v.max),step=Math.max(1,Math.abs(Number(v.step)||1));
+        if(!Number.isFinite(min))min=1;if(!Number.isFinite(max))max=10;if(min>max)[min,max]=[max,min];
+        return {...v,name,min,max,step};
+      });
+      const valid=new Set(state.templateVars.map(v=>v.name));
+      for(const k of Object.keys(state.templateValues))if(!valid.has(k))delete state.templateValues[k];
+    }
+    function randomTemplateValue(v){
+      const count=Math.max(0,Math.floor((v.max-v.min)/v.step));
+      return v.min+Math.floor(Math.random()*(count+1))*v.step;
+    }
+    function rerollTemplateValues(){
+      normalizeTemplateVars();
+      for(const v of state.templateVars)state.templateValues[v.name]=randomTemplateValue(v);
+    }
+    function ensureTemplateValues(){
+      normalizeTemplateVars();
+      for(const v of state.templateVars)if(!Number.isFinite(Number(state.templateValues[v.name])))state.templateValues[v.name]=v.min;
+    }
+    function formatTemplateValue(value){
+      if(typeof value==="number"&&Number.isFinite(value))return String(Number(value.toFixed(10)));
+      return String(value??"");
+    }
+    function renderTemplateString(value,scope=state.templateValues){
+      const src=String(value??"");
+      if(!src.includes("{{"))return src;
+      return src.replace(/{{\s*([^{}]+?)\s*}}/g,(full,expr)=>{
+        try{
+          if(window.math?.evaluate)return formatTemplateValue(window.math.evaluate(expr,scope));
+          if(Object.prototype.hasOwnProperty.call(scope,expr.trim()))return formatTemplateValue(scope[expr.trim()]);
+        }catch{}
+        return full;
+      });
+    }
     async function signedImageUrl(path){
       if(!path)return "";
       if(imageUrlCache.has(path))return imageUrlCache.get(path);
@@ -184,6 +233,7 @@
           '<div id="tbImages" class="mr-tb-images"></div>'+
           '<div id="tbTables" class="mr-tb-tables"></div>'+
           '<div id="tbGeometries" class="mr-tb-geometries"></div>'+
+          '<div id="tbTemplateVars" class="mr-tb-template-vars"></div>'+
           '<div id="tbContentOrder" class="mr-tb-content-order"></div>'+
         '</section>'+
         '<section class="mr-tb-card">'+section("answer","Правильный ответ","Укажите правильный ответ и допустимые варианты")+
