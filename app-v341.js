@@ -1342,28 +1342,111 @@ async function hydrateTaskMedia(root=document){
 function taskTemplateVars(meta){
   return Array.isArray(meta?.template_vars)?meta.template_vars.filter(v=>v&&v.name):[];
 }
-function taskTemplateScope(meta){
-  const scope={};
-  for(const raw of taskTemplateVars(meta)){
-    const name=String(raw.name||"").replace(/[^A-Za-z0-9_]/g,"");
-    if(!name)continue;
-    let min=Number(raw.min),max=Number(raw.max),step=Math.max(1,Math.abs(Number(raw.step)||1));
-    if(!Number.isFinite(min))min=1;if(!Number.isFinite(max))max=10;if(min>max)[min,max]=[max,min];
-    const count=Math.max(0,Math.floor((max-min)/step));
-    scope[name]=min+Math.floor(Math.random()*(count+1))*step;
+function taskTemplateEval(expr,scope){
+  if(!window.math?.evaluate)throw new Error("Математический движок не загружен");
+  const exactScope={};
+  for(const [k,v] of Object.entries(scope||{})){
+    try{exactScope[k]=window.math.fraction?window.math.fraction(v):v}catch{exactScope[k]=v}
   }
-  return scope;
+  return window.math.evaluate(expr,exactScope);
 }
 function taskTemplateFormat(value){
-  if(typeof value==="number"&&Number.isFinite(value))return String(Number(value.toFixed(10)));
+  if(value&&typeof value==="object"){
+    const n=Number(value.n),d=Number(value.d),sign=Number(value.s??1);
+    if(Number.isFinite(n)&&Number.isFinite(d)&&d!==0){
+      if(d===1)return String(sign*n);
+      let rest=Math.abs(d);while(rest%2===0)rest/=2;while(rest%5===0)rest/=5;
+      if(rest===1)return String(Number((sign*n/d).toPrecision(15)));
+      return (sign<0?"-":"")+n+"/"+d;
+    }
+    if(typeof value.toString==="function")return value.toString();
+  }
+  if(typeof value==="number"&&Number.isFinite(value)){
+    if(Math.abs(value-Math.round(value))<1e-12)return String(Math.round(value));
+    return String(Number(value.toPrecision(15)));
+  }
   return String(value??"");
+}
+function taskTemplateCandidateValid(v,value){
+  if(!Number.isFinite(value))return false;
+  if(v.nonZero&&Math.abs(value)<1e-12)return false;
+  if(v.multipleOf>0){
+    const ratio=value/v.multipleOf;
+    if(Math.abs(ratio-Math.round(ratio))>1e-10)return false;
+  }
+  if(v.parity!=="any"){
+    if(Math.abs(value-Math.round(value))>1e-10)return false;
+    const even=Math.abs(Math.round(value)%2)===0;
+    if(v.parity==="even"&&!even)return false;
+    if(v.parity==="odd"&&even)return false;
+  }
+  return true;
+}
+function taskTemplateNormalizeVar(raw,index){
+  const name=String(raw?.name||("v"+(index+1))).replace(/[^A-Za-z0-9_]/g,"");
+  let min=Number(raw?.min),max=Number(raw?.max),step=Math.max(1e-9,Math.abs(Number(raw?.step)||1));
+  let multipleOf=Math.max(0,Math.abs(Number(raw?.multiple_of)||0));
+  if(!Number.isFinite(min))min=1;if(!Number.isFinite(max))max=10;if(min>max)[min,max]=[max,min];
+  if(!Number.isFinite(multipleOf))multipleOf=0;
+  return {name,min,max,step,multipleOf,parity:["any","even","odd"].includes(raw?.parity)?raw.parity:"any",nonZero:!!raw?.non_zero};
+}
+function taskTemplateCandidates(v,limit=5000){
+  const count=Math.max(0,Math.floor((v.max-v.min)/v.step+1e-10)),out=[];
+  if(count<=limit){
+    for(let i=0;i<=count;i++){const value=v.min+i*v.step;if(taskTemplateCandidateValid(v,value))out.push(value)}
+    return out;
+  }
+  const seen=new Set();
+  for(let tries=0;tries<Math.min(limit*3,15000)&&out.length<limit;tries++){
+    const i=Math.floor(Math.random()*(count+1)),value=v.min+i*v.step,key=String(value);
+    if(seen.has(key))continue;seen.add(key);
+    if(taskTemplateCandidateValid(v,value))out.push(value);
+  }
+  return out;
+}
+function taskTemplateAnswerExpressions(answer){
+  const out=[],re=/{{\s*([^{}]+?)\s*}}/g;let m;
+  while((m=re.exec(String(answer||""))))out.push(m[1]);
+  return out;
+}
+function taskTemplateIntegerAnswerOk(answer,scope){
+  const exprs=taskTemplateAnswerExpressions(answer);
+  for(const expr of exprs){
+    try{
+      const value=taskTemplateEval(expr,scope);
+      if(value&&typeof value==="object"&&Number.isFinite(Number(value.d))){
+        if(Number(value.d)!==1)return false;
+        continue;
+      }
+      const n=typeof value==="number"?value:Number(value?.toString?.()??value);
+      if(Number.isFinite(n)&&Math.abs(n-Math.round(n))>1e-10)return false;
+    }catch{return false}
+  }
+  return true;
+}
+function taskTemplateScope(meta,answer){
+  const vars=taskTemplateVars(meta).map(taskTemplateNormalizeVar);
+  if(!vars.length)return {};
+  const settings=meta?.template_settings&&typeof meta.template_settings==="object"?meta.template_settings:{};
+  const condition=String(settings.condition||"").trim(),integerAnswers=!!settings.integer_answers;
+  const candidates=vars.map(v=>taskTemplateCandidates(v));
+  for(let i=0;i<candidates.length;i++)if(!candidates[i].length)throw new Error("Нет допустимых значений для "+vars[i].name);
+  for(let attempt=0;attempt<1200;attempt++){
+    const scope={};
+    vars.forEach((v,i)=>{const list=candidates[i];scope[v.name]=list[Math.floor(Math.random()*list.length)]});
+    let ok=true;
+    if(condition){try{ok=!!taskTemplateEval(condition,scope)}catch{ok=false}}
+    if(ok&&integerAnswers)ok=taskTemplateIntegerAnswerOk(answer,scope);
+    if(ok)return scope;
+  }
+  throw new Error("Не удалось подобрать числа под ограничения шаблона");
 }
 function taskTemplateRender(value,scope){
   const src=String(value??"");
   if(!src.includes("{{"))return src;
   return src.replace(/{{\s*([^{}]+?)\s*}}/g,(full,expr)=>{
     try{
-      if(window.math?.evaluate)return taskTemplateFormat(window.math.evaluate(expr,scope));
+      if(window.math?.evaluate)return taskTemplateFormat(taskTemplateEval(expr,scope));
       if(Object.prototype.hasOwnProperty.call(scope,expr.trim()))return taskTemplateFormat(scope[expr.trim()]);
     }catch{}
     return full;
@@ -1385,7 +1468,7 @@ function instantiateExercise(exercise){
     answer:String(exercise?.answer||""),
     builder_meta:meta
   };
-  const scope=taskTemplateScope(meta);
+  const scope=taskTemplateScope(meta,exercise?.answer||"");
   const materialized=taskTemplateDeep(meta,scope);
   materialized.template_values=scope;
   return {
