@@ -341,7 +341,7 @@
     const typeButtons=types.map(([v,n])=>'<button type="button" data-tb-type="'+v+'" class="'+(state.taskType===v?"active":"")+'">'+n+'</button>').join("");
     const diffButtons=[["basic","Простая"],["medium","Средняя"],["advanced","Сложная"]].map(([v,n])=>'<button type="button" data-tb-diff="'+v+'" class="'+(state.difficulty===v?"active":"")+'">'+n+'</button>').join("");
     const grades=Array.from({length:11},(_,i)=>i+1).map(g=>'<option value="'+g+'" '+(g===state.grade?"selected":"")+'>'+g+' класс</option>').join("");
-    const top='<div class="mr-tb-top"><button id="tbExit" class="ghost">← В банк</button><button id="tbDraft">Сохранить в черновики</button><button id="tbSave" class="save">✓ '+(editing?"Сохранить изменения":"Сохранить задачу")+'</button></div>';
+    const top='<div class="mr-tb-top"><button id="tbExit" class="ghost">← В банк</button><button id="tbAudit" class="audit">◉ Проверить задачу</button><button id="tbDraft">Сохранить в черновики</button><button id="tbSave" class="save">✓ '+(editing?"Сохранить изменения":"Сохранить задачу")+'</button></div>';
     const html=
       '<div class="mr-task-builder"><div class="mr-tb-grid"><main class="mr-tb-main">'+
         '<section class="mr-tb-card">'+section("info","Основная информация","Выберите тему, сложность и тип задачи")+
@@ -378,6 +378,7 @@
         '</div>'+
       '</main><aside class="mr-tb-side">'+
         '<section class="mr-tb-preview-card"><div class="mr-tb-sidehead"><span>'+icon("preview")+'</span><div><h2>Предпросмотр задачи</h2><p>Так задачу увидит ученик</p></div></div><div class="mr-tb-preview-tabs"><button class="active">Условие</button><button data-info="'+(state.helpSettings.solutionMode==="after_attempt"?"Решение откроется ученику после первой попытки":"Решение видно только преподавателю")+'">Решение</button><button data-info="Подсказки открываются ученику по одной и запоминаются">Подсказки</button></div><div id="tbPreview"></div></section>'+
+        '<section id="tbQualityAudit" class="mr-tb-quality"></section>'+
         '<section class="mr-tb-settings"><div class="mr-tb-sidehead"><span>'+icon("settings")+'</span><div><h2>Параметры использования</h2><p>Настройки для банка задач</p></div></div>'+
           '<label class="mr-tb-toggle disabled"><div><b>Добавить в мой банк задач</b><small>Сохранённая задача всегда остаётся в вашей библиотеке</small></div><input checked disabled type="checkbox"><i></i></label>'+
           '<label class="mr-tb-toggle"><div><b>Добавить в общий банк</b><small>Задача станет доступна всем преподавателям</small></div><input id="tbShared" '+(state.settings.shared?"checked":"")+' type="checkbox"><i></i></label>'+
