@@ -63,7 +63,30 @@ async function openai(prompt: string, model: string) {
   return parseJsonText(text)
 }
 
-async function getContext(req: Request) {
+async function getContext(req: Request, body?: any) {
+  // v90: cron may run existing validated pipeline only for its own queued jobs.
+  // The service-role JWT passes the gateway, but alone grants no cron access:
+  // the independent Vault secret must also match.
+  const cronToken = req.headers.get('x-mr-supply-cron') || ''
+  if (cronToken) {
+    const action = String(body?.action || '')
+    if (!['generate','accept_ready'].includes(action)) throw new Error('AUTH_REQUIRED')
+    const url = Deno.env.get('SUPABASE_URL') || ''
+    const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || ''
+    if (!url || !serviceKey) throw new Error('AUTH_REQUIRED')
+    const client = createClient(url, serviceKey, {auth:{persistSession:false,autoRefreshToken:false}})
+    const {data:allowed,error:tokenError}=await client.rpc('task_supply_cron_auth',{p_token:cronToken})
+    if (tokenError || allowed !== true) throw new Error('AUTH_REQUIRED')
+    const {data:job,error:jobError}=await client.from('task_generation_jobs')
+      .select('teacher_id,params,status').eq('id',String(body?.job_id||'')).single()
+    if (jobError || !job || job.params?.source !== 'auto-supply-v90')
+      throw new Error('AUTH_REQUIRED')
+    if (action === 'generate' && job.status !== 'queued') throw new Error('AUTH_REQUIRED')
+    const {data:settings,error:settingsError}=await client.from('task_supply_settings')
+      .select('auto_enabled').eq('teacher_id',job.teacher_id).single()
+    if(settingsError || settings?.auto_enabled !== true) throw new Error('AUTH_REQUIRED')
+    return { client, user: {id:job.teacher_id} }
+  }
   const auth = req.headers.get('Authorization') || ''
   const url = Deno.env.get('SUPABASE_URL') || ''
   const anon = Deno.env.get('SUPABASE_ANON_KEY') || ''
@@ -329,8 +352,8 @@ Deno.serve(async (req) => {
   if (req.method !== 'POST') return json(req, { error: 'METHOD_NOT_ALLOWED' }, 405)
 
   try {
-    const { client, user } = await getContext(req)
     const body = await req.json().catch(() => ({}))
+    const { client, user } = await getContext(req, body)
     const action = String(body?.action || 'health')
 
     if (action === 'health') {
