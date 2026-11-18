@@ -22,7 +22,7 @@
     const text=String(item?.content||''),warnings=[];
     if(text.trim().length<18)warnings.push('Условие слишком короткое — проверь полноту');
     if(/[\uFFFD\u25A1\uE000-\uF8FF]/u.test(text))warnings.push('Подозрительные символы: возможна потеря математических знаков');
-    if(/(?:рис(?:унок|\.)|чертёж|чертеж|на схеме|по графику|изображени|в таблице)/iu.test(text)
+    if(/(?:рисун(?:ок|к[а-яё]*)|рис\.|чертёж|чертеж|на схеме|по графику|изображени|в таблице)/iu.test(text)
       && !item?.capture)warnings.push('Есть ссылка на рисунок или таблицу: приложи снимок оригинала');
     // Draft answers are optional; missing answer is an ordinary reminder,
     // not an import-quality error. Publishing is guarded in Task Builder.
