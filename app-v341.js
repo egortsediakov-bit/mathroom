@@ -607,6 +607,9 @@ function renderTaskSupply(){
   if(!mod?.render)return toast('Фабрика задач не загрузилась');
   return mod.render({
     app,shell,bindShell,S,sb,esc,nl,toast,fail,loadTeacher,isTemplateExercise,
+    openPdf:()=>window.MathroomPdfImportV91?.open?.({
+      S,sb,modal,toast,fail,loadTeacher,openBank:()=>{S.bankLibraryMode='mine';S.view='bank';renderBank()}
+    }),
     openBank:({focusImport=false}={})=>{
       S.view='bank';renderBank();
       if(focusImport)setTimeout(()=>document.querySelector('[data-xlsx-button]')?.scrollIntoView({behavior:'smooth',block:'center'}),350);
@@ -2693,6 +2696,7 @@ function renderBank(){
       <span class="pill">${own.filter(x=>x.kind==='example').length} примеров</span>
       <span class="pill">${builtIn} из готовой базы</span>
       <button class="btn sm mr-supply-launch" id="openTaskPipeline">✦ Источники и пополнение</button>
+      <button class="btn sm" id="openPdfImport">Импорт PDF</button>
       <button class="btn sm mr-smart-set-launch" id="openSmartSet">Собрать комплект</button>
       <button class="btn sm" id="openAdaptiveSet">Подобрать ученику</button>
       <button class="btn sm mr-saved-sets-launch" id="openSavedSets">Мои комплекты</button>
@@ -2722,6 +2726,9 @@ function renderBank(){
     S.view='task-supply';
     renderTaskSupply();
   };
+  document.getElementById('openPdfImport').onclick=()=>window.MathroomPdfImportV91?.open?.({
+    S,sb,modal,toast,fail,loadTeacher,openBank:()=>{S.bankLibraryMode='mine';S.view='bank';renderBank()}
+  });
   document.getElementById('openSmartSet').onclick=()=>{
     const prefill={
       grade:document.getElementById('bankGrade')?.value||'',
