@@ -234,16 +234,15 @@
     const save=async()=>{
       if(busy)return;
       if(!q('#pdfTaskRights').checked)return toast('Подтверди права на использование документа');
-      const topicId=q('#pdfTaskTopic').value;
-      const topic=topicsForGrade().find(t=>String(t.id)===String(topicId));
-      if(!topic)return toast('Выбери существующую тему');
       const selected=entries.filter(x=>x.selected&&(norm(x.content).length>=12||x.capture)&&!x.imported);
+      const unmatched=selected.filter(x=>!(S.topics||[]).some(t=>String(t.id)===String(x.topicId)&&Number(t.grade)===Number(x.grade)));
+      if(unmatched.length)return toast('Для '+unmatched.length+' задач не выбраны класс или тема. Назначь их в карточках либо сними выделение.');
       if(selected.some(x=>x.visualOnly&&!x.capture))
         return toast('Для задачи со скана сначала прикрепи снимок условия');
       if(!selected.length)return toast('Выбери хотя бы одну задачу с условием');
       if(!confirm('Сохранить '+selected.length+' фрагментов как ЛИЧНЫЕ ЧЕРНОВИКИ? Непроверенные формулы и рисунки нельзя публиковать.'))return;
       busy=true;q('#pdfTaskSave').disabled=true;
-      const existing=new Set((S.exercises||[]).filter(x=>String(x.topic_id)===String(topicId)).map(x=>fingerprint(x.content)));
+      const existing=new Set((S.exercises||[]).map(x=>fingerprint(x.content)));
       const seen=new Set();
       const eligible=selected.filter(x=>{
         const fp=x.visualOnly?'visual:'+x.page+':'+x.number:fingerprint(x.content);
@@ -255,6 +254,8 @@
         // Per-task transactions in the UI: on partial failure, completed drafts
         // are excluded from retries, and only failed image uploads are removed.
         for(const x of eligible){
+          const topic=(S.topics||[]).find(t=>String(t.id)===String(x.topicId)&&Number(t.grade)===Number(x.grade));
+          if(!topic){issue=new Error('Для задачи №'+x.number+' не найдена выбранная тема');break;}
           const cap=x.capture;
           let imagePath='',imageId='';
           try{
@@ -293,7 +294,16 @@
                   original_page:x.page,
                   capture:image?{rect:cap.rect,width:cap.width,height:cap.height,storage_path:imagePath}:null,
                   quality_warnings:window.MathroomPdfQualityV92?.audit?.(x,
-                    (S.exercises||[]).filter(e=>String(e.topic_id)===String(topic.id)))?.warnings||[]
+                    (S.exercises||[]).filter(e=>String(e.topic_id)===String(topic.id)))?.warnings||[],
+                  topic_assignment:{
+                    method:x.topicMode==='auto'?'automatic-suggestion':x.topicMode==='manual'?'manual-selection':'fallback',
+                    selected_topic_id:topic.id,
+                    suggested_topic_id:x.suggestion?.topicId||null,
+                    suggested_grade:x.suggestion?.grade||null,
+                    confidence:x.suggestion?.confidence||0,
+                    explanation:x.suggestion?.reason||'',
+                    reviewed:false
+                  }
                 }
               }
             };
