@@ -87,8 +87,33 @@
           reason:rule.why,rule:rule.id});
       }
     }
-    if(!options.length)return {topicId:null,grade:null,confidence:0,
-      reason:'Тема не определена — выбери вручную',alternatives:[]};
+    if(!options.length){
+      const ignored=new Set(['задачи','задача','основные','простые','числовые','разные','понятие','общие','решение','методы','метод','введение','свойства']);
+      const stems=str=>[...new Set((norm(str).match(/[а-яa-z]{5,}/g)||[])
+        .filter(w=>!ignored.has(w))
+        .map(w=>w.slice(0,Math.min(6,w.length-2))))];
+      const body=new Set(stems(text));
+      const lexical=(topics||[]).map(t=>{
+        const ts=stems(t.title),hits=ts.filter(st=>body.has(st)).length;
+        return {topic:t,hits,ratio:ts.length?hits/ts.length:0,score:hits+(ts.length?hits/ts.length:0)};
+      }).filter(x=>x.hits>=2&&x.ratio>=.5)
+        .sort((a,b)=>b.score-a.score||(Number(a.topic.grade)===Number(preferredGrade)?-1:1));
+      if(lexical.length){
+        const first=lexical[0],second=lexical[1];
+        const tied=second && Math.abs(first.score-second.score)<.2 && Number(first.topic.grade)!==Number(second.topic.grade);
+        if(!tied)return {topicId:first.topic.id,grade:Number(first.topic.grade),
+          confidence:Math.min(.7,Math.round((.45+.15*first.ratio+.03*Math.min(first.hits,3))*100)/100),
+          reason:'совпадение терминов с названием темы — обязательно проверь',
+          alternatives:lexical.slice(0,4).map(x=>({topicId:x.topic.id,grade:Number(x.topic.grade),
+            title:x.topic.title,confidence:.5}))};
+        return {topicId:null,grade:null,confidence:0,
+          reason:'Похожая тема встречается в нескольких классах — выбери вручную',
+          alternatives:lexical.slice(0,4).map(x=>({topicId:x.topic.id,grade:Number(x.topic.grade),
+            title:x.topic.title,confidence:.5}))};
+      }
+      return {topicId:null,grade:null,confidence:0,
+        reason:'Тема не определена — выбери вручную',alternatives:[]};
+    }
     options.sort((a,b)=>b.score-a.score||b.confidence-a.confidence);
     const top=options[0],unique=[],seen=new Set();
     for(const c of options){
