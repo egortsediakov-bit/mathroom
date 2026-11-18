@@ -3,7 +3,7 @@
 (()=>{
   'use strict';
   const API={};
-  const norm=s=>String(s??'').normalize('NFKC').toLocaleLowerCase('ru-RU').replace(/ё/g,'е').replace(/\s+/g,' ').trim();
+  const norm=s=>String(s??'').normalize('NFC').toLocaleLowerCase('ru-RU').replace(/ё/g,'е').replace(/\s+/g,' ').trim();
   const RULES=[
     {id:'isosceles',when:/равнобедренн|треугольник[\s\S]{0,110}(?:сторон[ыа][\s\S]{0,25}равн|ab[\s\S]{0,40}ac[\s\S]{0,18}равн)/i,
       titles:[[/свойств.*равнобедренн.*треугольн/i,15],[/равнобедренн.*треугольн/i,12]],prefer:[7,6],why:'равнобедренный треугольник',confidence:.93},
