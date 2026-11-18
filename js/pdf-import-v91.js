@@ -286,6 +286,46 @@
         busy=false;q('#pdfTaskExtract').disabled=false;render();
       }
     };
+    const openRemainingReview=(savedCount=0)=>{
+      reviewMode=true;
+      // A genuinely new modal: the import screen is closed and only
+      // unsaved, teacher-reviewable tasks are rendered in the next screen.
+      m.remove();
+      m=modal('<section class="mr-pdf-import mr-pdf-review">'+
+        '<header class="mr-pdf-header"><div><div class="mr-pdf-kicker"><span class="mr-pdf-k-dot">К</span> КОТОМАТИКА / MATHROOM</div>'+
+        '<h2>Разобрать оставшиеся задачи</h2><p>Готовые задачи уже сохранены. Здесь остались неподтверждённые условия, дубликаты и задания без темы. Исправь нужные или убери лишние из очереди.</p></div><div class="mr-pdf-stage">ЭТАП <strong>02 / 02</strong></div></header>'+
+        '<div class="mr-pdf-main">'+
+          '<div class="mr-pdf-saved-banner"><strong>✓ Сохранено в личные черновики: '+savedCount+'</strong><div>Всего за текущий импорт: '+savedThisSession+'. Удаление ниже не затрагивает уже сохранённые задачи.</div></div>'+
+          '<div class="mr-pdf-review-guide"><b>Что делать с остатком?</b> Если задача корректная — укажи класс и тему, при необходимости прикрепи снимок PDF и сохрани. Если текст распознан неверно, отсутствует рисунок или это дубль — нажми «Удалить из импорта» в карточке.</div>'+
+          '<div class="mr-pdf-review-top-actions"><button class="btn" id="pdfTaskAll">Выбрать оставшиеся</button><button class="btn" id="pdfTaskNone">Снять выбор</button><button class="btn mr-pdf-danger" id="pdfReviewRemoveBad">Убрать все проблемные</button><button class="btn" id="pdfReviewGoBank">Перейти в личный банк</button></div>'+
+          '<div class="mr-pdf-note" id="pdfTaskStatus">Осталось задач: '+entries.filter(x=>!x.imported).length+'. Непроверенные задания не сохранены.</div>'+
+          '<div id="pdfTaskSummary" class="mr-pdf-metrics" aria-live="polite"></div>'+
+          '<section><div class="mr-pdf-section-heading"><h3>Задачи для проверки</h3><span>Удаление здесь безопасно для банка</span></div><div id="pdfTaskResults" class="mr-pdf-cards"></div></section>'+
+          '<label class="mr-pdf-rights"><input type="checkbox" id="pdfTaskRights" '+(rightsConfirmed?'checked':'')+'> Подтверждаю права на использование оставшихся фрагментов PDF. Проверка математической корректности перед публикацией обязательна.</label>'+
+          '<div class="mr-pdf-footer"><div id="pdfTaskSaveHint" class="mr-pdf-save-hint" role="status"></div><div class="mr-pdf-toolbar"><button class="btn primary" id="pdfTaskSave" disabled>Сохранить оставшиеся</button></div></div>'+
+        '</div></section>','wide-modal');
+      const checkbox=q('#pdfTaskRights');
+      checkbox.onchange=()=>{rightsConfirmed=checkbox.checked;refreshSaveHint()};
+      q('#pdfTaskSave').onclick=save;
+      q('#pdfTaskAll').onclick=()=>{entries.forEach(x=>{if(!x.imported)x.selected=true});render()};
+      q('#pdfTaskNone').onclick=()=>{entries.forEach(x=>{if(!x.imported)x.selected=false});render()};
+      q('#pdfReviewGoBank').onclick=()=>{m.remove();openBank()};
+      q('#pdfReviewRemoveBad').onclick=()=>{
+        if(busy)return;
+        const selection=entries.map(x=>x.selected);
+        entries.forEach(x=>{if(!x.imported)x.selected=true});
+        const check=savePlan();
+        entries.forEach((x,i)=>x.selected=selection[i]);
+        const unwanted=new Set([...check.pending,...check.duplicates].map(x=>x.entry));
+        if(!unwanted.size)return toast('Среди оставшихся нет явно проблемных или дублирующихся задач');
+        if(!confirm('Убрать '+unwanted.size+' проблемных/повторяющихся фрагментов только из текущего импорта? Это не удаляет черновики из базы.'))return;
+        for(const x of unwanted)if(x.previewUrl)URL.revokeObjectURL(x.previewUrl);
+        entries=entries.filter(x=>!unwanted.has(x));
+        state('Убрано из очереди: '+unwanted.size+'. Сохранённые черновики не затронуты.');
+        render();
+      };
+      render();
+    };
     const save=async()=>{
       if(busy)return;
       if(!window.MathroomPdfDraftsV94)return toast('Не загрузился модуль сохранения. Обнови страницу через Ctrl + F5');
