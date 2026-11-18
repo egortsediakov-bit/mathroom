@@ -2774,7 +2774,11 @@ function renderBank(){
     });
     draw();
   };
-  document.querySelectorAll('[data-library-mode]').forEach(b=>b.onclick=()=>{S.bankLibraryMode=b.dataset.libraryMode;renderBank()});
+  document.querySelectorAll('[data-library-mode]').forEach(b=>b.onclick=()=>{
+    S.bankLibraryMode=b.dataset.libraryMode;
+    if(S.bankLibraryMode==='shared')S.bankDraftOnly=false;
+    renderBank();
+  });
 
   const readFilters=()=>({
     q:document.getElementById('bankSearch').value.trim().toLocaleLowerCase('ru'),
