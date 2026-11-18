@@ -115,20 +115,24 @@
       const panel=q('#pdfTaskResults');
       const total=entries.filter(x=>x.selected&&!x.imported).length;
       const planner=savePlan();
+      const inspection=reviewMode?(window.MathroomPdfDraftsV94?.plan?.(
+        entries.map((x,i)=>({...x,selected:!x.imported,_originalIndex:i})),
+        S.topics||[],S.exercises||[]
+      )||planner):planner;
       refreshSaveHint();
       const allTopics=S.topics||[];
       const summary=q('#pdfTaskSummary');
       if(summary)summary.innerHTML=
         '<div class="mr-pdf-metric"><b>'+entries.filter(x=>!x.imported).length+'</b><span>На проверке</span></div>'+
         '<div class="mr-pdf-metric is-good"><b>'+planner.ready.length+'</b><span>Можно сохранить</span></div>'+
-        '<div class="mr-pdf-metric"><b>'+planner.pending.length+'</b><span>Требуют внимания</span></div>';
+        '<div class="mr-pdf-metric"><b>'+inspection.pending.length+'</b><span>Требуют внимания</span></div>';
       const visible=entries.map((x,i)=>({x,i})).filter(({x})=>!reviewMode||!x.imported);
       if(!visible.length){panel.innerHTML='<div class="mr-pdf-empty"><strong>Здесь пока ничего нет</strong>Добавь задачи из PDF или перейди в банк черновиков.</div>';return;}
       panel.innerHTML=visible.map(({x,i})=>{
           if(x.imported)return '<div class="mr-pdf-saved-banner">✓ Сохранено в личные черновики: PDF № '+esc(x.number)+' · страница '+x.page+'</div>';
           const audit=window.MathroomPdfQualityV92?.audit?.(x,(S.exercises||[]).filter(e=>String(e.topic_id)===String(x.topicId)));
-          const issue=planner.pending.find(p=>p.entry===x);
-          const duplicate=planner.duplicates.some(p=>p.entry===x)||x.duplicate;
+          const issue=inspection.pending.find(p=>reviewMode?p.entry._originalIndex===i:p.entry===x);
+          const duplicate=inspection.duplicates.some(p=>reviewMode?p.entry._originalIndex===i:p.entry===x)||x.duplicate;
           const ready=planner.ready.some(p=>p.entry===x);
           const statusClass=issue?'needs':duplicate?'duplicate':ready?'ready':'';
           const statusText=issue?'Нужна проверка':duplicate?'Возможный дубль':ready?'Готово':'Не выбрано';
