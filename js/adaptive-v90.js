@@ -14,6 +14,7 @@
     const count=Math.max(5,Math.min(30,Math.round(Number(total)||10)));
     if(!rows.length)return [];
     const selected=rows.slice(0,Math.min(4,rows.length,count));
+    if(selected.length===1)return [{row:selected[0],count:Math.min(20,count)}];
     const weights=selected.map(x=>Math.max(1,weight(x)));
     const sum=weights.reduce((a,b)=>a+b,0);
     const out=selected.map((r,i)=>({row:r,count:1,frac:weights[i]/sum*(count-selected.length)}));
