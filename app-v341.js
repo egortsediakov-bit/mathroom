@@ -2221,6 +2221,10 @@ function sharedMaterialUserTags(tags=[]){
 }
 async function publishExerciseToSharedLibrary(exercise,{onDone}={}){
   if(!exercise||!S.user)return;
+  if(exercise.is_draft)return toast('Черновики нельзя публиковать. Сначала проверь задание и ответ в конструкторе.');
+  if(exercise.kind==='task'&&!String(exercise.answer||'').trim())return toast('Для публикации задачи необходимо заполнить ответ.');
+  const importedPdf=(exercise.tags||[]).includes('mathroom-pdf-import-v91');
+  if(importedPdf&&!confirm('Опубликовать задачу из PDF в общей библиотеке? Подтверди, что проверил условие, решение, чертежи и права на использование.'))return;
   const topic=(S.topics||[]).find(t=>String(t.id)===String(exercise.topic_id));
   if(!topic)return toast('Не найдена тема материала');
   const old=sharedMaterialForExercise(exercise.id);
@@ -2237,7 +2241,7 @@ async function publishExerciseToSharedLibrary(exercise,{onDone}={}){
     grade:Number(topic.grade)||null,
     section:topic.section||'',
     topic_title:topic.title||'',
-    builder_meta:exercise.builder_meta&&typeof exercise.builder_meta==='object'?exercise.builder_meta:{}
+    builder_meta:importedPdf?{...(exercise.builder_meta||{}),pdf_import:{...(exercise.builder_meta?.pdf_import||{}),verified:true,verified_at:new Date().toISOString()}}:(exercise.builder_meta&&typeof exercise.builder_meta==='object'?exercise.builder_meta:{})
   };
   const q=old
     ? sb.from('shared_materials').update({...body,updated_at:new Date().toISOString()}).eq('id',old.id)
