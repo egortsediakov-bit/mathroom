@@ -107,7 +107,7 @@
             '<div class="field"><label>Класс задачи</label><select data-pdf-grade="'+i+'"><option value="">— Выбери класс —</option>'+grades.map(g=>'<option value="'+g+'" '+(Number(x.grade)===g?'selected':'')+'>'+g+' класс</option>').join('')+'</select></div>'+
             '<div class="field"><label>Тема задачи</label><select data-pdf-topic="'+i+'"><option value="">— Выбери тему —</option>'+allTopics.filter(t=>Number(t.grade)===Number(x.grade)).map(t=>'<option value="'+esc(t.id)+'" '+(String(x.topicId||'')===String(t.id)?'selected':'')+'>'+esc(t.section||'Математика')+' · '+esc(t.title)+'</option>').join('')+'</select></div>'+
           '</div>'+
-          '<div class="small muted" style="margin:0 0 8px">'+(x.topicMode==='auto'?'Автоопределение: '+esc(x.suggestion?.reason||'')+' · уверенность '+Math.round((x.suggestion?.confidence||0)*100)+'%. Проверь перед сохранением.':x.topicMode==='manual'?'Тема выбрана вручную.':x.topicId?'Использована запасная тема.':'Тема не определена — нужно выбрать вручную.')+'</div>'+
+          '<div class="actions" style="margin:0 0 8px;align-items:center"><span class="small muted">'+(x.topicMode==='auto'?'Предложено по условию: '+esc(x.suggestion?.reason||'')+' · '+Math.round((x.suggestion?.confidence||0)*100)+'% (не математическая проверка).':x.topicMode==='manual'?'Тема выбрана вручную.':x.topicId?'Использована запасная тема.':'Тема не определена — нужно выбрать вручную.')+'</span><button class="btn sm" type="button" data-pdf-reclass="'+i+'">✦ Определить по условию</button></div>'+
           '<div class="field"><label>Условие</label><textarea data-pdf-content="'+i+'" rows="4"></textarea></div>'+
           '<div class="field"><label>Ответ (если известен; можно заполнить позже)</label><input data-pdf-answer="'+i+'" type="text" placeholder="Необязательно для черновика"></div>'+
           '<div class="mr-pdf-v92-capture" style="padding:10px;border:1px solid var(--line,#ddd);border-radius:12px;margin-top:8px">'+
@@ -117,6 +117,18 @@
           '</div>'+
         '</article>';
         }).join('');
+      panel.querySelectorAll('[data-pdf-reclass]').forEach(el=>el.onclick=()=>{
+        const row=entries[Number(el.dataset.pdfReclass)];
+        const suggestion=window.MathroomPdfTopicsV93?.propose?.({
+          content:row.content,topics:S.topics||[],preferredGrade:row.grade||null
+        });
+        row.suggestion=suggestion||null;
+        const topic=(S.topics||[]).find(t=>String(t.id)===String(suggestion?.topicId));
+        row.topicId=topic?.id||null;
+        row.grade=topic?Number(topic.grade):row.grade;
+        row.topicMode=topic?'auto':'unknown';
+        render();
+      });
       panel.querySelectorAll('[data-pdf-grade]').forEach(el=>el.onchange=()=>{
         const row=entries[Number(el.dataset.pdfGrade)];
         row.grade=Number(el.value)||null;row.topicId=null;row.topicMode='manual';
@@ -125,7 +137,7 @@
       panel.querySelectorAll('[data-pdf-topic]').forEach(el=>el.onchange=()=>{
         const row=entries[Number(el.dataset.pdfTopic)];
         row.topicId=el.value||null;row.topicMode='manual';
-        q('#pdfTaskSave').disabled=busy||!entries.some(x=>x.selected&&!x.imported);
+        render();
       });
       panel.querySelectorAll('[data-pdf-content]').forEach(el=>{
         const i=Number(el.dataset.pdfContent);el.value=entries[i].content;
