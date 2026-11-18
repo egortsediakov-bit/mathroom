@@ -65,26 +65,30 @@
   API.open=({S,sb,modal,toast,fail,loadTeacher,openBank})=>{
     const grades=[...new Set((S.topics||[]).map(t=>Number(t.grade)).filter(g=>g>=1&&g<=11))].sort((a,b)=>a-b);
     if(!grades.length)return toast('Для импорта сначала создайте темы');
-    const m=modal('<section class="mr-pdf-import">'+
-      '<h2>Импорт задач из PDF</h2>'+
-      '<p class="muted">Извлекаем текст только из выбранного файла на твоём компьютере. Ничего не сохраняется до подтверждения. Готовые фрагменты попадут в <b>личные черновики</b>, не в общую библиотеку.</p>'+
-      '<div class="grid cols2">'+
+    let m=modal('<section class="mr-pdf-import">'+
+      '<header class="mr-pdf-header"><div><div class="mr-pdf-kicker"><span class="mr-pdf-k-dot">К</span> КОТОМАТИКА / MATHROOM</div>'+
+      '<h2>Импорт задач из PDF</h2><p>Загрузи задачник, проверь распознанные задания и распределение по темам. Новые задачи попадают только в личные черновики.</p></div><div class="mr-pdf-stage">ЭТАП <strong>01 / 02</strong></div></header>'+
+      '<div class="mr-pdf-main"><section class="mr-pdf-box"><div class="mr-pdf-box-title"><span>Исходный файл и параметры</span><span class="mr-pdf-step">01 · НАСТРОЙКА</span></div>'+
+      '<div class="mr-pdf-inputs">'+
         '<div class="field"><label>PDF-файл, до 20 МБ</label><input type="file" id="pdfTaskFile" accept=".pdf,application/pdf"></div>'+
         '<div class="field"><label>Класс для подсказки (необязательно)</label><select id="pdfTaskGrade"><option value="">Определять автоматически</option>'+grades.map(g=>'<option value="'+g+'">'+g+' класс</option>').join('')+'</select></div>'+
         '<div class="field"><label>Запасная тема (для непривязанных задач)</label><select id="pdfTaskTopic"><option value="">— Не задана —</option></select></div>'+
         '<div class="field"><label>Сложность (позже можно изменить)</label><select id="pdfTaskDifficulty"><option value="basic">Базовая</option><option value="medium" selected>Средняя</option><option value="advanced">Сложная</option></select></div>'+
         '<div class="field"><label>Начальная страница PDF</label><input type="number" id="pdfTaskFrom" min="1" value="1"></div>'+
         '<div class="field"><label>Конечная страница PDF (макс. 25 за раз)</label><input type="number" id="pdfTaskTo" min="1" value="10"></div>'+
-      '</div>'+
+      '</div></section>'+
       '<label class="mr-pdf-rights"><input type="checkbox" id="pdfTaskRights"> Подтверждаю, что имею право использовать и хранить задания из выбранного документа. Понимаю, что импорт не даёт права публиковать чужой учебник целиком.</label>'+
-      '<div class="actions"><button class="btn primary" id="pdfTaskExtract">Извлечь задания</button><button class="btn" id="pdfTaskAddVisual">＋ Задача со скана</button><button class="btn" id="pdfTaskAll">Выбрать всё</button><button class="btn" id="pdfTaskNone">Снять выбор</button></div>'+
-      '<div class="notice" id="pdfTaskStatus">Выбери файл и укажи страницы.</div>'+
-      '<div id="pdfTaskResults"></div>'+
-      '<div id="pdfTaskSaveHint" class="notice" role="status" style="margin-top:12px">Выбери задачи для сохранения.</div>'+
-      '<div class="actions" style="margin-top:16px"><button class="btn primary" id="pdfTaskSave" disabled>Сохранить в черновики</button></div>'+
-      '</section>','wide-modal');
+      '<div class="mr-pdf-toolbar"><button class="btn primary" id="pdfTaskExtract">Извлечь задания</button><button class="btn" id="pdfTaskAddVisual">＋ Задача со скана</button><button class="btn" id="pdfTaskAll">Выбрать всё</button><button class="btn" id="pdfTaskNone">Снять выбор</button></div>'+
+      '<div class="mr-pdf-note" id="pdfTaskStatus">Выбери файл и укажи страницы.</div>'+
+      '<div id="pdfTaskSummary" class="mr-pdf-metrics" aria-live="polite"></div>'+
+      '<section><div class="mr-pdf-section-heading"><h3>Распознанные задачи</h3><span>Условия можно редактировать перед сохранением</span></div><div id="pdfTaskResults" class="mr-pdf-cards"></div></section>'+
+      '<div class="mr-pdf-footer"><div id="pdfTaskSaveHint" class="mr-pdf-save-hint" role="status">Выбери задачи для сохранения.</div>'+
+      '<div class="mr-pdf-toolbar"><button class="btn primary" id="pdfTaskSave" disabled>Сохранить в черновики</button></div></div>'+
+      '</div></section>','wide-modal');
     const q=s=>m.querySelector(s);
     let entries=[],filename='',busy=false,pdfPages=0,visualSerial=0;
+    let reviewMode=false,originalPdfFile=null,chosenDifficulty='medium',rightsConfirmed=false;
+    let savedThisSession=0;
     const topicsForGrade=()=> (S.topics||[]).filter(t=>Number(t.grade)===Number(q('#pdfTaskGrade').value));
     const refreshTopics=()=>{
       const options=topicsForGrade();
