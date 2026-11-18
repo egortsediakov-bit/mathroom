@@ -24,7 +24,8 @@
     if(/[\uFFFD\u25A1\uE000-\uF8FF]/u.test(text))warnings.push('Подозрительные символы: возможна потеря математических знаков');
     if(/(?:рис(?:унок|\.)|чертёж|чертеж|на схеме|по графику|изображени|в таблице)/iu.test(text)
       && !item?.capture)warnings.push('Есть ссылка на рисунок или таблицу: приложи снимок оригинала');
-    if(!String(item?.answer||'').trim())warnings.push('Ответ отсутствует — проверь его в конструкторе перед публикацией');
+    // Draft answers are optional; missing answer is an ordinary reminder,
+    // not an import-quality error. Publishing is guarded in Task Builder.
     if(item?.visualOnly&&!item?.capture)warnings.push('Для задачи со скана необходим фрагмент страницы');
     let closeMatch=null,maxScore=0;
     for(const row of bank.slice(0,2500)){
