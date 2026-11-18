@@ -170,6 +170,10 @@
         const first=clamp(q('#pdfTaskFrom').value,1,pdf.numPages);
         const last=clamp(q('#pdfTaskTo').value,first,Math.min(pdf.numPages,first+24));
         q('#pdfTaskFrom').value=first;q('#pdfTaskTo').value=last;
+        // The main teacher state can be capped at 1000 rows by PostgREST.
+        // Rehydrate the full personal bank before duplicate screening.
+        try{await window.MathroomBankAllExercisesV2982?.hydrate?.({rerender:false})}
+        catch(e){console.warn('[PDF importer] full-bank hydration unavailable',e)}
         const currentTopic=q('#pdfTaskTopic').value;
         const existing=new Set((S.exercises||[]).filter(x=>String(x.topic_id)===String(currentTopic)).map(x=>fingerprint(x.content)));
         const seen=new Set();
