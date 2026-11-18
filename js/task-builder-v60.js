@@ -1797,9 +1797,19 @@
     }
     async function save(draft){
       try{
-        collect();const t=topic();if(!draft){const audit=renderQualityAudit();if(audit.errors.length){q("tbQualityAudit")?.scrollIntoView({behavior:"smooth",block:"center"});return toast("Исправь критичные ошибки перед сохранением")}}if(!t)return toast("Выбери тему задачи");
+        collect();
+        // v92: promotion of PDF-derived drafts requires an explicit review.
+        // A screenshot preserves source fidelity but does not prove a solution correct.
+        if(!draft && editing?.is_draft && editing?.builder_meta?.pdf_import){
+          if(!String(syncLegacyContent()||'').trim() && !state.images.length)
+            return toast("Добавь проверенное условие или изображение задачи");
+          if(!String(legacyAnswer()||'').trim())
+            return toast("Укажи и проверь ответ перед публикацией");
+          if(!confirm("Проверил условие с оригинальной PDF-страницей, все формулы, рисунки, ответ и права на использование? После подтверждения задача выйдет из черновика."))return;
+        }
+        const t=topic();if(!draft){const audit=renderQualityAudit();if(audit.errors.length){q("tbQualityAudit")?.scrollIntoView({behavior:"smooth",block:"center"});return toast("Исправь критичные ошибки перед сохранением")}}if(!t)return toast("Выбери тему задачи");
         const sys=editing?exerciseSystemTags(editing.tags):[];const retained=editing?(editing.tags||[]).filter(z=>!String(z).startsWith("класс-")&&!String(z).startsWith("тема:")&&!String(z).startsWith("тип:")):[];const tags=[...new Set([...sys,...retained,"класс-"+t.grade,"тема:"+t.title,"тип:"+state.taskType])];
-        const nextMeta=builderMeta();if(nextMeta.pdf_import&&!draft)nextMeta.pdf_import={...nextMeta.pdf_import,verified:true,verified_at:new Date().toISOString()};const body={topic_id:t.id,kind:"task",title:(editing?.title&&editing.title.trim())||("Задача · "+t.title),content:syncLegacyContent().trim(),answer:legacyAnswer(),difficulty:state.difficulty,category:state.subtopic.trim(),tags,builder_meta:nextMeta,is_draft:!!draft,updated_at:new Date().toISOString()};
+        const nextMeta=builderMeta();if(nextMeta.pdf_import&&!draft&&!nextMeta.pdf_import.verified)nextMeta.pdf_import={...nextMeta.pdf_import,verified:true,requires_teacher_review:false,verified_at:new Date().toISOString()};const body={topic_id:t.id,kind:"task",title:(editing?.title&&editing.title.trim())||("Задача · "+t.title),content:syncLegacyContent().trim(),answer:legacyAnswer(),difficulty:state.difficulty,category:state.subtopic.trim(),tags,builder_meta:nextMeta,is_draft:!!draft,updated_at:new Date().toISOString()};
         const res=editing?await sb.from("exercises").update(body).eq("id",editing.id).select().single():await sb.from("exercises").insert({teacher_id:S.user.id,...body}).select().single();
         if(res.error)throw res.error;pendingImagePaths.clear();await syncShared(res.data,draft);clearAutosave();dirty=false;await loadTeacher();toast(draft?"Черновик сохранён":editing?"Задача обновлена":"Задача добавлена в банк");leaveNow();
       }catch(e){fail(e)}
