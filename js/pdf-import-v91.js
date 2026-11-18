@@ -89,12 +89,16 @@
     const state=s=>{q('#pdfTaskStatus').textContent=s;};
     const render=()=>{
       const panel=q('#pdfTaskResults');
-      const total=entries.filter(x=>x.selected).length;
+      const total=entries.filter(x=>x.selected&&!x.imported).length;
       q('#pdfTaskSave').disabled=busy||!total;
+      const existingForAudit=(S.exercises||[]).filter(e=>String(e.topic_id)===String(q('#pdfTaskTopic').value));
       if(!entries.length){panel.innerHTML='';return;}
       panel.innerHTML='<p class="muted">Найдено фрагментов: '+entries.length+'. Выбрано: '+total+'. <b>Проверяй формулы, схемы, переносы строк и условия вручную.</b></p>'+
-        entries.map((x,i)=>'<article class="card" style="margin:8px 0;padding:12px">'+
-          '<div class="actions" style="align-items:center"><label><input type="checkbox" data-pdf-select="'+i+'" '+(x.selected?'checked':'')+'> № '+esc(x.number)+' · PDF-страница '+x.page+'</label><span class="pill">'+(x.duplicate?'Есть похожая формулировка в банке':'Черновик')+'</span></div>'+
+        entries.map((x,i)=>{
+          const audit=window.MathroomPdfQualityV92?.audit?.(x,existingForAudit);
+          return '<article class="card" style="margin:8px 0;padding:12px">'+
+          '<div class="actions" style="align-items:center"><label><input type="checkbox" data-pdf-select="'+i+'" '+(x.selected?'checked':'')+' '+(x.imported?'disabled':'')+'> № '+esc(x.number)+' · PDF-страница '+x.page+'</label><span class="pill">'+(x.imported?'Уже сохранено':x.duplicate?'Дубль условия':'Черновик')+'</span></div>'+
+          (audit?.warnings?.length?'<div class="small" style="padding:8px 10px;background:var(--panel,#fff8ed);border-radius:8px;margin-bottom:8px"><b>Проверка импорта:</b> '+audit.warnings.map(w=>esc(w)).join('; ')+'</div>':'')+
           '<div class="field"><label>Условие</label><textarea data-pdf-content="'+i+'" rows="4"></textarea></div>'+
           '<div class="field"><label>Ответ (если известен; можно заполнить позже)</label><input data-pdf-answer="'+i+'" type="text" placeholder="Необязательно для черновика"></div>'+
           '<div class="mr-pdf-v92-capture" style="padding:10px;border:1px solid var(--line,#ddd);border-radius:12px;margin-top:8px">'+
@@ -102,7 +106,8 @@
           (x.capture?'<button type="button" class="btn sm" data-pdf-remove="'+i+'">Убрать фрагмент</button>':'')+'</div>'+
           (x.capture?'<div class="small muted">Снимок PDF-страницы '+x.page+' прикрепится только к черновику. Не заменяет проверку задачи.</div><img data-pdf-preview="'+i+'" alt="Фрагмент исходной страницы PDF" style="display:block;max-width:100%;height:auto;margin-top:9px;border-radius:8px;border:1px solid #ddd">':'<div class="small muted">Если в условии есть дроби, степени, таблица или рисунок — прикрепи снимок оригинала для точности.</div>')+
           '</div>'+
-        '</article>').join('');
+        '</article>';
+        }).join('');
       panel.querySelectorAll('[data-pdf-content]').forEach(el=>{
         const i=Number(el.dataset.pdfContent);el.value=entries[i].content;
         el.oninput=()=>entries[i].content=el.value;
@@ -139,8 +144,11 @@
         render();
       });
       panel.querySelectorAll('[data-pdf-select]').forEach(el=>{
-        el.onchange=()=>{entries[Number(el.dataset.pdfSelect)].selected=el.checked;
-          q('#pdfTaskSave').disabled=busy||!entries.some(x=>x.selected);};
+        el.onchange=()=>{
+          const row=entries[Number(el.dataset.pdfSelect)];
+          if(row.imported){el.checked=false;return;}
+          row.selected=el.checked;q('#pdfTaskSave').disabled=busy||!entries.some(x=>x.selected&&!x.imported);
+        };
       });
     };
     const extract=async()=>{
@@ -250,7 +258,9 @@
                   version:92,rights_confirmed:true,verified:false,
                   requires_teacher_review:true,
                   original_page:x.page,
-                  capture:image?{rect:cap.rect,width:cap.width,height:cap.height,storage_path:imagePath}:null
+                  capture:image?{rect:cap.rect,width:cap.width,height:cap.height,storage_path:imagePath}:null,
+                  quality_warnings:window.MathroomPdfQualityV92?.audit?.(x,
+                    (S.exercises||[]).filter(e=>String(e.topic_id)===String(topic.id)))?.warnings||[]
                 }
               }
             };
@@ -307,7 +317,7 @@
     };
     q('#pdfTaskExtract').onclick=extract;
     q('#pdfTaskSave').onclick=save;
-    q('#pdfTaskAll').onclick=()=>{entries.forEach(x=>x.selected=true);render();};
+    q('#pdfTaskAll').onclick=()=>{entries.forEach(x=>{if(!x.imported)x.selected=true});render();};
     q('#pdfTaskNone').onclick=()=>{entries.forEach(x=>x.selected=false);render();};
     refreshTopics();
   };
