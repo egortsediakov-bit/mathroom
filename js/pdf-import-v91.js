@@ -59,6 +59,9 @@
     return [];
   };
 
+  const oldLines=API.linesFromItems,oldSplit=API.splitPage;
+  API.linesFromItems=items=>window.MathroomPdfLayoutV93?.linesFromItems(items)||oldLines(items);
+  API.splitPage=(lines,page)=>window.MathroomPdfLayoutV93?.splitPage(lines,page)||oldSplit(lines,page);
   API.open=({S,sb,modal,toast,fail,loadTeacher,openBank})=>{
     const grades=[...new Set((S.topics||[]).map(t=>Number(t.grade)).filter(g=>g>=1&&g<=11))].sort((a,b)=>a-b);
     if(!grades.length)return toast('Для импорта сначала создайте темы');
@@ -67,8 +70,8 @@
       '<p class="muted">Извлекаем текст только из выбранного файла на твоём компьютере. Ничего не сохраняется до подтверждения. Готовые фрагменты попадут в <b>личные черновики</b>, не в общую библиотеку.</p>'+
       '<div class="grid cols2">'+
         '<div class="field"><label>PDF-файл, до 20 МБ</label><input type="file" id="pdfTaskFile" accept=".pdf,application/pdf"></div>'+
-        '<div class="field"><label>Класс</label><select id="pdfTaskGrade">'+grades.map(g=>'<option value="'+g+'">'+g+' класс</option>').join('')+'</select></div>'+
-        '<div class="field"><label>Тема для всех найденных задач</label><select id="pdfTaskTopic"></select></div>'+
+        '<div class="field"><label>Класс для подсказки (необязательно)</label><select id="pdfTaskGrade"><option value="">Определять автоматически</option>'+grades.map(g=>'<option value="'+g+'">'+g+' класс</option>').join('')+'</select></div>'+
+        '<div class="field"><label>Запасная тема (для непривязанных задач)</label><select id="pdfTaskTopic"><option value="">— Не задана —</option></select></div>'+
         '<div class="field"><label>Сложность (позже можно изменить)</label><select id="pdfTaskDifficulty"><option value="basic">Базовая</option><option value="medium" selected>Средняя</option><option value="advanced">Сложная</option></select></div>'+
         '<div class="field"><label>Начальная страница PDF</label><input type="number" id="pdfTaskFrom" min="1" value="1"></div>'+
         '<div class="field"><label>Конечная страница PDF (макс. 25 за раз)</label><input type="number" id="pdfTaskTo" min="1" value="10"></div>'+
@@ -84,22 +87,27 @@
     const topicsForGrade=()=> (S.topics||[]).filter(t=>Number(t.grade)===Number(q('#pdfTaskGrade').value));
     const refreshTopics=()=>{
       const options=topicsForGrade();
-      q('#pdfTaskTopic').innerHTML=options.map(t=>'<option value="'+esc(t.id)+'">'+esc(t.section||'Математика')+' · '+esc(t.title)+'</option>').join('');
+      q('#pdfTaskTopic').innerHTML='<option value="">— Не задана —</option>'+options.map(t=>'<option value="'+esc(t.id)+'">'+esc(t.section||'Математика')+' · '+esc(t.title)+'</option>').join('');
     };
     const state=s=>{q('#pdfTaskStatus').textContent=s;};
     const render=()=>{
       const panel=q('#pdfTaskResults');
       const total=entries.filter(x=>x.selected&&!x.imported).length;
       q('#pdfTaskSave').disabled=busy||!total;
-      const existingForAudit=(S.exercises||[]).filter(e=>String(e.topic_id)===String(q('#pdfTaskTopic').value));
+      const allTopics=S.topics||[];
       if(!entries.length){panel.innerHTML='';return;}
       panel.innerHTML='<p class="muted">Найдено фрагментов: '+entries.length+'. Выбрано: '+total+'. <b>Проверяй формулы, схемы, переносы строк и условия вручную.</b></p>'+
         entries.map((x,i)=>{
           if(x.imported)return '<article class="card" style="margin:8px 0;padding:12px"><b>✓ Сохранено в личные черновики: PDF № '+esc(x.number)+' · страница '+x.page+'</b></article>';
-          const audit=window.MathroomPdfQualityV92?.audit?.(x,existingForAudit);
+          const audit=window.MathroomPdfQualityV92?.audit?.(x,(S.exercises||[]).filter(e=>String(e.topic_id)===String(x.topicId)));
           return '<article class="card" style="margin:8px 0;padding:12px">'+
           '<div class="actions" style="align-items:center"><label><input type="checkbox" data-pdf-select="'+i+'" '+(x.selected?'checked':'')+' '+(x.imported?'disabled':'')+'> № '+esc(x.number)+' · PDF-страница '+x.page+'</label><span class="pill">'+(x.imported?'Уже сохранено':x.duplicate?'Дубль условия':'Черновик')+'</span></div>'+
           (audit?.warnings?.length?'<div class="small" style="padding:8px 10px;background:var(--panel,#fff8ed);border-radius:8px;margin-bottom:8px"><b>Проверка импорта:</b> '+audit.warnings.map(w=>esc(w)).join('; ')+'</div>':'')+
+          '<div class="grid cols2" style="margin:12px 0">'+
+            '<div class="field"><label>Класс задачи</label><select data-pdf-grade="'+i+'"><option value="">— Выбери класс —</option>'+grades.map(g=>'<option value="'+g+'" '+(Number(x.grade)===g?'selected':'')+'>'+g+' класс</option>').join('')+'</select></div>'+
+            '<div class="field"><label>Тема задачи</label><select data-pdf-topic="'+i+'"><option value="">— Выбери тему —</option>'+allTopics.filter(t=>Number(t.grade)===Number(x.grade)).map(t=>'<option value="'+esc(t.id)+'" '+(String(x.topicId||'')===String(t.id)?'selected':'')+'>'+esc(t.section||'Математика')+' · '+esc(t.title)+'</option>').join('')+'</select></div>'+
+          '</div>'+
+          '<div class="small muted" style="margin:0 0 8px">'+(x.topicMode==='auto'?'Автоопределение: '+esc(x.suggestion?.reason||'')+' · уверенность '+Math.round((x.suggestion?.confidence||0)*100)+'%. Проверь перед сохранением.':x.topicMode==='manual'?'Тема выбрана вручную.':x.topicId?'Использована запасная тема.':'Тема не определена — нужно выбрать вручную.')+'</div>'+
           '<div class="field"><label>Условие</label><textarea data-pdf-content="'+i+'" rows="4"></textarea></div>'+
           '<div class="field"><label>Ответ (если известен; можно заполнить позже)</label><input data-pdf-answer="'+i+'" type="text" placeholder="Необязательно для черновика"></div>'+
           '<div class="mr-pdf-v92-capture" style="padding:10px;border:1px solid var(--line,#ddd);border-radius:12px;margin-top:8px">'+
@@ -109,6 +117,16 @@
           '</div>'+
         '</article>';
         }).join('');
+      panel.querySelectorAll('[data-pdf-grade]').forEach(el=>el.onchange=()=>{
+        const row=entries[Number(el.dataset.pdfGrade)];
+        row.grade=Number(el.value)||null;row.topicId=null;row.topicMode='manual';
+        render();
+      });
+      panel.querySelectorAll('[data-pdf-topic]').forEach(el=>el.onchange=()=>{
+        const row=entries[Number(el.dataset.pdfTopic)];
+        row.topicId=el.value||null;row.topicMode='manual';
+        q('#pdfTaskSave').disabled=busy||!entries.some(x=>x.selected&&!x.imported);
+      });
       panel.querySelectorAll('[data-pdf-content]').forEach(el=>{
         const i=Number(el.dataset.pdfContent);el.value=entries[i].content;
         el.oninput=()=>entries[i].content=el.value;
