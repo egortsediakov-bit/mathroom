@@ -2,7 +2,7 @@
 (()=>{
   'use strict';
   const API={};
-  const num=v=>Number.isFinite(Number(v))?Number(v):null;
+  const num=v=>(v===null||v===undefined||v==='')?null:(Number.isFinite(Number(v))?Number(v):null);
   const esc=(v)=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const weight=(row)=>{
     const m=num(row.mastery),n=Math.max(0,num(row.evidence_count)||0);
@@ -44,13 +44,22 @@
       .select('topic_snapshot,created_at').eq('teacher_id',S.user.id)
       .eq('student_id',student.id).order('created_at',{ascending:false}).limit(1);
     if(error)throw error;
-    const observed=Array.isArray(data?.[0]?.topic_snapshot)?data[0].topic_snapshot:[];
+    const snapshot=Array.isArray(data?.[0]?.topic_snapshot)?data[0].topic_snapshot:[];
+    let graded=[];
+    try{
+      graded=await window.MathroomErrorDiagnosticsV91?.read?.({S,sb},student.id)||[];
+    }catch(e){console.warn('[Mathroom diagnostics] graded work unavailable',e)}
+    // Real checked work overrides aggregate diagnostic estimates when there are at least 2 checked exercises.
+    const merged=new Map(snapshot.map(x=>[String(x.topic_id),{...x,source:'progress-snapshot'}]));
+    for(const row of graded)if(row.evidence_count>=2 || !merged.has(String(row.topic_id)))
+      merged.set(String(row.topic_id),row);
+    const observed=[...merged.values()];
     const rows=observed.filter(x=>available.has(String(x.topic_id)) && num(x.evidence_count)>0 && num(x.mastery)!==null)
       .map(x=>({...x,topic:available.get(String(x.topic_id)),available:taskCount.get(String(x.topic_id)),priority:weight(x)}))
       .sort((a,b)=>b.priority-a.priority || (num(a.mastery)||0)-(num(b.mastery)||0));
     const chosen=quota(rows,total);
     return {rows:chosen,observed:observed.length,verified:rows.length,at:data?.[0]?.created_at||null,
-      reason:!observed.length?'Нет сохранённой диагностики по ученику':!rows.length?'Нет оценённых тем с задачами в банке':'',
+      reason:!observed.length?'Нет проверенных домашних работ и диагностики':!rows.length?'Нет оценённых тем с задачами в банке':'',
       student};
   };
   API.open=({S,sb,modal,toast,openBuilder})=>{
@@ -72,7 +81,15 @@
         current=rec;
         if(rec.reason){q('#adaptStatus').textContent=rec.reason+'. Сначала проведи и оцени задания — Mathroom не будет придумывать успеваемость.';return;}
         q('#adaptStatus').textContent='Оценённых тем: '+rec.verified+' · выбрано для повторения: '+rec.rows.length+'. Рекомендация, а не автоматическая оценка знаний.';
-        q('#adaptRows').innerHTML=rec.rows.map(({row,count},i)=>'<div class="card" style="padding:10px 12px"><b>'+esc(row.topic.title)+'</b><span class="muted" style="float:right">'+count+' задач</span><div class="small muted">Освоение: '+Math.round(num(row.mastery)<=1&&num(row.mastery)>0?num(row.mastery)*100:num(row.mastery))+'% · наблюдений: '+Math.round(num(row.evidence_count))+' · в банке: '+row.available+'</div></div>').join('');
+        q('#adaptRows').innerHTML=rec.rows.map(({row,count})=>{
+          const label=row.source==='graded-homework'
+            ?('Проверено '+row.graded_total+' задач, ошибок: '+row.graded_errors)
+            :('Данные диагностического профиля · наблюдений '+Math.round(num(row.evidence_count)||0));
+          const skills=Array.isArray(row.skill_errors)&&row.skill_errors.length?
+            '<div class="small muted">Типичные ошибки: '+row.skill_errors.map(x=>esc(x.name)+' ('+x.errors+'/'+x.total+')').join('; ')+'</div>':'';
+          return '<div class="card" style="padding:10px 12px"><b>'+esc(row.topic.title)+'</b><span class="muted" style="float:right">'+count+' задач</span>'+
+            '<div class="small muted">Успешность: '+Math.round(num(row.mastery)<=1&&num(row.mastery)>0?num(row.mastery)*100:num(row.mastery))+'% · '+esc(label)+' · в банке: '+row.available+'</div>'+skills+'</div>';
+        }).join('');
         q('#adaptBuild').disabled=!rec.rows.length;
       }catch(e){if(token!==serial)return;q('#adaptStatus').textContent='Не удалось загрузить диагностику: '+(e?.message||e);}
     };
