@@ -607,6 +607,9 @@ function renderTaskSupply(){
   if(!mod?.render)return toast('Фабрика задач не загрузилась');
   return mod.render({
     app,shell,bindShell,S,sb,esc,nl,toast,fail,loadTeacher,isTemplateExercise,
+    openPdf:()=>window.MathroomPdfImportV91?.open?.({
+      S,sb,modal,toast,fail,loadTeacher,openBank:()=>{S.bankLibraryMode='mine';S.view='bank';renderBank()}
+    }),
     openBank:({focusImport=false}={})=>{
       S.view='bank';renderBank();
       if(focusImport)setTimeout(()=>document.querySelector('[data-xlsx-button]')?.scrollIntoView({behavior:'smooth',block:'center'}),350);
@@ -2218,6 +2221,10 @@ function sharedMaterialUserTags(tags=[]){
 }
 async function publishExerciseToSharedLibrary(exercise,{onDone}={}){
   if(!exercise||!S.user)return;
+  if(exercise.is_draft)return toast('Черновики нельзя публиковать. Сначала проверь задание и ответ в конструкторе.');
+  if(exercise.kind==='task'&&!String(exercise.answer||'').trim())return toast('Для публикации задачи необходимо заполнить ответ.');
+  const importedPdf=(exercise.tags||[]).includes('mathroom-pdf-import-v91');
+  if(importedPdf&&!confirm('Опубликовать задачу из PDF в общей библиотеке? Подтверди, что проверил условие, решение, чертежи и права на использование.'))return;
   const topic=(S.topics||[]).find(t=>String(t.id)===String(exercise.topic_id));
   if(!topic)return toast('Не найдена тема материала');
   const old=sharedMaterialForExercise(exercise.id);
@@ -2234,7 +2241,7 @@ async function publishExerciseToSharedLibrary(exercise,{onDone}={}){
     grade:Number(topic.grade)||null,
     section:topic.section||'',
     topic_title:topic.title||'',
-    builder_meta:exercise.builder_meta&&typeof exercise.builder_meta==='object'?exercise.builder_meta:{}
+    builder_meta:importedPdf?{...(exercise.builder_meta||{}),pdf_import:{...(exercise.builder_meta?.pdf_import||{}),verified:true,verified_at:new Date().toISOString()}}:(exercise.builder_meta&&typeof exercise.builder_meta==='object'?exercise.builder_meta:{})
   };
   const q=old
     ? sb.from('shared_materials').update({...body,updated_at:new Date().toISOString()}).eq('id',old.id)
@@ -2693,6 +2700,7 @@ function renderBank(){
       <span class="pill">${own.filter(x=>x.kind==='example').length} примеров</span>
       <span class="pill">${builtIn} из готовой базы</span>
       <button class="btn sm mr-supply-launch" id="openTaskPipeline">✦ Источники и пополнение</button>
+      <button class="btn sm" id="openPdfImport">Импорт PDF</button>
       <button class="btn sm mr-smart-set-launch" id="openSmartSet">Собрать комплект</button>
       <button class="btn sm" id="openAdaptiveSet">Подобрать ученику</button>
       <button class="btn sm mr-saved-sets-launch" id="openSavedSets">Мои комплекты</button>
@@ -2722,6 +2730,9 @@ function renderBank(){
     S.view='task-supply';
     renderTaskSupply();
   };
+  document.getElementById('openPdfImport').onclick=()=>window.MathroomPdfImportV91?.open?.({
+    S,sb,modal,toast,fail,loadTeacher,openBank:()=>{S.bankLibraryMode='mine';S.view='bank';renderBank()}
+  });
   document.getElementById('openSmartSet').onclick=()=>{
     const prefill={
       grade:document.getElementById('bankGrade')?.value||'',

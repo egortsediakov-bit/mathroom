@@ -174,10 +174,11 @@
       html+='<div class="mr-supply-sources">';
       html+=sourceCard("AI",sources.ai,"AI после проверки","ai");
       html+=sourceCard("↻",sources.generator,"параметрические шаблоны","gen");
+      html+=sourceCard("P",(S.exercises||[]).filter(x=>(x.tags||[]).includes("mathroom-pdf-import-v91")).length,"импорт PDF и черновики","xlsx");
       html+=sourceCard("X",sources.xlsx,"импорт XLSX","xlsx");
       html+=sourceCard("K",sources.core,"готовая база","core");
       html+=sourceCard("✎",sources.manual,"ручные / прочие","manual");
-      html+='</div><div class="mr-supply-source-actions"><button class="btn sm" id="supplyManual">✦ Ручная AI-генерация</button><button class="btn sm" id="supplyXlsx">Импорт XLSX</button><button class="btn sm" id="supplyReview">Карантин <b>'+(ready+review)+'</b></button></div></section>';
+      html+='</div><div class="mr-supply-source-actions"><button class="btn sm" id="supplyManual">✦ Ручная AI-генерация</button><button class="btn sm" id="supplyPdf">Импорт PDF</button><button class="btn sm" id="supplyXlsx">Импорт XLSX</button><button class="btn sm" id="supplyReview">Карантин <b>'+(ready+review)+'</b></button></div></section>';
 
       html+='<section class="mr-supply-card"><div class="mr-supply-card-head"><div><span class="mr-supply-section-icon">⌁</span><div><h2>Целевое покрытие темы</h2><p>Пороги для аудита и автопополнения.</p></div></div><button class="btn sm" id="supplySave">Сохранить</button></div>';
       html+='<div class="mr-supply-targets">';
@@ -206,6 +207,7 @@
 
       document.getElementById("supplyManual").onclick=()=>ctx.openPipeline({mode:"topic"});
       document.getElementById("supplyReview").onclick=()=>ctx.openPipeline({mode:"review"});
+      document.getElementById("supplyPdf").onclick=()=>ctx.openPdf?.();
       document.getElementById("supplyXlsx").onclick=()=>ctx.openBank({focusImport:true});
       const or=document.getElementById("supplyOpenReview");if(or)or.onclick=()=>ctx.openPipeline({mode:"review"});
 
