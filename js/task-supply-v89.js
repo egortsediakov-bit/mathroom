@@ -1,7 +1,7 @@
 
 (()=>{
   const API={};
-  const DEFAULTS={target_basic:20,target_medium:30,target_advanced:15,target_generators:5,max_tasks_per_run:30,auto_accept_ready:false};
+  const DEFAULTS={target_basic:20,target_medium:30,target_advanced:15,target_generators:5,max_tasks_per_run:30,auto_accept_ready:false,auto_enabled:false,daily_ai_limit:10,auto_focus_grades:[]};
 
   const safeJson=v=>{
     if(v&&typeof v==="object")return v;
@@ -44,6 +44,9 @@
       target_generators:Number(s.target_generators)||0,
       max_tasks_per_run:Number(s.max_tasks_per_run)||30,
       auto_accept_ready:!!s.auto_accept_ready,
+      auto_enabled:!!s.auto_enabled,
+      daily_ai_limit:Math.max(1,Math.min(100,Number(s.daily_ai_limit)||10)),
+      auto_focus_grades:Array.isArray(s.auto_focus_grades)?s.auto_focus_grades.filter(x=>Number(x)>=1&&Number(x)<=11).map(Number):[],
       updated_at:new Date().toISOString()
     };
     const r=await ctx.sb.from("task_supply_settings").upsert(body,{onConflict:"teacher_id"}).select().single();
@@ -157,7 +160,7 @@
       const grades=[...new Set(rows.map(r=>Number(r.topic.grade)).filter(Boolean))].sort((a,b)=>a-b);
 
       let html='<div class="mr-supply">';
-      html+='<section class="mr-supply-hero"><div><span class="mr-supply-kicker">TASK SUPPLY ENGINE · v89</span><h1>Банк, который сам показывает дефициты</h1><p>Покрытие по каждой теме → план недостающих задач → AI-генерация → независимая проверка → дедупликация → карантин → основной банк.</p></div>';
+      html+='<section class="mr-supply-hero"><div><span class="mr-supply-kicker">TASK SUPPLY ENGINE · v90</span><h1>Банк, который сам показывает дефициты</h1><p>Покрытие по каждой теме → план недостающих задач → AI-генерация → независимая проверка → дедупликация → карантин → основной банк.</p></div>';
       html+='<aside class="mr-supply-health '+(health.ai_configured?"ok":"warn")+'"><span></span><div><b>'+(health.ai_configured?"AI-фабрика готова":"AI-фабрика не подключена")+'</b><small>'+(health.ai_configured?esc((health.model||"model")+" · validator "+(health.validator_model||health.model||"")):"Нужен OPENAI_API_KEY в Supabase")+'</small></div></aside></section>';
 
       html+='<section class="mr-supply-kpis">';
@@ -183,7 +186,11 @@
       html+=targetInput("supplyAdvanced","Сложных",settings.target_advanced,0,200);
       html+=targetInput("supplyGenerators","Генераторов",settings.target_generators,0,50);
       html+=targetInput("supplyMax","За один запуск",settings.max_tasks_per_run,1,100);
-      html+='<label class="mr-supply-autoaccept"><input id="supplyAuto" type="checkbox" '+(settings.auto_accept_ready?"checked":"")+'><span><b>Автопринимать ready</b><small>Только confidence ≥ 95%, помеченные pipeline как ready</small></span></label></div></section>';
+      html+='<label class="mr-supply-autoaccept"><input id="supplyAuto" type="checkbox" '+(settings.auto_accept_ready?"checked":"")+'><span><b>Автопринимать ready</b><small>Только confidence ≥ 95%; для максимального контроля оставь выключенным</small></span></label></div>';
+      html+='<div class="mr-supply-targets" style="margin-top:14px"><label class="mr-supply-autoaccept"><input id="supplyAutoEnabled" type="checkbox" '+(settings.auto_enabled?"checked":"")+' '+(health.ai_configured?"":"disabled")+'><span><b>Фоновое пополнение</b><small>Каждые 2 часа, только при дефиците и соблюдении дневного лимита. Изначально выключено.</small></span></label>';
+      html+=targetInput("supplyDaily","Максимум AI-задач в сутки",settings.daily_ai_limit||10,1,100);
+      html+='<label><span>Какие классы пополнять</span><select id="supplyAutoGrade"><option value="0">Классы активных учеников</option>'+Array.from({length:11},(_,i)=>i+1).map(g=>'<option value="'+g+'" '+(Array.isArray(settings.auto_focus_grades)&&settings.auto_focus_grades.length===1&&Number(settings.auto_focus_grades[0])===g?"selected":"")+'>'+g+' класс</option>').join("")+'</select></label>';
+      html+='</div><p class="small muted" style="margin-top:8px">Фоновые задачи проходят AI-проверку и попадают в карантин. Публикация без проверки человеком возможна только при отдельно включённом автоприёме. '+(settings.last_auto_run_at?'Последний запуск: '+esc(new Date(settings.last_auto_run_at).toLocaleString("ru-RU"))+'.':'')+(settings.last_auto_error?' Ошибка: '+esc(settings.last_auto_error):'')+'</p></section>';
 
       html+='<section class="mr-supply-card"><div class="mr-supply-card-head"><div><span class="mr-supply-section-icon">▦</span><div><h2>Аудит тем</h2><p>Выбирай дефицитные темы и запускай пополнение пачкой.</p></div></div><div class="mr-supply-actions"><button class="btn sm" id="supplySelect">Выбрать видимые</button><button class="btn sm" id="supplyClear">Снять выбор</button></div></div>';
       html+='<div class="mr-supply-filters"><label><span>Класс</span><select id="supplyGrade"><option value="">Все классы</option>'+grades.map(g=>'<option value="'+g+'" '+(String(g)===String(grade)?"selected":"")+'>'+g+' класс</option>').join("")+'</select></label><label class="wide"><span>Поиск темы</span><input id="supplyQuery" value="'+esc(query)+'" placeholder="Например: дроби"></label><label class="mr-supply-check"><input id="supplyDeficitsOnly" type="checkbox" '+(deficitsOnly?"checked":"")+'><span>Только дефициты</span></label></div>';
@@ -264,7 +271,10 @@
           target_advanced:Math.max(0,Math.min(200,Number(document.getElementById("supplyAdvanced").value)||0)),
           target_generators:Math.max(0,Math.min(50,Number(document.getElementById("supplyGenerators").value)||0)),
           max_tasks_per_run:Math.max(1,Math.min(100,Number(document.getElementById("supplyMax").value)||30)),
-          auto_accept_ready:document.getElementById("supplyAuto").checked
+          auto_accept_ready:document.getElementById("supplyAuto").checked,
+          auto_enabled:health.ai_configured&&document.getElementById("supplyAutoEnabled").checked,
+          daily_ai_limit:Math.max(1,Math.min(100,Number(document.getElementById("supplyDaily").value)||10)),
+          auto_focus_grades:Number(document.getElementById("supplyAutoGrade").value)>0?[Number(document.getElementById("supplyAutoGrade").value)]:[]
         });
         toast("Настройки фабрики сохранены");draw();
       }catch(e){fail(e);button.disabled=false}
