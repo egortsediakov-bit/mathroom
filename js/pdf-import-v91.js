@@ -74,13 +74,13 @@
         '<div class="field"><label>Конечная страница PDF (макс. 25 за раз)</label><input type="number" id="pdfTaskTo" min="1" value="10"></div>'+
       '</div>'+
       '<label class="mr-pdf-rights"><input type="checkbox" id="pdfTaskRights"> Подтверждаю, что имею право использовать и хранить задания из выбранного документа. Понимаю, что импорт не даёт права публиковать чужой учебник целиком.</label>'+
-      '<div class="actions"><button class="btn primary" id="pdfTaskExtract">Извлечь задания</button><button class="btn" id="pdfTaskAll">Выбрать всё</button><button class="btn" id="pdfTaskNone">Снять выбор</button></div>'+
+      '<div class="actions"><button class="btn primary" id="pdfTaskExtract">Извлечь задания</button><button class="btn" id="pdfTaskAddVisual">＋ Задача со скана</button><button class="btn" id="pdfTaskAll">Выбрать всё</button><button class="btn" id="pdfTaskNone">Снять выбор</button></div>'+
       '<div class="notice" id="pdfTaskStatus">Выбери файл и укажи страницы.</div>'+
       '<div id="pdfTaskResults"></div>'+
       '<div class="actions" style="margin-top:16px"><button class="btn primary" id="pdfTaskSave" disabled>Сохранить в черновики</button></div>'+
       '</section>','wide-modal');
     const q=s=>m.querySelector(s);
-    let entries=[],filename='',busy=false;
+    let entries=[],filename='',busy=false,pdfPages=0,visualSerial=0;
     const topicsForGrade=()=> (S.topics||[]).filter(t=>Number(t.grade)===Number(q('#pdfTaskGrade').value));
     const refreshTopics=()=>{
       const options=topicsForGrade();
@@ -158,6 +158,7 @@
         const data=new Uint8Array(await file.arrayBuffer());
         window.pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
         pdf=await window.pdfjsLib.getDocument({data}).promise;
+        pdfPages=pdf.numPages;
         const first=clamp(q('#pdfTaskFrom').value,1,pdf.numPages);
         const last=clamp(q('#pdfTaskTo').value,first,Math.min(pdf.numPages,first+24));
         q('#pdfTaskFrom').value=first;q('#pdfTaskTo').value=last;
@@ -180,7 +181,7 @@
           page.cleanup();
           if(entries.length>=60)break;
         }
-        if(!entries.length)state('Не нашёл пронумерованных текстовых заданий. Проверь страницы: сканы, изображения, таблицы и сложная многоколоночная верстка пока не поддерживаются. PDF не был сохранён.');
+        if(!entries.length)state('Текстовый слой с пронумерованными задачами не найден. Если это скан, нажми «Задача со скана» и вырежи нужное условие со страницы.');
         else state('Извлечено '+entries.length+' фрагментов (до 60). Они ещё не проверены математически. Изображения и чертежи могли не попасть в текст.');
         render();
       }catch(e){state('Ошибка PDF: '+String(e?.message||e));}
@@ -195,15 +196,17 @@
       const topicId=q('#pdfTaskTopic').value;
       const topic=topicsForGrade().find(t=>String(t.id)===String(topicId));
       if(!topic)return toast('Выбери существующую тему');
-      const selected=entries.filter(x=>x.selected&&norm(x.content).length>=12&&!x.imported);
+      const selected=entries.filter(x=>x.selected&&(norm(x.content).length>=12||x.capture)&&!x.imported);
+      if(selected.some(x=>x.visualOnly&&!x.capture))
+        return toast('Для задачи со скана сначала прикрепи снимок условия');
       if(!selected.length)return toast('Выбери хотя бы одну задачу с условием');
       if(!confirm('Сохранить '+selected.length+' фрагментов как ЛИЧНЫЕ ЧЕРНОВИКИ? Непроверенные формулы и рисунки нельзя публиковать.'))return;
       busy=true;q('#pdfTaskSave').disabled=true;
       const existing=new Set((S.exercises||[]).filter(x=>String(x.topic_id)===String(topicId)).map(x=>fingerprint(x.content)));
       const seen=new Set();
       const eligible=selected.filter(x=>{
-        const fp=fingerprint(x.content);
-        if(existing.has(fp)||seen.has(fp))return false;
+        const fp=x.visualOnly?'visual:'+x.page+':'+x.number:fingerprint(x.content);
+        if((!x.visualOnly&&existing.has(fp))||seen.has(fp))return false;
         seen.add(fp);return true;
       });
       let inserted=0,issue=null;
@@ -285,10 +288,23 @@
     };
     q('#pdfTaskFile').onchange=()=>{
       for(const x of entries)if(x.previewUrl)URL.revokeObjectURL(x.previewUrl);
-      entries=[];filename='';render();
+      entries=[];filename='';pdfPages=0;visualSerial=0;render();
       state('Файл изменён — извлеки задания заново.');
     };
     q('#pdfTaskGrade').onchange=refreshTopics;
+    q('#pdfTaskAddVisual').onclick=()=>{
+      const file=q('#pdfTaskFile').files?.[0];
+      if(!file)return toast('Выбери PDF-файл');
+      if(!pdfPages)return toast('Сначала нажми «Извлечь задания», чтобы открыть PDF и узнать число страниц');
+      const page=clamp(q('#pdfTaskFrom').value,1,pdfPages);
+      visualSerial++;
+      entries.push({
+        page,number:'скан-'+visualSerial,
+        content:'Условие представлено на прикреплённом изображении PDF. Требуется проверка преподавателем.',
+        answer:'',selected:true,duplicate:false,visualOnly:true
+      });
+      render();state('Задача со скана добавлена. Нажми «Прикрепить фрагмент» у новой карточки, выдели область и заполни ответ позже.');
+    };
     q('#pdfTaskExtract').onclick=extract;
     q('#pdfTaskSave').onclick=save;
     q('#pdfTaskAll').onclick=()=>{entries.forEach(x=>x.selected=true);render();};
