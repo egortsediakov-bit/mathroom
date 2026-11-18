@@ -16,7 +16,7 @@
   background:var(--bg,#fff)!important;
   scrollbar-width:thin;
 }
-.mr-pdf-import {color:var(--text,#17191d);font-family:inherit; --mr-pdf-orange:#ff7214; --mr-pdf-stroke:#e3e6ea}
+.mr-pdf-import {color:var(--text,#17191d);font-family:inherit;font-size:14px; --mr-pdf-orange:#ff7214; --mr-pdf-stroke:#e3e6ea}
 .mr-pdf-import * {box-sizing:border-box}
 .mr-pdf-import button {transition:background-color .15s,border-color .15s,transform .15s; font-weight:600}
 .mr-pdf-import button:active:not(:disabled) {transform:translateY(1px)}
@@ -45,7 +45,7 @@
 .mr-pdf-import input:not([type="checkbox"]):not([type="file"]),.mr-pdf-import select,.mr-pdf-import textarea{
   width:100%;min-width:0;min-height:42px;border:1px solid var(--mr-pdf-stroke)!important;
   border-radius:11px!important;background:var(--bg,#fff)!important;color:var(--text,#17191d)!important;
-  box-shadow:none!important;padding:10px 12px!important
+  box-shadow:none!important;padding:10px 12px!important;font-size:13px!important
 }
 .mr-pdf-import input[type=file]{max-width:100%;font-size:12px}
 .mr-pdf-import textarea{line-height:1.55!important;min-height:100px;resize:vertical}
@@ -122,3 +122,8 @@
 :root[data-theme="dark"] .mr-pdf-import .mr-pdf-state.ready{background:#1a3826;color:#92dbac}
 :root[data-theme="dark"] .mr-pdf-import .mr-pdf-saved-banner{background:#203a29;border-color:#336c48;color:#a6e4b9}
 :root[data-theme="dark"] .mr-pdf-import .mr-pdf-task-actions .mr-pdf-remove-task{border-color:#633c39!important;color:#ffb7b1!important}
+
+/* Make saved drafts discoverable in the bank, not buried among thousands of tasks. */
+.view-bank .mr-bank-draft-shortcut{background:#fff7ef!important;color:#bd5008!important;border:1px solid #ffd7b7!important;border-radius:10px!important;font-weight:800!important}
+.view-bank .mr-bank-draft-shortcut:hover{background:#ffead8!important}
+:root[data-theme="dark"] .view-bank .mr-bank-draft-shortcut{background:#34271c!important;color:#ffb77b!important;border-color:#725137!important}
