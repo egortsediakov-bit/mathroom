@@ -17,7 +17,7 @@
     if(selected.length===1)return [{row:selected[0],count:Math.min(20,count)}];
     const weights=selected.map(x=>Math.max(1,weight(x)));
     const sum=weights.reduce((a,b)=>a+b,0);
-    const out=selected.map((r,i)=>({row:r,count:1,frac:weights[i]/sum*(count-selected.length)}));
+    const out=selected.map((r,i)=>({row:r,count:1,frac:weights[i]/sum*(count-selected.length),rank:i}));
     let left=count-selected.length;
     for(const x of out){const n=Math.floor(x.frac);x.count+=n;left-=n;}
     out.sort((a,b)=>(b.frac%1)-(a.frac%1));
@@ -28,7 +28,7 @@
       if(!over||!under)break;
       over.count--;under.count++;
     }
-    return out.map(x=>({row:x.row,count:x.count}));
+    return out.sort((a,b)=>a.rank-b.rank).map(x=>({row:x.row,count:x.count}));
   };
   API.recommend=async ({S,sb},studentId,total=10)=>{
     const student=(S.students||[]).find(s=>String(s.id)===String(studentId));
