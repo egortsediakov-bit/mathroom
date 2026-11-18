@@ -193,8 +193,9 @@
         // Rehydrate the full personal bank before duplicate screening.
         try{await window.MathroomBankAllExercisesV2982?.hydrate?.({rerender:false})}
         catch(e){console.warn('[PDF importer] full-bank hydration unavailable',e)}
-        const currentTopic=q('#pdfTaskTopic').value;
-        const existing=new Set((S.exercises||[]).filter(x=>String(x.topic_id)===String(currentTopic)).map(x=>fingerprint(x.content)));
+        const existing=new Set((S.exercises||[]).map(x=>fingerprint(x.content)));
+        const fallbackId=q('#pdfTaskTopic').value||null;
+        const fallbackTopic=(S.topics||[]).find(t=>String(t.id)===String(fallbackId));
         const seen=new Set();
         for(let pageNum=first;pageNum<=last;pageNum++){
           state('Извлекаем PDF: страница '+pageNum+' из '+last+'…');
@@ -202,10 +203,19 @@
           const text=await page.getTextContent();
           const lines=API.linesFromItems(text.items);
           for(const entry of API.splitPage(lines,pageNum)){
+            const suggestion=window.MathroomPdfTopicsV93?.propose?.({
+              content:entry.content,topics:S.topics||[],
+              preferredGrade:q('#pdfTaskGrade').value||null
+            })||{topicId:null,grade:null,confidence:0,reason:'Выбери тему вручную'};
+            const identified=(S.topics||[]).find(t=>String(t.id)===String(suggestion.topicId));
+            entry.suggestion=suggestion;
+            entry.topicId=identified?.id||fallbackTopic?.id||null;
+            entry.grade=identified?Number(identified.grade):fallbackTopic?Number(fallbackTopic.grade):(Number(q('#pdfTaskGrade').value)||null);
+            entry.topicMode=identified?'auto':fallbackTopic?'fallback':'unknown';
             const f=fingerprint(entry.content);
             entry.duplicate=seen.has(f)||existing.has(f);
             entry.selected=!entry.duplicate;
-            if(!entry.duplicate)seen.add(f);
+            seen.add(f);
             entries.push(entry);
             if(entries.length>=60)break;
           }
@@ -213,7 +223,7 @@
           if(entries.length>=60)break;
         }
         if(!entries.length)state('Текстовый слой с пронумерованными задачами не найден. Если это скан, нажми «Задача со скана» и вырежи нужное условие со страницы.');
-        else state('Извлечено '+entries.length+' фрагментов (до 60). Они ещё не проверены математически. Изображения и чертежи могли не попасть в текст.');
+        else state('Извлечено '+entries.length+' задач. Автоматически предложены темы: '+entries.filter(x=>x.topicMode==='auto').length+'. Нужно выбрать тему вручную: '+entries.filter(x=>!x.topicId).length+'. Изображения и формулы проверь по оригиналу.');
         render();
       }catch(e){state('Ошибка PDF: '+String(e?.message||e));}
       finally{
@@ -334,7 +344,9 @@
       entries.push({
         page,number:'скан-'+visualSerial,
         content:'Условие представлено на прикреплённом изображении PDF. Требуется проверка преподавателем.',
-        answer:'',selected:true,duplicate:false,visualOnly:true
+        answer:'',selected:true,duplicate:false,visualOnly:true,
+        grade:Number(q('#pdfTaskGrade').value)||null,topicId:q('#pdfTaskTopic').value||null,
+        topicMode:q('#pdfTaskTopic').value?'fallback':'unknown'
       });
       render();state('Задача со скана добавлена. Нажми «Прикрепить фрагмент» у новой карточки, выдели область и заполни ответ позже.');
     };
