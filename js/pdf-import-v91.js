@@ -80,6 +80,7 @@
       '<div class="actions"><button class="btn primary" id="pdfTaskExtract">Извлечь задания</button><button class="btn" id="pdfTaskAddVisual">＋ Задача со скана</button><button class="btn" id="pdfTaskAll">Выбрать всё</button><button class="btn" id="pdfTaskNone">Снять выбор</button></div>'+
       '<div class="notice" id="pdfTaskStatus">Выбери файл и укажи страницы.</div>'+
       '<div id="pdfTaskResults"></div>'+
+      '<div id="pdfTaskSaveHint" class="notice" role="status" style="margin-top:12px">Выбери задачи для сохранения.</div>'+
       '<div class="actions" style="margin-top:16px"><button class="btn primary" id="pdfTaskSave" disabled>Сохранить в черновики</button></div>'+
       '</section>','wide-modal');
     const q=s=>m.querySelector(s);
@@ -90,10 +91,26 @@
       q('#pdfTaskTopic').innerHTML='<option value="">— Не задана —</option>'+options.map(t=>'<option value="'+esc(t.id)+'">'+esc(t.section||'Математика')+' · '+esc(t.title)+'</option>').join('');
     };
     const state=s=>{q('#pdfTaskStatus').textContent=s;};
+    const savePlan=()=>window.MathroomPdfDraftsV94?.plan?.(entries,S.topics||[],S.exercises||[])
+      ||{selected:0,ready:[],pending:[],duplicates:[]};
+    const refreshSaveHint=()=>{
+      const plan=savePlan(),btn=q('#pdfTaskSave'),hint=q('#pdfTaskSaveHint');
+      if(btn){
+        btn.disabled=busy||!plan.ready.length;
+        btn.textContent=plan.ready.length?'Сохранить '+plan.ready.length+' задач в черновики':'Сохранить в черновики';
+      }
+      if(hint){
+        const message=window.MathroomPdfDraftsV94?.summary?.(plan)||'Не загрузился модуль сохранения. Обнови страницу.';
+        const rights=plan.ready.length&&!q('#pdfTaskRights').checked?' Перед сохранением отметь подтверждение прав на PDF.':'';
+        const missing=plan.pending.slice(0,8).map(x=>x.id).join(', ');
+        hint.textContent=message+(missing?' Требуют внимания: '+missing+'.':'')+rights;
+      }
+      return plan;
+    };
     const render=()=>{
       const panel=q('#pdfTaskResults');
       const total=entries.filter(x=>x.selected&&!x.imported).length;
-      q('#pdfTaskSave').disabled=busy||!total;
+      refreshSaveHint();
       const allTopics=S.topics||[];
       if(!entries.length){panel.innerHTML='';return;}
       panel.innerHTML='<p class="muted">Найдено фрагментов: '+entries.length+'. Выбрано: '+total+'. <b>Проверяй формулы, схемы, переносы строк и условия вручную.</b></p>'+
@@ -141,7 +158,7 @@
       });
       panel.querySelectorAll('[data-pdf-content]').forEach(el=>{
         const i=Number(el.dataset.pdfContent);el.value=entries[i].content;
-        el.oninput=()=>entries[i].content=el.value;
+        el.oninput=()=>{entries[i].content=el.value;refreshSaveHint();};
       });
       panel.querySelectorAll('[data-pdf-answer]').forEach(el=>{
         const i=Number(el.dataset.pdfAnswer);el.value=entries[i].answer||'';
@@ -178,7 +195,7 @@
         el.onchange=()=>{
           const row=entries[Number(el.dataset.pdfSelect)];
           if(row.imported){el.checked=false;return;}
-          row.selected=el.checked;q('#pdfTaskSave').disabled=busy||!entries.some(x=>x.selected&&!x.imported);
+          row.selected=el.checked;refreshSaveHint();
         };
       });
     };
@@ -245,27 +262,23 @@
     };
     const save=async()=>{
       if(busy)return;
-      if(!q('#pdfTaskRights').checked)return toast('Подтверди права на использование документа');
-      const selected=entries.filter(x=>x.selected&&(norm(x.content).length>=12||x.capture)&&!x.imported);
-      const unmatched=selected.filter(x=>!(S.topics||[]).some(t=>String(t.id)===String(x.topicId)&&Number(t.grade)===Number(x.grade)));
-      if(unmatched.length)return toast('Для '+unmatched.length+' задач не выбраны класс или тема. Назначь их в карточках либо сними выделение.');
-      if(selected.some(x=>x.visualOnly&&!x.capture))
-        return toast('Для задачи со скана сначала прикрепи снимок условия');
-      if(!selected.length)return toast('Выбери хотя бы одну задачу с условием');
-      if(!confirm('Сохранить '+selected.length+' фрагментов как ЛИЧНЫЕ ЧЕРНОВИКИ? Непроверенные формулы и рисунки нельзя публиковать.'))return;
-      busy=true;q('#pdfTaskSave').disabled=true;
-      const existing=new Set((S.exercises||[]).map(x=>fingerprint(x.content)));
-      const seen=new Set();
-      const eligible=selected.filter(x=>{
-        const fp=x.visualOnly?'visual:'+x.page+':'+x.number:fingerprint(x.content);
-        if((!x.visualOnly&&existing.has(fp))||seen.has(fp))return false;
-        seen.add(fp);return true;
-      });
-      if(!eligible.length){
-        busy=false;
-        q('#pdfTaskSave').disabled=false;
-        return toast('Все выбранные задачи уже есть в банке. Новых черновиков не создано.');
+      if(!window.MathroomPdfDraftsV94)return toast('Не загрузился модуль сохранения. Обнови страницу через Ctrl + F5');
+      const plan=refreshSaveHint();
+      if(!q('#pdfTaskRights').checked){
+        state('Перед сохранением отметь галочку «Подтверждаю, что имею право использовать и хранить задания»');
+        q('#pdfTaskRights').focus();
+        return toast('Подтверди права на использование PDF (галочка над кнопкой извлечения)');
       }
+      if(!plan.ready.length){
+        state(plan.pending.length?'У выбранных задач нет темы или снимка. Заполни класс и тему в карточках либо сними выбор.':'Нет новых задач для сохранения. Проверь выбор и дубликаты.');
+        return toast('Нет готовых задач. Проверь подсказку под списком.');
+      }
+      const excluded=plan.pending.length+plan.duplicates.length;
+      if(!confirm('Сохранить '+plan.ready.length+' готовых задач в ЛИЧНЫЕ ЧЕРНОВИКИ?'+
+        (excluded?' Ещё '+excluded+' задач будет пропущено и останется здесь для исправления.':'')+
+        ' Перед публикацией проверь математику и рисунки.'))return;
+      busy=true;refreshSaveHint();
+      const eligible=plan.ready.map(x=>x.entry);
       let inserted=0,issue=null;
       try{
         // Per-task transactions in the UI: on partial failure, completed drafts
@@ -341,19 +354,23 @@
         }
         if(inserted)await loadTeacher();
         if(issue){
-          state('Сохранено '+inserted+' из '+eligible.length+'. Остальные не сохранены: '+String(issue?.message||issue)+'. Можешь исправить ошибку и продолжить.');
-          render();
-          fail(issue);
+          state('Сохранено '+inserted+' из '+eligible.length+'. Ошибка у №'+String(eligible[inserted]?.number||'?')+': '+String(issue?.message||issue)+'. Уже сохранённые задачи повторно не добавятся.');
+          render();fail(issue);
         }else{
-          state('В личных черновиках: '+inserted+' новых задач. Открой банк и проверь условия, формулы, иллюстрации и ответы.');
-          toast('Сохранено в черновики: '+inserted);
-          for(const x of entries)if(x.previewUrl)URL.revokeObjectURL(x.previewUrl);
-          entries=[];render();m.remove();openBank();
+          toast('Сохранено в личные черновики: '+inserted);
+          const remaining=savePlan();
+          if(remaining.ready.length||remaining.pending.length||remaining.duplicates.length){
+            state('Сохранено '+inserted+' задач. '+(remaining.pending.length?'Осталось без темы/снимка: '+remaining.pending.length+'. ':'')+(remaining.duplicates.length?'Дубликатов: '+remaining.duplicates.length+'.':''));
+            render();
+          }else{
+            for(const x of entries)if(x.previewUrl)URL.revokeObjectURL(x.previewUrl);
+            entries=[];render();m.remove();openBank();
+          }
         }
       }catch(e){
         state('Ошибка сохранения: '+String(e?.message||e));fail(e);
       }finally{
-        busy=false;q('#pdfTaskSave').disabled=!entries.some(x=>x.selected&&!x.imported);
+        busy=false;refreshSaveHint();
       }
     };
     q('#pdfTaskFile').onchange=()=>{
@@ -361,6 +378,7 @@
       entries=[];filename='';pdfPages=0;visualSerial=0;render();
       state('Файл изменён — извлеки задания заново.');
     };
+    q('#pdfTaskRights').onchange=refreshSaveHint;
     q('#pdfTaskGrade').onchange=refreshTopics;
     q('#pdfTaskAddVisual').onclick=()=>{
       const file=q('#pdfTaskFile').files?.[0];
