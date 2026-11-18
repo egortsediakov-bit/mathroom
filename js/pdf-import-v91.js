@@ -97,7 +97,7 @@
       const plan=savePlan(),btn=q('#pdfTaskSave'),hint=q('#pdfTaskSaveHint');
       if(btn){
         btn.disabled=busy||!plan.ready.length;
-        btn.textContent=plan.ready.length?'Сохранить '+plan.ready.length+' задач в черновики':'Сохранить в черновики';
+        btn.textContent=plan.ready.length?'Сохранить готовые задачи: '+plan.ready.length:'Сохранить в черновики';
       }
       if(hint){
         const message=window.MathroomPdfDraftsV94?.summary?.(plan)||'Не загрузился модуль сохранения. Обнови страницу.';
@@ -360,7 +360,7 @@
           toast('Сохранено в личные черновики: '+inserted);
           const remaining=savePlan();
           if(remaining.ready.length||remaining.pending.length||remaining.duplicates.length){
-            state('Сохранено '+inserted+' задач. '+(remaining.pending.length?'Осталось без темы/снимка: '+remaining.pending.length+'. ':'')+(remaining.duplicates.length?'Дубликатов: '+remaining.duplicates.length+'.':''));
+            state('Сохранено в черновики: '+inserted+'. '+(remaining.pending.length?'Осталось без темы/снимка: '+remaining.pending.length+'. ':'')+(remaining.duplicates.length?'Дубликатов: '+remaining.duplicates.length+'.':''));
             render();
           }else{
             for(const x of entries)if(x.previewUrl)URL.revokeObjectURL(x.previewUrl);
