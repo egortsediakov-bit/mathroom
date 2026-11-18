@@ -65,26 +65,30 @@
   API.open=({S,sb,modal,toast,fail,loadTeacher,openBank})=>{
     const grades=[...new Set((S.topics||[]).map(t=>Number(t.grade)).filter(g=>g>=1&&g<=11))].sort((a,b)=>a-b);
     if(!grades.length)return toast('Для импорта сначала создайте темы');
-    const m=modal('<section class="mr-pdf-import">'+
-      '<h2>Импорт задач из PDF</h2>'+
-      '<p class="muted">Извлекаем текст только из выбранного файла на твоём компьютере. Ничего не сохраняется до подтверждения. Готовые фрагменты попадут в <b>личные черновики</b>, не в общую библиотеку.</p>'+
-      '<div class="grid cols2">'+
+    let m=modal('<section class="mr-pdf-import">'+
+      '<header class="mr-pdf-header"><div><div class="mr-pdf-kicker"><span class="mr-pdf-k-dot">К</span> КОТОМАТИКА / MATHROOM</div>'+
+      '<h2>Импорт задач из PDF</h2><p>Загрузи задачник, проверь распознанные задания и распределение по темам. Новые задачи попадают только в личные черновики.</p></div><div class="mr-pdf-stage">ЭТАП <strong>01 / 02</strong></div></header>'+
+      '<div class="mr-pdf-main"><section class="mr-pdf-box"><div class="mr-pdf-box-title"><span>Исходный файл и параметры</span><span class="mr-pdf-step">01 · НАСТРОЙКА</span></div>'+
+      '<div class="mr-pdf-inputs">'+
         '<div class="field"><label>PDF-файл, до 20 МБ</label><input type="file" id="pdfTaskFile" accept=".pdf,application/pdf"></div>'+
         '<div class="field"><label>Класс для подсказки (необязательно)</label><select id="pdfTaskGrade"><option value="">Определять автоматически</option>'+grades.map(g=>'<option value="'+g+'">'+g+' класс</option>').join('')+'</select></div>'+
         '<div class="field"><label>Запасная тема (для непривязанных задач)</label><select id="pdfTaskTopic"><option value="">— Не задана —</option></select></div>'+
         '<div class="field"><label>Сложность (позже можно изменить)</label><select id="pdfTaskDifficulty"><option value="basic">Базовая</option><option value="medium" selected>Средняя</option><option value="advanced">Сложная</option></select></div>'+
         '<div class="field"><label>Начальная страница PDF</label><input type="number" id="pdfTaskFrom" min="1" value="1"></div>'+
         '<div class="field"><label>Конечная страница PDF (макс. 25 за раз)</label><input type="number" id="pdfTaskTo" min="1" value="10"></div>'+
-      '</div>'+
+      '</div></section>'+
       '<label class="mr-pdf-rights"><input type="checkbox" id="pdfTaskRights"> Подтверждаю, что имею право использовать и хранить задания из выбранного документа. Понимаю, что импорт не даёт права публиковать чужой учебник целиком.</label>'+
-      '<div class="actions"><button class="btn primary" id="pdfTaskExtract">Извлечь задания</button><button class="btn" id="pdfTaskAddVisual">＋ Задача со скана</button><button class="btn" id="pdfTaskAll">Выбрать всё</button><button class="btn" id="pdfTaskNone">Снять выбор</button></div>'+
-      '<div class="notice" id="pdfTaskStatus">Выбери файл и укажи страницы.</div>'+
-      '<div id="pdfTaskResults"></div>'+
-      '<div id="pdfTaskSaveHint" class="notice" role="status" style="margin-top:12px">Выбери задачи для сохранения.</div>'+
-      '<div class="actions" style="margin-top:16px"><button class="btn primary" id="pdfTaskSave" disabled>Сохранить в черновики</button></div>'+
-      '</section>','wide-modal');
+      '<div class="mr-pdf-toolbar"><button class="btn primary" id="pdfTaskExtract">Извлечь задания</button><button class="btn" id="pdfTaskAddVisual">＋ Задача со скана</button><button class="btn" id="pdfTaskAll">Выбрать всё</button><button class="btn" id="pdfTaskNone">Снять выбор</button></div>'+
+      '<div class="mr-pdf-note" id="pdfTaskStatus">Выбери файл и укажи страницы.</div>'+
+      '<div id="pdfTaskSummary" class="mr-pdf-metrics" aria-live="polite"></div>'+
+      '<section><div class="mr-pdf-section-heading"><h3>Распознанные задачи</h3><span>Условия можно редактировать перед сохранением</span></div><div id="pdfTaskResults" class="mr-pdf-cards"></div></section>'+
+      '<div class="mr-pdf-footer"><div id="pdfTaskSaveHint" class="mr-pdf-save-hint" role="status">Выбери задачи для сохранения.</div>'+
+      '<div class="mr-pdf-toolbar"><button class="btn primary" id="pdfTaskSave" disabled>Сохранить в черновики</button></div></div>'+
+      '</div></section>','wide-modal');
     const q=s=>m.querySelector(s);
     let entries=[],filename='',busy=false,pdfPages=0,visualSerial=0;
+    let reviewMode=false,originalPdfFile=null,chosenDifficulty='medium',rightsConfirmed=false;
+    let savedThisSession=0;
     const topicsForGrade=()=> (S.topics||[]).filter(t=>Number(t.grade)===Number(q('#pdfTaskGrade').value));
     const refreshTopics=()=>{
       const options=topicsForGrade();
@@ -110,30 +114,56 @@
     const render=()=>{
       const panel=q('#pdfTaskResults');
       const total=entries.filter(x=>x.selected&&!x.imported).length;
+      const planner=savePlan();
+      const inspection=reviewMode?(window.MathroomPdfDraftsV94?.plan?.(
+        entries.map((x,i)=>({...x,selected:!x.imported,_originalIndex:i})),
+        S.topics||[],S.exercises||[]
+      )||planner):planner;
       refreshSaveHint();
       const allTopics=S.topics||[];
-      if(!entries.length){panel.innerHTML='';return;}
-      panel.innerHTML='<p class="muted">Найдено фрагментов: '+entries.length+'. Выбрано: '+total+'. <b>Проверяй формулы, схемы, переносы строк и условия вручную.</b></p>'+
-        entries.map((x,i)=>{
-          if(x.imported)return '<article class="card" style="margin:8px 0;padding:12px"><b>✓ Сохранено в личные черновики: PDF № '+esc(x.number)+' · страница '+x.page+'</b></article>';
+      const summary=q('#pdfTaskSummary');
+      if(summary)summary.innerHTML=
+        '<div class="mr-pdf-metric"><b>'+entries.filter(x=>!x.imported).length+'</b><span>На проверке</span></div>'+
+        '<div class="mr-pdf-metric is-good"><b>'+planner.ready.length+'</b><span>Можно сохранить</span></div>'+
+        '<div class="mr-pdf-metric"><b>'+inspection.pending.length+'</b><span>Требуют внимания</span></div>';
+      const visible=entries.map((x,i)=>({x,i})).filter(({x})=>!reviewMode||!x.imported);
+      if(!visible.length){panel.innerHTML='<div class="mr-pdf-empty"><strong>Здесь пока ничего нет</strong>Добавь задачи из PDF или перейди в банк черновиков.</div>';return;}
+      panel.innerHTML=visible.map(({x,i})=>{
+          if(x.imported)return '<div class="mr-pdf-saved-banner">✓ Сохранено в личные черновики: PDF № '+esc(x.number)+' · страница '+x.page+'</div>';
           const audit=window.MathroomPdfQualityV92?.audit?.(x,(S.exercises||[]).filter(e=>String(e.topic_id)===String(x.topicId)));
-          return '<article class="card" style="margin:8px 0;padding:12px">'+
-          '<div class="actions" style="align-items:center"><label><input type="checkbox" data-pdf-select="'+i+'" '+(x.selected?'checked':'')+' '+(x.imported?'disabled':'')+'> № '+esc(x.number)+' · PDF-страница '+x.page+'</label><span class="pill">'+(x.imported?'Уже сохранено':x.duplicate?'Дубль условия':'Черновик')+'</span></div>'+
-          (audit?.warnings?.length?'<div class="small" style="padding:8px 10px;background:var(--panel,#fff8ed);border-radius:8px;margin-bottom:8px"><b>Проверка импорта:</b> '+audit.warnings.map(w=>esc(w)).join('; ')+'</div>':'')+
+          const issue=inspection.pending.find(p=>reviewMode?p.entry._originalIndex===i:p.entry===x);
+          const duplicate=inspection.duplicates.some(p=>reviewMode?p.entry._originalIndex===i:p.entry===x)||x.duplicate;
+          const ready=planner.ready.some(p=>p.entry===x);
+          const statusClass=issue?'needs':duplicate?'duplicate':ready?'ready':'';
+          const statusText=issue?'Нужна проверка':duplicate?'Возможный дубль':ready?'Готово':'Не выбрано';
+          return '<article class="mr-pdf-task-card">'+
+          '<div class="mr-pdf-task-head"><div class="mr-pdf-task-title"><label><input type="checkbox" data-pdf-select="'+i+'" '+(x.selected?'checked':'')+' '+(x.imported?'disabled':'')+'></label><span class="mr-pdf-task-number">'+esc(x.number)+'</span><div>Задача № '+esc(x.number)+'<div class="mr-pdf-task-page">PDF · страница '+x.page+'</div></div><span class="mr-pdf-state '+statusClass+'">'+statusText+'</span></div>'+
+          '<div class="mr-pdf-task-actions"><button type="button" class="btn sm mr-pdf-remove-task" data-pdf-discard="'+i+'" title="Убрать из текущей очереди импорта">Удалить из импорта</button></div></div>'+
+          (issue?'<div class="mr-pdf-issue">Нужно исправить: '+esc(issue.reason)+'</div>':'')+
+          (audit?.warnings?.length?'<div class="mr-pdf-issue"><b>Проверка импорта:</b> '+audit.warnings.map(w=>esc(w)).join('; ')+'</div>':'')+
           '<div class="grid cols2" style="margin:12px 0">'+
             '<div class="field"><label>Класс задачи</label><select data-pdf-grade="'+i+'"><option value="">— Выбери класс —</option>'+grades.map(g=>'<option value="'+g+'" '+(Number(x.grade)===g?'selected':'')+'>'+g+' класс</option>').join('')+'</select></div>'+
             '<div class="field"><label>Тема задачи</label><select data-pdf-topic="'+i+'"><option value="">— Выбери тему —</option>'+allTopics.filter(t=>Number(t.grade)===Number(x.grade)).map(t=>'<option value="'+esc(t.id)+'" '+(String(x.topicId||'')===String(t.id)?'selected':'')+'>'+esc(t.section||'Математика')+' · '+esc(t.title)+'</option>').join('')+'</select></div>'+
           '</div>'+
-          '<div class="actions" style="margin:0 0 8px;align-items:center"><span class="small muted">'+(x.topicMode==='auto'?'Предложено по условию: '+esc(x.suggestion?.reason||'')+' · оценка совпадения '+Math.round((x.suggestion?.confidence||0)*100)+'% (не математическая проверка).':x.topicMode==='manual'?'Тема выбрана вручную.':x.topicId?'Использована запасная тема.':'Тема не определена — нужно выбрать вручную.')+'</span><button class="btn sm" type="button" data-pdf-reclass="'+i+'">✦ Определить по условию</button></div>'+
+          '<div class="mr-pdf-confidence"><span>'+(x.topicMode==='auto'?'Предложено по условию: '+esc(x.suggestion?.reason||'')+' · оценка совпадения '+Math.round((x.suggestion?.confidence||0)*100)+'% (не математическая проверка).':x.topicMode==='manual'?'Тема выбрана вручную.':x.topicId?'Использована запасная тема.':'Тема не определена — нужно выбрать вручную.')+'</span><button class="btn sm" type="button" data-pdf-reclass="'+i+'">✦ Определить по условию</button></div>'+
           '<div class="field"><label>Условие</label><textarea data-pdf-content="'+i+'" rows="4"></textarea></div>'+
           '<div class="field"><label>Ответ (если известен; можно заполнить позже)</label><input data-pdf-answer="'+i+'" type="text" placeholder="Необязательно для черновика"></div>'+
-          '<div class="mr-pdf-v92-capture" style="padding:10px;border:1px solid var(--line,#ddd);border-radius:12px;margin-top:8px">'+
+          '<div class="mr-pdf-capture">'+
           '<div class="actions"><button type="button" class="btn sm" data-pdf-capture="'+i+'">'+(x.capture?'↻ Заменить фрагмент':'▧ Прикрепить формулу / чертёж из PDF')+'</button>'+
           (x.capture?'<button type="button" class="btn sm" data-pdf-remove="'+i+'">Убрать фрагмент</button>':'')+'</div>'+
           (x.capture?'<div class="small muted">Снимок PDF-страницы '+x.page+' прикрепится только к черновику. Не заменяет проверку задачи.</div><img data-pdf-preview="'+i+'" alt="Фрагмент исходной страницы PDF" style="display:block;max-width:100%;height:auto;margin-top:9px;border-radius:8px;border:1px solid #ddd">':'<div class="small muted">Если в условии есть дроби, степени, таблица или рисунок — прикрепи снимок оригинала для точности.</div>')+
           '</div>'+
         '</article>';
         }).join('');
+      panel.querySelectorAll('[data-pdf-discard]').forEach(el=>el.onclick=()=>{
+        const i=Number(el.dataset.pdfDiscard),row=entries[i];
+        if(!row||row.imported||busy)return;
+        if(!confirm('Убрать задачу №'+row.number+' (стр. '+row.page+') из текущего импорта? Это не удаляет исходный PDF и уже сохранённые черновики.'))return;
+        if(row.previewUrl)URL.revokeObjectURL(row.previewUrl);
+        entries.splice(i,1);
+        state('Задача №'+row.number+' удалена из очереди. В банке ничего не удалено.');
+        render();
+      });
       panel.querySelectorAll('[data-pdf-reclass]').forEach(el=>el.onclick=()=>{
         const row=entries[Number(el.dataset.pdfReclass)];
         const suggestion=window.MathroomPdfTopicsV93?.propose?.({
@@ -171,8 +201,8 @@
       panel.querySelectorAll('[data-pdf-capture]').forEach(el=>el.onclick=async()=>{
         const i=Number(el.dataset.pdfCapture),row=entries[i];
         if(!row||busy)return;
-        const file=q('#pdfTaskFile').files?.[0];
-        if(!file||file.name!==filename)return toast('Выбери исходный PDF заново');
+        const file=originalPdfFile||q('#pdfTaskFile')?.files?.[0];
+        if(!file||file.name!==filename)return toast('Исходный PDF больше недоступен. Открой импорт заново.');
         if(!window.MathroomPdfCaptureV92)return toast('Модуль захвата PDF не загрузился');
         el.disabled=true;
         try{
@@ -208,7 +238,7 @@
       if(busy)return;
       busy=true;q('#pdfTaskExtract').disabled=true;
       for(const row of entries)if(row.previewUrl)URL.revokeObjectURL(row.previewUrl);
-      entries=[];render();filename=file.name;
+      entries=[];render();filename=file.name;originalPdfFile=file;
       let pdf=null;
       try{
         const data=new Uint8Array(await file.arrayBuffer());
@@ -260,6 +290,46 @@
         busy=false;q('#pdfTaskExtract').disabled=false;render();
       }
     };
+    const openRemainingReview=(savedCount=0)=>{
+      reviewMode=true;
+      // A genuinely new modal: the import screen is closed and only
+      // unsaved, teacher-reviewable tasks are rendered in the next screen.
+      m.remove();
+      m=modal('<section class="mr-pdf-import mr-pdf-review">'+
+        '<header class="mr-pdf-header"><div><div class="mr-pdf-kicker"><span class="mr-pdf-k-dot">К</span> КОТОМАТИКА / MATHROOM</div>'+
+        '<h2>Разобрать оставшиеся задачи</h2><p>Готовые задачи уже сохранены. Здесь остались неподтверждённые условия, дубликаты и задания без темы. Исправь нужные или убери лишние из очереди.</p></div><div class="mr-pdf-stage">ЭТАП <strong>02 / 02</strong></div></header>'+
+        '<div class="mr-pdf-main">'+
+          '<div class="mr-pdf-saved-banner"><strong>✓ Сохранено в личные черновики: '+savedCount+'</strong><div>Всего за текущий импорт: '+savedThisSession+'. Удаление ниже не затрагивает уже сохранённые задачи.</div></div>'+
+          '<div class="mr-pdf-review-guide"><b>Что делать с остатком?</b> Если задача корректная — укажи класс и тему, при необходимости прикрепи снимок PDF и сохрани. Если текст распознан неверно, отсутствует рисунок или это дубль — нажми «Удалить из импорта» в карточке.</div>'+
+          '<div class="mr-pdf-review-top-actions"><button class="btn" id="pdfTaskAll">Выбрать оставшиеся</button><button class="btn" id="pdfTaskNone">Снять выбор</button><button class="btn mr-pdf-danger" id="pdfReviewRemoveBad">Убрать все проблемные</button><button class="btn" id="pdfReviewGoBank">Перейти в личный банк</button></div>'+
+          '<div class="mr-pdf-note" id="pdfTaskStatus">Осталось задач: '+entries.filter(x=>!x.imported).length+'. Непроверенные задания не сохранены.</div>'+
+          '<div id="pdfTaskSummary" class="mr-pdf-metrics" aria-live="polite"></div>'+
+          '<section><div class="mr-pdf-section-heading"><h3>Задачи для проверки</h3><span>Удаление здесь безопасно для банка</span></div><div id="pdfTaskResults" class="mr-pdf-cards"></div></section>'+
+          '<label class="mr-pdf-rights"><input type="checkbox" id="pdfTaskRights" '+(rightsConfirmed?'checked':'')+'> Подтверждаю права на использование оставшихся фрагментов PDF. Проверка математической корректности перед публикацией обязательна.</label>'+
+          '<div class="mr-pdf-footer"><div id="pdfTaskSaveHint" class="mr-pdf-save-hint" role="status"></div><div class="mr-pdf-toolbar"><button class="btn primary" id="pdfTaskSave" disabled>Сохранить оставшиеся</button></div></div>'+
+        '</div></section>','wide-modal');
+      const checkbox=q('#pdfTaskRights');
+      checkbox.onchange=()=>{rightsConfirmed=checkbox.checked;refreshSaveHint()};
+      q('#pdfTaskSave').onclick=save;
+      q('#pdfTaskAll').onclick=()=>{entries.forEach(x=>{if(!x.imported)x.selected=true});render()};
+      q('#pdfTaskNone').onclick=()=>{entries.forEach(x=>{if(!x.imported)x.selected=false});render()};
+      q('#pdfReviewGoBank').onclick=()=>{m.remove();openBank()};
+      q('#pdfReviewRemoveBad').onclick=()=>{
+        if(busy)return;
+        const selection=entries.map(x=>x.selected);
+        entries.forEach(x=>{if(!x.imported)x.selected=true});
+        const check=savePlan();
+        entries.forEach((x,i)=>x.selected=selection[i]);
+        const unwanted=new Set([...check.pending,...check.duplicates].map(x=>x.entry));
+        if(!unwanted.size)return toast('Среди оставшихся нет явно проблемных или дублирующихся задач');
+        if(!confirm('Убрать '+unwanted.size+' проблемных/повторяющихся фрагментов только из текущего импорта? Это не удаляет черновики из базы.'))return;
+        for(const x of unwanted)if(x.previewUrl)URL.revokeObjectURL(x.previewUrl);
+        entries=entries.filter(x=>!unwanted.has(x));
+        state('Убрано из очереди: '+unwanted.size+'. Сохранённые черновики не затронуты.');
+        render();
+      };
+      render();
+    };
     const save=async()=>{
       if(busy)return;
       if(!window.MathroomPdfDraftsV94)return toast('Не загрузился модуль сохранения. Обнови страницу через Ctrl + F5');
@@ -277,6 +347,11 @@
       if(!confirm('Сохранить '+plan.ready.length+' готовых задач в ЛИЧНЫЕ ЧЕРНОВИКИ?'+
         (excluded?' Ещё '+excluded+' задач будет пропущено и останется здесь для исправления.':'')+
         ' Перед публикацией проверь математику и рисунки.'))return;
+      if(!reviewMode){
+        chosenDifficulty=q('#pdfTaskDifficulty').value;
+        originalPdfFile=q('#pdfTaskFile').files?.[0]||originalPdfFile;
+        rightsConfirmed=q('#pdfTaskRights').checked;
+      }
       busy=true;refreshSaveHint();
       const eligible=plan.ready.map(x=>x.entry);
       let inserted=0,issue=null;
@@ -305,7 +380,7 @@
             const body={
               teacher_id:S.user.id,topic_id:topic.id,kind:'task',
               title:'PDF № '+x.number+' · '+topic.title,
-              content:x.content,answer:norm(x.answer),difficulty:q('#pdfTaskDifficulty').value,
+              content:x.content,answer:norm(x.answer),difficulty:chosenDifficulty,
               category:topic.title,tags:['mathroom-pdf-import-v91',...(cap?['mathroom-pdf-capture-v92']:[]),'класс-'+topic.grade],
               generator_spec:'',generator_answer:'',favorite:false,is_draft:true,
               builder_meta:{
@@ -339,7 +414,7 @@
             };
             const {data,error}=await sb.from('exercises').insert(body).select('id').single();
             if(error)throw error;
-            inserted++;
+            inserted++;savedThisSession++;
             x.imported=true;x.selected=false;
             if(x.previewUrl){URL.revokeObjectURL(x.previewUrl);x.previewUrl=null;}
             state('Черновики: сохранено '+inserted+' из '+eligible.length);
@@ -358,10 +433,13 @@
           render();fail(issue);
         }else{
           toast('Сохранено в личные черновики: '+inserted);
-          const remaining=savePlan();
-          if(remaining.ready.length||remaining.pending.length||remaining.duplicates.length){
-            state('Сохранено в черновики: '+inserted+'. '+(remaining.pending.length?'Осталось без темы/снимка: '+remaining.pending.length+'. ':'')+(remaining.duplicates.length?'Дубликатов: '+remaining.duplicates.length+'.':''));
-            render();
+          const remaining=entries.filter(x=>!x.imported);
+          if(remaining.length){
+            if(!reviewMode)openRemainingReview(inserted);
+            else{
+              state('Сохранено '+inserted+' новых черновиков. Можно исправить или удалить оставшиеся фрагменты.');
+              render();
+            }
           }else{
             for(const x of entries)if(x.previewUrl)URL.revokeObjectURL(x.previewUrl);
             entries=[];render();m.remove();openBank();
@@ -375,7 +453,7 @@
     };
     q('#pdfTaskFile').onchange=()=>{
       for(const x of entries)if(x.previewUrl)URL.revokeObjectURL(x.previewUrl);
-      entries=[];filename='';pdfPages=0;visualSerial=0;render();
+      entries=[];filename='';pdfPages=0;visualSerial=0;originalPdfFile=null;render();
       state('Файл изменён — извлеки задания заново.');
     };
     q('#pdfTaskRights').onchange=refreshSaveHint;

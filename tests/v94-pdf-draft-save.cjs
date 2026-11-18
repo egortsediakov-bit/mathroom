@@ -35,6 +35,7 @@ function harness({rights=true,failFirst=false}={}){
     '#pdfTaskFrom':{value:1},'#pdfTaskTo':{value:1},
     '#pdfTaskDifficulty':{value:'medium'},
     '#pdfTaskRights':{checked:rights,focus(){this.focused=true}},
+    '#pdfReviewGoBank':{},'#pdfReviewRemoveBad':{},'#pdfTaskSummary':{},
     '#pdfTaskExtract':{},'#pdfTaskSave':{disabled:false},
     '#pdfTaskSaveHint':{textContent:''},
     '#pdfTaskAddVisual':{},'#pdfTaskAll':{},'#pdfTaskNone':{},
@@ -42,6 +43,8 @@ function harness({rights=true,failFirst=false}={}){
     '#pdfTaskResults':{innerHTML:'',querySelectorAll:()=>[]}
   };
   const modal={removed:false,querySelector:sel=>fields[sel],remove(){this.removed=true}};
+  const reviewModal={removed:false,querySelector:sel=>fields[sel],remove(){this.removed=true}};
+  let reviewOpened=false;
   const inserted=[],errors=[],messages=[];
   let reject=failFirst;
   const sb={from(table){
@@ -52,10 +55,13 @@ function harness({rights=true,failFirst=false}={}){
     }}}}}};
   }};
   win.MathroomPdfImportV91.open({
-    S,sb,modal:()=>modal,toast:x=>messages.push(x),
+    S,sb,modal:html=>{
+      if(html.includes('mr-pdf-review')){reviewOpened=true;return reviewModal}
+      return modal;
+    },toast:x=>messages.push(x),
     fail:e=>errors.push(e),loadTeacher:async()=>{},openBank:()=>{}
   });
-  return {win,fields,modal,inserted,errors,messages};
+  return {win,fields,modal,reviewModal,reviewOpened:()=>reviewOpened,inserted,errors,messages};
 }
 (async()=>{
   const sample=[
@@ -76,7 +82,9 @@ function harness({rights=true,failFirst=false}={}){
   assert.equal(h.inserted.length,1);
   assert.equal(h.inserted[0].is_draft,true);
   assert.equal(h.inserted[0].topic_id,'linear');
-  assert.equal(h.modal.removed,false);
+  assert.equal(h.modal.removed,true);
+  assert.equal(h.reviewOpened(),true);
+  assert.equal(h.reviewModal.removed,false);
   assert.match(h.fields['#pdfTaskSaveHint'].textContent,/Требуют внимания: №2/);
   assert.equal(h.fields['#pdfTaskSave'].disabled,true);
 

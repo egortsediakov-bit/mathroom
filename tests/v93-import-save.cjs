@@ -1,7 +1,7 @@
 /* Run: node tests/v93-import-save.cjs — mock PDF.js, no live Supabase writes */
 const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path'),assert=require('node:assert/strict');
 const w={},context={window:w,console,confirm:()=>true};
-for(const file of ['js/pdf-layout-v93.js','js/pdf-topics-v93.js','js/pdf-import-v91.js']){
+for(const file of ['js/pdf-layout-v93.js','js/pdf-topics-v93.js','js/pdf-draft-save-v94.js','js/pdf-import-v91.js']){
   new vm.Script(fs.readFileSync(path.resolve(__dirname,'..',file),'utf8')).runInNewContext(context);
 }
 const it=(str,x,y)=>({str,width:140,transform:[1,0,0,1,x,y]});
@@ -25,6 +25,7 @@ const fields={
  '#pdfTaskFrom':{value:1},'#pdfTaskTo':{value:2},'#pdfTaskDifficulty':{value:'medium'},
  '#pdfTaskRights':{checked:true},'#pdfTaskExtract':{},'#pdfTaskSave':{},
  '#pdfTaskAddVisual':{},'#pdfTaskAll':{},'#pdfTaskNone':{},'#pdfTaskStatus':{textContent:''},
+ '#pdfTaskSaveHint':{},'#pdfTaskSummary':{},
  '#pdfTaskResults':{innerHTML:'',querySelectorAll:()=>[]}
 };
 const saved=[];

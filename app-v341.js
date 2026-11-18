@@ -2701,6 +2701,7 @@ function renderBank(){
       <span class="pill">${builtIn} из готовой базы</span>
       <button class="btn sm mr-supply-launch" id="openTaskPipeline">✦ Источники и пополнение</button>
       <button class="btn sm" id="openPdfImport">Импорт PDF</button>
+      <button class="btn sm mr-bank-draft-shortcut" id="bankOnlyDrafts">${S.bankDraftOnly?'Показать все задачи':'Черновики · '+own.filter(x=>x.is_draft).length}</button>
       <button class="btn sm mr-smart-set-launch" id="openSmartSet">Собрать комплект</button>
       <button class="btn sm" id="openAdaptiveSet">Подобрать ученику</button>
       <button class="btn sm mr-saved-sets-launch" id="openSavedSets">Мои комплекты</button>
@@ -2765,13 +2766,19 @@ function renderBank(){
   };
   document.getElementById('syncCurriculumBank').onclick=()=>syncCurriculumBank({manual:true});
   document.getElementById('bankReset').onclick=()=>{
+    S.bankDraftOnly=false;
+    document.getElementById('bankOnlyDrafts').textContent='Черновики · '+own.filter(x=>x.is_draft).length;
     ['bankSearch','bankKind','bankGrade','bankDiff','bankCat','bankTag'].forEach(id=>{
       const el=document.getElementById(id);
       if(el)el.value='';
     });
     draw();
   };
-  document.querySelectorAll('[data-library-mode]').forEach(b=>b.onclick=()=>{S.bankLibraryMode=b.dataset.libraryMode;renderBank()});
+  document.querySelectorAll('[data-library-mode]').forEach(b=>b.onclick=()=>{
+    S.bankLibraryMode=b.dataset.libraryMode;
+    if(S.bankLibraryMode==='shared')S.bankDraftOnly=false;
+    renderBank();
+  });
 
   const readFilters=()=>({
     q:document.getElementById('bankSearch').value.trim().toLocaleLowerCase('ru'),
@@ -2779,14 +2786,15 @@ function renderBank(){
     grade:document.getElementById('bankGrade').value,
     diff:document.getElementById('bankDiff').value,
     cat:document.getElementById('bankCat').value,
-    tag:document.getElementById('bankTag').value
+    tag:document.getElementById('bankTag').value,
+    draftOnly:!!S.bankDraftOnly
   });
   const match=(row,f,isShared=false)=>{
     const topic=isShared?null:(S.topics||[]).find(z=>String(z.id)===String(row.topic_id));
     const grade=isShared?row.grade:topic?.grade;
     const section=isShared?row.section:topic?.section;
     const topicTitle=isShared?row.topic_title:topic?.title;
-    return (!f.kind||row.kind===f.kind)&&(!f.grade||String(grade)===f.grade)&&(!f.diff||row.difficulty===f.diff)&&(!f.cat||row.category===f.cat)&&(!f.tag||(row.tags||[]).includes(f.tag))&&(!f.q||[row.title,row.content,row.category,section,topicTitle,...(row.tags||[])].join(' ').toLocaleLowerCase('ru').includes(f.q));
+    return (!f.draftOnly||!isShared&&row.is_draft===true)&&(!f.kind||row.kind===f.kind)&&(!f.grade||String(grade)===f.grade)&&(!f.diff||row.difficulty===f.diff)&&(!f.cat||row.category===f.cat)&&(!f.tag||(row.tags||[]).includes(f.tag))&&(!f.q||[row.title,row.content,row.category,section,topicTitle,...(row.tags||[])].join(' ').toLocaleLowerCase('ru').includes(f.q));
   };
 
   const draw=()=>{
@@ -2816,7 +2824,7 @@ function renderBank(){
     host.innerHTML=`<div class="mr-bank-results-head"><span>Найдено задач: <b>${arr.length}</b></span></div><div class="list mr-personal-library-list">${arr.length?arr.map(x=>{
       const t=(S.topics||[]).find(z=>String(z.id)===String(x.topic_id));
       const visibleTags=exerciseEditableTags(x.tags),published=sharedMaterialForExercise(x.id),view=previewTemplateExercise(x),templated=isTemplateExercise(x);
-      return `<div class="row mr-library-own-row"><div><div class="actions"><span class="pill">${x.kind==='example'?'Пример':'Задача'}</span><span class="pill">${t?.grade||'?'} кл.</span><span class="pill">${diffLabel(x.difficulty)}</span>${templated?'<span class="pill mr-template-pill">↻ генератор</span>':''}${x.category?`<span class="pill">${esc(x.category)}</span>`:''}${x.is_draft?'<span class="pill warn">черновик</span>':''}${published?'<span class="pill good">в общей библиотеке</span>':''}</div><h3>${esc(x.title||(x.kind==='example'?'Пример':'Задача'))}</h3><div class="prewrap">${nl(view.content)}</div><p>${esc(t?.section||'')} · ${esc(t?.title||'')} ${visibleTags.map(z=>'#'+esc(z)).join(' ')} · использован ${x.use_count||0} раз</p></div><div class="actions mr-library-own-actions"><button class="btn sm" data-answer="${x.id}">Ответ</button>${templated?`<button class="btn sm mr-template-variant" data-bank-variants="${x.id}">↻ Варианты</button>`:''}${published?`<button class="btn sm library" data-bank-share="${x.id}">Обновить общую</button><button class="btn sm danger" data-bank-unshare="${x.id}">Убрать из общей</button>`:`<button class="btn sm library" data-bank-share="${x.id}">＋ В общую</button>`}${x.kind==='task'?`<button class="btn sm" data-bank-similar="${x.id}">✦ Похожие</button>`:''}<button class="btn sm" data-bank-edit="${x.id}">Редактировать</button><button class="btn sm danger" data-bank-delete="${x.id}">Удалить</button></div></div>`;
+      return `<div class="row mr-library-own-row"><div><div class="actions"><span class="pill">${x.kind==='example'?'Пример':'Задача'}</span><span class="pill">${t?.grade||'?'} кл.</span><span class="pill">${diffLabel(x.difficulty)}</span>${templated?'<span class="pill mr-template-pill">↻ генератор</span>':''}${x.category?`<span class="pill">${esc(x.category)}</span>`:''}${x.is_draft?'<span class="pill warn">черновик</span>':''}${published?'<span class="pill good">в общей библиотеке</span>':''}</div><h3>${esc(x.title||(x.kind==='example'?'Пример':'Задача'))}</h3><div class="prewrap">${nl(view.content)}</div><p>${esc(t?.section||'')} · ${esc(t?.title||'')} ${visibleTags.map(z=>'#'+esc(z)).join(' ')} · использован ${x.use_count||0} раз</p></div><div class="actions mr-library-own-actions"><button class="btn sm" data-answer="${x.id}">Ответ</button>${templated?`<button class="btn sm mr-template-variant" data-bank-variants="${x.id}">↻ Варианты</button>`:''}${published?`<button class="btn sm library" data-bank-share="${x.id}">Обновить общую</button><button class="btn sm danger" data-bank-unshare="${x.id}">Убрать из общей</button>`:`<button class="btn sm library" data-bank-share="${x.id}">＋ В общую</button>`}${x.kind==='task'?`<button class="btn sm" data-bank-similar="${x.id}">✦ Похожие</button>`:''}<button class="btn sm" data-bank-edit="${x.id}">Редактировать</button><button class="btn sm danger" data-bank-delete="${x.id}">${x.is_draft?'Удалить черновик':'Удалить'}</button></div></div>`;
     }).join(''):'<div class="empty">Ничего не найдено.</div>'}</div>`;
     host.querySelectorAll('[data-answer]').forEach(b=>b.onclick=()=>{const e=own.find(x=>String(x.id)===String(b.dataset.answer));if(e)openExerciseAnswerPreview(e)});
     host.querySelectorAll('[data-bank-variants]').forEach(b=>b.onclick=()=>{const e=own.find(x=>String(x.id)===String(b.dataset.bankVariants));if(e)openExerciseVariants(e)});
@@ -2834,6 +2842,16 @@ function renderBank(){
     hydrateTaskMedia(host);
   };
   ['bankSearch','bankKind','bankGrade','bankDiff','bankCat','bankTag'].forEach(id=>document.getElementById(id).oninput=draw);
+  document.getElementById('bankOnlyDrafts').onclick=()=>{
+    S.bankDraftOnly=!S.bankDraftOnly;
+    if(S.bankLibraryMode==='shared'){
+      S.bankLibraryMode='mine';
+      renderBank();
+    }else{
+      document.getElementById('bankOnlyDrafts').textContent=S.bankDraftOnly?'Показать все задачи':'Черновики · '+own.filter(x=>x.is_draft).length;
+      draw();
+    }
+  };
   draw();
 }
 
