@@ -97,7 +97,7 @@
         const ts=stems(t.title),hits=ts.filter(st=>body.has(st)).length;
         return {topic:t,hits,ratio:ts.length?hits/ts.length:0,score:hits+(ts.length?hits/ts.length:0)};
       }).filter(x=>x.hits>=2&&x.ratio>=.5)
-        .sort((a,b)=>b.score-a.score||(Number(a.topic.grade)===Number(preferredGrade)?-1:1));
+        .sort((a,b)=>b.score-a.score + (Number(b.topic.grade)===Number(preferredGrade)?0.01:0) - (Number(a.topic.grade)===Number(preferredGrade)?0.01:0) || Number(a.topic.grade)-Number(b.topic.grade));
       if(lexical.length){
         const first=lexical[0],second=lexical[1];
         const tied=second && Math.abs(first.score-second.score)<.2 && Number(first.topic.grade)!==Number(second.topic.grade);
