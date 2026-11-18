@@ -95,6 +95,7 @@
       if(!entries.length){panel.innerHTML='';return;}
       panel.innerHTML='<p class="muted">Найдено фрагментов: '+entries.length+'. Выбрано: '+total+'. <b>Проверяй формулы, схемы, переносы строк и условия вручную.</b></p>'+
         entries.map((x,i)=>{
+          if(x.imported)return '<article class="card" style="margin:8px 0;padding:12px"><b>✓ Сохранено в личные черновики: PDF № '+esc(x.number)+' · страница '+x.page+'</b></article>';
           const audit=window.MathroomPdfQualityV92?.audit?.(x,existingForAudit);
           return '<article class="card" style="margin:8px 0;padding:12px">'+
           '<div class="actions" style="align-items:center"><label><input type="checkbox" data-pdf-select="'+i+'" '+(x.selected?'checked':'')+' '+(x.imported?'disabled':'')+'> № '+esc(x.number)+' · PDF-страница '+x.page+'</label><span class="pill">'+(x.imported?'Уже сохранено':x.duplicate?'Дубль условия':'Черновик')+'</span></div>'+
