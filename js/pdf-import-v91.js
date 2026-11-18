@@ -197,8 +197,8 @@
       panel.querySelectorAll('[data-pdf-capture]').forEach(el=>el.onclick=async()=>{
         const i=Number(el.dataset.pdfCapture),row=entries[i];
         if(!row||busy)return;
-        const file=q('#pdfTaskFile').files?.[0];
-        if(!file||file.name!==filename)return toast('Выбери исходный PDF заново');
+        const file=originalPdfFile||q('#pdfTaskFile')?.files?.[0];
+        if(!file||file.name!==filename)return toast('Исходный PDF больше недоступен. Открой импорт заново.');
         if(!window.MathroomPdfCaptureV92)return toast('Модуль захвата PDF не загрузился');
         el.disabled=true;
         try{
@@ -234,7 +234,7 @@
       if(busy)return;
       busy=true;q('#pdfTaskExtract').disabled=true;
       for(const row of entries)if(row.previewUrl)URL.revokeObjectURL(row.previewUrl);
-      entries=[];render();filename=file.name;
+      entries=[];render();filename=file.name;originalPdfFile=file;
       let pdf=null;
       try{
         const data=new Uint8Array(await file.arrayBuffer());
@@ -303,6 +303,11 @@
       if(!confirm('Сохранить '+plan.ready.length+' готовых задач в ЛИЧНЫЕ ЧЕРНОВИКИ?'+
         (excluded?' Ещё '+excluded+' задач будет пропущено и останется здесь для исправления.':'')+
         ' Перед публикацией проверь математику и рисунки.'))return;
+      if(!reviewMode){
+        chosenDifficulty=q('#pdfTaskDifficulty').value;
+        originalPdfFile=q('#pdfTaskFile').files?.[0]||originalPdfFile;
+        rightsConfirmed=q('#pdfTaskRights').checked;
+      }
       busy=true;refreshSaveHint();
       const eligible=plan.ready.map(x=>x.entry);
       let inserted=0,issue=null;
@@ -331,7 +336,7 @@
             const body={
               teacher_id:S.user.id,topic_id:topic.id,kind:'task',
               title:'PDF № '+x.number+' · '+topic.title,
-              content:x.content,answer:norm(x.answer),difficulty:q('#pdfTaskDifficulty').value,
+              content:x.content,answer:norm(x.answer),difficulty:chosenDifficulty,
               category:topic.title,tags:['mathroom-pdf-import-v91',...(cap?['mathroom-pdf-capture-v92']:[]),'класс-'+topic.grade],
               generator_spec:'',generator_answer:'',favorite:false,is_draft:true,
               builder_meta:{
@@ -365,7 +370,7 @@
             };
             const {data,error}=await sb.from('exercises').insert(body).select('id').single();
             if(error)throw error;
-            inserted++;
+            inserted++;savedThisSession++;
             x.imported=true;x.selected=false;
             if(x.previewUrl){URL.revokeObjectURL(x.previewUrl);x.previewUrl=null;}
             state('Черновики: сохранено '+inserted+' из '+eligible.length);
@@ -384,10 +389,13 @@
           render();fail(issue);
         }else{
           toast('Сохранено в личные черновики: '+inserted);
-          const remaining=savePlan();
-          if(remaining.ready.length||remaining.pending.length||remaining.duplicates.length){
-            state('Сохранено в черновики: '+inserted+'. '+(remaining.pending.length?'Осталось без темы/снимка: '+remaining.pending.length+'. ':'')+(remaining.duplicates.length?'Дубликатов: '+remaining.duplicates.length+'.':''));
-            render();
+          const remaining=entries.filter(x=>!x.imported);
+          if(remaining.length){
+            if(!reviewMode)openRemainingReview(inserted);
+            else{
+              state('Сохранено '+inserted+' новых черновиков. Можно исправить или удалить оставшиеся фрагменты.');
+              render();
+            }
           }else{
             for(const x of entries)if(x.previewUrl)URL.revokeObjectURL(x.previewUrl);
             entries=[];render();m.remove();openBank();
@@ -401,7 +409,7 @@
     };
     q('#pdfTaskFile').onchange=()=>{
       for(const x of entries)if(x.previewUrl)URL.revokeObjectURL(x.previewUrl);
-      entries=[];filename='';pdfPages=0;visualSerial=0;render();
+      entries=[];filename='';pdfPages=0;visualSerial=0;originalPdfFile=null;render();
       state('Файл изменён — извлеки задания заново.');
     };
     q('#pdfTaskRights').onchange=refreshSaveHint;
