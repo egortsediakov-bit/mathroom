@@ -21,6 +21,12 @@
     for(const x of out){const n=Math.floor(x.frac);x.count+=n;left-=n;}
     out.sort((a,b)=>(b.frac%1)-(a.frac%1));
     for(let i=0;i<left;i++)out[i%out.length].count++;
+    // Multi-topic UI currently limits each topic quota to 20.
+    for(let guard=0;guard<100;guard++){
+      const over=out.find(x=>x.count>20),under=out.find(x=>x.count<20 && x!==over);
+      if(!over||!under)break;
+      over.count--;under.count++;
+    }
     return out.map(x=>({row:x.row,count:x.count}));
   };
   API.recommend=async ({S,sb},studentId,total=10)=>{
@@ -75,7 +81,12 @@
       if(!current?.rows?.length)return;
       const rows=current.rows.map(({row,count})=>({topic_id:row.topic.id,count,topic_snapshot:{id:row.topic.id,title:row.topic.title,grade:row.topic.grade,section:row.topic.section||''}}));
       root.remove();
-      openBuilder({grade:current.student.grade,recipe:{mode:'multi',grade:current.student.grade,difficulty_mode:'balanced',allow_templates:true,config:{rows}}});
+      const single=rows.length===1;
+      openBuilder({grade:current.student.grade,recipe:single
+        ?{mode:'single',grade:current.student.grade,difficulty_mode:'balanced',allow_templates:true,
+          config:{topic_id:rows[0].topic_id,count:Math.min(20,rows[0].count),topic_snapshot:rows[0].topic_snapshot}}
+        :{mode:'multi',grade:current.student.grade,difficulty_mode:'balanced',allow_templates:true,config:{rows}}
+      });
     };
     load();
   };
