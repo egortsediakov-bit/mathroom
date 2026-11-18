@@ -2694,6 +2694,7 @@ function renderBank(){
       <span class="pill">${builtIn} из готовой базы</span>
       <button class="btn sm mr-supply-launch" id="openTaskPipeline">✦ Источники и пополнение</button>
       <button class="btn sm mr-smart-set-launch" id="openSmartSet">Собрать комплект</button>
+      <button class="btn sm" id="openAdaptiveSet">Подобрать ученику</button>
       <button class="btn sm mr-saved-sets-launch" id="openSavedSets">Мои комплекты</button>
       <button class="btn sm mr-set-recipes-launch" id="openSetRecipes">Рецепты <b>${(S.taskSetRecipes||[]).length}</b></button>
       <button class="btn sm primary" id="createBankTask">＋ Создать задачу</button>
@@ -2732,6 +2733,13 @@ function renderBank(){
     },prefill);
     return openSmartTaskSetBuilder(prefill);
   };
+  document.getElementById('openAdaptiveSet').onclick=()=>window.MathroomAdaptiveV90?.open?.({
+    S,sb,modal,toast,
+    openBuilder:prefill=>window.MathroomMultiTopicSetsV85?.openBuilder?.({
+      S,sb,esc,nl,modal,toast,fail,copyText,diffLabel,taskConditionHtml,hydrateTaskMedia,typesetTaskMath,
+      buildSmartTaskSet,taskVariantFingerprint,templateVariantValues,openSmartWorksheetBuilder,assignSmartTaskSetHomework
+    },prefill)
+  });
   document.getElementById('openSavedSets').onclick=()=>window.MathroomSavedSetsV84?.openLibrary?.({S,sb,esc,nl,modal,toast,fail,copyText,diffLabel,taskConditionHtml,hydrateTaskMedia,typesetTaskMath,openSmartWorksheetBuilder,assignSmartTaskSetHomework});
   document.getElementById('openSetRecipes').onclick=()=>window.MathroomSetRecipesV86?.openLibrary?.({
     S,sb,esc,modal,toast,fail,
