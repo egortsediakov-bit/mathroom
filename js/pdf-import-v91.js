@@ -59,6 +59,9 @@
     return [];
   };
 
+  const oldLines=API.linesFromItems,oldSplit=API.splitPage;
+  API.linesFromItems=items=>window.MathroomPdfLayoutV93?.linesFromItems(items)||oldLines(items);
+  API.splitPage=(lines,page)=>window.MathroomPdfLayoutV93?.splitPage(lines,page)||oldSplit(lines,page);
   API.open=({S,sb,modal,toast,fail,loadTeacher,openBank})=>{
     const grades=[...new Set((S.topics||[]).map(t=>Number(t.grade)).filter(g=>g>=1&&g<=11))].sort((a,b)=>a-b);
     if(!grades.length)return toast('Для импорта сначала создайте темы');
@@ -67,8 +70,8 @@
       '<p class="muted">Извлекаем текст только из выбранного файла на твоём компьютере. Ничего не сохраняется до подтверждения. Готовые фрагменты попадут в <b>личные черновики</b>, не в общую библиотеку.</p>'+
       '<div class="grid cols2">'+
         '<div class="field"><label>PDF-файл, до 20 МБ</label><input type="file" id="pdfTaskFile" accept=".pdf,application/pdf"></div>'+
-        '<div class="field"><label>Класс</label><select id="pdfTaskGrade">'+grades.map(g=>'<option value="'+g+'">'+g+' класс</option>').join('')+'</select></div>'+
-        '<div class="field"><label>Тема для всех найденных задач</label><select id="pdfTaskTopic"></select></div>'+
+        '<div class="field"><label>Класс для подсказки (необязательно)</label><select id="pdfTaskGrade"><option value="">Определять автоматически</option>'+grades.map(g=>'<option value="'+g+'">'+g+' класс</option>').join('')+'</select></div>'+
+        '<div class="field"><label>Запасная тема (для непривязанных задач)</label><select id="pdfTaskTopic"><option value="">— Не задана —</option></select></div>'+
         '<div class="field"><label>Сложность (позже можно изменить)</label><select id="pdfTaskDifficulty"><option value="basic">Базовая</option><option value="medium" selected>Средняя</option><option value="advanced">Сложная</option></select></div>'+
         '<div class="field"><label>Начальная страница PDF</label><input type="number" id="pdfTaskFrom" min="1" value="1"></div>'+
         '<div class="field"><label>Конечная страница PDF (макс. 25 за раз)</label><input type="number" id="pdfTaskTo" min="1" value="10"></div>'+
@@ -84,22 +87,27 @@
     const topicsForGrade=()=> (S.topics||[]).filter(t=>Number(t.grade)===Number(q('#pdfTaskGrade').value));
     const refreshTopics=()=>{
       const options=topicsForGrade();
-      q('#pdfTaskTopic').innerHTML=options.map(t=>'<option value="'+esc(t.id)+'">'+esc(t.section||'Математика')+' · '+esc(t.title)+'</option>').join('');
+      q('#pdfTaskTopic').innerHTML='<option value="">— Не задана —</option>'+options.map(t=>'<option value="'+esc(t.id)+'">'+esc(t.section||'Математика')+' · '+esc(t.title)+'</option>').join('');
     };
     const state=s=>{q('#pdfTaskStatus').textContent=s;};
     const render=()=>{
       const panel=q('#pdfTaskResults');
       const total=entries.filter(x=>x.selected&&!x.imported).length;
       q('#pdfTaskSave').disabled=busy||!total;
-      const existingForAudit=(S.exercises||[]).filter(e=>String(e.topic_id)===String(q('#pdfTaskTopic').value));
+      const allTopics=S.topics||[];
       if(!entries.length){panel.innerHTML='';return;}
       panel.innerHTML='<p class="muted">Найдено фрагментов: '+entries.length+'. Выбрано: '+total+'. <b>Проверяй формулы, схемы, переносы строк и условия вручную.</b></p>'+
         entries.map((x,i)=>{
           if(x.imported)return '<article class="card" style="margin:8px 0;padding:12px"><b>✓ Сохранено в личные черновики: PDF № '+esc(x.number)+' · страница '+x.page+'</b></article>';
-          const audit=window.MathroomPdfQualityV92?.audit?.(x,existingForAudit);
+          const audit=window.MathroomPdfQualityV92?.audit?.(x,(S.exercises||[]).filter(e=>String(e.topic_id)===String(x.topicId)));
           return '<article class="card" style="margin:8px 0;padding:12px">'+
           '<div class="actions" style="align-items:center"><label><input type="checkbox" data-pdf-select="'+i+'" '+(x.selected?'checked':'')+' '+(x.imported?'disabled':'')+'> № '+esc(x.number)+' · PDF-страница '+x.page+'</label><span class="pill">'+(x.imported?'Уже сохранено':x.duplicate?'Дубль условия':'Черновик')+'</span></div>'+
           (audit?.warnings?.length?'<div class="small" style="padding:8px 10px;background:var(--panel,#fff8ed);border-radius:8px;margin-bottom:8px"><b>Проверка импорта:</b> '+audit.warnings.map(w=>esc(w)).join('; ')+'</div>':'')+
+          '<div class="grid cols2" style="margin:12px 0">'+
+            '<div class="field"><label>Класс задачи</label><select data-pdf-grade="'+i+'"><option value="">— Выбери класс —</option>'+grades.map(g=>'<option value="'+g+'" '+(Number(x.grade)===g?'selected':'')+'>'+g+' класс</option>').join('')+'</select></div>'+
+            '<div class="field"><label>Тема задачи</label><select data-pdf-topic="'+i+'"><option value="">— Выбери тему —</option>'+allTopics.filter(t=>Number(t.grade)===Number(x.grade)).map(t=>'<option value="'+esc(t.id)+'" '+(String(x.topicId||'')===String(t.id)?'selected':'')+'>'+esc(t.section||'Математика')+' · '+esc(t.title)+'</option>').join('')+'</select></div>'+
+          '</div>'+
+          '<div class="actions" style="margin:0 0 8px;align-items:center"><span class="small muted">'+(x.topicMode==='auto'?'Предложено по условию: '+esc(x.suggestion?.reason||'')+' · оценка совпадения '+Math.round((x.suggestion?.confidence||0)*100)+'% (не математическая проверка).':x.topicMode==='manual'?'Тема выбрана вручную.':x.topicId?'Использована запасная тема.':'Тема не определена — нужно выбрать вручную.')+'</span><button class="btn sm" type="button" data-pdf-reclass="'+i+'">✦ Определить по условию</button></div>'+
           '<div class="field"><label>Условие</label><textarea data-pdf-content="'+i+'" rows="4"></textarea></div>'+
           '<div class="field"><label>Ответ (если известен; можно заполнить позже)</label><input data-pdf-answer="'+i+'" type="text" placeholder="Необязательно для черновика"></div>'+
           '<div class="mr-pdf-v92-capture" style="padding:10px;border:1px solid var(--line,#ddd);border-radius:12px;margin-top:8px">'+
@@ -109,6 +117,28 @@
           '</div>'+
         '</article>';
         }).join('');
+      panel.querySelectorAll('[data-pdf-reclass]').forEach(el=>el.onclick=()=>{
+        const row=entries[Number(el.dataset.pdfReclass)];
+        const suggestion=window.MathroomPdfTopicsV93?.propose?.({
+          content:row.content,topics:S.topics||[],preferredGrade:row.grade||null
+        });
+        row.suggestion=suggestion||null;
+        const topic=(S.topics||[]).find(t=>String(t.id)===String(suggestion?.topicId));
+        row.topicId=topic?.id||null;
+        row.grade=topic?Number(topic.grade):row.grade;
+        row.topicMode=topic?'auto':'unknown';
+        render();
+      });
+      panel.querySelectorAll('[data-pdf-grade]').forEach(el=>el.onchange=()=>{
+        const row=entries[Number(el.dataset.pdfGrade)];
+        row.grade=Number(el.value)||null;row.topicId=null;row.topicMode='manual';
+        render();
+      });
+      panel.querySelectorAll('[data-pdf-topic]').forEach(el=>el.onchange=()=>{
+        const row=entries[Number(el.dataset.pdfTopic)];
+        row.topicId=el.value||null;row.topicMode='manual';
+        render();
+      });
       panel.querySelectorAll('[data-pdf-content]').forEach(el=>{
         const i=Number(el.dataset.pdfContent);el.value=entries[i].content;
         el.oninput=()=>entries[i].content=el.value;
@@ -175,8 +205,9 @@
         // Rehydrate the full personal bank before duplicate screening.
         try{await window.MathroomBankAllExercisesV2982?.hydrate?.({rerender:false})}
         catch(e){console.warn('[PDF importer] full-bank hydration unavailable',e)}
-        const currentTopic=q('#pdfTaskTopic').value;
-        const existing=new Set((S.exercises||[]).filter(x=>String(x.topic_id)===String(currentTopic)).map(x=>fingerprint(x.content)));
+        const existing=new Set((S.exercises||[]).map(x=>fingerprint(x.content)));
+        const fallbackId=q('#pdfTaskTopic').value||null;
+        const fallbackTopic=(S.topics||[]).find(t=>String(t.id)===String(fallbackId));
         const seen=new Set();
         for(let pageNum=first;pageNum<=last;pageNum++){
           state('Извлекаем PDF: страница '+pageNum+' из '+last+'…');
@@ -184,10 +215,19 @@
           const text=await page.getTextContent();
           const lines=API.linesFromItems(text.items);
           for(const entry of API.splitPage(lines,pageNum)){
+            const suggestion=window.MathroomPdfTopicsV93?.propose?.({
+              content:entry.content,topics:S.topics||[],
+              preferredGrade:q('#pdfTaskGrade').value||null
+            })||{topicId:null,grade:null,confidence:0,reason:'Выбери тему вручную'};
+            const identified=(S.topics||[]).find(t=>String(t.id)===String(suggestion.topicId));
+            entry.suggestion=suggestion;
+            entry.topicId=identified?.id||fallbackTopic?.id||null;
+            entry.grade=identified?Number(identified.grade):fallbackTopic?Number(fallbackTopic.grade):(Number(q('#pdfTaskGrade').value)||null);
+            entry.topicMode=identified?'auto':fallbackTopic?'fallback':'unknown';
             const f=fingerprint(entry.content);
             entry.duplicate=seen.has(f)||existing.has(f);
             entry.selected=!entry.duplicate;
-            if(!entry.duplicate)seen.add(f);
+            seen.add(f);
             entries.push(entry);
             if(entries.length>=60)break;
           }
@@ -195,7 +235,7 @@
           if(entries.length>=60)break;
         }
         if(!entries.length)state('Текстовый слой с пронумерованными задачами не найден. Если это скан, нажми «Задача со скана» и вырежи нужное условие со страницы.');
-        else state('Извлечено '+entries.length+' фрагментов (до 60). Они ещё не проверены математически. Изображения и чертежи могли не попасть в текст.');
+        else state('Извлечено '+entries.length+' задач. Автоматически предложены темы: '+entries.filter(x=>x.topicMode==='auto').length+'. Нужно выбрать тему вручную: '+entries.filter(x=>!x.topicId).length+'. Изображения и формулы проверь по оригиналу.');
         render();
       }catch(e){state('Ошибка PDF: '+String(e?.message||e));}
       finally{
@@ -206,27 +246,33 @@
     const save=async()=>{
       if(busy)return;
       if(!q('#pdfTaskRights').checked)return toast('Подтверди права на использование документа');
-      const topicId=q('#pdfTaskTopic').value;
-      const topic=topicsForGrade().find(t=>String(t.id)===String(topicId));
-      if(!topic)return toast('Выбери существующую тему');
       const selected=entries.filter(x=>x.selected&&(norm(x.content).length>=12||x.capture)&&!x.imported);
+      const unmatched=selected.filter(x=>!(S.topics||[]).some(t=>String(t.id)===String(x.topicId)&&Number(t.grade)===Number(x.grade)));
+      if(unmatched.length)return toast('Для '+unmatched.length+' задач не выбраны класс или тема. Назначь их в карточках либо сними выделение.');
       if(selected.some(x=>x.visualOnly&&!x.capture))
         return toast('Для задачи со скана сначала прикрепи снимок условия');
       if(!selected.length)return toast('Выбери хотя бы одну задачу с условием');
       if(!confirm('Сохранить '+selected.length+' фрагментов как ЛИЧНЫЕ ЧЕРНОВИКИ? Непроверенные формулы и рисунки нельзя публиковать.'))return;
       busy=true;q('#pdfTaskSave').disabled=true;
-      const existing=new Set((S.exercises||[]).filter(x=>String(x.topic_id)===String(topicId)).map(x=>fingerprint(x.content)));
+      const existing=new Set((S.exercises||[]).map(x=>fingerprint(x.content)));
       const seen=new Set();
       const eligible=selected.filter(x=>{
         const fp=x.visualOnly?'visual:'+x.page+':'+x.number:fingerprint(x.content);
         if((!x.visualOnly&&existing.has(fp))||seen.has(fp))return false;
         seen.add(fp);return true;
       });
+      if(!eligible.length){
+        busy=false;
+        q('#pdfTaskSave').disabled=false;
+        return toast('Все выбранные задачи уже есть в банке. Новых черновиков не создано.');
+      }
       let inserted=0,issue=null;
       try{
         // Per-task transactions in the UI: on partial failure, completed drafts
         // are excluded from retries, and only failed image uploads are removed.
         for(const x of eligible){
+          const topic=(S.topics||[]).find(t=>String(t.id)===String(x.topicId)&&Number(t.grade)===Number(x.grade));
+          if(!topic){issue=new Error('Для задачи №'+x.number+' не найдена выбранная тема');break;}
           const cap=x.capture;
           let imagePath='',imageId='';
           try{
@@ -265,7 +311,16 @@
                   original_page:x.page,
                   capture:image?{rect:cap.rect,width:cap.width,height:cap.height,storage_path:imagePath}:null,
                   quality_warnings:window.MathroomPdfQualityV92?.audit?.(x,
-                    (S.exercises||[]).filter(e=>String(e.topic_id)===String(topic.id)))?.warnings||[]
+                    (S.exercises||[]).filter(e=>String(e.topic_id)===String(topic.id)))?.warnings||[],
+                  topic_assignment:{
+                    method:x.topicMode==='auto'?'automatic-suggestion':x.topicMode==='manual'?'manual-selection':'fallback',
+                    selected_topic_id:topic.id,
+                    suggested_topic_id:x.suggestion?.topicId||null,
+                    suggested_grade:x.suggestion?.grade||null,
+                    confidence:x.suggestion?.confidence||0,
+                    explanation:x.suggestion?.reason||'',
+                    reviewed:false
+                  }
                 }
               }
             };
@@ -316,7 +371,9 @@
       entries.push({
         page,number:'скан-'+visualSerial,
         content:'Условие представлено на прикреплённом изображении PDF. Требуется проверка преподавателем.',
-        answer:'',selected:true,duplicate:false,visualOnly:true
+        answer:'',selected:true,duplicate:false,visualOnly:true,
+        grade:Number(q('#pdfTaskGrade').value)||null,topicId:q('#pdfTaskTopic').value||null,
+        topicMode:q('#pdfTaskTopic').value?'fallback':'unknown'
       });
       render();state('Задача со скана добавлена. Нажми «Прикрепить фрагмент» у новой карточки, выдели область и заполни ответ позже.');
     };
