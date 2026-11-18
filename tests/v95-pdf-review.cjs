@@ -108,5 +108,30 @@ const sb={from(table){
   assert.equal(rows.length,2,'Removing remaining task must not touch saved drafts');
   assert.ok(confirmCalls.some(s=>s.includes('из текущего импорта')));
   assert.equal(bankOpened,0,'Review window stays open for explicit navigation');
-  console.log('v95 PDF UI PASS: separate modal, saved-only filtering, safe deletion');
+
+  // Second run: teacher fixes the previously unrecognized topic in the
+  // follow-up window, saves it and arrives back in the private bank.
+  window.MathroomPdfImportV91.open({
+    S,sb,modal,toast(){},fail:e=>errors.push(e),
+    loadTeacher:async()=>{},openBank:()=>bankOpened++
+  });
+  const again=modals[2];
+  await again.values['#pdfTaskExtract'].onclick();
+  await again.values['#pdfTaskSave'].onclick();
+  const unresolved=modals[3];
+  assert.equal(unresolved.review,true);
+  const grade=unresolved.nodes['data-pdf-grade1'];
+  assert.ok(grade,'grade selector exists in follow-up modal');
+  grade.value='7';grade.onchange();
+  const topic=unresolved.nodes['data-pdf-topic1'];
+  assert.ok(topic,'topic selector exists after grade change');
+  topic.value='linear';topic.onchange();
+  assert.match(unresolved.values['#pdfTaskSaveHint'].textContent,/Готово к сохранению: 1/);
+  await unresolved.values['#pdfTaskSave'].onclick();
+  assert.equal(rows.length,5);
+  assert.equal(rows[4].topic_id,'linear');
+  assert.equal(unresolved.removed,true,'Review modal closes when all tasks saved');
+  assert.equal(bankOpened,1,'Bank opened after last saved task');
+
+  console.log('v95 PDF UI PASS: two windows, safe removal, correction and repeat save');
 })().catch(e=>{console.error(e);process.exitCode=1});
