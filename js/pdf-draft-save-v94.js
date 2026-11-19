@@ -11,6 +11,7 @@
     // Only exact normalized content is a hard duplicate. Visual-only tasks
     // may share generic placeholder text while showing different diagrams.
     for(const item of existing||[]){
+      if(item?.kind==='deleted')continue;
       const key=fingerprint(item?.content);
       if(!key||bank.has(key))continue;
       bank.set(key,{
