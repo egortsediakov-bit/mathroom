@@ -699,6 +699,42 @@
 :root[data-theme="dark"] .mr-xlsx-import-v100 .mr-xlsx-rights small,
 :root[data-theme="dark"] .mr-xlsx-import-v100 .mr-xlsx-head p{color:#a3aeb9}
 
+
+/* v101.1 — fully accounted selection and accessible solution label states. */
+.mr-xlsx-import-v100 .mr-xlsx-selection-note {
+  display:block;
+  margin:0 30px 16px;
+  padding:10px 12px;
+  background:#f7f8fa;
+  color:#697580;
+  border:1px solid #e6eaee;
+  border-radius:10px;
+  font-size:11px;
+  font-weight:700;
+  line-height:1.55;
+  overflow-wrap:anywhere;
+}
+.mr-xlsx-import-v100 .mr-xlsx-solution .mr-xlsx-solution-hide {
+  display:none;
+}
+.mr-xlsx-import-v100 .mr-xlsx-solution[open] .mr-xlsx-solution-show {
+  display:none;
+}
+.mr-xlsx-import-v100 .mr-xlsx-solution[open] .mr-xlsx-solution-hide {
+  display:inline;
+}
+:root[data-theme="dark"] .mr-xlsx-import-v100 .mr-xlsx-selection-note {
+  background:#232930;
+  color:#c0cad4;
+  border-color:#38414b;
+}
+@media(max-width:920px){
+  .mr-xlsx-import-v100 .mr-xlsx-selection-note{margin-left:22px;margin-right:22px}
+}
+@media(max-width:720px){
+  .mr-xlsx-import-v100 .mr-xlsx-selection-note{margin:0 18px 14px;font-size:10px}
+}
+
 /* v100 — imported XLSX source and descriptive template instructions in Task Builder. */
 .mr-tb-xlsx-review{
   margin:12px 0 18px;padding:17px 20px;background:#fff8f2;
