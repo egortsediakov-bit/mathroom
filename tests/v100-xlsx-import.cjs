@@ -15,6 +15,10 @@ assert.equal(formatted,'Вычислите: \\(2\\frac{1}{6} - \\frac{5}{9}\\).'
 assert.equal(api.formatMath('Решите уравнение: (x − 2)/3 + (x + 1)/2 = 7.'),
   'Решите уравнение: \\(\\frac{x - 2}{3} + \\frac{x + 1}{2} = 7\\).');
 assert.equal(api.formatMath('https://school.ru/2026/2027'),'https://school.ru/2026/2027');
+assert.equal(api.formatMath('Вычислите: √(81) + 2².'),
+  'Вычислите: \\(\\sqrt{81} + 2^{2}\\).');
+assert.equal(api.formatMath('Решите уравнение: 5x − 7 = 18.'),
+  'Решите уравнение: \\(5x - 7 = 18\\).');
 const ready=[
  {task_id:'K6-008',grade:6,topic:'Сложение и вычитание дробей',
   task_text:'Вычислите: 2 1/6 − 5/9.',answer:'29/18',difficulty:'medium',
@@ -43,6 +47,13 @@ assert.equal(legacy.generatorReady,false,'descriptive source cannot masquerade a
 assert.equal(machine.generatorReady,true);
 assert.equal(machine.templateVars.length,2);
 assert.equal(legacy.answer,'5/12');
+const rejected=api.readTemplate({
+ template_id:'T-danger',grade:6,topic:'Дроби',
+ template_text:'Считай {{a}}',variables_json:'[{"name":"a","min":1,"max":3}]',
+ answer_template:'{{import(1)}}'
+});
+assert.equal(rejected.generatorReady,false,'unsafe generator syntax must not execute');
+assert.ok(api.validate(rejected).length>0,'unsafe generator not importable');
 const plan=ui.prepare(content,[]);
 assert.equal(plan.length,4);
 assert.equal(plan.filter(x=>x.selected).length,2,'legacy and machine templates are opt-in');
