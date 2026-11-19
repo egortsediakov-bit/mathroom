@@ -169,45 +169,98 @@
     const selected=valid.filter(x=>x.selected);
     const problems=items.filter(x=>!x.valid);
     const templates=items.filter(x=>x.r.type==='template');
-    box.innerHTML='<div class="mr-xlsx-head"><h4>Предпросмотр книги</h4>'+
-      '<span>'+items.length+' записей · '+selected.length+' выбрано · '+problems.length+' пропущено · '+templates.length+' шаблонов</span></div>'+
-      '<div class="mr-xlsx-controls"><button type="button" data-xlsx-tasks>Выбрать все новые задачи</button>'+
+    // Explain exactly why a row was left unchecked or unavailable.
+    const selectionNote=()=>{
+      const remaining=items.filter(x=>!x.selected);
+      if(!remaining.length)return 'Выбраны все '+items.length+' записей: задачи и шаблоны.';
+      const blocked=remaining.filter(x=>!x.valid);
+      const unchecked=remaining.filter(x=>x.valid);
+      const explanation=[];
+      if(unchecked.length)explanation.push('Не выбрано: '+unchecked.length+
+        ' ('+unchecked.slice(0,5).map(x=>x.r.id).join(', ')+
+        (unchecked.length>5?'…':'')+').');
+      if(blocked.length)explanation.push('Недоступно для выбора: '+blocked.length+
+        ' ('+blocked.slice(0,5).map(x=>x.r.id+': '+x.reason).join('; ')+
+        (blocked.length>5?'…':'')+').');
+      return explanation.join(' ');
+    };
+    const stat=(count,label,extra='')=>'<div class="mr-xlsx-stat '+extra+'"><strong>'+count+'</strong><span>'+label+'</span></div>';
+    box.innerHTML='<div class="mr-xlsx-head"><div><span class="mr-xlsx-kicker">ШАГ 02 / ПРОВЕРКА МАТЕРИАЛОВ</span>'+
+      '<h4>Предпросмотр заданий</h4><p>Проверь условия и решения, затем выбери, что добавить в черновики.</p></div>'+
+      '<span class="mr-xlsx-filename" title="'+esc(previewState.fileName||'')+'">'+esc(clip(previewState.fileName||'Excel',42))+'</span></div>'+
+      '<div class="mr-xlsx-stats">'+
+        stat(items.length,'Всего записей')+
+        '<div class="mr-xlsx-stat is-accent"><strong data-xlsx-stat-selected>'+selected.length+'</strong><span>Выбрано</span></div>'+
+        stat(templates.length,'Шаблонов')+
+        stat(problems.length,'Пропущено',problems.length?'is-warning':'')+
+      '</div>'+
+      '<div class="mr-xlsx-controls"><div class="mr-xlsx-control-group">'+
+      '<button class="is-primary" type="button" data-xlsx-all>✓ Все задачи и шаблоны</button>'+
+      '<button type="button" data-xlsx-tasks>Только задачи</button>'+
       '<button type="button" data-xlsx-none>Снять выбор</button>'+
-      '<button type="button" data-xlsx-templates>Добавить шаблоны-черновики</button>'+
-      (pages>1?'<span>Страница '+(page+1)+' / '+pages+'</span>'+
-        '<button type="button" data-xlsx-prev '+(page===0?'disabled':'')+'>Назад</button>'+
-        '<button type="button" data-xlsx-next '+(page===pages-1?'disabled':'')+'>Дальше</button>':'')+'</div>'+
-      '<div class="mr-xlsx-items">'+visibleItems.map(item=>{
-        const r=item.r;return '<label class="mr-xlsx-item'+(!item.valid?' is-invalid':'')+'">'+
-          '<input type="checkbox" data-xlsx-choice="'+item.index+'" '+(item.selected?'checked':'')+
-            (!item.valid?' disabled':'')+'><span class="mr-xlsx-item-body"><b>'+esc(r.id||'без ID')+
-            ' · '+esc(r.topic||'?')+'</b>'+
-            '<small>'+esc(item.kind+' · '+r.grade+' класс · '+r.difficulty+
-              (item.reason?' · Пропущено: '+item.reason:item.advisory?' · '+item.advisory:''))+'</small>'+
-            '<span class="mr-xlsx-item-condition">'+esc(clip(r.content,440))+'</span>'+
-            (r.answer?'<small>Ответ: '+esc(clip(r.answer,100))+'</small>':'')+
-            (r.solution?'<details><summary>Посмотреть решение</summary><p>'+esc(clip(r.solution,1200))+'</p></details>':'')+
-            '</span></label>';
+      '<button type="button" data-xlsx-templates>＋ Добавить шаблоны</button></div>'+
+      (pages>1?'<div class="mr-xlsx-page-controls"><span>Страница '+(page+1)+' из '+pages+'</span>'+
+        '<button type="button" data-xlsx-prev '+(page===0?'disabled':'')+'>←</button>'+
+        '<button type="button" data-xlsx-next '+(page===pages-1?'disabled':'')+'>→</button></div>':'')+'</div>'+
+      '<div class="mr-xlsx-selection-note" id="mrXlsxSelectionNote" role="status">'+esc(selectionNote())+'</div>'+
+      '<div class="mr-xlsx-items" role="list">'+visibleItems.map(item=>{
+        const r=item.r;
+        const difficulty=({basic:'Базовая',medium:'Средняя',advanced:'Сложная'})[r.difficulty]||r.difficulty;
+        return '<article class="mr-xlsx-item'+(!item.valid?' is-invalid':item.selected?' is-selected':'')+'" data-xlsx-item="'+item.index+'" role="listitem">'+
+          '<label class="mr-xlsx-check" title="Выбрать запись"><input aria-label="Выбрать '+esc(r.id||'запись')+'" type="checkbox" data-xlsx-choice="'+item.index+'" '+(item.selected?'checked':'')+
+          (!item.valid?' disabled':'')+'><span class="mr-xlsx-check-face"></span></label>'+
+          '<div class="mr-xlsx-item-body"><div class="mr-xlsx-item-top">'+
+            '<div class="mr-xlsx-item-heading"><span class="mr-xlsx-task-id">'+esc(r.id||'—')+'</span>'+
+            '<strong>'+esc(r.topic||'Без темы')+'</strong></div>'+
+            '<div class="mr-xlsx-item-tags"><span class="mr-xlsx-grade-tag">'+esc(r.grade)+' класс</span>'+
+            '<span class="mr-xlsx-difficulty" data-level="'+esc(r.difficulty)+'">'+esc(difficulty)+'</span></div>'+
+          '</div>'+
+          (item.reason?'<p class="mr-xlsx-review-note is-error">Пропущено: '+esc(item.reason)+'</p>':
+            item.advisory?'<p class="mr-xlsx-review-note">'+esc(item.advisory)+'</p>':'')+
+          '<div class="mr-xlsx-item-condition">'+esc(clip(r.content,1200))+'</div>'+
+          '<div class="mr-xlsx-item-bottom">'+
+            (r.answer?'<div class="mr-xlsx-answer"><span>ОТВЕТ</span><strong>'+esc(clip(r.answer,180))+'</strong></div>':
+              '<span class="mr-xlsx-answer-missing">Ответ не указан</span>')+
+            (r.solution?'<details class="mr-xlsx-solution"><summary>'+
+              '<span class="mr-xlsx-solution-show">Показать решение</span>'+
+              '<span class="mr-xlsx-solution-hide">Скрыть решение</span></summary>'+
+              '<div class="mr-xlsx-solution-text">'+esc(clip(r.solution,3000))+'</div></details>':'')+
+          '</div></div></article>';
       }).join('')+'</div>'+
-      '<label class="mr-xlsx-rights"><input id="mrXlsxRights" type="checkbox" '+(previewState.rightsConfirmed?'checked':'')+'> Подтверждаю право использовать материалы. Все записи будут загружены только как личные черновики, без публикации.</label>'+
+      '<div class="mr-xlsx-import-footer"><label class="mr-xlsx-rights">'+
+      '<input id="mrXlsxRights" type="checkbox" '+(previewState.rightsConfirmed?'checked':'')+'>'+
+      '<span><strong>Подтверждаю право использования</strong><small>Все материалы сохраняются в личные черновики. Публикации без проверки нет.</small></span></label>'+
       '<div class="mr-xlsx-actions"><span id="mrXlsxSelected">'+selected.length+' выбрано</span>'+
       '<button type="button" id="mrXlsxApply" '+(!selected.length?'disabled':'')+
-      '>Сохранить выбранное в черновики</button></div>';
+      '>Сохранить в черновики <span aria-hidden="true">→</span></button></div></div>';
     const update=()=>{
       const count=items.filter(x=>x.valid&&x.selected).length;
       const counter=el(box,'#mrXlsxSelected'),button=el(box,'#mrXlsxApply');
       if(counter)counter.textContent=count+' выбрано';
+      const statSelected=el(box,'[data-xlsx-stat-selected]');
+      if(statSelected)statSelected.textContent=String(count);
+      const note=el(box,'#mrXlsxSelectionNote');
+      if(note)note.textContent=selectionNote();
       if(button)button.disabled=!count||busy;
     };
     box.querySelectorAll('[data-xlsx-choice]').forEach(c=>c.onchange=()=>{
       const item=items[Number(c.dataset.xlsxChoice)];
-      if(item?.valid){item.selected=c.checked;update()}
+      if(item?.valid){
+        item.selected=c.checked;
+        const card=c.closest('.mr-xlsx-item');
+        card?.classList.toggle('is-selected',c.checked);
+        update();
+      }
     });
     if(el(box,'[data-xlsx-prev]'))el(box,'[data-xlsx-prev]').onclick=()=>{
       previewState.page=Math.max(0,page-1);renderPreview();
     };
     if(el(box,'[data-xlsx-next]'))el(box,'[data-xlsx-next]').onclick=()=>{
       previewState.page=Math.min(pages-1,page+1);renderPreview();
+    };
+    el(box,'[data-xlsx-all]').onclick=()=>{
+      items.forEach(x=>x.selected=!!x.valid);
+      renderPreview();
     };
     el(box,'[data-xlsx-tasks]').onclick=()=>{
       items.forEach(x=>x.selected=x.valid&&x.r.type==='task');
@@ -268,12 +321,24 @@
     if(document.getElementById('mrXlsxImportV100'))return;
     const div=document.createElement('section');
     div.id='mrXlsxImportV100';div.className='mr-xlsx-import-v100';
-    div.innerHTML='<div class="mr-xlsx-intro"><div><h3>Импорт Excel · Котоматика</h3>'+
-      '<p>Сначала просмотри задачи, решения и шаблоны. Ничего не публикуется автоматически.</p>'+
-      '<p class="mr-xlsx-caption">Листы READY, РЕШЕНИЯ и ШАБЛОНЫ / GENERATORS. Дроби отображаются математически, оригинальный текст сохраняется.</p></div>'+
-      '<div><input type="file" id="mrXlsxFileV100" accept=".xlsx,.xls" hidden>'+
-      '<button type="button" data-xlsx-button id="mrXlsxChooseV100">Выбрать Excel</button></div></div>'+
-      '<div id="mrXlsxImportStatus" role="status" aria-live="polite"></div>'+
+    div.innerHTML='<div class="mr-xlsx-intro">'+
+      '<div class="mr-xlsx-identity"><div class="mr-xlsx-brandmark" aria-hidden="true">'+
+      '<svg viewBox="0 0 36 36" fill="none"><rect x="8" y="6" width="18" height="24" rx="4" stroke="currentColor" stroke-width="2.6"/>'+
+      '<path d="M13 14h8M13 19h8" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/>'+
+      '<path d="m18 27 5 4 9-11" stroke="#FF6422" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/></svg>'+
+      '</div><div class="mr-xlsx-intro-copy"><span class="mr-xlsx-kicker">КОТОМАТИКА / БАНК ЗАДАЧ</span>'+
+      '<h3>Импорт Excel</h3>'+
+      '<p>Загружай задания, проверяй решения и сохраняй материалы в личные черновики.</p>'+
+      '</div></div>'+
+      '<div class="mr-xlsx-upload"><input type="file" id="mrXlsxFileV100" accept=".xlsx,.xls" hidden>'+
+      '<button type="button" data-xlsx-button id="mrXlsxChooseV100"><span aria-hidden="true">＋</span> Выбрать Excel</button>'+
+      '<span>Поддерживаются файлы XLSX и XLS</span></div></div>'+
+      '<div class="mr-xlsx-steps" aria-label="Этапы импорта">'+
+      '<span><b>01</b> Загрузить файл</span><i aria-hidden="true"></i>'+
+      '<span><b>02</b> Проверить задания</span><i aria-hidden="true"></i>'+
+      '<span><b>03</b> Сохранить черновики</span></div>'+
+      '<div class="mr-xlsx-status-wrap"><span class="mr-xlsx-status-indicator" aria-hidden="true"></span>'+
+      '<div id="mrXlsxImportStatus" role="status" aria-live="polite">Начни с выбора Excel. Ничего не публикуется автоматически.</div></div>'+
       '<div id="mrXlsxPreview"></div>';
     list.parentNode.insertBefore(div,list);
     el(div,'#mrXlsxChooseV100').onclick=()=>{if(!busy)el(div,'#mrXlsxFileV100').click()};
