@@ -11,7 +11,7 @@
     }
     return '';
   };
-  const number=(x,otherwise=null)=>{const n=Number(str(x).replace(',','.'));return Number.isFinite(n)?n:otherwise};
+  const number=(x,otherwise=null)=>{const v=str(x);if(!v)return otherwise;const n=Number(v.replace(',','.'));return Number.isFinite(n)?n:otherwise};
   const safeInt=(x,fallback=0)=>Math.round(number(x,fallback));
   const difficulty=(raw,score)=>{
     const v=str(raw).toLowerCase();
