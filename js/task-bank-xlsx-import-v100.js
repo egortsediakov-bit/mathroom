@@ -162,6 +162,10 @@
     const box=document.getElementById('mrXlsxPreview');
     if(!box||!previewState)return;
     const items=previewState.items,valid=items.filter(x=>x.valid);
+    const pageSize=80,pages=Math.max(1,Math.ceil(items.length/pageSize));
+    const page=Math.min(pages-1,Math.max(0,Number(previewState.page)||0));
+    previewState.page=page;
+    const visibleItems=items.slice(page*pageSize,(page+1)*pageSize);
     const selected=valid.filter(x=>x.selected);
     const problems=items.filter(x=>!x.valid);
     const templates=items.filter(x=>x.r.type==='template');
@@ -169,8 +173,11 @@
       '<span>'+items.length+' записей · '+selected.length+' выбрано · '+problems.length+' пропущено · '+templates.length+' шаблонов</span></div>'+
       '<div class="mr-xlsx-controls"><button type="button" data-xlsx-tasks>Выбрать все новые задачи</button>'+
       '<button type="button" data-xlsx-none>Снять выбор</button>'+
-      '<button type="button" data-xlsx-templates>Добавить шаблоны-черновики</button></div>'+
-      '<div class="mr-xlsx-items">'+items.map(item=>{
+      '<button type="button" data-xlsx-templates>Добавить шаблоны-черновики</button>'+
+      (pages>1?'<span>Страница '+(page+1)+' / '+pages+'</span>'+
+        '<button type="button" data-xlsx-prev '+(page===0?'disabled':'')+'>Назад</button>'+
+        '<button type="button" data-xlsx-next '+(page===pages-1?'disabled':'')+'>Дальше</button>':'')+'</div>'+
+      '<div class="mr-xlsx-items">'+visibleItems.map(item=>{
         const r=item.r;return '<label class="mr-xlsx-item'+(!item.valid?' is-invalid':'')+'">'+
           '<input type="checkbox" data-xlsx-choice="'+item.index+'" '+(item.selected?'checked':'')+
             (!item.valid?' disabled':'')+'><span class="mr-xlsx-item-body"><b>'+esc(r.id||'без ID')+
@@ -196,6 +203,12 @@
       const item=items[Number(c.dataset.xlsxChoice)];
       if(item?.valid){item.selected=c.checked;update()}
     });
+    if(el(box,'[data-xlsx-prev]'))el(box,'[data-xlsx-prev]').onclick=()=>{
+      previewState.page=Math.max(0,page-1);renderPreview();
+    };
+    if(el(box,'[data-xlsx-next]'))el(box,'[data-xlsx-next]').onclick=()=>{
+      previewState.page=Math.min(pages-1,page+1);renderPreview();
+    };
     el(box,'[data-xlsx-tasks]').onclick=()=>{
       items.forEach(x=>x.selected=x.valid&&x.r.type==='task');
       renderPreview();
