@@ -123,6 +123,9 @@
       )||planner;
       refreshSaveHint();
       const allTopics=S.topics||[];
+      const mathCheck=row=>window.MathroomMathCheckV99?.check?.({
+        content:row.content,answer:row.answer,hasVisual:!!row.visualOnly||!!row.capture
+      })||{status:'unsupported'};
       const summary=q('#pdfTaskSummary');
       if(summary)summary.innerHTML=
         '<div class="mr-pdf-metric"><b>'+entries.filter(x=>!x.imported).length+'</b><span>На проверке</span></div>'+
@@ -133,6 +136,7 @@
       panel.innerHTML=visible.map(({x,i})=>{
           if(x.imported)return '<div class="mr-pdf-saved-banner">✓ Сохранено в личные черновики: PDF № '+esc(x.number)+' · страница '+x.page+'</div>';
           const audit=window.MathroomPdfQualityV92?.audit?.(x,(S.exercises||[]).filter(e=>String(e.topic_id)===String(x.topicId)));
+          const math=mathCheck(x);
           const issue=inspection.pending.find(p=>p.entry._originalIndex===i);
           const duplicateHit=inspection.duplicates.find(p=>p.entry._originalIndex===i);
           const anyMatch=issue?.match||duplicateHit?.match||
@@ -165,6 +169,11 @@
           '<div class="mr-pdf-confidence"><span>'+(x.topicMode==='auto'?'Предложено по условию: '+esc(x.suggestion?.reason||'')+' · оценка совпадения '+Math.round((x.suggestion?.confidence||0)*100)+'% (не математическая проверка).':x.topicMode==='manual'?'Тема выбрана вручную.':x.topicId?'Использована запасная тема.':'Тема не определена — нужно выбрать вручную.')+'</span><button class="btn sm" type="button" data-pdf-reclass="'+i+'">✦ Определить по условию</button></div>'+
           '<div class="field"><label>Условие</label><textarea data-pdf-content="'+i+'" rows="4"></textarea></div>'+
           '<div class="field"><label>Ответ (если известен; можно заполнить позже)</label><input data-pdf-answer="'+i+'" type="text" placeholder="Необязательно для черновика"></div>'+
+          '<div class="mr-pdf-math" data-pdf-math="'+i+'" data-status="'+math.status+'">'+
+            (math.status==='unsupported'
+              ?'<b>Математика · нужна проверка преподавателя</b><span>Автоматический расчёт этого задания недоступен.</span>'
+              :'<b>'+(math.status==='match'?'✓ Ответ совпал с расчётом':math.status==='mismatch'?'! Ответ расходится с расчётом':'◉ Расчёт выполнен, ответа пока нет')+'</b><span>'+esc(math.message||'')+'</span>')+
+          '</div>'+
           '<div class="mr-pdf-capture">'+
           '<div class="actions"><button type="button" class="btn sm" data-pdf-capture="'+i+'">'+(x.capture?'↻ Заменить фрагмент':'▧ Прикрепить формулу / чертёж из PDF')+'</button>'+
           (x.capture?'<button type="button" class="btn sm" data-pdf-remove="'+i+'">Убрать фрагмент</button>':'')+'</div>'+
@@ -216,13 +225,32 @@
         row.topicId=el.value||null;row.topicMode='manual';
         render();
       });
+      const refreshMathStatus=i=>{
+        const row=entries[i],host=panel.querySelector('[data-pdf-math="'+i+'"]');
+        if(!row||!host)return;
+        const check=window.MathroomMathCheckV99?.check?.({
+          content:row.content,answer:row.answer,hasVisual:!!row.visualOnly||!!row.capture
+        })||{status:'unsupported'};
+        host.dataset.status=check.status;
+        host.replaceChildren();
+        const title=document.createElement('b');
+        const description=document.createElement('span');
+        title.textContent=check.status==='match'?'✓ Ответ совпал с расчётом':
+          check.status==='mismatch'?'! Ответ расходится с расчётом':
+          check.status==='missing'?'◉ Расчёт выполнен, ответа пока нет':
+          'Математика · нужна проверка преподавателя';
+        description.textContent=check.message||'Автоматический расчёт этого задания недоступен.';
+        host.append(title,description);
+      };
       panel.querySelectorAll('[data-pdf-content]').forEach(el=>{
         const i=Number(el.dataset.pdfContent);el.value=entries[i].content;
-        el.oninput=()=>{entries[i].content=el.value;refreshSaveHint();};
+        el.oninput=()=>{
+          entries[i].content=el.value;refreshSaveHint();refreshMathStatus(i);
+        };
       });
       panel.querySelectorAll('[data-pdf-answer]').forEach(el=>{
         const i=Number(el.dataset.pdfAnswer);el.value=entries[i].answer||'';
-        el.oninput=()=>entries[i].answer=el.value;
+        el.oninput=()=>{entries[i].answer=el.value;refreshMathStatus(i)};
       });
       panel.querySelectorAll('[data-pdf-preview]').forEach(el=>{
         const row=entries[Number(el.dataset.pdfPreview)];
@@ -433,6 +461,9 @@
                   capture:image?{rect:cap.rect,width:cap.width,height:cap.height,storage_path:imagePath}:null,
                   quality_warnings:window.MathroomPdfQualityV92?.audit?.(x,
                     (S.exercises||[]).filter(e=>String(e.topic_id)===String(topic.id)))?.warnings||[],
+                  math_check:window.MathroomMathCheckV99?.check?.({
+                    content:x.content,answer:x.answer,hasVisual:!!x.visualOnly||!!cap
+                  })||{status:'unsupported'},
                   duplicate_review:{
                     override:!!readyByEntry.get(x)?.duplicateOverride,
                     match_source:readyByEntry.get(x)?.match?.kind||null,

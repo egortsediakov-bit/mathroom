@@ -1570,6 +1570,25 @@
         issues.push(qualityIssue("warn","Нет критерия проверки","Добавь эталон ответа или критерии — преподавателю будет проще проверять работу.","tbAnswerEditor"));
       }
 
+      // v99: independent, local numerical cross-check of safe problem types.
+      // It never declares geometry, images or unsupported algebra verified.
+      if(["standard","numeric"].includes(state.taskType)&&state.answers.length===1
+        &&!state.images.length&&!state.tables.length&&!state.geometries.length
+        &&!state.templateVars.length){
+        const math=window.MathroomMathCheckV99?.check?.({
+          content:state.content,answer:state.answers[0]?.value||''
+        });
+        if(math?.status==='mismatch')issues.push(qualityIssue("error",
+          "Ответ не совпадает с расчётом",
+          math.message+" Исправь ответ или условие перед публикацией.","tbAnswerEditor"));
+        else if(math?.status==='match')issues.push(qualityIssue("info",
+          "Ответ совпадает с локальным расчётом",
+          "Проверены только вычисления по тексту условия. Сверь условие с оригиналом.","tbAnswerEditor"));
+        else if(math?.status==='missing')issues.push(qualityIssue("info",
+          "Локально получен ответ",
+          math.message,"tbAnswerEditor"));
+      }
+
       for(const [label,value,target] of templateStrings())issues.push(...latexIssues(value,label,target));
 
       if(state.templateVars.length){
@@ -1809,7 +1828,14 @@
         }
         const t=topic();if(!draft){const audit=renderQualityAudit();if(audit.errors.length){q("tbQualityAudit")?.scrollIntoView({behavior:"smooth",block:"center"});return toast("Исправь критичные ошибки перед сохранением")}}if(!t)return toast("Выбери тему задачи");
         const sys=editing?exerciseSystemTags(editing.tags):[];const retained=editing?(editing.tags||[]).filter(z=>!String(z).startsWith("класс-")&&!String(z).startsWith("тема:")&&!String(z).startsWith("тип:")):[];const tags=[...new Set([...sys,...retained,"класс-"+t.grade,"тема:"+t.title,"тип:"+state.taskType])];
-        const nextMeta=builderMeta();if(nextMeta.pdf_import&&!draft&&!nextMeta.pdf_import.verified)nextMeta.pdf_import={...nextMeta.pdf_import,verified:true,requires_teacher_review:false,verified_at:new Date().toISOString()};const body={topic_id:t.id,kind:"task",title:(editing?.title&&editing.title.trim())||("Задача · "+t.title),content:syncLegacyContent().trim(),answer:legacyAnswer(),difficulty:state.difficulty,category:state.subtopic.trim(),tags,builder_meta:nextMeta,is_draft:!!draft,updated_at:new Date().toISOString()};
+        const nextMeta=builderMeta();
+        if(nextMeta.pdf_import){
+          nextMeta.pdf_import.math_check=window.MathroomMathCheckV99?.check?.({
+            content:syncLegacyContent(),answer:legacyAnswer(),
+            hasVisual:!!state.images.length||!!state.tables.length||!!state.geometries.length
+          })||{status:'unsupported'};
+        }
+        if(nextMeta.pdf_import&&!draft&&!nextMeta.pdf_import.verified)nextMeta.pdf_import={...nextMeta.pdf_import,verified:true,requires_teacher_review:false,verified_at:new Date().toISOString()};const body={topic_id:t.id,kind:"task",title:(editing?.title&&editing.title.trim())||("Задача · "+t.title),content:syncLegacyContent().trim(),answer:legacyAnswer(),difficulty:state.difficulty,category:state.subtopic.trim(),tags,builder_meta:nextMeta,is_draft:!!draft,updated_at:new Date().toISOString()};
         const res=editing?await sb.from("exercises").update(body).eq("id",editing.id).select().single():await sb.from("exercises").insert({teacher_id:S.user.id,...body}).select().single();
         if(res.error)throw res.error;pendingImagePaths.clear();await syncShared(res.data,draft);clearAutosave();dirty=false;await loadTeacher();toast(draft?"Черновик сохранён":editing?"Задача обновлена":"Задача добавлена в банк");leaveNow();
       }catch(e){fail(e)}
