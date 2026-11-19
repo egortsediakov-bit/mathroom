@@ -144,8 +144,10 @@
       const checks=[...machine.matchAll(/\{\{([^{}]+)\}\}/g),
         ...expression.matchAll(/\{\{([^{}]+)\}\}/g)];
       if(checks.some(match=>!/^[a-zA-Z0-9_+\-*/(). %]+$/.test(match[1])||
-        /\b[A-Za-z_][A-Za-z0-9_]*\s*\(/.test(match[1]))||
-        (condition&&!/^[a-zA-Z0-9_+\-*/(). %<>=!&|]+$/.test(condition)))
+        /\b[A-Za-z_][A-Za-z0-9_]*\s*\(/.test(match[1])||
+        /[A-Za-z_]\w*\s*\.\s*[A-Za-z_]/.test(match[1]))||
+        (condition&&(!/^[a-zA-Z0-9_+\-*/(). %<>=!&|]+$/.test(condition)||
+          /\b[A-Za-z_][A-Za-z0-9_]*\s*\(/.test(condition))))
         return {...candidate,warning:'Недопустимое выражение параметризованного шаблона'};
       candidate.content=machine;candidate.original=machine;candidate.answer=expression;
       candidate.templateVars=normalized;
