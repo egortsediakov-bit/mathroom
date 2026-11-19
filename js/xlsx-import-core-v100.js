@@ -64,6 +64,11 @@
     });
     return byLine.join('\n');
   };
+  // Preserve generator expressions while formatting literal fractions.
+  // Converting e.g. {{n/2}} into KaTeX would break live parameter generation.
+  API.formatTemplateText=value=>text(value).split(/(\{\{[^{}]+\}\})/g).map(part=>
+    part.startsWith('{{')&&part.endsWith('}}')?part:API.formatMath(part)
+  ).join('');
   API.fingerprint=s=>str(s).normalize('NFC').toLocaleLowerCase('ru')
     .replace(/\\\(|\\\)/g,'').replace(/\\frac\{(\d+)\}\{(\d+)\}/g,'$1/$2')
     .replace(/[«»"'’]/g,'').replace(/\s+/g,' ').trim();
@@ -156,11 +161,11 @@
         (condition&&(!/^[a-zA-Z0-9_+\-*/(). %<>=!&|]+$/.test(condition)||
           /\b[A-Za-z_][A-Za-z0-9_]*\s*\(/.test(condition))))
         return {...candidate,warning:'Недопустимое выражение параметризованного шаблона'};
-      candidate.content=machine;candidate.original=machine;candidate.answer=expression;
+      candidate.content=API.formatTemplateText(machine);candidate.original=machine;candidate.answer=expression;
       candidate.templateVars=normalized;
       candidate.templateSettings={condition,integer_answers:String(get(row,'integer_answers')).toLowerCase()==='true'};
       candidate.generatorReady=true;
-      candidate.solution=API.formatMath(text(get(row,'template_solution','solution'))||originalSolution);
+      candidate.solution=API.formatTemplateText(text(get(row,'template_solution','solution'))||originalSolution);
     }
     return candidate;
   };
