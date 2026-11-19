@@ -687,3 +687,11 @@ html[data-theme=dark] .mr-supply-launch{background:#2a1b13!important;border-colo
 @media(max-width:1120px){.mr-supply-kpis{grid-template-columns:repeat(3,1fr)}.mr-supply-sources{grid-template-columns:repeat(3,1fr)}.mr-supply-targets{grid-template-columns:repeat(3,1fr)}.mr-supply-table-head,.mr-supply-row{grid-template-columns:26px minmax(180px,1.6fr) 80px repeat(4,78px) 68px}}
 @media(max-width:820px){.mr-supply-hero{flex-direction:column}.mr-supply-health{width:100%}.mr-supply-kpis,.mr-supply-sources,.mr-supply-targets{grid-template-columns:repeat(2,1fr)}.mr-supply-table-head{display:none}.mr-supply-row{min-width:730px}.mr-supply-filters{grid-template-columns:1fr 1fr}.mr-supply-check{grid-column:1/-1}.mr-supply-planbar{align-items:stretch;flex-direction:column}}
 @media(max-width:560px){.mr-supply-top,.mr-supply-card-head,.mr-supply-last{align-items:stretch;flex-direction:column}.mr-supply-top>div{width:100%}.mr-supply-top button{flex:1}.mr-supply-kpis,.mr-supply-sources,.mr-supply-targets,.mr-supply-filters{grid-template-columns:1fr}.mr-supply-actions{width:100%}.mr-supply-actions .btn{flex:1}}
+
+/* v104 — safe bulk actions for personal drafts */
+.mr-bank-draft-bulk{display:flex;align-items:center;flex-wrap:wrap;gap:9px;margin:0 0 14px;padding:12px 14px;border:1px solid var(--line,#e3e5e8);border-radius:16px;background:var(--surface,#fff)}
+.mr-bank-draft-bulk>span{margin-right:auto;font-size:13px;font-weight:700}
+.mr-bank-draft-bulk .btn.danger:disabled{opacity:.45;cursor:not-allowed}
+.mr-draft-choice{display:flex;align-items:flex-start;padding:12px 0 0 3px;cursor:pointer;flex:0 0 auto}
+.mr-draft-choice input{width:20px;height:20px;accent-color:#ff6422;cursor:pointer}
+@media(max-width:720px){.mr-bank-draft-bulk{align-items:stretch}.mr-bank-draft-bulk>span{width:100%}.mr-bank-draft-bulk .btn{flex:1 1 auto}.mr-draft-choice{padding-top:4px}}
