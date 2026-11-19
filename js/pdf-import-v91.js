@@ -137,6 +137,9 @@
           const duplicateHit=inspection.duplicates.find(p=>p.entry._originalIndex===i);
           const anyMatch=issue?.match||duplicateHit?.match||
             inspection.ready.find(p=>p.entry._originalIndex===i)?.match||null;
+          const nearMatch=!anyMatch&&audit?.nearDuplicate
+            ?(S.exercises||[]).find(t=>String(t.id)===String(audit.closestId))
+            :null;
           const ready=planner.ready.some(p=>p.entry===x);
           const statusClass=issue?'needs':duplicateHit?'duplicate':ready?'ready':'';
           const statusText=issue?'Нужна проверка':duplicateHit?'Точный дубль':ready?'Готово':'Не выбрано';
@@ -151,6 +154,9 @@
             '<div class="mr-pdf-match-actions"><button type="button" class="btn sm" data-pdf-override="'+i+'">'+
             (x.allowDuplicate?'✓ Сохранение отдельной копии разрешено — отменить':'Сохранить как отдельную копию')+'</button>'+
             '<span>'+(x.allowDuplicate?'Разрешена отдельная копия только для этого задания.':'По умолчанию точные повторы пропускаются.')+'</span></div></div>':'')+
+          (nearMatch?'<div class="mr-pdf-exact-match"><div class="mr-pdf-exact-title">Похожая задача в банке · совпадение '+audit.similarity+'% (сохранение не блокируется)</div>'+
+            '<details><summary>Посмотреть похожее условие</summary><div class="mr-pdf-match-info"><b>'+esc(nearMatch.title||'Задача')+'</b>'+
+            '<p>'+esc(String(nearMatch.content||'').slice(0,520))+'</p></div></details></div>':'')+
           (audit?.warnings?.length?'<div class="mr-pdf-issue"><b>Проверка импорта:</b> '+audit.warnings.map(w=>esc(w)).join('; ')+'</div>':'')+
           '<div class="grid cols2" style="margin:12px 0">'+
             '<div class="field"><label>Класс задачи</label><select data-pdf-grade="'+i+'"><option value="">— Выбери класс —</option>'+grades.map(g=>'<option value="'+g+'" '+(Number(x.grade)===g?'selected':'')+'>'+g+' класс</option>').join('')+'</select></div>'+
@@ -461,7 +467,14 @@
             issue=error;break;
           }
         }
-        if(inserted)await loadTeacher();
+        if(inserted){
+          await loadTeacher();
+          // The regular teacher fetch may truncate a >1,000-item bank.
+          // Restore the complete personal bank for the remaining duplicate
+          // review in step 2, without navigating or rerendering the page.
+          try{await window.MathroomBankAllExercisesV2982?.hydrate?.({rerender:false,force:true})}
+          catch(e){console.warn('[Mathroom PDF duplicate refresh]',e)}
+        }
         if(issue){
           state('Сохранено '+inserted+' из '+eligible.length+'. Ошибка у №'+String(eligible[inserted]?.number||'?')+': '+String(issue?.message||issue)+'. Уже сохранённые задачи повторно не добавятся.');
           render();fail(issue);
