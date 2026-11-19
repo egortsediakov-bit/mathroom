@@ -3,7 +3,7 @@
 (()=>{
   'use strict';
   const API={};
-  const close=(a,b)=>Math.abs(a-b)<=1e-8*Math.max(1,Math.abs(a),Math.abs(b));
+  const close=(a,b)=>Math.abs(a-b)<=1e-9+1e-12*Math.max(Math.abs(a),Math.abs(b));
   const normal=s=>String(s??'').trim().replace(/[−–—]/g,'-')
     .replace(/[×·⋅]/g,'*').replace(/[÷:]/g,'/')
     .replace(/²/g,'^2').replace(/³/g,'^3').replace(/(\d),(\d)/g,'$1.$2')
