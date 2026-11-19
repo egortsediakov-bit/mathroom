@@ -38,9 +38,11 @@ assert.match(pipeline,/const AI_FEATURES_ENABLED = false/);
 assert.match(worker,/const AI_FEATURES_ENABLED = false/);
 const pipelineGate=pipeline.indexOf('if (!AI_FEATURES_ENABLED)');
 const firstAuth=pipeline.indexOf('const { client, user } = await getContext');
-const firstAI=pipeline.indexOf('const generated = await openai');
-assert.ok(pipelineGate>0&&pipelineGate<firstAuth&&pipelineGate<firstAI,
-  'pipeline must fail closed before any authentication-context or OpenAI calls');
+assert.ok(pipelineGate>0&&pipelineGate<firstAuth,
+  'pipeline must fail closed before any authentication-context calls');
+assert.match(pipeline.slice(pipelineGate,firstAuth),/return json\(req, \{ ok: false, error: 'AI_DISABLED'/);
+assert.ok(pipeline.includes('const generated = await openai'),
+  'old implementation remains stored for a reversible, guarded shutdown');
 assert.match(pipeline,/error: 'AI_DISABLED'/);
 assert.match(pipeline,/ai_configured: false/);
 const workerGate=worker.indexOf('if(!AI_FEATURES_ENABLED)');
