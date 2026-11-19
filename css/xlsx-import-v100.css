@@ -82,3 +82,20 @@
   .mr-xlsx-import-v100 .mr-xlsx-intro>div:last-child{width:100%}
   .mr-xlsx-import-v100 .mr-xlsx-items{max-height:350px}
 }
+
+/* v100 — imported XLSX source and descriptive template instructions in Task Builder. */
+.mr-tb-xlsx-review{
+  margin:12px 0 18px;padding:17px 20px;background:#fff8f2;
+  border:1px solid #ffd6b4;border-radius:14px;
+  display:grid;gap:7px;line-height:1.55;
+}
+.mr-tb-xlsx-review>b{color:#ad4b14;font-size:13px}
+.mr-tb-xlsx-review p{font-size:12px;color:var(--text,#24282d);margin:0;white-space:pre-wrap;overflow-wrap:anywhere}
+.mr-tb-xlsx-template-note{
+  display:grid;gap:8px;margin-top:4px;padding:12px;
+  background:var(--card,#fff);border-radius:9px;min-width:0;
+}
+.mr-tb-xlsx-template-note>strong{color:#a94812;font-size:12px}
+:root[data-theme="dark"] .mr-tb-xlsx-review{background:#33261d;border-color:#69462f}
+:root[data-theme="dark"] .mr-tb-xlsx-review>b,
+:root[data-theme="dark"] .mr-tb-xlsx-template-note>strong{color:#ffb17c}
