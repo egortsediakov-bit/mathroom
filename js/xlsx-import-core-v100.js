@@ -66,9 +66,12 @@
   };
   // Preserve generator expressions while formatting literal fractions.
   // Converting e.g. {{n/2}} into KaTeX would break live parameter generation.
-  API.formatTemplateText=value=>text(value).split(/(\{\{[^{}]+\}\})/g).map(part=>
-    part.startsWith('{{')&&part.endsWith('}}')?part:API.formatMath(part)
-  ).join('');
+  API.formatTemplateText=value=>text(value).split(/(\{\{[^{}]+\}\})/g).map(part=>{
+    if(part.startsWith('{{')&&part.endsWith('}}'))return part;
+    const lead=part.match(/^\s*/)?.[0]||'',tail=part.match(/\s*$/)?.[0]||'';
+    const middle=part.slice(lead.length,part.length-tail.length);
+    return lead+API.formatMath(middle)+tail;
+  }).join('');
   API.fingerprint=s=>str(s).normalize('NFC').toLocaleLowerCase('ru')
     .replace(/\\\(|\\\)/g,'').replace(/\\frac\{(\d+)\}\{(\d+)\}/g,'$1/$2')
     .replace(/[«»"'’]/g,'').replace(/\s+/g,' ').trim();
