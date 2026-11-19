@@ -182,7 +182,7 @@
             (r.solution?'<details><summary>Посмотреть решение</summary><p>'+esc(clip(r.solution,1200))+'</p></details>':'')+
             '</span></label>';
       }).join('')+'</div>'+
-      '<label class="mr-xlsx-rights"><input id="mrXlsxRights" type="checkbox"> Подтверждаю право использовать материалы. Все записи будут загружены только как личные черновики, без публикации.</label>'+
+      '<label class="mr-xlsx-rights"><input id="mrXlsxRights" type="checkbox" '+(previewState.rightsConfirmed?'checked':'')+'> Подтверждаю право использовать материалы. Все записи будут загружены только как личные черновики, без публикации.</label>'+
       '<div class="mr-xlsx-actions"><span id="mrXlsxSelected">'+selected.length+' выбрано</span>'+
       '<button type="button" id="mrXlsxApply" '+(!selected.length?'disabled':'')+
       '>Сохранить выбранное в черновики</button></div>';
@@ -205,6 +205,7 @@
       items.filter(x=>x.valid&&x.r.type==='template').forEach(x=>x.selected=true);
       renderPreview();
     };
+    el(box,'#mrXlsxRights').onchange=e=>{previewState.rightsConfirmed=!!e.target.checked};
     el(box,'#mrXlsxApply').onclick=async()=>{
       if(busy)return;
       if(!el(box,'#mrXlsxRights')?.checked)return status('Подтверди право использования внизу списка.',true);
@@ -214,12 +215,15 @@
       busy=true;el(box,'#mrXlsxApply').disabled=true;
       try{
         const result=await importItems(previewState,status);
+        try{await window.MathroomBankAllExercisesV2982?.hydrate?.({force:true,rerender:false})}
+        catch(e){console.warn('[xlsx bank refresh]',e)}
         status('Готово: '+result.added+' новых черновиков, '+result.skipped+
           ' повторов, '+result.topicsAdded+' новых тем. Открой «Черновики», чтобы проверить решения.');
         // Re-preview: uploaded tasks must not be selected for a second write.
         const sb=client(),uid=await teacher(sb);
         const current=await fetchExercises(sb,uid);
         previewState.items=prepare(previewState.data,current);
+        previewState.rightsConfirmed=false;
         renderPreview();
       }catch(err){status('Ошибка импорта: '+String(err?.message||err),true);console.error('[Mathroom XLSX v100]',err)}
       finally{busy=false;const b=document.getElementById('mrXlsxApply');if(b)b.disabled=!previewState?.items.some(x=>x.valid&&x.selected)}
@@ -238,7 +242,7 @@
       const data=readWorkbook(XLSX,book);
       const sb=client(),uid=await teacher(sb);
       const bank=await fetchExercises(sb,uid);
-      previewState={fileName:file.name,data,items:prepare(data,bank)};
+      previewState={fileName:file.name,data,items:prepare(data,bank),rightsConfirmed:false};
       renderPreview();
       status('Файл прочитан. Проверь условия, формулы и решения, затем выбери, что сохранить.');
     }catch(e){previewState=null;const p=document.getElementById('mrXlsxPreview');if(p)p.innerHTML='';
@@ -255,7 +259,7 @@
       '<p>Сначала просмотри задачи, решения и шаблоны. Ничего не публикуется автоматически.</p>'+
       '<p class="mr-xlsx-caption">Листы READY, РЕШЕНИЯ и ШАБЛОНЫ / GENERATORS. Дроби отображаются математически, оригинальный текст сохраняется.</p></div>'+
       '<div><input type="file" id="mrXlsxFileV100" accept=".xlsx,.xls" hidden>'+
-      '<button type="button" id="mrXlsxChooseV100">Выбрать Excel</button></div></div>'+
+      '<button type="button" data-xlsx-button id="mrXlsxChooseV100">Выбрать Excel</button></div></div>'+
       '<div id="mrXlsxImportStatus" role="status" aria-live="polite"></div>'+
       '<div id="mrXlsxPreview"></div>';
     list.parentNode.insertBefore(div,list);
