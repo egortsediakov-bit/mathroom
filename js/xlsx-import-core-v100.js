@@ -23,6 +23,9 @@
   const mathTeX=expression=>{
     let s=text(expression).replace(/[−–—]/g,'-').replace(/×/g,'\\times ')
       .replace(/[·⋅]/g,'\\cdot ').replace(/÷/g,'\\div ');
+    // Parenthesized numerators occur in linear equations: (x-2)/3.
+    s=s.replace(/\(([^()]{1,55})\)\s*\/\s*(\d{1,5})(?!\d)/g,
+      (_,num,den)=>'\\frac{'+num+'}{'+den+'}');
     // Mixed fractions must be recognized before ordinary fractions.
     s=s.replace(/(^|[^\w\d])(\d{1,5})\s+(\d{1,5})\s*\/\s*(\d{1,5})(?!\d)/g,
       (_,prefix,whole,num,den)=>prefix+whole+'\\frac{'+num+'}{'+den+'}');
@@ -38,8 +41,8 @@
     const byLine=s.split('\n').map(line=>{
       // Only a strictly arithmetic tail after ':' gets a single math block.
       // This preserves Russian prose and avoids reinterpreting slashes in dates/URLs.
-      const match=line.match(/^(.+?:\s*)([0-9a-zA-Z()\s,+\-−–—*×÷·⋅/^=]+)([.!?]?)$/u);
-      if(match&&/\b(?:\d+|[xy])\s*\/\s*\d+/.test(match[2])&&
+      const match=line.match(/^(.+?:\s*)([0-9a-zA-Z()\s,:+\-−–—*×÷·⋅/^=]+)([.!?]?)$/u);
+      if(match&&/\/\s*\d+/.test(match[2])&&
          !/https?:|www\./i.test(line)){
         return match[1]+'\\('+mathTeX(match[2].trim())+'\\)'+match[3];
       }
