@@ -594,30 +594,14 @@ function renderTaskBuilder(){
   });
 }
 
+// v102: AI pages are intentionally unavailable. Old saved views redirect to Bank.
 function renderTaskPipeline(){
-  const mod=window.MathroomTaskPipelineV62;
-  if(!mod?.render)return toast('Конвейер задач не загрузился');
-  return mod.render({
-    app,shell,bindShell,S,sb,esc,nl,toast,fail,loadTeacher,renderBank
-  });
+  S.view='bank';
+  return renderBank();
 }
-
 function renderTaskSupply(){
-  const mod=window.MathroomTaskSupplyV89;
-  if(!mod?.render)return toast('Фабрика задач не загрузилась');
-  return mod.render({
-    app,shell,bindShell,S,sb,esc,nl,toast,fail,loadTeacher,isTemplateExercise,
-    openPdf:()=>window.MathroomPdfImportV91?.open?.({
-      S,sb,modal,toast,fail,loadTeacher,openBank:()=>{S.bankLibraryMode='mine';S.view='bank';renderBank()}
-    }),
-    openBank:({focusImport=false}={})=>{
-      S.view='bank';renderBank();
-      if(focusImport)setTimeout(()=>document.querySelector('[data-xlsx-button]')?.scrollIntoView({behavior:'smooth',block:'center'}),350);
-    },
-    openPipeline:(prefill={mode:'review'})=>{
-      S.taskPipelinePrefill=prefill;S.view='task-pipeline';renderTaskPipeline();
-    }
-  });
+  S.view='bank';
+  return renderBank();
 }
 
 function renderTeacher(){
@@ -628,8 +612,7 @@ function renderTeacher(){
   if(S.view==='topics')return S.topic?renderTopic():renderTopics();
   if(S.view==='textbooks')return renderTextbooks();
   if(S.view==='task-builder')return renderTaskBuilder();
-  if(S.view==='task-pipeline')return renderTaskPipeline();
-  if(S.view==='task-supply')return renderTaskSupply();
+  if(S.view==='task-pipeline'||S.view==='task-supply'){S.view='bank';return renderBank();}
   if(S.view==='bank')return renderBank();
   if(S.view==='schedule')return renderSchedule();
   if(S.view==='assignments')return renderAssignments();
@@ -2702,7 +2685,6 @@ function renderBank(){
       <span class="pill">${own.filter(x=>x.kind==='task').length} задач</span>
       <span class="pill">${own.filter(x=>x.kind==='example').length} примеров</span>
       <span class="pill">${builtIn} из готовой базы</span>
-      <button class="btn sm mr-supply-launch" id="openTaskPipeline">✦ Источники и пополнение</button>
       <button class="btn sm" id="openPdfImport">Импорт PDF</button>
       <button class="btn sm mr-bank-draft-shortcut" id="bankOnlyDrafts" type="button" aria-pressed="${!!S.bankDraftOnly}">${S.bankDraftOnly?'✓ Черновики · '+own.filter(x=>x.is_draft).length+' (показаны)':'Черновики · '+own.filter(x=>x.is_draft).length}</button>
       <button class="btn sm mr-smart-set-launch" id="openSmartSet">Собрать комплект</button>
@@ -2730,10 +2712,6 @@ function renderBank(){
     </div>
     <div id="bankList" class="mr-bank-results"></div>`,'Банк задач','Ищите, сохраняйте и используйте задачи на занятиях');
   bindShell();
-  document.getElementById('openTaskPipeline').onclick=()=>{
-    S.view='task-supply';
-    renderTaskSupply();
-  };
   document.getElementById('openPdfImport').onclick=()=>window.MathroomPdfImportV91?.open?.({
     S,sb,modal,toast,fail,loadTeacher,openBank:()=>{S.bankLibraryMode='mine';S.view='bank';renderBank()}
   });
@@ -2862,19 +2840,12 @@ function renderBank(){
     host.innerHTML=`<div class="mr-bank-results-head"><span>Найдено задач: <b>${arr.length}</b></span></div><div class="list mr-personal-library-list">${arr.length?arr.map(x=>{
       const t=(S.topics||[]).find(z=>String(z.id)===String(x.topic_id));
       const visibleTags=exerciseEditableTags(x.tags),published=sharedMaterialForExercise(x.id),view=previewTemplateExercise(x),templated=isTemplateExercise(x);
-      return `<div class="row mr-library-own-row"><div><div class="actions"><span class="pill">${x.kind==='example'?'Пример':'Задача'}</span><span class="pill">${t?.grade||'?'} кл.</span><span class="pill">${diffLabel(x.difficulty)}</span>${templated?'<span class="pill mr-template-pill">↻ генератор</span>':''}${x.category?`<span class="pill">${esc(x.category)}</span>`:''}${x.is_draft?'<span class="pill warn">черновик</span>':''}${published?'<span class="pill good">в общей библиотеке</span>':''}</div><h3>${esc(x.title||(x.kind==='example'?'Пример':'Задача'))}</h3><div class="prewrap">${nl(view.content)}</div><p>${esc(t?.section||'')} · ${esc(t?.title||'')} ${visibleTags.map(z=>'#'+esc(z)).join(' ')} · использован ${x.use_count||0} раз</p></div><div class="actions mr-library-own-actions"><button class="btn sm" data-answer="${x.id}">Ответ</button>${templated?`<button class="btn sm mr-template-variant" data-bank-variants="${x.id}">↻ Варианты</button>`:''}${published?`<button class="btn sm library" data-bank-share="${x.id}">Обновить общую</button><button class="btn sm danger" data-bank-unshare="${x.id}">Убрать из общей</button>`:`<button class="btn sm library" data-bank-share="${x.id}">＋ В общую</button>`}${x.kind==='task'?`<button class="btn sm" data-bank-similar="${x.id}">✦ Похожие</button>`:''}<button class="btn sm" data-bank-edit="${x.id}">Редактировать</button><button class="btn sm danger" data-bank-delete="${x.id}">${x.is_draft?'Удалить черновик':'Удалить'}</button></div></div>`;
+      return `<div class="row mr-library-own-row"><div><div class="actions"><span class="pill">${x.kind==='example'?'Пример':'Задача'}</span><span class="pill">${t?.grade||'?'} кл.</span><span class="pill">${diffLabel(x.difficulty)}</span>${templated?'<span class="pill mr-template-pill">↻ генератор</span>':''}${x.category?`<span class="pill">${esc(x.category)}</span>`:''}${x.is_draft?'<span class="pill warn">черновик</span>':''}${published?'<span class="pill good">в общей библиотеке</span>':''}</div><h3>${esc(x.title||(x.kind==='example'?'Пример':'Задача'))}</h3><div class="prewrap">${nl(view.content)}</div><p>${esc(t?.section||'')} · ${esc(t?.title||'')} ${visibleTags.map(z=>'#'+esc(z)).join(' ')} · использован ${x.use_count||0} раз</p></div><div class="actions mr-library-own-actions"><button class="btn sm" data-answer="${x.id}">Ответ</button>${templated?`<button class="btn sm mr-template-variant" data-bank-variants="${x.id}">↻ Варианты</button>`:''}${published?`<button class="btn sm library" data-bank-share="${x.id}">Обновить общую</button><button class="btn sm danger" data-bank-unshare="${x.id}">Убрать из общей</button>`:`<button class="btn sm library" data-bank-share="${x.id}">＋ В общую</button>`}<button class="btn sm" data-bank-edit="${x.id}">Редактировать</button><button class="btn sm danger" data-bank-delete="${x.id}">${x.is_draft?'Удалить черновик':'Удалить'}</button></div></div>`;
     }).join(''):'<div class="empty">Ничего не найдено.</div>'}</div>`;
     host.querySelectorAll('[data-answer]').forEach(b=>b.onclick=()=>{const e=own.find(x=>String(x.id)===String(b.dataset.answer));if(e)openExerciseAnswerPreview(e)});
     host.querySelectorAll('[data-bank-variants]').forEach(b=>b.onclick=()=>{const e=own.find(x=>String(x.id)===String(b.dataset.bankVariants));if(e)openExerciseVariants(e)});
     host.querySelectorAll('[data-bank-share]').forEach(b=>b.onclick=()=>{const e=own.find(x=>String(x.id)===String(b.dataset.bankShare));if(e)publishExerciseToSharedLibrary(e,{onDone:renderBank})});
     host.querySelectorAll('[data-bank-unshare]').forEach(b=>b.onclick=()=>{const e=own.find(x=>String(x.id)===String(b.dataset.bankUnshare));if(e)unpublishExerciseFromSharedLibrary(e,{onDone:renderBank})});
-    host.querySelectorAll('[data-bank-similar]').forEach(b=>b.onclick=()=>{
-      const e=own.find(x=>String(x.id)===String(b.dataset.bankSimilar));
-      if(!e)return;
-      S.taskPipelinePrefill={mode:'similar',sourceExerciseId:e.id};
-      S.view='task-pipeline';
-      renderTaskPipeline();
-    });
     host.querySelectorAll('[data-bank-edit]').forEach(b=>b.onclick=()=>{const e=own.find(x=>String(x.id)===String(b.dataset.bankEdit));if(e)editExerciseModal(e,{onDone:renderBank})});
     host.querySelectorAll('[data-bank-delete]').forEach(b=>b.onclick=()=>{
       const e=own.find(x=>String(x.id)===String(b.dataset.bankDelete));

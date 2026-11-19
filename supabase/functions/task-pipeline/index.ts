@@ -1,5 +1,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
 
+// v102: reversible hard stop. Re-enable only by an explicit new release.
+const AI_FEATURES_ENABLED = false
 const OPENAI_URL = 'https://api.openai.com/v1/responses'
 const MODEL = Deno.env.get('OPENAI_MODEL') || 'gpt-6-luna'
 const VALIDATOR_MODEL = Deno.env.get('OPENAI_VALIDATOR_MODEL') || MODEL
@@ -350,6 +352,17 @@ ${JSON.stringify(existingForPrompt)}
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors(req) })
   if (req.method !== 'POST') return json(req, { error: 'METHOD_NOT_ALLOWED' }, 405)
+
+  // v102: deny generation, acceptance, and any AI action BEFORE DB or model calls.
+  // Older cached clients and scheduled callers cannot bypass this frontend release.
+  if (!AI_FEATURES_ENABLED) {
+    const body = await req.json().catch(() => ({}))
+    if (String(body?.action || 'health') === 'health') {
+      return json(req, { ok: true, ai_configured: false, ai_disabled: true,
+        reason: 'AI_DISABLED', pipeline_version: 102 })
+    }
+    return json(req, { ok: false, error: 'AI_DISABLED', ai_disabled: true }, 503)
+  }
 
   try {
     const body = await req.json().catch(() => ({}))

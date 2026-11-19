@@ -5,6 +5,8 @@ import { createClient } from 'npm:@supabase/supabase-js@2';
 const URL = Deno.env.get('SUPABASE_URL') || '';
 const SERVICE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
 const MAX_BATCH = 5;
+// v102: disable scheduled AI before secret lookup or network requests.
+const AI_FEATURES_ENABLED = false;
 const reply = (value: unknown, status=200) => new Response(JSON.stringify(value), {
   status, headers: {'content-type':'application/json','cache-control':'no-store'}
 });
@@ -13,6 +15,7 @@ const asInt = (x:unknown, fallback:number) => Number.isFinite(Number(x)) ? Math.
 
 Deno.serve(async req => {
   if(req.method!=='POST')return reply({error:'METHOD_NOT_ALLOWED'},405);
+  if(!AI_FEATURES_ENABLED)return reply({ok:true,skipped:'AI_DISABLED'});
   // Never enable JWT-less access without the Vault-backed header check.
   const token=req.headers.get('x-mr-supply-cron')||'';
   if(!URL||!SERVICE||!token)return reply({error:'UNAUTHORIZED'},401);

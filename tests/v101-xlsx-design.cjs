@@ -8,7 +8,7 @@ const css=fs.readFileSync(path.join(root,'css/xlsx-import-v100.css'),'utf8');
 const source=fs.readFileSync(path.join(root,'js/task-bank-xlsx-import-v100.js'),'utf8');
 const core=fs.readFileSync(path.join(root,'js/xlsx-import-core-v100.js'),'utf8');
 for(const pattern of [
-  /101\.0-xlsx-pro-grid/,
+  /(?:101\.0-xlsx-pro-grid|102\.0-no-ai)/,
   /css\/xlsx-import-v100\.css/,
   /js\/task-bank-xlsx-import-v100\.js/
 ])assert.match(html,pattern);
