@@ -185,3 +185,60 @@
     gap:6px!important;
   }
 }
+
+/* v98: exact-duplicate review, consistent with Kotomatika Pro Grid. */
+.mr-pdf-import .mr-pdf-exact-match {
+  margin:0 0 16px;
+  padding:13px 15px;
+  border:1px solid #ffd2ad;
+  background:#fff9f3;
+  border-radius:12px;
+  min-width:0;
+}
+.mr-pdf-import .mr-pdf-exact-title {
+  font-size:12px;
+  font-weight:800;
+  color:#a94b0a;
+  margin-bottom:8px;
+}
+.mr-pdf-import .mr-pdf-exact-match details {max-width:100%}
+.mr-pdf-import .mr-pdf-exact-match summary {
+  cursor:pointer;
+  color:#9d4308;
+  font-size:12px;
+  font-weight:700;
+  padding:4px 0 8px;
+}
+.mr-pdf-import .mr-pdf-match-info {
+  padding:12px;
+  border:1px solid #edd5c4;
+  background:#fff;
+  border-radius:9px;
+  font-size:12px;
+  line-height:1.55;
+  overflow-wrap:anywhere;
+}
+.mr-pdf-import .mr-pdf-match-info > b {display:block;margin-bottom:4px}
+.mr-pdf-import .mr-pdf-match-info > span {font-size:11px;color:#747474}
+.mr-pdf-import .mr-pdf-match-info > p {margin:7px 0 0;white-space:pre-wrap}
+.mr-pdf-import .mr-pdf-match-actions {
+  display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:10px
+}
+.mr-pdf-import .mr-pdf-match-actions .btn {
+  border-radius:9px!important;
+  border:1px solid #f3ae76!important;
+  background:white!important;
+  color:#b84f0d!important;
+  font-size:12px!important;
+}
+.mr-pdf-import .mr-pdf-match-actions > span {
+  color:#8d6f58;font-size:11px
+}
+:root[data-theme="dark"] .mr-pdf-import .mr-pdf-exact-match {
+  background:#302318;border-color:#6c4325
+}
+:root[data-theme="dark"] .mr-pdf-import .mr-pdf-match-info {
+  background:#1d2126;border-color:#544230
+}
+:root[data-theme="dark"] .mr-pdf-import .mr-pdf-exact-title,
+:root[data-theme="dark"] .mr-pdf-import .mr-pdf-exact-match summary{color:#ffb87e}

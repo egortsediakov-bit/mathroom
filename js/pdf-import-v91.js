@@ -115,10 +115,12 @@
       const panel=q('#pdfTaskResults');
       const total=entries.filter(x=>x.selected&&!x.imported).length;
       const planner=savePlan();
-      const inspection=reviewMode?(window.MathroomPdfDraftsV94?.plan?.(
+      // Inspect all unsaved tasks, including unchecked duplicates. Do not
+      // rely on stale flags produced at PDF-extraction time.
+      const inspection=window.MathroomPdfDraftsV94?.plan?.(
         entries.map((x,i)=>({...x,selected:!x.imported,_originalIndex:i})),
         S.topics||[],S.exercises||[]
-      )||planner):planner;
+      )||planner;
       refreshSaveHint();
       const allTopics=S.topics||[];
       const summary=q('#pdfTaskSummary');
@@ -131,15 +133,30 @@
       panel.innerHTML=visible.map(({x,i})=>{
           if(x.imported)return '<div class="mr-pdf-saved-banner">✓ Сохранено в личные черновики: PDF № '+esc(x.number)+' · страница '+x.page+'</div>';
           const audit=window.MathroomPdfQualityV92?.audit?.(x,(S.exercises||[]).filter(e=>String(e.topic_id)===String(x.topicId)));
-          const issue=inspection.pending.find(p=>reviewMode?p.entry._originalIndex===i:p.entry===x);
-          const duplicate=inspection.duplicates.some(p=>reviewMode?p.entry._originalIndex===i:p.entry===x)||x.duplicate;
+          const issue=inspection.pending.find(p=>p.entry._originalIndex===i);
+          const duplicateHit=inspection.duplicates.find(p=>p.entry._originalIndex===i);
+          const anyMatch=issue?.match||duplicateHit?.match||
+            inspection.ready.find(p=>p.entry._originalIndex===i)?.match||null;
+          const nearMatch=!anyMatch&&audit?.nearDuplicate
+            ?(S.exercises||[]).find(t=>String(t.id)===String(audit.closestId))
+            :null;
           const ready=planner.ready.some(p=>p.entry===x);
-          const statusClass=issue?'needs':duplicate?'duplicate':ready?'ready':'';
-          const statusText=issue?'Нужна проверка':duplicate?'Возможный дубль':ready?'Готово':'Не выбрано';
+          const statusClass=issue?'needs':duplicateHit?'duplicate':ready?'ready':'';
+          const statusText=issue?'Нужна проверка':duplicateHit?'Точный дубль':ready?'Готово':'Не выбрано';
           return '<article class="mr-pdf-task-card">'+
           '<div class="mr-pdf-task-head"><div class="mr-pdf-task-title"><label><input type="checkbox" data-pdf-select="'+i+'" '+(x.selected?'checked':'')+' '+(x.imported?'disabled':'')+'></label><span class="mr-pdf-task-number">'+esc(x.number)+'</span><div>Задача № '+esc(x.number)+'<div class="mr-pdf-task-page">PDF · страница '+x.page+'</div></div><span class="mr-pdf-state '+statusClass+'">'+statusText+'</span></div>'+
           '<div class="mr-pdf-task-actions"><button type="button" class="btn sm mr-pdf-remove-task" data-pdf-discard="'+i+'" title="Убрать из текущей очереди импорта">Удалить из импорта</button></div></div>'+
           (issue?'<div class="mr-pdf-issue">Нужно исправить: '+esc(issue.reason)+'</div>':'')+
+          (anyMatch?'<div class="mr-pdf-exact-match"><div class="mr-pdf-exact-title">Точное совпадение условия '+(anyMatch.kind==='bank'?'с личным банком':'в текущем PDF')+'</div>'+
+            '<details><summary>Показать совпавшую задачу</summary><div class="mr-pdf-match-info"><b>'+esc(anyMatch.title||'Задача')+'</b>'+
+            (anyMatch.kind==='bank'?'<span>'+(anyMatch.draft?'Личный черновик':'Задача из личного банка')+'</span>':'')+
+            '<p>'+esc(String(anyMatch.content||'').slice(0,520))+'</p></div></details>'+
+            '<div class="mr-pdf-match-actions"><button type="button" class="btn sm" data-pdf-override="'+i+'">'+
+            (x.allowDuplicate?'✓ Сохранение отдельной копии разрешено — отменить':'Сохранить как отдельную копию')+'</button>'+
+            '<span>'+(x.allowDuplicate?'Разрешена отдельная копия только для этого задания.':'По умолчанию точные повторы пропускаются.')+'</span></div></div>':'')+
+          (nearMatch?'<div class="mr-pdf-exact-match"><div class="mr-pdf-exact-title">Похожая задача в банке · совпадение '+audit.similarity+'% (сохранение не блокируется)</div>'+
+            '<details><summary>Посмотреть похожее условие</summary><div class="mr-pdf-match-info"><b>'+esc(nearMatch.title||'Задача')+'</b>'+
+            '<p>'+esc(String(nearMatch.content||'').slice(0,520))+'</p></div></details></div>':'')+
           (audit?.warnings?.length?'<div class="mr-pdf-issue"><b>Проверка импорта:</b> '+audit.warnings.map(w=>esc(w)).join('; ')+'</div>':'')+
           '<div class="grid cols2" style="margin:12px 0">'+
             '<div class="field"><label>Класс задачи</label><select data-pdf-grade="'+i+'"><option value="">— Выбери класс —</option>'+grades.map(g=>'<option value="'+g+'" '+(Number(x.grade)===g?'selected':'')+'>'+g+' класс</option>').join('')+'</select></div>'+
@@ -155,6 +172,19 @@
           '</div>'+
         '</article>';
         }).join('');
+      panel.querySelectorAll('[data-pdf-override]').forEach(el=>el.onclick=()=>{
+        const i=Number(el.dataset.pdfOverride),row=entries[i];
+        if(!row||row.imported||busy)return;
+        if(!row.allowDuplicate){
+          if(!confirm('У этого задания совпадает текст с другим. Создать ОТДЕЛЬНЫЙ личный черновик, несмотря на совпадение? Исходная задача останется без изменений.'))return;
+          row.allowDuplicate=true;
+          row.selected=true;
+        }else{
+          row.allowDuplicate=false;
+          row.selected=false;
+        }
+        render();
+      });
       panel.querySelectorAll('[data-pdf-discard]').forEach(el=>el.onclick=()=>{
         const i=Number(el.dataset.pdfDiscard),row=entries[i];
         if(!row||row.imported||busy)return;
@@ -344,7 +374,9 @@
         return toast('Нет готовых задач. Проверь подсказку под списком.');
       }
       const excluded=plan.pending.length+plan.duplicates.length;
+      const intentionalCopies=plan.ready.filter(p=>p.duplicateOverride).length;
       if(!confirm('Сохранить '+plan.ready.length+' готовых задач в ЛИЧНЫЕ ЧЕРНОВИКИ?'+
+        (intentionalCopies?' Среди них намеренно повторяющихся задач: '+intentionalCopies+'.':'')+
         (excluded?' Ещё '+excluded+' задач будет пропущено и останется здесь для исправления.':'')+
         ' Перед публикацией проверь математику и рисунки.'))return;
       if(!reviewMode){
@@ -354,6 +386,7 @@
       }
       busy=true;refreshSaveHint();
       const eligible=plan.ready.map(x=>x.entry);
+      const readyByEntry=new Map(plan.ready.map(item=>[item.entry,item]));
       let inserted=0,issue=null;
       try{
         // Per-task transactions in the UI: on partial failure, completed drafts
@@ -400,6 +433,13 @@
                   capture:image?{rect:cap.rect,width:cap.width,height:cap.height,storage_path:imagePath}:null,
                   quality_warnings:window.MathroomPdfQualityV92?.audit?.(x,
                     (S.exercises||[]).filter(e=>String(e.topic_id)===String(topic.id)))?.warnings||[],
+                  duplicate_review:{
+                    override:!!readyByEntry.get(x)?.duplicateOverride,
+                    match_source:readyByEntry.get(x)?.match?.kind||null,
+                    matched_exercise_id:readyByEntry.get(x)?.match?.kind==='bank'
+                      ?readyByEntry.get(x).match.id||null:null,
+                    confirmed_at:readyByEntry.get(x)?.duplicateOverride?new Date().toISOString():null
+                  },
                   topic_assignment:{
                     method:x.topicMode==='auto'?'automatic-suggestion':x.topicMode==='manual'?'manual-selection':'fallback',
                     selected_topic_id:topic.id,
@@ -427,7 +467,14 @@
             issue=error;break;
           }
         }
-        if(inserted)await loadTeacher();
+        if(inserted){
+          await loadTeacher();
+          // The regular teacher fetch may truncate a >1,000-item bank.
+          // Restore the complete personal bank for the remaining duplicate
+          // review in step 2, without navigating or rerendering the page.
+          try{await window.MathroomBankAllExercisesV2982?.hydrate?.({rerender:false,force:true})}
+          catch(e){console.warn('[Mathroom PDF duplicate refresh]',e)}
+        }
         if(issue){
           state('Сохранено '+inserted+' из '+eligible.length+'. Ошибка у №'+String(eligible[inserted]?.number||'?')+': '+String(issue?.message||issue)+'. Уже сохранённые задачи повторно не добавятся.');
           render();fail(issue);
