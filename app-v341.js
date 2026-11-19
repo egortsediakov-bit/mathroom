@@ -2672,7 +2672,10 @@ function renderTextbooks(){
 function renderBank(){
   const bank=window.MathroomCurriculumBank;
   const isSystemBankTag=z=>String(z).startsWith('mathroom-core-bank-v')||String(z).startsWith('mrseed:');
-  const own=S.exercises||[],shared=S.sharedMaterials||[];
+  // v97: retain the bank view and its current filters when a single item is deleted.
+  // Refresh the array in place rather than rebuilding the entire page.
+  let own=S.exercises||[];
+  const shared=S.sharedMaterials||[];
   const mode=S.bankLibraryMode==='shared'?'shared':'mine';
   const builtIn=own.filter(x=>x.kind==='task'&&(x.tags||[]).some(t=>String(t).startsWith('mathroom-core-bank-v'))).length;
   const categories=[...new Set([...own.map(x=>x.category),...shared.map(x=>x.category)].filter(Boolean))].sort((a,b)=>String(a).localeCompare(String(b),'ru'));
@@ -2701,7 +2704,7 @@ function renderBank(){
       <span class="pill">${builtIn} из готовой базы</span>
       <button class="btn sm mr-supply-launch" id="openTaskPipeline">✦ Источники и пополнение</button>
       <button class="btn sm" id="openPdfImport">Импорт PDF</button>
-      <button class="btn sm mr-bank-draft-shortcut" id="bankOnlyDrafts">${S.bankDraftOnly?'Показать все задачи':'Черновики · '+own.filter(x=>x.is_draft).length}</button>
+      <button class="btn sm mr-bank-draft-shortcut" id="bankOnlyDrafts" type="button" aria-pressed="${!!S.bankDraftOnly}">${S.bankDraftOnly?'✓ Черновики · '+own.filter(x=>x.is_draft).length+' (показаны)':'Черновики · '+own.filter(x=>x.is_draft).length}</button>
       <button class="btn sm mr-smart-set-launch" id="openSmartSet">Собрать комплект</button>
       <button class="btn sm" id="openAdaptiveSet">Подобрать ученику</button>
       <button class="btn sm mr-saved-sets-launch" id="openSavedSets">Мои комплекты</button>
@@ -2767,7 +2770,7 @@ function renderBank(){
   document.getElementById('syncCurriculumBank').onclick=()=>syncCurriculumBank({manual:true});
   document.getElementById('bankReset').onclick=()=>{
     S.bankDraftOnly=false;
-    document.getElementById('bankOnlyDrafts').textContent='Черновики · '+own.filter(x=>x.is_draft).length;
+    refreshDraftUI();
     ['bankSearch','bankKind','bankGrade','bankDiff','bankCat','bankTag'].forEach(id=>{
       const el=document.getElementById(id);
       if(el)el.value='';
@@ -2780,6 +2783,26 @@ function renderBank(){
     renderBank();
   });
 
+  const refreshDraftUI=()=>{
+    const count=own.filter(x=>x.is_draft).length;
+    const button=document.getElementById('bankOnlyDrafts');
+    if(button){
+      button.textContent=S.bankDraftOnly?'✓ Черновики · '+count+' (показаны)':'Черновики · '+count;
+      button.setAttribute('aria-pressed',String(!!S.bankDraftOnly));
+      button.title=S.bankDraftOnly?'Показать все задачи':'Показать только черновики';
+    }
+    // Update visible bank counters without recreating the page: this also
+    // preserves the search text, grade filters and current scroll position.
+    const tasks=own.filter(x=>x.kind==='task').length;
+    const examples=own.filter(x=>x.kind==='example').length;
+    const heroTask=app.querySelector('.mr-bank-hero-stats > div:first-child b');
+    if(heroTask)heroTask.textContent=String(tasks);
+    const myTab=app.querySelector('[data-library-mode="mine"] b');
+    if(myTab)myTab.textContent=String(own.length);
+    const pills=app.querySelectorAll('.mr-bank-summary > .pill');
+    if(pills[0])pills[0].textContent=tasks+' задач';
+    if(pills[1])pills[1].textContent=examples+' примеров';
+  };
   const readFilters=()=>({
     q:document.getElementById('bankSearch').value.trim().toLocaleLowerCase('ru'),
     kind:document.getElementById('bankKind').value,
@@ -2799,6 +2822,7 @@ function renderBank(){
 
   const draw=()=>{
     const f=readFilters(),host=document.getElementById('bankList');
+    refreshDraftUI();
     if(S.bankLibraryMode==='shared'){
       const arr=shared.filter(x=>match(x,f,true));
       host.innerHTML=`<div class="mr-bank-results-head"><span>Найдено материалов: <b>${arr.length}</b></span></div><div class="mr-shared-library-grid">${arr.length?arr.map(x=>{
@@ -2838,7 +2862,18 @@ function renderBank(){
       renderTaskPipeline();
     });
     host.querySelectorAll('[data-bank-edit]').forEach(b=>b.onclick=()=>{const e=own.find(x=>String(x.id)===String(b.dataset.bankEdit));if(e)editExerciseModal(e,{onDone:renderBank})});
-    host.querySelectorAll('[data-bank-delete]').forEach(b=>b.onclick=()=>{const e=own.find(x=>String(x.id)===String(b.dataset.bankDelete));if(e)deleteExerciseRow(e,{onDone:renderBank})});
+    host.querySelectorAll('[data-bank-delete]').forEach(b=>b.onclick=()=>{
+      const e=own.find(x=>String(x.id)===String(b.dataset.bankDelete));
+      if(!e)return;
+      const keepDraftFilter=!!S.bankDraftOnly;
+      deleteExerciseRow(e,{onDone:()=>{
+        // Reload only the data/list. Do not reset the active drafts filter or
+        // navigate to the unfiltered bank after deleting a single draft.
+        S.bankDraftOnly=keepDraftFilter;
+        own=S.exercises||[];
+        if(S.view==='bank' && document.getElementById('bankList'))draw();
+      }});
+    });
     hydrateTaskMedia(host);
   };
   ['bankSearch','bankKind','bankGrade','bankDiff','bankCat','bankTag'].forEach(id=>document.getElementById(id).oninput=draw);
@@ -2848,7 +2883,6 @@ function renderBank(){
       S.bankLibraryMode='mine';
       renderBank();
     }else{
-      document.getElementById('bankOnlyDrafts').textContent=S.bankDraftOnly?'Показать все задачи':'Черновики · '+own.filter(x=>x.is_draft).length;
       draw();
     }
   };
