@@ -24,9 +24,9 @@
     let s=text(expression).replace(/[−–—]/g,'-').replace(/×/g,'\\times ')
       .replace(/[·⋅]/g,'\\cdot ').replace(/÷/g,'\\div ')
       .replace(/²/g,'^{2}').replace(/³/g,'^{3}');
-    s=s.replace(/√\\(([^()]*)\\)/g,(_,part)=>'\\sqrt{'+part+'}')
-      .replace(/√(\\d{1,6})/g,(_,part)=>'\\sqrt{'+part+'}')
-      .replace(/sqrt\\(([^()]*)\\)/gi,(_,part)=>'\\sqrt{'+part+'}');
+    s=s.replace(/√\(([^()]*)\)/g,(_,part)=>'\\sqrt{'+part+'}')
+      .replace(/√(\d{1,6})/g,(_,part)=>'\\sqrt{'+part+'}')
+      .replace(/sqrt\(([^()]*)\)/gi,(_,part)=>'\\sqrt{'+part+'}');
     // Parenthesized numerators occur in linear equations: (x-2)/3.
     s=s.replace(/\(([^()]{1,55})\)\s*\/\s*(\d{1,5})(?!\d)/g,
       (_,num,den)=>'\\frac{'+num+'}{'+den+'}');
