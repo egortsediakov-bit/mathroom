@@ -221,6 +221,8 @@
           '<div class="mr-xlsx-item-bottom">'+
             (r.answer?'<div class="mr-xlsx-answer"><span>ОТВЕТ</span><strong>'+esc(clip(r.answer,180))+'</strong></div>':
               '<span class="mr-xlsx-answer-missing">Ответ не указан</span>')+
+            (r.hints?.length?'<details class="mr-xlsx-solution"><summary>Подсказки ('+r.hints.length+')</summary><div class="mr-xlsx-solution-text">'+
+              r.hints.map((hint,i)=>'<p><b>Подсказка '+(i+1)+':</b> '+esc(clip(hint,1000))+'</p>').join('')+'</div></details>':'')+
             (r.solution?'<details class="mr-xlsx-solution"><summary>'+
               '<span class="mr-xlsx-solution-show">Показать решение</span>'+
               '<span class="mr-xlsx-solution-hide">Скрыть решение</span></summary>'+
@@ -328,7 +330,7 @@
       '<path d="m18 27 5 4 9-11" stroke="#FF6422" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/></svg>'+
       '</div><div class="mr-xlsx-intro-copy"><span class="mr-xlsx-kicker">КОТОМАТИКА / БАНК ЗАДАЧ</span>'+
       '<h3>Импорт Excel</h3>'+
-      '<p>Загружай задания, проверяй решения и сохраняй материалы в личные черновики.</p>'+
+      '<p>Загружай задания, проверяй подсказки и решения, сохраняй материалы в личные черновики. Для подсказок используй столбцы hint_1, hint_2, hint_3 или hints.</p>'+
       '</div></div>'+
       '<div class="mr-xlsx-upload"><input type="file" id="mrXlsxFileV100" accept=".xlsx,.xls" hidden>'+
       '<button type="button" data-xlsx-button id="mrXlsxChooseV100"><span aria-hidden="true">＋</span> Выбрать Excel</button>'+
