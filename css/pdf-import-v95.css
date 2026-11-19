@@ -242,3 +242,22 @@
 }
 :root[data-theme="dark"] .mr-pdf-import .mr-pdf-exact-title,
 :root[data-theme="dark"] .mr-pdf-import .mr-pdf-exact-match summary{color:#ffb87e}
+
+/* v99 — mathematical answer check, separate from PDF extraction warnings. */
+.mr-pdf-import .mr-pdf-math {
+  display:grid;gap:5px;padding:13px 15px;border-radius:12px;
+  border:1px solid var(--mr-pdf-stroke,#e3e6ea);
+  background:var(--bg-alt,#f6f7f8);
+  margin:9px 0 15px;font-size:12px;line-height:1.5;
+}
+.mr-pdf-import .mr-pdf-math b{font-weight:800}
+.mr-pdf-import .mr-pdf-math span{color:var(--muted,#5c6670);overflow-wrap:anywhere}
+.mr-pdf-import .mr-pdf-math[data-status="match"]{background:#eef8f1;border-color:#c5e6ce}
+.mr-pdf-import .mr-pdf-math[data-status="match"] b{color:#247747}
+.mr-pdf-import .mr-pdf-math[data-status="mismatch"]{background:#fff2ed;border-color:#ffb5a4}
+.mr-pdf-import .mr-pdf-math[data-status="mismatch"] b{color:#b52c1c}
+.mr-pdf-import .mr-pdf-math[data-status="missing"]{background:#fff8ec;border-color:#f2d2a5}
+.mr-pdf-import .mr-pdf-math[data-status="missing"] b{color:#a85a0b}
+:root[data-theme="dark"] .mr-pdf-import .mr-pdf-math[data-status="match"]{background:#1b3528;border-color:#355d45}
+:root[data-theme="dark"] .mr-pdf-import .mr-pdf-math[data-status="mismatch"]{background:#3b2420;border-color:#724239}
+:root[data-theme="dark"] .mr-pdf-import .mr-pdf-math[data-status="missing"]{background:#3a2d1e;border-color:#6b4c2a}
