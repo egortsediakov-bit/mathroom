@@ -75,6 +75,15 @@
   API.fingerprint=s=>str(s).normalize('NFC').toLocaleLowerCase('ru')
     .replace(/\\\(|\\\)/g,'').replace(/\\frac\{(\d+)\}\{(\d+)\}/g,'$1/$2')
     .replace(/[«»"'’]/g,'').replace(/\s+/g,' ').trim();
+  // Excel supports either one multiline "hints" cell or three ordered hint columns.
+  // Explicit columns win; blank lines in a multiline cell separate progressive hints.
+  API.readHints=(row,backup)=>{
+    const pick=(...keys)=>text(get(row,...keys)||get(backup,...keys));
+    const numbered=[1,2,3].map(n=>pick('hint_'+n,'hint'+n,'Подсказка '+n,'Подсказка'+n));
+    const chosen=numbered.some(Boolean)?numbered.filter(Boolean):
+      (pick('hints','Подсказки')?pick('hints','Подсказки').split(/\n\s*\n/):[]);
+    return chosen.map(API.formatMath).filter(Boolean).slice(0,3);
+  };
   API.readTask=(row,solutionRow)=>{
     const id=str(get(row,'task_id','Task ID','id'));
     const grade=safeInt(get(row,'grade','Класс','класс'),0);
@@ -82,13 +91,12 @@
     const raw=text(get(row,'task_text','Задание','Условие','condition','body_text'));
     const rawSolution=text(get(row,'solution','Решение','Пошаговое решение')||
       get(solutionRow,'solution','Пошаговое решение','Решение'));
-    const hints=text(get(row,'hints','Подсказки')||get(solutionRow,'hints','Подсказки'));
     return {
       type:'task',id,grade,topic,section:str(get(row,'section','Раздел'))||('Математика '+grade+' класс'),
       original:raw,content:API.formatMath(raw),
       answer:text(get(row,'answer','Ответ','ответ')),
       solution:API.formatMath(rawSolution),
-      hints:hints?hints.split(/\n\s*\n/).map(API.formatMath).filter(Boolean):[],
+      hints:API.readHints(row,solutionRow),
       difficulty:difficulty(get(row,'difficulty','Сложность'),get(row,'difficulty_score','Сложность 1-10')),
       score:number(get(row,'difficulty_score','Сложность 1-10'),5),
       status:str(get(row,'review_status','Статус проверки'))||'REVIEW',
@@ -120,6 +128,7 @@
       original:example||originalTemplate,
       content:API.formatMath(example||originalTemplate),
       answer:exampleAnswer,solution:API.formatMath(originalSolution),
+      hints:API.readHints(row),
       difficulty:difficulty(get(row,'difficulty','Сложность'),get(row,'difficulty_score','Сложность 1-10')),
       note:text(get(row,'Ограничения / проверки','verification_note')),
       source:str(get(row,'source','Источник')),sourceUrl:str(get(row,'source_url','URL')),
