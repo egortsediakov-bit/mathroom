@@ -2658,6 +2658,9 @@ function renderBank(){
   // v97: retain the bank view and its current filters when a single item is deleted.
   // Refresh the array in place rather than rebuilding the entire page.
   let own=S.exercises||[];
+  // Multi-select is local UI state: nothing is deleted until explicit confirmation.
+  const selectedDraftIds=new Set();
+  let draftDeleteBusy=false;
   const shared=S.sharedMaterials||[];
   const mode=S.bankLibraryMode==='shared'?'shared':'mine';
   const builtIn=own.filter(x=>x.kind==='task'&&(x.tags||[]).some(t=>String(t).startsWith('mathroom-core-bank-v'))).length;
@@ -2837,11 +2840,80 @@ function renderBank(){
     }
 
     const arr=own.filter(x=>match(x,f,false));
-    host.innerHTML=`<div class="mr-bank-results-head"><span>Найдено задач: <b>${arr.length}</b></span></div><div class="list mr-personal-library-list">${arr.length?arr.map(x=>{
+    const drafts=arr.filter(x=>x.is_draft===true);
+    const selectionBar=S.bankDraftOnly?
+      `<div class="mr-bank-draft-bulk" role="group" aria-label="Массовые действия с черновиками">
+        <span>Выбрано черновиков: <b id="mrDraftSelectedCount">${selectedDraftIds.size}</b></span>
+        <button class="btn sm" type="button" id="mrDraftSelectAll" ${draftDeleteBusy?'disabled':''}>✓ Выбрать все черновики</button>
+        <button class="btn sm" type="button" id="mrDraftSelectVisible" ${drafts.length?'':'disabled'}>Выбрать найденные (${drafts.length})</button>
+        <button class="btn sm" type="button" id="mrDraftClear" ${selectedDraftIds.size?'':'disabled'}>Снять выделение</button>
+        <button class="btn sm danger" type="button" id="mrDraftDeleteSelected" ${selectedDraftIds.size&&!draftDeleteBusy?'':'disabled'}>Удалить выбранные (${selectedDraftIds.size})</button>
+      </div>`:'';
+    host.innerHTML=`<div class="mr-bank-results-head"><span>Найдено задач: <b>${arr.length}</b></span></div>${selectionBar}<div class="list mr-personal-library-list">${arr.length?arr.map(x=>{
       const t=(S.topics||[]).find(z=>String(z.id)===String(x.topic_id));
       const visibleTags=exerciseEditableTags(x.tags),published=sharedMaterialForExercise(x.id),view=previewTemplateExercise(x),templated=isTemplateExercise(x);
-      return `<div class="row mr-library-own-row"><div><div class="actions"><span class="pill">${x.kind==='example'?'Пример':'Задача'}</span><span class="pill">${t?.grade||'?'} кл.</span><span class="pill">${diffLabel(x.difficulty)}</span>${templated?'<span class="pill mr-template-pill">↻ генератор</span>':''}${x.category?`<span class="pill">${esc(x.category)}</span>`:''}${x.is_draft?'<span class="pill warn">черновик</span>':''}${published?'<span class="pill good">в общей библиотеке</span>':''}</div><h3>${esc(x.title||(x.kind==='example'?'Пример':'Задача'))}</h3><div class="prewrap">${nl(view.content)}</div><p>${esc(t?.section||'')} · ${esc(t?.title||'')} ${visibleTags.map(z=>'#'+esc(z)).join(' ')} · использован ${x.use_count||0} раз</p></div><div class="actions mr-library-own-actions"><button class="btn sm" data-answer="${x.id}">Ответ</button>${templated?`<button class="btn sm mr-template-variant" data-bank-variants="${x.id}">↻ Варианты</button>`:''}${published?`<button class="btn sm library" data-bank-share="${x.id}">Обновить общую</button><button class="btn sm danger" data-bank-unshare="${x.id}">Убрать из общей</button>`:`<button class="btn sm library" data-bank-share="${x.id}">＋ В общую</button>`}<button class="btn sm" data-bank-edit="${x.id}">Редактировать</button><button class="btn sm danger" data-bank-delete="${x.id}">${x.is_draft?'Удалить черновик':'Удалить'}</button></div></div>`;
+      return `<div class="row mr-library-own-row">${S.bankDraftOnly&&x.is_draft===true?`<label class="mr-draft-choice" title="Выбрать черновик"><input type="checkbox" data-draft-select="${esc(String(x.id))}" aria-label="Выбрать черновик ${esc(x.title||'задача')}" ${selectedDraftIds.has(String(x.id))?'checked':''}><span></span></label>`:''}<div><div class="actions"><span class="pill">${x.kind==='example'?'Пример':'Задача'}</span><span class="pill">${t?.grade||'?'} кл.</span><span class="pill">${diffLabel(x.difficulty)}</span>${templated?'<span class="pill mr-template-pill">↻ генератор</span>':''}${x.category?`<span class="pill">${esc(x.category)}</span>`:''}${x.is_draft?'<span class="pill warn">черновик</span>':''}${published?'<span class="pill good">в общей библиотеке</span>':''}</div><h3>${esc(x.title||(x.kind==='example'?'Пример':'Задача'))}</h3><div class="prewrap">${nl(view.content)}</div><p>${esc(t?.section||'')} · ${esc(t?.title||'')} ${visibleTags.map(z=>'#'+esc(z)).join(' ')} · использован ${x.use_count||0} раз</p></div><div class="actions mr-library-own-actions"><button class="btn sm" data-answer="${x.id}">Ответ</button>${templated?`<button class="btn sm mr-template-variant" data-bank-variants="${x.id}">↻ Варианты</button>`:''}${published?`<button class="btn sm library" data-bank-share="${x.id}">Обновить общую</button><button class="btn sm danger" data-bank-unshare="${x.id}">Убрать из общей</button>`:`<button class="btn sm library" data-bank-share="${x.id}">＋ В общую</button>`}<button class="btn sm" data-bank-edit="${x.id}">Редактировать</button><button class="btn sm danger" data-bank-delete="${x.id}">${x.is_draft?'Удалить черновик':'Удалить'}</button></div></div>`;
     }).join(''):'<div class="empty">Ничего не найдено.</div>'}</div>`;
+    // Select all from the database, not just the first rendered page.
+    host.querySelectorAll('[data-draft-select]').forEach(c=>c.onchange=()=>{
+      if(c.checked)selectedDraftIds.add(c.dataset.draftSelect);
+      else selectedDraftIds.delete(c.dataset.draftSelect);
+      draw();
+    });
+    host.querySelector('#mrDraftSelectVisible')?.addEventListener('click',()=>{
+      drafts.forEach(x=>selectedDraftIds.add(String(x.id)));
+      draw();
+    });
+    host.querySelector('#mrDraftClear')?.addEventListener('click',()=>{selectedDraftIds.clear();draw()});
+    host.querySelector('#mrDraftSelectAll')?.addEventListener('click',async()=>{
+      if(draftDeleteBusy)return;
+      draftDeleteBusy=true;
+      const button=host.querySelector('#mrDraftSelectAll');
+      if(button){button.disabled=true;button.textContent='Выбираем черновики…'}
+      try{
+        const ids=[];
+        for(let offset=0;offset<100000;offset+=500){
+          const {data,error}=await sb.from('exercises').select('id')
+            .eq('teacher_id',S.user.id).eq('is_draft',true)
+            .order('id').range(offset,offset+499);
+          if(error)throw error;
+          ids.push(...(data||[]).map(x=>String(x.id)));
+          if(!data||data.length<500)break;
+          if(offset>=99500)throw new Error('Слишком много черновиков — массовая операция остановлена');
+        }
+        selectedDraftIds.clear();
+        ids.forEach(id=>selectedDraftIds.add(id));
+        toast('Выбрано черновиков: '+ids.length);
+      }catch(error){fail(error)}
+      finally{draftDeleteBusy=false;draw()}
+    });
+    host.querySelector('#mrDraftDeleteSelected')?.addEventListener('click',async()=>{
+      if(draftDeleteBusy||!selectedDraftIds.size)return;
+      const ids=[...selectedDraftIds],count=ids.length;
+      if(!confirm('Удалить '+count+' выбранных черновиков? Это действие нельзя отменить. Опубликованные материалы не будут затронуты.'))return;
+      const phrase=prompt('Для окончательного подтверждения напиши: УДАЛИТЬ '+count);
+      if(phrase!=='УДАЛИТЬ '+count){toast('Удаление отменено');return}
+      draftDeleteBusy=true;
+      let removed=0,problem=null;
+      try{
+        for(let offset=0;offset<ids.length;offset+=50){
+          const chunk=ids.slice(offset,offset+50);
+          const {data,error}=await sb.from('exercises').delete()
+            .eq('teacher_id',S.user.id).eq('is_draft',true)
+            .in('id',chunk).select('id');
+          if(error){problem=error;break}
+          const deleted=new Set((data||[]).map(x=>String(x.id)));
+          // Never remove a card from the UI unless its deletion was confirmed.
+          removed+=deleted.size;
+          for(const id of deleted)selectedDraftIds.delete(id);
+          own=own.filter(x=>!deleted.has(String(x.id)));
+          S.exercises=own;
+        }
+      }catch(error){problem=error}
+      finally{draftDeleteBusy=false;draw()}
+      if(problem)fail(problem);
+      toast('Удалено черновиков: '+removed+(problem?' · часть не удалена':''));
+    });
     host.querySelectorAll('[data-answer]').forEach(b=>b.onclick=()=>{const e=own.find(x=>String(x.id)===String(b.dataset.answer));if(e)openExerciseAnswerPreview(e)});
     host.querySelectorAll('[data-bank-variants]').forEach(b=>b.onclick=()=>{const e=own.find(x=>String(x.id)===String(b.dataset.bankVariants));if(e)openExerciseVariants(e)});
     host.querySelectorAll('[data-bank-share]').forEach(b=>b.onclick=()=>{const e=own.find(x=>String(x.id)===String(b.dataset.bankShare));if(e)publishExerciseToSharedLibrary(e,{onDone:renderBank})});
