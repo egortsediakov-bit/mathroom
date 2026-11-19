@@ -15,6 +15,10 @@ assert.equal(formatted,'Вычислите: \\(2\\frac{1}{6} - \\frac{5}{9}\\).'
 assert.equal(api.formatMath('Решите уравнение: (x − 2)/3 + (x + 1)/2 = 7.'),
   'Решите уравнение: \\(\\frac{x - 2}{3} + \\frac{x + 1}{2} = 7\\).');
 assert.equal(api.formatMath('https://school.ru/2026/2027'),'https://school.ru/2026/2027');
+const templateText=api.formatTemplateText('В библиотеке было {{n}} книг, выдали 1/3 и вернули {{n/15}}.');
+assert.ok(templateText.includes('было {{n}} книг'),'spaces before and after placeholders kept');
+assert.ok(templateText.includes('\\frac{1}{3}'),'literal fraction in a generator is formatted');
+assert.ok(templateText.includes('{{n/15}}'),'formula inside placeholder must remain editable');
 assert.equal(api.formatMath('Вычислите: √(81) + 2².'),
   'Вычислите: \\(\\sqrt{81} + 2^{2}\\).');
 assert.equal(api.formatMath('Решите уравнение: 5x − 7 = 18.'),
