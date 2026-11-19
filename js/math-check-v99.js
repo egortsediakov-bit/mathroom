@@ -96,7 +96,7 @@
     const s=String(content??'').trim();
     if(s.length>350||!s||/\n/.test(s)||/\b(?:рисунк|таблиц|график|чертеж|чертёж|схем|см\.|площад|корн)/i.test(s))
       return null;
-    const eq=s.match(/^(?:решите\s+(?:линейное\s+)?уравнение|найдите\s+корень\s+уравнения)\s*[:—-]?\s*(.+)$/iu);
+    const eq=s.match(/^(?:решите\s+(?:линейное\s+)?уравнение|найдите\s+корень\s+уравнения)\s*[:—]?\s*(.+)$/iu);
     if(eq){
       const body=cleanBody(eq[1]),pieces=body.split('=');
       if(pieces.length!==2)return null;
@@ -109,7 +109,7 @@
         return {kind:'linear-equation',value:x};
       }catch{return null}
     }
-    const arithmetic=s.match(/^(?:вычислите(?:\s+значение)?(?:\s+выражения)?|найдите\s+значение(?:\s+выражения)?|чему\s+равно)\s*[:—-]?\s*(.+)$/iu);
+    const arithmetic=s.match(/^(?:вычислите(?:\s+значение)?(?:\s+выражения)?|найдите\s+значение(?:\s+выражения)?|чему\s+равно)\s*[:—]?\s*(.+)$/iu);
     if(!arithmetic)return null;
     try{
       const v=solveExpression(cleanBody(arithmetic[1]),false);
