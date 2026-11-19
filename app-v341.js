@@ -2783,6 +2783,20 @@ function renderBank(){
     renderBank();
   });
 
+  const reconcileDeletedBankRow=(deletedId,previousRows,reloadedRows)=>{
+    // loadTeacher may receive only the first 1,000 exercise records
+    // (PostgREST's default page size). Keep the complete bank that was
+    // already shown and merge fresh records into it, excluding ONLY the
+    // successfully deleted exercise.
+    const byId=new Map();
+    for(const row of previousRows||[]){
+      if(String(row.id)!==String(deletedId))byId.set(String(row.id),row);
+    }
+    for(const row of reloadedRows||[]){
+      if(String(row.id)!==String(deletedId))byId.set(String(row.id),row);
+    }
+    return [...byId.values()];
+  };
   const refreshDraftUI=()=>{
     const count=own.filter(x=>x.is_draft).length;
     const button=document.getElementById('bankOnlyDrafts');
@@ -2866,11 +2880,13 @@ function renderBank(){
       const e=own.find(x=>String(x.id)===String(b.dataset.bankDelete));
       if(!e)return;
       const keepDraftFilter=!!S.bankDraftOnly;
+      const beforeDeletion=own.slice();
       deleteExerciseRow(e,{onDone:()=>{
-        // Reload only the data/list. Do not reset the active drafts filter or
-        // navigate to the unfiltered bank after deleting a single draft.
+        // loadTeacher() can return at most the first 1000 records; don't
+        // replace the full visible list with a truncated response.
+        own=reconcileDeletedBankRow(e.id,beforeDeletion,S.exercises||[]);
+        S.exercises=own;
         S.bankDraftOnly=keepDraftFilter;
-        own=S.exercises||[];
         if(S.view==='bank' && document.getElementById('bankList'))draw();
       }});
     });
