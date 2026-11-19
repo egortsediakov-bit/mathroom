@@ -22,7 +22,11 @@
   };
   const mathTeX=expression=>{
     let s=text(expression).replace(/[−–—]/g,'-').replace(/×/g,'\\times ')
-      .replace(/[·⋅]/g,'\\cdot ').replace(/÷/g,'\\div ');
+      .replace(/[·⋅]/g,'\\cdot ').replace(/÷/g,'\\div ')
+      .replace(/²/g,'^{2}').replace(/³/g,'^{3}');
+    s=s.replace(/√\\(([^()]*)\\)/g,(_,part)=>'\\sqrt{'+part+'}')
+      .replace(/√(\\d{1,6})/g,(_,part)=>'\\sqrt{'+part+'}')
+      .replace(/sqrt\\(([^()]*)\\)/gi,(_,part)=>'\\sqrt{'+part+'}');
     // Parenthesized numerators occur in linear equations: (x-2)/3.
     s=s.replace(/\(([^()]{1,55})\)\s*\/\s*(\d{1,5})(?!\d)/g,
       (_,num,den)=>'\\frac{'+num+'}{'+den+'}');
@@ -41,13 +45,16 @@
     const byLine=s.split('\n').map(line=>{
       // Only a strictly arithmetic tail after ':' gets a single math block.
       // This preserves Russian prose and avoids reinterpreting slashes in dates/URLs.
-      const match=line.match(/^(.+?:\s*)([0-9a-zA-Z()\s,:+\-−–—*×÷·⋅/^=]+)([.!?]?)$/u);
-      if(match&&/\/\s*\d+/.test(match[2])&&
-         !/https?:|www\./i.test(line)){
+      const match=line.match(/^(.+?:\s*)([0-9a-zA-Z()\s,:+\-−–—*×÷·⋅/^=²³√]+)([.!?]?)$/u);
+      if(match&&/[\/^=²³√]/.test(match[2])&&!/https?:|www\./i.test(line)){
         return match[1]+'\\('+mathTeX(match[2].trim())+'\\)'+match[3];
       }
+      // Standalone expressions (for example a line from a worked solution).
+      const bare=line.match(/^([0-9a-zA-Z()\s,:+\-−–—*×÷·⋅/^=²³√]+)([.!?]?)$/u);
+      if(bare&&/[\/^=²³√]/.test(bare[1])&&!/https?:|www\./i.test(line))
+        return '\\('+mathTeX(bare[1].trim())+'\\)'+bare[2];
       // Fallback: replace only standalone fractions; all other prose stays intact.
-      return line.replace(/(^|[^\w\\])(\d{1,5}\s+)?(\d{1,5}|[xy])\s*\/\s*(\d{1,5})(?!\d)/g,
+      return line.replace(/(^|[^\w\\])(\d{1,5}\s+)?(\d{1,5}|[a-zA-Z])\s*\/\s*(\d{1,5})(?!\d)/g,
         (_,prefix,whole,num,den)=>{
           const original=(whole||'')+num+'/'+den;
           // Bare years and date-like values are not mathematical fractions.
