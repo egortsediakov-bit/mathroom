@@ -10,9 +10,9 @@ const html=read('index.html'),build=read('build.json');
 const pipeline=read('supabase/functions/task-pipeline/index.ts');
 const worker=read('supabase/functions/task-supply-worker/index.ts');
 
-assert.match(build,/10(?:2\.0-no-ai|3\.0-xlsx-hints|4\.0-draft-bulk)/);
-assert.match(html,/app-v341\.js\?v=10(?:2\.0-no-ai|3\.0-xlsx-hints|4\.0-draft-bulk)/);
-assert.match(html,/js\/task-builder-v60\.js\?v=10(?:2\.0-no-ai|3\.0-xlsx-hints|4\.0-draft-bulk)/);
+assert.match(build,/10(?:2\.0-no-ai|3\.0-xlsx-hints|4\.0-draft-bulk|5\.0-quick-room)/);
+assert.match(html,/app-v341\.js\?v=10(?:2\.0-no-ai|3\.0-xlsx-hints|4\.0-draft-bulk|5\.0-quick-room)/);
+assert.match(html,/js\/task-builder-v60\.js\?v=10(?:2\.0-no-ai|3\.0-xlsx-hints|4\.0-draft-bulk|5\.0-quick-room)/);
 assert.doesNotMatch(html,/task-pipeline-v62\.(?:js|css)/);
 assert.doesNotMatch(html,/task-supply-v89\.js/);
 
