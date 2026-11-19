@@ -1,0 +1,22 @@
+/* Быстрая комната (v105) */
+.modal.mr-qr-modal{max-width:560px;width:calc(100% - 24px)}
+.mr-qr h2{margin:6px 0 8px}
+.mr-qr>.muted{margin:0 0 16px;line-height:1.5}
+.mr-qr-tabs{display:inline-flex;gap:4px;padding:4px;border-radius:12px;background:var(--soft,#f2f0eb);margin-bottom:14px}
+.mr-qr-tabs button{border:0;background:transparent;border-radius:9px;padding:9px 14px;font:inherit;font-weight:700;cursor:pointer;color:inherit}
+.mr-qr-tabs button.active{background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.08)}
+.mr-qr-search{width:100%;box-sizing:border-box;margin-bottom:10px}
+.mr-qr-list{display:grid;gap:6px;max-height:320px;overflow:auto;padding-right:2px}
+.mr-qr-student{display:flex;align-items:center;gap:12px;padding:10px 12px;border:1px solid var(--line,#e6e3dc);border-radius:14px;cursor:pointer;background:#fff}
+.mr-qr-student[hidden]{display:none}
+.mr-qr-student input{position:absolute;opacity:0;pointer-events:none}
+.mr-qr-student:has(input:checked){border-color:#ff5b0a;background:#fff4ee;box-shadow:0 0 0 2px rgba(255,91,10,.15)}
+.mr-qr-student b{display:block}
+.mr-qr-student small{color:var(--muted,#7a7a7a)}
+.mr-qr-avatar{width:36px;height:36px;flex:none;border-radius:50%;display:grid;place-items:center;background:#ff5b0a;color:#fff;font-weight:800}
+.mr-qr-link{display:flex;gap:8px;margin:4px 0 12px}
+.mr-qr-link input{flex:1;min-width:0;font-size:14px}
+.mr-qr-share{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+.mr-qr-share .btn{text-decoration:none}
+.mr-qr .actions{margin-top:16px}
+@media(max-width:560px){.mr-qr-link{flex-direction:column}.mr-qr-share .btn{flex:1;text-align:center}}

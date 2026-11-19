@@ -725,7 +725,7 @@ function renderDashboard(){
       }).join('')}</div>`:`<div class="mr-dash-calm"><b>На сегодня занятий нет</b><span>Можно спокойно готовиться к следующему уроку или создать новый.</span></div>`}
     </section>`;
 
-  const dashboardActions=`<div class="mr-dash-top-actions mr-topbar-tools"><button class="mr-dash-primary" id="mrDashCreateNow">${iPlus}Создать урок сейчас</button><button class="mr-dash-secondary" id="mrDashHelp">?&nbsp;&nbsp;Инструкция</button></div>`;
+  const dashboardActions=`<div class="mr-dash-top-actions mr-topbar-tools"><button class="mr-dash-primary" id="mrDashQuickRoom">${iPlay}Быстрая комната</button><button class="mr-dash-secondary" id="mrDashCreateNow">${iPlus}Урок по расписанию</button><button class="mr-dash-secondary" id="mrDashHelp">?&nbsp;&nbsp;Инструкция</button></div>`;
   app.innerHTML=shell(`<div class="mr-dashboard"><div class="mr-dash-grid">${nextHtml}${attentionHtml}</div>${todayHtml}</div>`,title,'Хорошего дня и продуктивных уроков!',dashboardActions);
   bindShell();
 
@@ -738,6 +738,7 @@ function renderDashboard(){
       if(++tries>40)clearInterval(timer);
     },80);
   };
+  document.getElementById('mrDashQuickRoom')?.addEventListener('click',()=>openQuickRoom());
   document.getElementById('mrDashCreateNow')?.addEventListener('click',openScheduleCreator);
   document.getElementById('mrDashCreateEmpty')?.addEventListener('click',openScheduleCreator);
   document.getElementById('mrDashHelp')?.addEventListener('click',()=>document.getElementById('sidebarHelp')?.click());
@@ -747,6 +748,88 @@ function renderDashboard(){
   document.querySelectorAll('[data-dash-topic]').forEach(b=>b.addEventListener('click',()=>{S.topic=(S.topics||[]).find(x=>String(x.id)===String(b.dataset.dashTopic))||null;if(S.topic){S.view='topics';renderTeacher()}}));
   document.querySelectorAll('[data-dash-start]').forEach(b=>b.addEventListener('click',async()=>{const l=(S.lessons||[]).find(x=>String(x.id)===String(b.dataset.dashStart));if(l)await startLesson(l)}));
 }
+
+/* ===== Быстрая комната (v105): урок без темы и расписания — ученик, ссылка, общая доска ===== */
+function quickRoomInviteModal(st){
+  const link=studentLink(st);
+  const text=`${st.name||'Привет'}, подключайся к уроку математики: ${link}`;
+  const m=modal(`<div class="mr-qr">
+    <span class="koto-eyebrow">КОМНАТА ГОТОВА</span>
+    <h2>Пригласите ученика</h2>
+    <p class="muted">Отправьте эту ссылку ученику${st.name?` (${esc(st.name)})`:''}. По ней он сразу попадает на урок: общая доска и видеосвязь — без логина и пароля.</p>
+    <div class="mr-qr-link"><input id="mrQrLink" readonly value="${esc(link)}"><button class="btn primary" id="mrQrCopy" type="button">Копировать</button></div>
+    <div class="mr-qr-share">
+      <a class="btn" target="_blank" rel="noopener" href="https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent((st.name||'Привет')+', подключайся к уроку математики')}">Отправить в Telegram</a>
+      <a class="btn" target="_blank" rel="noopener" href="https://wa.me/?text=${encodeURIComponent(text)}">Отправить в WhatsApp</a>
+    </div>
+    <p class="small muted">Ученик может свободно писать на доске. Ограничить его можно в настройках доски: «Режим ученика».</p>
+    <div class="actions"><button class="btn primary" id="mrQrDone" type="button">Перейти к доске</button></div>
+  </div>`,'mr-qr-modal');
+  m.querySelector('#mrQrCopy').onclick=async()=>{await copyText(link);toast('Ссылка скопирована');m.querySelector('#mrQrCopy').textContent='Скопировано ✓'};
+  m.querySelector('#mrQrLink').onclick=e=>e.target.select();
+  m.querySelector('#mrQrDone').onclick=()=>m.remove();
+  return m;
+}
+function openQuickRoom(){
+  const students=(S.students||[]).filter(x=>x.active!==false).sort((a,b)=>String(a.name||'').localeCompare(String(b.name||''),'ru'));
+  const row=s=>`<label class="mr-qr-student" data-qr-name="${esc(String(s.name||'').toLowerCase())}"><input type="radio" name="mrQrStudent" value="${esc(s.id)}"><span class="mr-qr-avatar">${esc(String(s.name||'У').trim().charAt(0).toUpperCase())}</span><span><b>${esc(s.name||'Ученик')}</b><small>${s.grade?esc(s.grade)+' класс':''}${s.group_name?' · '+esc(s.group_name):''}</small></span></label>`;
+  const m=modal(`<form class="mr-qr" id="mrQrForm">
+    <span class="koto-eyebrow">БЫСТРАЯ КОМНАТА</span>
+    <h2>Новый урок прямо сейчас</h2>
+    <p class="muted">Без темы и расписания: выберите ученика — откроется общая доска, а ссылку для ученика вы сразу сможете отправить.</p>
+    <div class="mr-qr-tabs" role="tablist"><button type="button" class="active" data-qr-tab="existing">Мой ученик</button><button type="button" data-qr-tab="new">Новый ученик</button></div>
+    <div data-qr-pane="existing">
+      ${students.length?`<input class="mr-qr-search" id="mrQrSearch" placeholder="Поиск по имени" autocomplete="off"><div class="mr-qr-list">${students.map(row).join('')}</div>`:`<p class="muted">Учеников пока нет — добавьте нового во вкладке «Новый ученик».</p>`}
+    </div>
+    <div data-qr-pane="new" hidden>
+      <div class="field"><label>Имя ученика</label><input id="mrQrName" placeholder="Например, Анна" autocomplete="off"></div>
+      <div class="field"><label>Класс</label><select id="mrQrGrade">${Array.from({length:11},(_,i)=>`<option value="${i+1}" ${i+1===7?'selected':''}>${i+1} класс</option>`).join('')}</select></div>
+      <p class="small muted">Ученик появится в разделе «Ученики» с постоянной личной ссылкой.</p>
+    </div>
+    <div class="actions"><button class="btn primary" type="submit" id="mrQrCreate">Создать комнату</button><button class="btn" type="button" id="mrQrCancel">Отмена</button></div>
+  </form>`,'mr-qr-modal');
+  let tab=students.length?'existing':'new';
+  const setTab=v=>{tab=v;m.querySelectorAll('[data-qr-tab]').forEach(b=>b.classList.toggle('active',b.dataset.qrTab===v));m.querySelectorAll('[data-qr-pane]').forEach(p=>p.hidden=p.dataset.qrPane!==v);if(v==='new')setTimeout(()=>m.querySelector('#mrQrName')?.focus(),0)};
+  setTab(tab);
+  m.querySelectorAll('[data-qr-tab]').forEach(b=>b.onclick=()=>setTab(b.dataset.qrTab));
+  m.querySelector('#mrQrSearch')?.addEventListener('input',e=>{const q=e.target.value.trim().toLowerCase();m.querySelectorAll('.mr-qr-student').forEach(r=>r.hidden=!!q&&!r.dataset.qrName.includes(q))});
+  m.querySelector('#mrQrCancel').onclick=()=>m.remove();
+  m.querySelector('#mrQrForm').onsubmit=async e=>{
+    e.preventDefault();
+    const btn=m.querySelector('#mrQrCreate');
+    let st=null;
+    if(tab==='existing'){
+      const id=m.querySelector('input[name="mrQrStudent"]:checked')?.value;
+      if(!id)return toast('Выберите ученика');
+      st=S.students.find(x=>String(x.id)===String(id));
+    }else{
+      const name=m.querySelector('#mrQrName').value.trim();
+      if(!name)return toast('Укажите имя ученика');
+      btn.disabled=true;btn.textContent='Создаём…';
+      const {data,error}=await sb.from('students').insert({teacher_id:S.user.id,name,grade:Number(m.querySelector('#mrQrGrade').value),group_name:'',access_token:token()}).select('*').single();
+      if(error){btn.disabled=false;btn.textContent='Создать комнату';return fail(error)}
+      st=data;
+    }
+    if(!st)return toast('Ученик не найден');
+    btn.disabled=true;btn.textContent='Открываем…';
+    try{
+      let lesson=(S.lessons||[]).find(x=>String(x.student_id)===String(st.id)&&x.status==='in_progress');
+      if(!lesson){
+        const {data,error}=await sb.from('lessons').insert({teacher_id:S.user.id,student_id:st.id,topic_id:null,status:'in_progress',started_at:new Date().toISOString(),duration_minutes:60}).select('*,students(name,grade),topics(title)').single();
+        if(error)throw error;
+        lesson=data;
+        // в быстрой комнате ученик сразу может свободно писать на доске
+        try{localStorage.setItem(`mathroom.board.classroom.${lesson.id}`,JSON.stringify({mode:'open',follow:true}))}catch{}
+      }else toast('У ученика уже идёт урок — открываем его');
+      await loadTeacher();
+      st=S.students.find(x=>String(x.id)===String(st.id))||st;
+      m.remove();
+      await startLesson(lesson);
+      quickRoomInviteModal(st);
+    }catch(err){btn.disabled=false;btn.textContent='Создать комнату';fail(err)}
+  };
+}
+window.MathroomQuickRoom={open:openQuickRoom,invite:quickRoomInviteModal};
 function renderStudents(){
   const all=(S.students||[]).slice();
   const classes=[...new Set(all.map(s=>Number(s.grade)).filter(Boolean))].sort((a,b)=>a-b);
@@ -3221,7 +3304,7 @@ async function renderLesson(){
     if(makeCurrent)await setCurrent(q);
     else{toast(forceVariant&&templated?'Новый вариант добавлен в очередь':'Добавлено в очередь');renderLesson()}
   };
-  document.getElementById('leaveLesson').onclick=()=>{forgetActiveLesson();S.activeLesson=null;S.view='dashboard';renderTeacher()};document.getElementById('copyLessonLink').onclick=async()=>{await copyText(studentLink(st));toast('Ссылка скопирована')};const theoryBoardBtn=document.getElementById('theoryBoard');if(theoryBoardBtn&&realTopic)theoryBoardBtn.onclick=()=>sendTheoryToBoard(ctrl,realTopic);
+  document.getElementById('leaveLesson').onclick=()=>{forgetActiveLesson();S.activeLesson=null;S.view='dashboard';renderTeacher()};document.getElementById('copyLessonLink').onclick=()=>quickRoomInviteModal(st);const theoryBoardBtn=document.getElementById('theoryBoard');if(theoryBoardBtn&&realTopic)theoryBoardBtn.onclick=()=>sendTheoryToBoard(ctrl,realTopic);
   document.querySelectorAll('[data-lesson-source-open]').forEach(b=>b.onclick=()=>{const link=lessonSources.find(x=>String(x.id)===String(b.dataset.lessonSourceOpen));if(link?.textbook)openTextbook(link.textbook,Number(link.page_from)||0)});
   document.querySelectorAll('[data-lesson-source-board]').forEach(b=>b.onclick=()=>{const link=lessonSources.find(x=>String(x.id)===String(b.dataset.lessonSourceBoard));if(link)textbookPagesToBoardModal(link,{controller:ctrl})});
   document.querySelectorAll('[data-to-board]').forEach(b=>b.onclick=()=>{const x=S.exercises.find(z=>z.id===b.dataset.toBoard);if(!x)return;const inst=isTemplateExercise(x)?previewTemplateExercise(x):instantiateExercise(x);ctrl.addText(`${x.title||'Задача'}\n${inst.content}`,{fontSize:25});sb.from('exercises').update({use_count:(x.use_count||0)+1,last_used_at:new Date().toISOString()}).eq('id',x.id).then(()=>{})});
