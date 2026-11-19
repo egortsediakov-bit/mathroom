@@ -169,6 +169,21 @@
     const selected=valid.filter(x=>x.selected);
     const problems=items.filter(x=>!x.valid);
     const templates=items.filter(x=>x.r.type==='template');
+    // Explain exactly why a row was left unchecked or unavailable.
+    const selectionNote=()=>{
+      const remaining=items.filter(x=>!x.selected);
+      if(!remaining.length)return 'Выбраны все '+items.length+' записей: задачи и шаблоны.';
+      const blocked=remaining.filter(x=>!x.valid);
+      const unchecked=remaining.filter(x=>x.valid);
+      const explanation=[];
+      if(unchecked.length)explanation.push('Не выбрано: '+unchecked.length+
+        ' ('+unchecked.slice(0,5).map(x=>x.r.id).join(', ')+
+        (unchecked.length>5?'…':'')+').');
+      if(blocked.length)explanation.push('Недоступно для выбора: '+blocked.length+
+        ' ('+blocked.slice(0,5).map(x=>x.r.id+': '+x.reason).join('; ')+
+        (blocked.length>5?'…':'')+').');
+      return explanation.join(' ');
+    };
     const stat=(count,label,extra='')=>'<div class="mr-xlsx-stat '+extra+'"><strong>'+count+'</strong><span>'+label+'</span></div>';
     box.innerHTML='<div class="mr-xlsx-head"><div><span class="mr-xlsx-kicker">ШАГ 02 / ПРОВЕРКА МАТЕРИАЛОВ</span>'+
       '<h4>Предпросмотр заданий</h4><p>Проверь условия и решения, затем выбери, что добавить в черновики.</p></div>'+
@@ -180,12 +195,14 @@
         stat(problems.length,'Пропущено',problems.length?'is-warning':'')+
       '</div>'+
       '<div class="mr-xlsx-controls"><div class="mr-xlsx-control-group">'+
-      '<button class="is-primary" type="button" data-xlsx-tasks>✓ Все новые задачи</button>'+
+      '<button class="is-primary" type="button" data-xlsx-all>✓ Все задачи и шаблоны</button>'+
+      '<button type="button" data-xlsx-tasks>Только задачи</button>'+
       '<button type="button" data-xlsx-none>Снять выбор</button>'+
       '<button type="button" data-xlsx-templates>＋ Добавить шаблоны</button></div>'+
       (pages>1?'<div class="mr-xlsx-page-controls"><span>Страница '+(page+1)+' из '+pages+'</span>'+
         '<button type="button" data-xlsx-prev '+(page===0?'disabled':'')+'>←</button>'+
         '<button type="button" data-xlsx-next '+(page===pages-1?'disabled':'')+'>→</button></div>':'')+'</div>'+
+      '<div class="mr-xlsx-selection-note" id="mrXlsxSelectionNote" role="status">'+esc(selectionNote())+'</div>'+
       '<div class="mr-xlsx-items" role="list">'+visibleItems.map(item=>{
         const r=item.r;
         const difficulty=({basic:'Базовая',medium:'Средняя',advanced:'Сложная'})[r.difficulty]||r.difficulty;
@@ -204,7 +221,9 @@
           '<div class="mr-xlsx-item-bottom">'+
             (r.answer?'<div class="mr-xlsx-answer"><span>ОТВЕТ</span><strong>'+esc(clip(r.answer,180))+'</strong></div>':
               '<span class="mr-xlsx-answer-missing">Ответ не указан</span>')+
-            (r.solution?'<details class="mr-xlsx-solution"><summary>Посмотреть решение</summary>'+
+            (r.solution?'<details class="mr-xlsx-solution"><summary>'+
+              '<span class="mr-xlsx-solution-show">Показать решение</span>'+
+              '<span class="mr-xlsx-solution-hide">Скрыть решение</span></summary>'+
               '<div class="mr-xlsx-solution-text">'+esc(clip(r.solution,3000))+'</div></details>':'')+
           '</div></div></article>';
       }).join('')+'</div>'+
@@ -220,6 +239,8 @@
       if(counter)counter.textContent=count+' выбрано';
       const statSelected=el(box,'[data-xlsx-stat-selected]');
       if(statSelected)statSelected.textContent=String(count);
+      const note=el(box,'#mrXlsxSelectionNote');
+      if(note)note.textContent=selectionNote();
       if(button)button.disabled=!count||busy;
     };
     box.querySelectorAll('[data-xlsx-choice]').forEach(c=>c.onchange=()=>{
@@ -236,6 +257,10 @@
     };
     if(el(box,'[data-xlsx-next]'))el(box,'[data-xlsx-next]').onclick=()=>{
       previewState.page=Math.min(pages-1,page+1);renderPreview();
+    };
+    el(box,'[data-xlsx-all]').onclick=()=>{
+      items.forEach(x=>x.selected=!!x.valid);
+      renderPreview();
     };
     el(box,'[data-xlsx-tasks]').onclick=()=>{
       items.forEach(x=>x.selected=x.valid&&x.r.type==='task');
