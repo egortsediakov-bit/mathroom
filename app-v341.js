@@ -2930,6 +2930,7 @@ function renderBank(){
         <button class="btn sm" type="button" id="mrDraftSelectAll" ${draftDeleteBusy?'disabled':''}>✓ Выбрать все черновики</button>
         <button class="btn sm" type="button" id="mrDraftSelectVisible" ${drafts.length?'':'disabled'}>Выбрать найденные (${drafts.length})</button>
         <button class="btn sm" type="button" id="mrDraftClear" ${selectedDraftIds.size?'':'disabled'}>Снять выделение</button>
+        <button class="btn sm library" type="button" id="mrDraftPublishSelected" ${selectedDraftIds.size&&!draftDeleteBusy?'':'disabled'}>В общую библиотеку (${selectedDraftIds.size})</button>
         <button class="btn sm danger" type="button" id="mrDraftDeleteSelected" ${selectedDraftIds.size&&!draftDeleteBusy?'':'disabled'}>Удалить выбранные (${selectedDraftIds.size})</button>
       </div>`:'';
     host.innerHTML=`<div class="mr-bank-results-head"><span>Найдено задач: <b>${arr.length}</b></span></div>${selectionBar}<div class="list mr-personal-library-list">${arr.length?arr.map(x=>{
@@ -2969,6 +2970,87 @@ function renderBank(){
         toast('Выбрано черновиков: '+ids.length);
       }catch(error){fail(error)}
       finally{draftDeleteBusy=false;draw()}
+    });
+    host.querySelector('#mrDraftPublishSelected')?.addEventListener('click',async()=>{
+      if(draftDeleteBusy||!selectedDraftIds.size||!S.user?.id)return;
+      const ids=[...selectedDraftIds];
+      if(!confirm('Перенести '+ids.length+' выбранных черновиков в ОБЩУЮ библиотеку? Они станут доступны другим преподавателям. Подтверди, что проверил условия, ответы, решения и права на использование материалов. Неполные задачи будут пропущены.'))return;
+      draftDeleteBusy=true;
+      let published=0,skipped=0,errors=0;
+      const problems=[];
+      const button=host.querySelector('#mrDraftPublishSelected');
+      if(button){button.disabled=true;button.textContent='Публикуем 0 / '+ids.length+'…'}
+      try{
+        // Read by selected IDs, not the first page of the bank (which may be truncated).
+        for(let offset=0;offset<ids.length;offset+=25){
+          const chunk=ids.slice(offset,offset+25);
+          const {data:rows,error:readError}=await sb.from('exercises').select('*')
+            .eq('teacher_id',S.user.id).eq('is_draft',true).in('id',chunk);
+          if(readError){errors+=chunk.length;problems.push(readError.message);continue}
+          const sourceRows=rows||[];
+          skipped+=chunk.length-sourceRows.length;
+          const {data:sharedRows,error:sharedError}=await sb.from('shared_materials')
+            .select('id,source_exercise_id').eq('published_by',S.user.id)
+            .in('source_exercise_id',sourceRows.map(x=>x.id));
+          if(sharedError){errors+=sourceRows.length;problems.push(sharedError.message);continue}
+          const existing=new Map((sharedRows||[]).map(x=>[String(x.source_exercise_id),x.id]));
+          const ready=[];
+          for(const x of sourceRows){
+            const topic=(S.topics||[]).find(t=>String(t.id)===String(x.topic_id));
+            if(!topic||!String(x.content||'').trim()||
+                (x.kind==='task'&&!String(x.answer||'').trim())){
+              skipped++;continue;
+            }
+            const importedPdf=(x.tags||[]).includes('mathroom-pdf-import-v91');
+            const meta=x.builder_meta&&typeof x.builder_meta==='object'?x.builder_meta:{};
+            ready.push({
+              original:x,
+              sharedId:existing.get(String(x.id)),
+              body:{
+                published_by:S.user.id,source_exercise_id:x.id,
+                kind:x.kind==='example'?'example':'task',
+                title:x.title||'',content:x.content||'',answer:x.answer||'',
+                difficulty:x.difficulty||'basic',category:x.category||'',
+                tags:sharedMaterialUserTags(x.tags),grade:Number(topic.grade)||null,
+                section:topic.section||'',topic_title:topic.title||'',
+                builder_meta:importedPdf
+                  ? {...meta,pdf_import:{...(meta.pdf_import||{}),verified:true,verified_at:new Date().toISOString()}}
+                  : meta
+              }
+            });
+          }
+          // Commit each publication independently so one invalid row cannot abort the entire batch.
+          // Mark a draft as published only after its shared-library write is confirmed.
+          for(const entry of ready){
+            const q=entry.sharedId
+              ? sb.from('shared_materials').update({...entry.body,updated_at:new Date().toISOString()})
+                  .eq('id',entry.sharedId).eq('published_by',S.user.id)
+              : sb.from('shared_materials').insert(entry.body);
+            const {error:publishError}=await q;
+            if(publishError){errors++;problems.push(publishError.message);continue}
+            const {data:changed,error:updateError}=await sb.from('exercises')
+              .update({is_draft:false}).eq('id',entry.original.id)
+              .eq('teacher_id',S.user.id).eq('is_draft',true).select('id');
+            if(updateError||!changed?.length){
+              errors++;
+              problems.push(updateError?.message||'Не удалось снять статус черновика');
+              continue;
+            }
+            published++;
+            selectedDraftIds.delete(String(entry.original.id));
+            const local=own.find(x=>String(x.id)===String(entry.original.id));
+            if(local)local.is_draft=false;
+          }
+          if(button)button.textContent='Публикуем '+(offset+chunk.length)+' / '+ids.length+'…';
+        }
+        S.exercises=own;
+        // Refresh shared data after completing the batch, without doing so per item.
+        try{await loadTeacher()}catch(refreshError){problems.push('Не удалось обновить список: '+refreshError.message)}
+      }catch(error){errors++;problems.push(String(error?.message||error))}
+      finally{draftDeleteBusy=false;draw()}
+      toast('В общую библиотеку: '+published+' · пропущено: '+skipped+
+        (errors?' · ошибок: '+errors:'')+
+        (problems.length?' · '+problems[0]:''));
     });
     host.querySelector('#mrDraftDeleteSelected')?.addEventListener('click',async()=>{
       if(draftDeleteBusy||!selectedDraftIds.size)return;
