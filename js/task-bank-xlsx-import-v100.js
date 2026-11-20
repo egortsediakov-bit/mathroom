@@ -158,6 +158,54 @@
     }
     return {added,skipped:skipped.length,topicsAdded};
   };
+  const validEmbeddedPng=uri=>typeof uri==='string'&&
+    /^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(uri)&&uri.length<300000;
+  // Image-only repair for previously imported private drafts. Never overwrite text,
+  // answers, solutions, template variables, or teacher-created diagrams.
+  const restoreMissingImages=async(state,notify)=>{
+    const candidates=state.data.all.filter(r=>r.type==='template'&&validEmbeddedPng(r.imageDataUri));
+    if(!candidates.length)throw new Error('В этом Excel нет встроенных PNG');
+    const sb=client(),uid=await teacher(sb);
+    const bank=await fetchExercises(sb,uid);
+    const byId=new Map();
+    for(const row of bank){
+      let spec={};try{spec=JSON.parse(row.generator_spec||'{}')}catch{}
+      if(spec?.type==='xlsx_import_v100'&&spec.task_id)byId.set(String(spec.task_id),row.id);
+    }
+    const matched=candidates.filter(r=>byId.has(r.id));
+    if(!matched.length)return {updated:0,already:0,notDraft:0,missing:candidates.length};
+    const ids=matched.map(r=>byId.get(r.id));
+    const rows=[];
+    for(let i=0;i<ids.length;i+=80){
+      const {data,error}=await sb.from('exercises').select('id,is_draft,builder_meta')
+        .eq('teacher_id',uid).in('id',ids.slice(i,i+80));
+      if(error)throw error;
+      rows.push(...(data||[]));
+    }
+    const existing=new Map(rows.map(row=>[String(row.id),row]));
+    let updated=0,already=0,notDraft=0,missing=0;
+    for(const r of matched){
+      const row=existing.get(String(byId.get(r.id)));
+      if(!row){missing++;continue}
+      if(!row.is_draft){notDraft++;continue}
+      const meta=row.builder_meta&&typeof row.builder_meta==='object'?row.builder_meta:{};
+      const images=Array.isArray(meta.images)?meta.images:[];
+      if(images.some(img=>img?.path||validEmbeddedPng(img?.data_uri))){already++;continue}
+      const id='xlsx-diagram',newMeta={...meta,
+        images:[...images,{id,data_uri:r.imageDataUri,alt:'Авторская схема к задаче',display_width:75}]};
+      const order=Array.isArray(meta.content_order)?[...meta.content_order]:['text:main'];
+      if(!order.includes('image:'+id))order.push('image:'+id);
+      newMeta.content_order=order;
+      const {data,error}=await sb.from('exercises').update({builder_meta:newMeta})
+        .eq('teacher_id',uid).eq('id',row.id).eq('is_draft',true)
+        .select('id');
+      if(error)throw new Error('Не удалось обновить рисунок '+r.id+': '+error.message);
+      if(!data?.length)throw new Error('Нет прав обновить рисунок '+r.id);
+      updated++;
+      if(updated%10===0)notify?.('Восстановлено рисунков: '+updated);
+    }
+    return {updated,already,notDraft,missing:missing+candidates.length-matched.length};
+  };
   const renderPreview=()=>{
     const box=document.getElementById('mrXlsxPreview');
     if(!box||!previewState)return;
@@ -235,6 +283,8 @@
       '<input id="mrXlsxRights" type="checkbox" '+(previewState.rightsConfirmed?'checked':'')+'>'+
       '<span><strong>Подтверждаю право использования</strong><small>Все материалы сохраняются в личные черновики. Публикации без проверки нет.</small></span></label>'+
       '<div class="mr-xlsx-actions"><span id="mrXlsxSelected">'+selected.length+' выбрано</span>'+
+      (items.some(x=>validEmbeddedPng(x.r.imageDataUri))
+        ?'<button type="button" id="mrXlsxRestorePictures" title="Добавит отсутствующие картинки к ранее импортированным личным черновикам, не меняя задачи">Восстановить рисунки</button>':'')+
       '<button type="button" id="mrXlsxApply" '+(!selected.length?'disabled':'')+
       '>Сохранить в черновики <span aria-hidden="true">→</span></button></div></div>';
     const update=()=>{
@@ -276,6 +326,23 @@
       renderPreview();
     };
     el(box,'#mrXlsxRights').onchange=e=>{previewState.rightsConfirmed=!!e.target.checked};
+    const restoreButton=el(box,'#mrXlsxRestorePictures');
+    if(restoreButton)restoreButton.onclick=async()=>{
+      if(busy)return;
+      if(!el(box,'#mrXlsxRights')?.checked)
+        return status('Подтверди право использования рисунков внизу списка.',true);
+      if(!confirm('Восстановить отсутствующие PNG в уже импортированных ЛИЧНЫХ ЧЕРНОВИКАХ из этого файла? Тексты, ответы, решения и существующие изображения не меняются.'))return;
+      busy=true;restoreButton.disabled=true;
+      try{
+        const result=await restoreMissingImages(previewState,status);
+        try{await window.MathroomBankAllExercisesV2982?.hydrate?.({force:true,rerender:false})}
+        catch(e){console.warn('[xlsx image refresh]',e)}
+        status('Рисунки: восстановлено '+result.updated+', уже имели рисунки '+result.already+
+          ', опубликованы (не трогаем) '+result.notDraft+
+          ', отсутствуют в черновиках '+result.missing+'. Обнови страницу банка.');
+      }catch(error){status('Ошибка восстановления: '+String(error?.message||error),true)}
+      finally{busy=false;restoreButton.disabled=false}
+    };
     el(box,'#mrXlsxApply').onclick=async()=>{
       if(busy)return;
       if(!el(box,'#mrXlsxRights')?.checked)return status('Подтверди право использования внизу списка.',true);
