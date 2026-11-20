@@ -172,7 +172,7 @@
         /\b[A-Za-z_][A-Za-z0-9_]*\s*\(/.test(match[1])||
         /[A-Za-z_]\w*\s*\.\s*[A-Za-z_]/.test(match[1]))||
         (condition&&(!/^[a-zA-Z0-9_+\-*/(). %<>=!&|]+$/.test(condition)||
-          /\b[A-Za-z_][A-Za-z0-9_]*\s*\(/.test(condition))))
+          /\b[A-Za-z_][A-Za-z0-9_]*\s*\(/.test(condition.replace(/\b(?:and|or|not)\b/g,'')))))
         return {...candidate,warning:'Недопустимое выражение параметризованного шаблона'};
       candidate.content=API.formatTemplateText(machine);candidate.original=machine;candidate.answer=expression;
       candidate.templateVars=normalized;
