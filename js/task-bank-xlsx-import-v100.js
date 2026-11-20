@@ -96,7 +96,7 @@
       if(r.type==='task'&&fp)newContent.add(fp);
       return {r,index,reason,valid:!reason,selected:!reason&&r.type==='task',
         advisory:r.type==='template'&&!r.generatorReady?'описательный шаблон — настроить в конструкторе':
-          r.type==='template'?'параметризованный шаблон — проверить формулы':'',
+          r.type==='template'?'Генератор готов: числа подставляются при создании варианта':'',
         kind:r.type==='template'?'Шаблон':'Задача'};
     });
   };
@@ -210,10 +210,12 @@
     const box=document.getElementById('mrXlsxPreview');
     if(!box||!previewState)return;
     const items=previewState.items,valid=items.filter(x=>x.valid);
-    const pageSize=80,pages=Math.max(1,Math.ceil(items.length/pageSize));
+    const visualItems=items.filter(x=>validEmbeddedPng(x.r.imageDataUri));
+    const shown=previewState.imagesOnly?visualItems:items;
+    const pageSize=80,pages=Math.max(1,Math.ceil(shown.length/pageSize));
     const page=Math.min(pages-1,Math.max(0,Number(previewState.page)||0));
     previewState.page=page;
-    const visibleItems=items.slice(page*pageSize,(page+1)*pageSize);
+    const visibleItems=shown.slice(page*pageSize,(page+1)*pageSize);
     const selected=valid.filter(x=>x.selected);
     const problems=items.filter(x=>!x.valid);
     const templates=items.filter(x=>x.r.type==='template');
@@ -240,13 +242,15 @@
         stat(items.length,'Всего записей')+
         '<div class="mr-xlsx-stat is-accent"><strong data-xlsx-stat-selected>'+selected.length+'</strong><span>Выбрано</span></div>'+
         stat(templates.length,'Шаблонов')+
+        stat(visualItems.length,'С рисунком')+
         stat(problems.length,'Пропущено',problems.length?'is-warning':'')+
       '</div>'+
       '<div class="mr-xlsx-controls"><div class="mr-xlsx-control-group">'+
       '<button class="is-primary" type="button" data-xlsx-all>✓ Все задачи и шаблоны</button>'+
       '<button type="button" data-xlsx-tasks>Только задачи</button>'+
       '<button type="button" data-xlsx-none>Снять выбор</button>'+
-      '<button type="button" data-xlsx-templates>＋ Добавить шаблоны</button></div>'+
+      '<button type="button" data-xlsx-templates>＋ Добавить шаблоны</button>'+
+      (visualItems.length?'<button type="button" data-xlsx-visual>'+ (previewState.imagesOnly?'✓ С рисунками · '+visualItems.length:'🖼 С рисунками · '+visualItems.length) +'</button>':'')+'</div>'+
       (pages>1?'<div class="mr-xlsx-page-controls"><span>Страница '+(page+1)+' из '+pages+'</span>'+
         '<button type="button" data-xlsx-prev '+(page===0?'disabled':'')+'>←</button>'+
         '<button type="button" data-xlsx-next '+(page===pages-1?'disabled':'')+'>→</button></div>':'')+'</div>'+
@@ -321,6 +325,12 @@
       renderPreview();
     };
     el(box,'[data-xlsx-none]').onclick=()=>{items.forEach(x=>x.selected=false);renderPreview()};
+    const visualButton=el(box,'[data-xlsx-visual]');
+    if(visualButton)visualButton.onclick=()=>{
+      previewState.imagesOnly=!previewState.imagesOnly;
+      previewState.page=0;
+      renderPreview();
+    };
     el(box,'[data-xlsx-templates]').onclick=()=>{
       items.filter(x=>x.valid&&x.r.type==='template').forEach(x=>x.selected=true);
       renderPreview();
@@ -378,7 +388,7 @@
       const data=readWorkbook(XLSX,book);
       const sb=client(),uid=await teacher(sb);
       const bank=await fetchExercises(sb,uid);
-      previewState={fileName:file.name,data,items:prepare(data,bank),rightsConfirmed:false};
+      previewState={fileName:file.name,data,items:prepare(data,bank),rightsConfirmed:false,imagesOnly:false};
       renderPreview();
       status('Файл прочитан. Проверь условия, формулы и решения, затем выбери, что сохранить.');
     }catch(e){previewState=null;const p=document.getElementById('mrXlsxPreview');if(p)p.innerHTML='';
