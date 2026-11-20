@@ -287,12 +287,11 @@
         catch(e){console.warn('[xlsx bank refresh]',e)}
         status('Готово: '+result.added+' новых черновиков, '+result.skipped+
           ' повторов, '+result.topicsAdded+' новых тем. Открой «Черновики», чтобы проверить решения.');
-        // Re-preview: uploaded tasks must not be selected for a second write.
-        const sb=client(),uid=await teacher(sb);
-        const current=await fetchExercises(sb,uid);
-        previewState.items=prepare(previewState.data,current);
-        previewState.rightsConfirmed=false;
-        renderPreview();
+        // The import completed successfully: close the task preview.
+        // The imported file can be selected again if the teacher wants another batch.
+        previewState=null;
+        const preview=document.getElementById('mrXlsxPreview');
+        if(preview)preview.replaceChildren();
       }catch(err){status('Ошибка импорта: '+String(err?.message||err),true);console.error('[Mathroom XLSX v100]',err)}
       finally{busy=false;const b=document.getElementById('mrXlsxApply');if(b)b.disabled=!previewState?.items.some(x=>x.valid&&x.selected)}
     };
