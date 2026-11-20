@@ -174,6 +174,24 @@ async function loadTeacher(){
   ]);
   const err=reqs.find(x=>x.error)?.error;if(err)throw err;
   [S.students,S.topics,S.exercises,S.lessons,S.homeworks,S.tests,S.versions,S.sharedMaterials]=reqs.map(x=>x.data||[]);
+  // PostgREST may cap a query at 1000 rows; load the complete personal bank.
+  // Otherwise the topic lookup displays "? кл." even for imported tasks.
+  const loadFullPersonalTable=async(table,firstPage)=>{
+    if(firstPage.length<1000)return firstPage;
+    const collected=[];
+    for(let offset=0;offset<100000;offset+=1000){
+      const {data,error}=await sb.from(table).select('*')
+        .eq('teacher_id',S.user.id).order('id').range(offset,offset+999);
+      if(error)throw error;
+      collected.push(...(data||[]));
+      if(!data||data.length<1000)return collected;
+    }
+    throw new Error('Слишком много строк в '+table+'; загрузка остановлена');
+  };
+  [S.topics,S.exercises]=await Promise.all([
+    loadFullPersonalTable('topics',S.topics),
+    loadFullPersonalTable('exercises',S.exercises)
+  ]);
   const bank=window.MathroomCurriculumBank;if(bank?.compareTopics)S.topics.sort(bank.compareTopics);
   try{
     const [tb,tl,lib]=await Promise.all([
@@ -1612,7 +1630,12 @@ function taskTemplateScope(meta,answer){
     const scope={};
     vars.forEach((v,i)=>{const list=candidates[i];scope[v.name]=list[Math.floor(Math.random()*list.length)]});
     let ok=true;
-    if(condition){try{ok=!!taskTemplateEval(condition,scope)}catch{ok=false}}
+    if(condition){
+      // XLSX uses JS-style boolean operators; math.js expects 'and'/'or'.
+      const normalized=condition.replace(/&&/g," and ").replace(/\\|\\|/g," or ");
+      try{ok=!!taskTemplateEval(normalized,scope)}
+      catch(error){throw new Error('Ошибка ограничения генератора: '+String(error?.message||error))}
+    }
     if(ok&&integerAnswers)ok=taskTemplateIntegerAnswerOk(answer,scope);
     if(ok)return scope;
   }
