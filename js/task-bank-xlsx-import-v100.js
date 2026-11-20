@@ -218,6 +218,8 @@
           (item.reason?'<p class="mr-xlsx-review-note is-error">Пропущено: '+esc(item.reason)+'</p>':
             item.advisory?'<p class="mr-xlsx-review-note">'+esc(item.advisory)+'</p>':'')+
           '<div class="mr-xlsx-item-condition">'+esc(clip(r.content,1200))+'</div>'+
+          (typeof r.imageDataUri==='string'&&/^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(r.imageDataUri)&&r.imageDataUri.length<300000
+            ?'<div class="mr-xlsx-diagram-preview"><img src="'+esc(r.imageDataUri)+'" alt="Чертёж задачи" style="max-width:min(100%,430px);max-height:220px;object-fit:contain;background:white;border:1px solid #e5e7eb;border-radius:10px;padding:8px"></div>':'')+
           '<div class="mr-xlsx-item-bottom">'+
             (r.answer?'<div class="mr-xlsx-answer"><span>ОТВЕТ</span><strong>'+esc(clip(r.answer,180))+'</strong></div>':
               '<span class="mr-xlsx-answer-missing">Ответ не указан</span>')+
