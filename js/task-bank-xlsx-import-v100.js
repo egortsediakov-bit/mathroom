@@ -47,6 +47,16 @@
     const templates=[...sheet(xlsx,workbook,'ШАБЛОНЫ'),
       ...sheet(xlsx,workbook,'GENERATORS'),...sheet(xlsx,workbook,'TEMPLATES')];
     const data=core().readSheetRows(sheet(xlsx,workbook,'READY'),sources,templates);
+    // Prefer verified workbook examples for readable previews; do not replace raw templates.
+    const examples=new Map();
+    for(const ex of sheet(xlsx,workbook,'ПРИМЕРЫ_ВАРИАНТОВ')){
+      const id=String(ex.ID||ex.id||'').trim();
+      if(id&&!examples.has(id))examples.set(id,{
+        condition:String(ex['Сформированное условие']||''),
+        answer:String(ex['Ответ']??'')
+      });
+    }
+    data.all.forEach(row=>{row.previewExample=examples.get(row.id)||null});
     if(data.all.length>15000)throw new Error('В книге слишком много строк. Раздели файл на части.');
     return data;
   };
@@ -269,7 +279,11 @@
           '</div>'+
           (item.reason?'<p class="mr-xlsx-review-note is-error">Пропущено: '+esc(item.reason)+'</p>':
             item.advisory?'<p class="mr-xlsx-review-note">'+esc(item.advisory)+'</p>':'')+
-          '<div class="mr-xlsx-item-condition">'+esc(clip(r.content,1200))+'</div>'+
+          (r.previewExample?.condition
+            ?'<div class="mr-xlsx-item-condition"><strong>Пример с подставленными числами:</strong><div>'+esc(clip(r.previewExample.condition,1200))+'</div>'+
+              '<small>Ответ примера: '+esc(clip(r.previewExample.answer,180))+'</small></div>'+
+              '<details class="mr-xlsx-solution"><summary>Исходный шаблон {{...}}</summary><div class="mr-xlsx-solution-text">'+esc(clip(r.content,1200))+'</div></details>'
+            :'<div class="mr-xlsx-item-condition">'+esc(clip(r.content,1200))+'</div>')+
           (typeof r.imageDataUri==='string'&&/^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(r.imageDataUri)&&r.imageDataUri.length<300000
             ?'<div class="mr-xlsx-diagram-preview"><img src="'+esc(r.imageDataUri)+'" alt="Чертёж задачи" style="max-width:min(100%,430px);max-height:220px;object-fit:contain;background:white;border:1px solid #e5e7eb;border-radius:10px;padding:8px"></div>':'')+
           '<div class="mr-xlsx-item-bottom">'+
