@@ -1282,7 +1282,8 @@ function renderTopics(){
 
 const taskImageUrlCache=new Map(),taskImageUrlPending=new Map();
 function taskBuilderImages(meta){
-  return Array.isArray(meta?.images)?meta.images.filter(x=>x&&x.path):[];
+  return Array.isArray(meta?.images)?meta.images.filter(x=>x&&(x.path||
+    (typeof x.data_uri==='string'&&/^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(x.data_uri)&&x.data_uri.length<300000))):[];
 }
 function taskBuilderTables(meta){
   return Array.isArray(meta?.tables)?meta.tables.filter(x=>x&&Array.isArray(x.cells)&&x.cells.length):[];
@@ -1489,7 +1490,9 @@ function taskConditionHtml(prompt,meta,{compact=false,textClass="mr-task-text-bl
     if(type==="image"){
       const img=byImage.get(id);if(!img)return '';
       const width=Math.min(100,Math.max(30,Number(img.display_width)||100));
-      return '<div class="mr-task-media '+(compact?'compact':'')+'"><figure style="width:'+width+'%"><img data-task-image-path="'+esc(String(img.path))+'" alt="'+esc(String(img.alt||img.name||'Изображение к задаче'))+'">'+(img.alt?'<figcaption>'+esc(String(img.alt))+'</figcaption>':'')+'</figure></div>';
+      const embedded=typeof img.data_uri==='string'&&/^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(img.data_uri)&&img.data_uri.length<300000;
+      const imageAttr=embedded?'src="'+esc(img.data_uri)+'"':'data-task-image-path="'+esc(String(img.path||''))+'"';
+      return '<div class="mr-task-media '+(compact?'compact':'')+'"><figure style="width:'+width+'%"><img '+imageAttr+' alt="'+esc(String(img.alt||img.name||'Изображение к задаче'))+'">'+(img.alt?'<figcaption>'+esc(String(img.alt))+'</figcaption>':'')+'</figure></div>';
     }
     if(type==="table"){const table=byTable.get(id);return table?'<div class="mr-task-tables '+(compact?'compact':'')+'">'+taskTableHtml(table,{compact})+'</div>':''}
     if(type==="geometry"){const g=byGeometry.get(id);return g?'<div class="mr-task-geometries '+(compact?'compact':'')+'">'+taskGeometryHtml(g,{compact})+'</div>':''}
