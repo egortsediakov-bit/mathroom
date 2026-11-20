@@ -1632,7 +1632,7 @@ function taskTemplateScope(meta,answer){
     let ok=true;
     if(condition){
       // XLSX uses JS-style boolean operators; math.js expects 'and'/'or'.
-      const normalized=condition.replace(/&&/g," and ").replace(/\\|\\|/g," or ");
+      const normalized=condition.replace(/&&/g," and ").replace(/\|\|/g," or ");
       try{ok=!!taskTemplateEval(normalized,scope)}
       catch(error){throw new Error('Ошибка ограничения генератора: '+String(error?.message||error))}
     }
