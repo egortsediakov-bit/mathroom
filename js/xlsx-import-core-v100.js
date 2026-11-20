@@ -139,6 +139,7 @@
         restrictions:text(get(row,'Ограничения / проверки'))
       },
       templateVars:[],templateSettings:{condition:'',integer_answers:false},
+      imageDataUri:str(get(row,'image_data_uri','diagram_data_uri')),
       generatorReady:false
     };
     if(machine&&vars){
@@ -188,18 +189,29 @@
     if(!r.topic)failures.push('нет темы');
     if(!r.content)failures.push('нет условия');
     if(r.type==='template'&&!r.generatorReady&&r.warning)failures.push(r.warning);
+    if(r.imageDataUri&&!/^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(r.imageDataUri))
+      failures.push('Неподдерживаемое изображение: требуется PNG base64');
+    if(r.imageDataUri&&r.imageDataUri.length>=300000)
+      failures.push('Изображение слишком большое для импорта');
     return failures;
   };
   API.toExercise=(uid,topic,row)=>{
     const template=row.type==='template';
     const note=[row.note,row.templateSource?.restrictions].filter(Boolean).join('\n');
+    // XLSX cell pictures are not exposed by SheetJS; a deliberately restricted
+    // embedded PNG column is supported for portable diagrams.
+    const embeddedImage=String(row.imageDataUri||'').trim();
+    const safeImage=/^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(embeddedImage)
+      && embeddedImage.length<300000;
     const meta={
       version:10,grade:row.grade,task_type:'standard',
       text_blocks:[{id:'main',text:row.content}],
       content_order:['text:main'],
       template_vars:template?(row.templateVars||[]):[],
       template_settings:template?(row.templateSettings||{condition:'',integer_answers:false}):{condition:'',integer_answers:false},
-      images:[],tables:[],geometries:[],
+      images:safeImage?[{id:'xlsx-diagram',data_uri:embeddedImage,alt:'Авторская схема к задаче',display_width:75}]:[],
+      tables:[],geometries:[],
+      content_order:safeImage?['text:main','image:xlsx-diagram']:['text:main'],
       answers:[{label:'Ответ',value:row.answer||'',accepted:[]}],
       solution:row.solution||'',hints:row.hints||[],
       source:{kind:'manual',note:['XLSX '+row.id,row.sourceFile,row.sourceUrl].filter(Boolean).join(' · ')},
