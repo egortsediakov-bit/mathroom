@@ -2989,6 +2989,7 @@ function renderBank(){
           if(readError){errors+=chunk.length;problems.push(readError.message);continue}
           const sourceRows=rows||[];
           skipped+=chunk.length-sourceRows.length;
+          if(!sourceRows.length)continue;
           const {data:sharedRows,error:sharedError}=await sb.from('shared_materials')
             .select('id,source_exercise_id').eq('published_by',S.user.id)
             .in('source_exercise_id',sourceRows.map(x=>x.id));
