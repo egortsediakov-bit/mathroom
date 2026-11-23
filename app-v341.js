@@ -2803,7 +2803,7 @@ function renderBank(){
       <button class="btn sm" id="openAdaptiveSet">Подобрать ученику</button>
       <button class="btn sm mr-saved-sets-launch" id="openSavedSets">Мои комплекты</button>
       <button class="btn sm mr-set-recipes-launch" id="openSetRecipes">Рецепты <b>${(S.taskSetRecipes||[]).length}</b></button>
-      ${mode==='mine'?'<button class="btn sm library" id="publishAllMyTasks" type="button">↑ Все мои задачи в общую</button>':''}
+      ${mode==='mine'?'<button class="btn sm library" id="publishAllMyTasks" type="button">↑ Опубликовать мои задачи</button>':''}
       <button class="btn sm primary" id="createBankTask">＋ Создать задачу</button>
       <button class="btn sm" id="syncCurriculumBank">Обновить базу 1–11</button>
     </div>
@@ -2861,10 +2861,10 @@ function renderBank(){
   const publishAllMyTasksButton=document.getElementById('publishAllMyTasks');
   if(publishAllMyTasksButton)publishAllMyTasksButton.onclick=async()=>{
     if(publishAllMyTasksButton.disabled||!S.user?.id)return;
-    if(!confirm('Опубликовать ВСЕ готовые задачи из личной библиотеки в общей? Задачи останутся у тебя. Уже опубликованные, черновики и неполные задания будут пропущены. Убедись, что проверил ответы, рисунки и права на использование.'))return;
+    if(!confirm('Опубликовать все НЕОПУБЛИКОВАННЫЕ собственные задачи в общей библиотеке? Личные оригиналы останутся у тебя. Системная база 1–11 классов, уже опубликованные, черновики и неполные задания будут пропущены. Убедись, что проверил ответы, рисунки и права на использование.'))return;
     const label=publishAllMyTasksButton.textContent;
     publishAllMyTasksButton.disabled=true;
-    let added=0,already=0,drafts=0,incomplete=0,failed=0,processed=0;
+    let added=0,already=0,drafts=0,incomplete=0,system=0,failed=0,processed=0;
     const errors=[];
     const fetchAll=async(table,columns,configure)=>{
       const rows=[];
@@ -2889,6 +2889,7 @@ function renderBank(){
       const publishedIds=new Set(previous.map(x=>String(x.source_exercise_id)));
       const ready=[];
       for(const x of all){
+        if((x.tags||[]).some(t=>String(t).startsWith('mathroom-core-bank-v')||String(t).startsWith('mrseed:'))){system++;continue}
         if(x.is_draft===true){drafts++;continue}
         if(publishedIds.has(String(x.id))){already++;continue}
         const topic=topicById.get(String(x.topic_id));
@@ -2905,7 +2906,7 @@ function renderBank(){
         });
       }
       if(!ready.length){
-        toast('Новых задач нет · уже в общей: '+already+' · черновиков: '+drafts+' · неполных: '+incomplete);
+        toast('Новых задач нет · уже в общей: '+already+' · системных: '+system+' · черновиков: '+drafts+' · неполных: '+incomplete);
         return;
       }
       // Small batches limit request size. Retry individual rows if a batch has bad data.
@@ -2928,7 +2929,7 @@ function renderBank(){
       // Keep personal exercises intact and refresh shared-library view.
       const fresh=await fetchAll('shared_materials','*',q=>q.order('created_at',{ascending:false}));
       S.sharedMaterials=fresh;
-      toast('Добавлено: '+added+' · уже были: '+already+' · черновиков: '+drafts+' · неполных: '+incomplete+(failed?' · ошибок: '+failed+' ('+errors[0]+')':''));
+      toast('Добавлено: '+added+' · уже были: '+already+' · системных: '+system+' · черновиков: '+drafts+' · неполных: '+incomplete+(failed?' · ошибок: '+failed+' ('+errors[0]+')':''));
       if(S.view==='bank')renderBank();
     }catch(error){fail(error)}
     finally{
