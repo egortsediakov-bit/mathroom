@@ -2803,6 +2803,7 @@ function renderBank(){
       <button class="btn sm" id="openAdaptiveSet">Подобрать ученику</button>
       <button class="btn sm mr-saved-sets-launch" id="openSavedSets">Мои комплекты</button>
       <button class="btn sm mr-set-recipes-launch" id="openSetRecipes">Рецепты <b>${(S.taskSetRecipes||[]).length}</b></button>
+      ${mode==='mine'?'<button class="btn sm library" id="publishAllMyTasks" type="button">↑ Все мои задачи в общую</button>':''}
       <button class="btn sm primary" id="createBankTask">＋ Создать задачу</button>
       <button class="btn sm" id="syncCurriculumBank">Обновить базу 1–11</button>
     </div>
@@ -2856,6 +2857,84 @@ function renderBank(){
     S.taskBuilderReturn={view:'bank',topicId:null};
     S.view='task-builder';
     renderTaskBuilder();
+  };
+  const publishAllMyTasksButton=document.getElementById('publishAllMyTasks');
+  if(publishAllMyTasksButton)publishAllMyTasksButton.onclick=async()=>{
+    if(publishAllMyTasksButton.disabled||!S.user?.id)return;
+    if(!confirm('Опубликовать ВСЕ готовые задачи из личной библиотеки в общей? Задачи останутся у тебя. Уже опубликованные, черновики и неполные задания будут пропущены. Убедись, что проверил ответы, рисунки и права на использование.'))return;
+    const label=publishAllMyTasksButton.textContent;
+    publishAllMyTasksButton.disabled=true;
+    let added=0,already=0,drafts=0,incomplete=0,failed=0,processed=0;
+    const errors=[];
+    const fetchAll=async(table,columns,configure)=>{
+      const rows=[];
+      for(let offset=0;offset<100000;offset+=500){
+        let q=sb.from(table).select(columns).range(offset,offset+499);
+        q=configure(q);
+        const {data,error}=await q;
+        if(error)throw error;
+        rows.push(...(data||[]));
+        if((data||[]).length<500)return rows;
+      }
+      throw new Error('Превышен лимит безопасной загрузки записей (100 000)');
+    };
+    try{
+      // Fetch the entire personal collection: in-memory S.exercises may be capped at 1,000.
+      const [all,topics,previous]=await Promise.all([
+        fetchAll('exercises','*',q=>q.eq('teacher_id',S.user.id).eq('kind','task').order('id')),
+        fetchAll('topics','id,grade,section,title',q=>q.eq('teacher_id',S.user.id).order('id')),
+        fetchAll('shared_materials','source_exercise_id',q=>q.eq('published_by',S.user.id).order('id'))
+      ]);
+      const topicById=new Map(topics.map(t=>[String(t.id),t]));
+      const publishedIds=new Set(previous.map(x=>String(x.source_exercise_id)));
+      const ready=[];
+      for(const x of all){
+        if(x.is_draft===true){drafts++;continue}
+        if(publishedIds.has(String(x.id))){already++;continue}
+        const topic=topicById.get(String(x.topic_id));
+        if(!topic||!String(x.content||'').trim()||!String(x.answer||'').trim()){incomplete++;continue}
+        const pdf=(x.tags||[]).includes('mathroom-pdf-import-v91');
+        const meta=x.builder_meta&&typeof x.builder_meta==='object'?x.builder_meta:{};
+        ready.push({
+          published_by:S.user.id,source_exercise_id:x.id,
+          kind:'task',title:x.title||'',content:x.content||'',answer:x.answer||'',
+          difficulty:x.difficulty||'basic',category:x.category||'',
+          tags:sharedMaterialUserTags(x.tags),
+          grade:Number(topic.grade)||null,section:topic.section||'',topic_title:topic.title||'',
+          builder_meta:pdf?{...meta,pdf_import:{...(meta.pdf_import||{}),verified:true,verified_at:new Date().toISOString()}}:meta
+        });
+      }
+      if(!ready.length){
+        toast('Новых задач нет · уже в общей: '+already+' · черновиков: '+drafts+' · неполных: '+incomplete);
+        return;
+      }
+      // Small batches limit request size. Retry individual rows if a batch has bad data.
+      for(let offset=0;offset<ready.length;offset+=50){
+        const batch=ready.slice(offset,offset+50);
+        const {error}=await sb.from('shared_materials').insert(batch);
+        if(!error){added+=batch.length}
+        else{
+          for(const row of batch){
+            const {error:singleError}=await sb.from('shared_materials').insert(row);
+            if(singleError){
+              failed++;
+              if(errors.length<3)errors.push(singleError.message);
+            }else added++;
+          }
+        }
+        processed+=batch.length;
+        publishAllMyTasksButton.textContent='Публикуем '+processed+' / '+ready.length+'…';
+      }
+      // Keep personal exercises intact and refresh shared-library view.
+      const fresh=await fetchAll('shared_materials','*',q=>q.order('created_at',{ascending:false}));
+      S.sharedMaterials=fresh;
+      toast('Добавлено: '+added+' · уже были: '+already+' · черновиков: '+drafts+' · неполных: '+incomplete+(failed?' · ошибок: '+failed+' ('+errors[0]+')':''));
+      if(S.view==='bank')renderBank();
+    }catch(error){fail(error)}
+    finally{
+      publishAllMyTasksButton.disabled=false;
+      publishAllMyTasksButton.textContent=label;
+    }
   };
   document.getElementById('syncCurriculumBank').onclick=()=>syncCurriculumBank({manual:true});
   document.getElementById('bankReset').onclick=()=>{
