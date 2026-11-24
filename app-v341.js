@@ -3015,7 +3015,9 @@ function renderBank(){
       if(!data||!Array.isArray(data.categories))return;
       S.sharedBankFacets=data;
       for(const [id,values] of [
-        ['bankCat',data.categories],['bankTag',data.tags||[]],['bankGrade',data.grades||[]]
+        ['bankCat',[...new Set([...own.map(x=>x.category),...data.categories].filter(Boolean))].sort((a,b)=>String(a).localeCompare(String(b),'ru'))],
+        ['bankTag',[...new Set([...own.flatMap(x=>x.tags||[]),...(data.tags||[])].filter(x=>x&&!isSystemBankTag(x)&&!String(x).startsWith('класс-')&&!String(x).startsWith('тема:')))].sort((a,b)=>String(a).localeCompare(String(b),'ru'))],
+        ['bankGrade',[...new Set([...(S.topics||[]).map(x=>Number(x.grade)),...(data.grades||[])].filter(Boolean))].sort((a,b)=>a-b)]
       ]){
         const select=document.getElementById(id);
         if(!select||S.view!=='bank')continue;
@@ -3026,7 +3028,7 @@ function renderBank(){
           if(value==null||value==='')continue;
           const option=document.createElement('option');
           option.value=String(value);
-          option.textContent=id==='bankGrade'?String(value):String(value);
+          option.textContent=String(value);
           select.append(option);
         }
         if([...select.options].some(o=>o.value===previous))select.value=previous;
