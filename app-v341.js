@@ -2776,12 +2776,15 @@ function renderBank(){
   // Multi-select is local UI state: nothing is deleted until explicit confirmation.
   const selectedDraftIds=new Set();
   let draftDeleteBusy=false;
-  const shared=S.sharedMaterials||[];
+  let shared=S.sharedMaterials||[];
+  let sharedTotal=Number.isFinite(S.sharedBankTotal)?S.sharedBankTotal:shared.length;
+  let sharedPage=0,sharedRequest=0;
+  const sharedPageSize=80;
   const mode=S.bankLibraryMode==='shared'?'shared':'mine';
   const builtIn=own.filter(x=>x.kind==='task'&&(x.tags||[]).some(t=>String(t).startsWith('mathroom-core-bank-v'))).length;
-  const categories=[...new Set([...own.map(x=>x.category),...shared.map(x=>x.category)].filter(Boolean))].sort((a,b)=>String(a).localeCompare(String(b),'ru'));
-  const tags=[...new Set([...own.flatMap(x=>x.tags||[]),...shared.flatMap(x=>x.tags||[])].filter(x=>x&&!isSystemBankTag(x)&&!String(x).startsWith('класс-')&&!String(x).startsWith('тема:')))].sort((a,b)=>String(a).localeCompare(String(b),'ru'));
-  const grades=[...new Set([...(S.topics||[]).map(x=>Number(x.grade)),...shared.map(x=>Number(x.grade))].filter(Boolean))].sort((a,b)=>a-b);
+  const categories=[...new Set([...own.map(x=>x.category),...(S.sharedBankFacets?.categories||shared.map(x=>x.category))].filter(Boolean))].sort((a,b)=>String(a).localeCompare(String(b),'ru'));
+  const tags=[...new Set([...own.flatMap(x=>x.tags||[]),...(S.sharedBankFacets?.tags||shared.flatMap(x=>x.tags||[]))].filter(x=>x&&!isSystemBankTag(x)&&!String(x).startsWith('класс-')&&!String(x).startsWith('тема:')))].sort((a,b)=>String(a).localeCompare(String(b),'ru'));
+  const grades=[...new Set([...(S.topics||[]).map(x=>Number(x.grade)),...(S.sharedBankFacets?.grades||shared.map(x=>Number(x.grade)))].filter(Boolean))].sort((a,b)=>a-b);
   const publishedByMe=shared.filter(x=>String(x.published_by)===String(S.user?.id)).length;
   app.innerHTML=shell(`
     <section class="mr-library-hero mr-bank-hero">
@@ -2797,7 +2800,7 @@ function renderBank(){
     </section>
     <div class="mr-library-tabs mr-bank-library-tabs">
       <button class="${mode==='mine'?'active':''}" data-library-mode="mine"><span>Мои материалы</span><b>${own.length}</b></button>
-      <button class="${mode==='shared'?'active':''}" data-library-mode="shared"><span>Общая библиотека</span><b>${shared.length}</b></button>
+      <button class="${mode==='shared'?'active':''}" data-library-mode="shared"><span>Общая библиотека</span><b>${sharedTotal}</b></button>
     </div>
     <div class="actions bank-summary mr-library-summary mr-bank-summary">
       <span class="pill">${own.filter(x=>x.kind==='task').length} задач</span>
@@ -2951,7 +2954,8 @@ function renderBank(){
       const el=document.getElementById(id);
       if(el)el.value='';
     });
-    if(remoteBankEnabled&&S.bankLibraryMode!=='shared'){remoteBankPage=0;loadRemoteBankPage()}
+    if(S.bankLibraryMode==='shared'){sharedPage=0;loadSharedBankPage()}
+    else if(remoteBankEnabled){remoteBankPage=0;loadRemoteBankPage()}
     else draw();
   };
   document.querySelectorAll('[data-library-mode]').forEach(b=>b.onclick=()=>{
@@ -3003,6 +3007,106 @@ function renderBank(){
     tag:document.getElementById('bankTag').value,
     draftOnly:!!S.bankDraftOnly
   });
+  const loadSharedBankFacets=async()=>{
+    if(S.sharedBankFacets)return;
+    try{
+      const {data,error}=await sb.rpc('mathroom_shared_bank_facets');
+      if(error)throw error;
+      if(!data||!Array.isArray(data.categories))return;
+      S.sharedBankFacets=data;
+      for(const [id,values] of [
+        ['bankCat',data.categories],['bankTag',data.tags||[]],['bankGrade',data.grades||[]]
+      ]){
+        const select=document.getElementById(id);
+        if(!select||S.view!=='bank')continue;
+        const previous=select.value;
+        const initial=select.options[0]?.cloneNode(true);
+        select.replaceChildren(initial);
+        for(const value of values){
+          if(value==null||value==='')continue;
+          const option=document.createElement('option');
+          option.value=String(value);
+          option.textContent=id==='bankGrade'?String(value):String(value);
+          select.append(option);
+        }
+        if([...select.options].some(o=>o.value===previous))select.value=previous;
+      }
+    }catch(error){console.warn('[Mathroom shared bank facets]',error)}
+  };
+  const loadSharedBankPage=async()=>{
+    if(S.bankLibraryMode!=='shared'||S.view!=='bank')return;
+    const token=++sharedRequest;
+    const f=readFilters(),host=document.getElementById('bankList');
+    if(!host)return;
+    host.innerHTML='<div class="card muted" role="status">Загружаем задачи из общей библиотеки…</div>';
+    try{
+      let q=sb.from('shared_materials').select('*',{count:'exact'});
+      if(f.kind)q=q.eq('kind',f.kind);
+      if(f.grade)q=q.eq('grade',Number(f.grade));
+      if(f.diff)q=q.eq('difficulty',f.diff);
+      if(f.cat)q=q.eq('category',f.cat);
+      if(f.tag)q=q.contains('tags',[f.tag]);
+      if(f.q){
+        const term=f.q.replace(/[(),.%*\\]/g,' ').trim().slice(0,100);
+        if(term)q=q.or('title.ilike.%'+term+'%,content.ilike.%'+term+'%,category.ilike.%'+term+'%,section.ilike.%'+term+'%,topic_title.ilike.%'+term+'%');
+      }
+      const start=sharedPage*sharedPageSize;
+      const {data,count,error}=await q.order('created_at',{ascending:false}).order('id',{ascending:false})
+        .range(start,start+sharedPageSize-1);
+      if(token!==sharedRequest||S.view!=='bank'||S.bankLibraryMode!=='shared')return;
+      if(error)throw error;
+      shared=data||[];
+      const matchingTotal=Number(count)||0;
+      if(sharedPage>0&&!shared.length&&matchingTotal){
+        sharedPage=Math.max(0,Math.ceil(matchingTotal/sharedPageSize)-1);
+        return loadSharedBankPage();
+      }
+      // The tab always shows the whole library, while the result header shows filtered totals.
+      const tab=document.querySelector('[data-library-mode="shared"] b');
+      if(tab)tab.textContent=String(sharedTotal);
+      draw();
+      const head=host.querySelector('.mr-bank-results-head b');
+      if(head)head.textContent=String(matchingTotal);
+      const nav=document.createElement('div');
+      nav.className='mr-bank-remote-pagination actions';
+      nav.style.cssText='display:flex;align-items:center;gap:12px;justify-content:space-between;flex-wrap:wrap;margin:12px 0';
+      const back=document.createElement('button');
+      back.className='btn sm';back.textContent='← Предыдущая';
+      back.disabled=sharedPage===0;
+      back.onclick=()=>{sharedPage--;loadSharedBankPage()};
+      const label=document.createElement('span');label.className='muted';
+      label.textContent='Показано '+(matchingTotal?start+1:0)+'–'+Math.min(start+shared.length,matchingTotal)+' из '+matchingTotal+' · страница '+(sharedPage+1);
+      const next=document.createElement('button');
+      next.className='btn sm';next.textContent='Следующая →';
+      next.disabled=(sharedPage+1)*sharedPageSize>=matchingTotal;
+      next.onclick=()=>{sharedPage++;loadSharedBankPage()};
+      nav.append(back,label,next);
+      const heading=host.querySelector('.mr-bank-results-head');
+      if(heading)heading.after(nav);else host.prepend(nav);
+      // Refresh the unfiltered total independently of the currently selected filters.
+      if(!Object.values(f).some(Boolean)) {
+        sharedTotal=matchingTotal;
+        S.sharedBankTotal=matchingTotal;
+        if(tab)tab.textContent=String(sharedTotal);
+      }
+    }catch(error){
+      if(token!==sharedRequest)return;
+      console.error('[Mathroom shared bank paginated load]',error);
+      host.innerHTML='<div class="card"><h3>Не удалось загрузить общую библиотеку</h3><p class="muted"></p><button class="btn primary" type="button">Повторить</button></div>';
+      host.querySelector('p').textContent=String(error?.message||error);
+      host.querySelector('button').onclick=()=>loadSharedBankPage();
+    }
+  };
+  const refreshSharedBankTotal=async()=>{
+    try{
+      const {count,error}=await sb.from('shared_materials').select('id',{count:'exact',head:true});
+      if(error)throw error;
+      if(!Number.isFinite(count))return;
+      sharedTotal=count;S.sharedBankTotal=count;
+      const tab=document.querySelector('[data-library-mode="shared"] b');
+      if(tab&&S.view==='bank')tab.textContent=String(count);
+    }catch(error){console.warn('[Mathroom shared bank count]',error)}
+  };
   const loadRemoteBankPage=async()=>{
     if(!remoteBankEnabled||S.bankLibraryMode==='shared')return draw();
     const token=++remoteBankRequest;
@@ -3089,7 +3193,7 @@ function renderBank(){
     const f=readFilters(),host=document.getElementById('bankList');
     refreshDraftUI();
     if(S.bankLibraryMode==='shared'){
-      const arr=shared.filter(x=>match(x,f,true));
+      const arr=shared;
       host.innerHTML=`<div class="mr-bank-results-head"><span>Найдено материалов: <b>${arr.length}</b></span></div><div class="mr-shared-library-grid">${arr.length?arr.map(x=>{
         const mine=String(x.published_by)===String(S.user?.id);
         const visibleTags=sharedMaterialUserTags(x.tags),view=previewTemplateExercise(x),templated=isTemplateExercise(x);
@@ -3291,9 +3395,14 @@ function renderBank(){
   let remoteBankDebounce=null;
   ['bankSearch','bankKind','bankGrade','bankDiff','bankCat','bankTag'].forEach(id=>{
     document.getElementById(id).oninput=()=>{
-      if(!remoteBankEnabled||S.bankLibraryMode==='shared')return draw();
-      clearTimeout(remoteBankDebounce);remoteBankPage=0;
-      remoteBankDebounce=setTimeout(()=>loadRemoteBankPage(),200);
+      clearTimeout(remoteBankDebounce);
+      if(S.bankLibraryMode==='shared'){
+        sharedPage=0;
+        remoteBankDebounce=setTimeout(()=>loadSharedBankPage(),250);
+      }else if(remoteBankEnabled){
+        remoteBankPage=0;
+        remoteBankDebounce=setTimeout(()=>loadRemoteBankPage(),200);
+      }else draw();
     };
   });
   document.getElementById('bankOnlyDrafts').onclick=()=>{
@@ -3305,8 +3414,12 @@ function renderBank(){
       remoteBankPage=0;loadRemoteBankPage();
     }else draw();
   };
-  if(remoteBankEnabled&&S.bankLibraryMode!=='shared')loadRemoteBankPage();
+  if(S.bankLibraryMode==='shared')loadSharedBankPage();
+  else if(remoteBankEnabled)loadRemoteBankPage();
   else draw();
+  // Metadata is lightweight and loaded independently of the task cards.
+  loadSharedBankFacets();
+  refreshSharedBankTotal();
 }
 
 function renderSchedule(){
