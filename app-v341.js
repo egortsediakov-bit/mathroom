@@ -194,6 +194,13 @@ async function loadTeacher(){
   S.topics=await loadFullPersonalTable('topics',S.topics);
   S.exercises=S.exercises||[];
   S.bankLargeMode=S.exercises.length>=1000;
+  // Counts are computed in Postgres for the entire personal collection, not
+  // from the first 1,000 downloaded exercise rows.
+  const topicCounts=await sb.rpc('mathroom_topic_exercise_counts');
+  if(topicCounts.error){
+    console.warn('[Mathroom topic exercise counts]',topicCounts.error);
+    S.topicExerciseCounts=null;
+  }else S.topicExerciseCounts=topicCounts.data||{};
   const bank=window.MathroomCurriculumBank;if(bank?.compareTopics)S.topics.sort(bank.compareTopics);
   try{
     const [tb,tl,lib]=await Promise.all([
@@ -1263,7 +1270,7 @@ function renderTopics(){
   const gradeTabs=Array.from({length:11},(_,i)=>i+1).map(g=>`<button class="mr-topic-grade-tab ${g===grade?'active':''}" data-topic-grade="${g}">${g}</button>`).join('');
   const groupsHtml=[...groups.entries()].map(([track,rows])=>`<section class="mr-curriculum-track mr-topic-track-v2">
     <div class="mr-curriculum-track-head mr-topic-track-head-v2"><div><span class="mr-topic-track-kicker">${esc(track)}</span><h2>${grade} класс</h2></div><span class="mr-topic-count">${countTopicIcon}<b>${rows.length} тем</b></span></div>
-    <div class="mr-curriculum-list mr-topic-card-grid">${rows.map((t,i)=>{const count=S.exercises.filter(e=>e.topic_id===t.id&&e.kind==='task').length,meta=topicMeta(t);return `<article class="mr-curriculum-row mr-topic-card-v2 ${meta?'':'custom'}" data-topic="${t.id}">
+    <div class="mr-curriculum-list mr-topic-card-grid">${rows.map((t,i)=>{const count=S.topicExerciseCounts===null?'—':Number(S.topicExerciseCounts?.[t.id]?.tasks||0),meta=topicMeta(t);return `<article class="mr-curriculum-row mr-topic-card-v2 ${meta?'':'custom'}" data-topic="${t.id}">
       <div class="mr-topic-seq">${meta?String(i+1).padStart(2,'0'):'+'}</div>
       <div class="mr-topic-card-icon">${topicCardIcon(t)}</div>
       <div class="mr-curriculum-main mr-topic-card-main"><div class="small muted">${esc(t.section||track)}</div><h3>${esc(t.title)}</h3><div class="small mr-topic-card-meta"><span>${count} задач</span><span>${t.theory?'теория готова':'без теории'}</span>${meta?'':'<span>своя тема</span>'}</div></div>
@@ -2376,8 +2383,45 @@ function importSharedMaterial(shared,{onDone}={}){
   };
 }
 
-function renderTopic(){
-  const t=S.topic;if(!t)return renderTopics();const items=S.exercises.filter(x=>x.topic_id===t.id),tasks=items.filter(x=>x.kind==='task'),examples=items.filter(x=>x.kind==='example'),next=nextCurriculumTopic(t),pos=topicPosition(t),sources=textbookLinksForTopic(t.id),curriculumSource=topicSourceMeta(t);
+let topicRenderSequence=0;
+async function renderTopic(){
+  const t=S.topic;
+  if(!t)return renderTopics();
+  const token=++topicRenderSequence;
+  app.innerHTML=shell('<div class="card muted" role="status">Загружаем материалы темы…</div>','Тема',String(t.grade)+' класс');
+  bindShell();
+  const items=[];
+  try{
+    for(let offset=0;offset<100000;offset+=500){
+      const {data,error}=await sb.from('exercises').select('*')
+        .eq('teacher_id',S.user.id).eq('topic_id',t.id)
+        .order('created_at',{ascending:true}).order('id',{ascending:true})
+        .range(offset,offset+499);
+      if(error)throw error;
+      items.push(...(data||[]));
+      if((data||[]).length<500)break;
+      if(offset>=99500)throw new Error('Слишком много материалов в теме');
+    }
+  }catch(error){
+    if(token!==topicRenderSequence||S.view!=='topics'||S.topic?.id!==t.id)return;
+    console.error('[Mathroom topic exercises]',error);
+    app.innerHTML=shell('<div class="card"><h3>Не удалось загрузить материалы темы</h3><p class="muted" id="topicLoadError"></p><button class="btn primary" id="retryTopicLoad">Повторить</button><button class="btn" id="backTopicLoad">К темам</button></div>','Тема');
+    bindShell();
+    document.getElementById('topicLoadError').textContent=String(error?.message||error);
+    document.getElementById('retryTopicLoad').onclick=()=>renderTopic();
+    document.getElementById('backTopicLoad').onclick=()=>{S.topic=null;renderTopics()};
+    return;
+  }
+  if(token!==topicRenderSequence||S.view!=='topics'||S.topic?.id!==t.id)return;
+  // Store the active topic's tasks for edit, assign, and board actions.
+  // Keep only a small cache of unrelated tasks to avoid loading all 26k.
+  const others=(S.exercises||[]).filter(x=>String(x.topic_id)!==String(t.id))
+    .slice(-Math.max(0,1500-items.length));
+  S.exercises=[...others,...items];
+  if(S.topicExerciseCounts){
+    S.topicExerciseCounts[t.id]={tasks:items.filter(x=>x.kind==='task').length,examples:items.filter(x=>x.kind==='example').length};
+  }
+  const tasks=items.filter(x=>x.kind==='task'),examples=items.filter(x=>x.kind==='example'),next=nextCurriculumTopic(t),pos=topicPosition(t),sources=textbookLinksForTopic(t.id),curriculumSource=topicSourceMeta(t);
   const studentOpts=S.students.map(s=>`<option value="${s.id}">${esc(s.name)} · ${s.grade} кл.</option>`).join('');
   const topicMaterialIcon=kind=>{
     const common='class="mr-topic-material-svg" viewBox="0 0 24 24" aria-hidden="true"';
