@@ -188,10 +188,12 @@ async function loadTeacher(){
     }
     throw new Error('Слишком много строк в '+table+'; загрузка остановлена');
   };
-  [S.topics,S.exercises]=await Promise.all([
-    loadFullPersonalTable('topics',S.topics),
-    loadFullPersonalTable('exercises',S.exercises)
-  ]);
+  // The exercise table may contain tens of thousands of rich tasks. Never
+  // download them all before the dashboard can render. Bank pages are fetched
+  // on demand, using server-side filters, with exact counts.
+  S.topics=await loadFullPersonalTable('topics',S.topics);
+  S.exercises=S.exercises||[];
+  S.bankLargeMode=S.exercises.length>=1000;
   const bank=window.MathroomCurriculumBank;if(bank?.compareTopics)S.topics.sort(bank.compareTopics);
   try{
     const [tb,tl,lib]=await Promise.all([
@@ -531,7 +533,8 @@ async function boot(){
     if(!lessonRestored)restoreTeacherView();
     renderTeacher();
     startTeacherAccessWatch();
-    syncCurriculumBank();
+    // A partial bank is not evidence that curriculum seed tasks are missing.
+    if(!S.bankLargeMode)syncCurriculumBank();
   }catch(e){
     console.error('[Mathroom teacher boot]',e);
     if(isTeacherAccessDisabledError(e)){
@@ -2767,6 +2770,9 @@ function renderBank(){
   // v97: retain the bank view and its current filters when a single item is deleted.
   // Refresh the array in place rather than rebuilding the entire page.
   let own=S.exercises||[];
+  const remoteBankEnabled=!!S.bankLargeMode;
+  const remoteBankPageSize=80;
+  let remoteBankPage=0,remoteBankTotal=0,remoteBankRequest=0;
   // Multi-select is local UI state: nothing is deleted until explicit confirmation.
   const selectedDraftIds=new Set();
   let draftDeleteBusy=false;
@@ -2945,7 +2951,8 @@ function renderBank(){
       const el=document.getElementById(id);
       if(el)el.value='';
     });
-    draw();
+    if(remoteBankEnabled&&S.bankLibraryMode!=='shared'){remoteBankPage=0;loadRemoteBankPage()}
+    else draw();
   };
   document.querySelectorAll('[data-library-mode]').forEach(b=>b.onclick=()=>{
     S.bankLibraryMode=b.dataset.libraryMode;
@@ -2996,6 +3003,80 @@ function renderBank(){
     tag:document.getElementById('bankTag').value,
     draftOnly:!!S.bankDraftOnly
   });
+  const loadRemoteBankPage=async()=>{
+    if(!remoteBankEnabled||S.bankLibraryMode==='shared')return draw();
+    const token=++remoteBankRequest;
+    const f=readFilters();
+    const host=document.getElementById('bankList');
+    if(!host)return;
+    host.innerHTML='<div class="card muted" role="status">Загружаем страницу задач из банка…</div>';
+    try{
+      let q=sb.from('exercises').select('*',{count:'exact'}).eq('teacher_id',S.user.id);
+      if(f.draftOnly)q=q.eq('is_draft',true);
+      if(f.kind)q=q.eq('kind',f.kind);
+      if(f.diff)q=q.eq('difficulty',f.diff);
+      if(f.cat)q=q.eq('category',f.cat);
+      if(f.tag)q=q.contains('tags',[f.tag]);
+      if(f.grade){
+        const ids=(S.topics||[]).filter(t=>String(t.grade)===f.grade).map(t=>t.id);
+        if(!ids.length){own=[];remoteBankTotal=0;draw();return}
+        q=q.in('topic_id',ids);
+      }
+      if(f.q){
+        // Escape PostgREST control punctuation; keep ordinary Russian text.
+        const term=f.q.replace(/[(),.%*\\]/g,' ').trim().slice(0,100);
+        if(term)q=q.or('title.ilike.%'+term+'%,content.ilike.%'+term+'%,category.ilike.%'+term+'%');
+      }
+      const start=remoteBankPage*remoteBankPageSize;
+      const {data,count,error}=await q.order('created_at',{ascending:false})
+        .range(start,start+remoteBankPageSize-1);
+      if(token!==remoteBankRequest||S.view!=='bank')return;
+      if(error)throw error;
+      remoteBankTotal=Number(count)||0;
+      own=data||[];
+      if(remoteBankPage>0&&!own.length&&remoteBankTotal){
+        remoteBankPage=Math.max(0,Math.ceil(remoteBankTotal/remoteBankPageSize)-1);
+        return loadRemoteBankPage();
+      }
+      // Retain a small cache for preview/edit actions without filling memory
+      // with the entire task bank.
+      const byId=new Map((S.exercises||[]).map(x=>[String(x.id),x]));
+      for(const row of own)byId.set(String(row.id),row);
+      S.exercises=[...byId.values()].slice(-1500);
+      draw();
+      const resultHead=host.querySelector('.mr-bank-results-head b');
+      if(resultHead)resultHead.textContent=String(remoteBankTotal);
+      const selectVisible=host.querySelector('#mrDraftSelectVisible');
+      if(selectVisible)selectVisible.textContent='Выбрать на странице ('+own.filter(x=>x.is_draft).length+')';
+      const draftButton=document.getElementById('bankOnlyDrafts');
+      if(draftButton&&f.draftOnly){
+        draftButton.textContent='✓ Черновики · '+remoteBankTotal+' (фильтр)';
+      }
+      const nav=document.createElement('div');
+      nav.className='mr-bank-remote-pagination actions';
+      nav.style.cssText='display:flex;align-items:center;gap:12px;justify-content:space-between;flex-wrap:wrap;margin:12px 0';
+      const back=document.createElement('button');
+      back.className='btn sm';back.textContent='← Предыдущая';
+      back.disabled=remoteBankPage===0;
+      back.onclick=()=>{remoteBankPage--;loadRemoteBankPage()};
+      const label=document.createElement('span');label.className='muted';
+      label.textContent='Показано '+(remoteBankTotal?start+1:0)+'–'+Math.min(start+own.length,remoteBankTotal)+
+        ' из '+remoteBankTotal+' · страница '+(remoteBankPage+1);
+      const next=document.createElement('button');next.className='btn sm';
+      next.textContent='Следующая →';
+      next.disabled=(remoteBankPage+1)*remoteBankPageSize>=remoteBankTotal;
+      next.onclick=()=>{remoteBankPage++;loadRemoteBankPage()};
+      nav.append(back,label,next);
+      const head=host.querySelector('.mr-bank-results-head');
+      if(head)head.after(nav);else host.prepend(nav);
+    }catch(error){
+      if(token!==remoteBankRequest)return;
+      console.error('[Mathroom bank paginated load]',error);
+      host.innerHTML='<div class="card"><h3>Не удалось загрузить страницу банка</h3><p class="muted"></p><button class="btn primary" type="button">Повторить</button></div>';
+      const box=host.querySelector('p');if(box)box.textContent=String(error?.message||error);
+      host.querySelector('button')?.addEventListener('click',()=>loadRemoteBankPage());
+    }
+  };
   const match=(row,f,isShared=false)=>{
     const topic=isShared?null:(S.topics||[]).find(z=>String(z.id)===String(row.topic_id));
     const grade=isShared?row.grade:topic?.grade;
@@ -3207,17 +3288,25 @@ function renderBank(){
     });
     hydrateTaskMedia(host);
   };
-  ['bankSearch','bankKind','bankGrade','bankDiff','bankCat','bankTag'].forEach(id=>document.getElementById(id).oninput=draw);
+  let remoteBankDebounce=null;
+  ['bankSearch','bankKind','bankGrade','bankDiff','bankCat','bankTag'].forEach(id=>{
+    document.getElementById(id).oninput=()=>{
+      if(!remoteBankEnabled||S.bankLibraryMode==='shared')return draw();
+      clearTimeout(remoteBankDebounce);remoteBankPage=0;
+      remoteBankDebounce=setTimeout(()=>loadRemoteBankPage(),200);
+    };
+  });
   document.getElementById('bankOnlyDrafts').onclick=()=>{
     S.bankDraftOnly=!S.bankDraftOnly;
     if(S.bankLibraryMode==='shared'){
       S.bankLibraryMode='mine';
       renderBank();
-    }else{
-      draw();
-    }
+    }else if(remoteBankEnabled){
+      remoteBankPage=0;loadRemoteBankPage();
+    }else draw();
   };
-  draw();
+  if(remoteBankEnabled&&S.bankLibraryMode!=='shared')loadRemoteBankPage();
+  else draw();
 }
 
 function renderSchedule(){
